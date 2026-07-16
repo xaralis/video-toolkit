@@ -7,7 +7,7 @@ text-only, no positioning cue settings — the website's VideoHeroOverlay
 draws the caption layer itself with brand-styled CSS.
 
 Usage:
-    python3 tools/export_vtt.py <project-name> [--max-chars 28] [--max-cue-sec 2.0]
+    python3 -m video_toolkit.export_vtt <project-name> [--max-chars 28] [--max-cue-sec 2.0]
 
 Inputs:
     projects/<name>/out/intro.mp4

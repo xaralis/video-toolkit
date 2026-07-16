@@ -9,11 +9,11 @@ A thin wrapper around `npx remotion render` that adds:
   - `--preview`: half-scale render to `out/preview.mp4`
 
 Usage:
-    python3 tools/render_reel.py                          # full quality, overwrites
-    python3 tools/render_reel.py --project pp-smoke-02    # explicit project
-    python3 tools/render_reel.py --preview                # half-scale
-    python3 tools/render_reel.py --keep                   # auto-version
-    python3 tools/render_reel.py --output reel-final.mp4  # explicit name
+    python3 -m video_toolkit.render_reel                          # full quality, overwrites
+    python3 -m video_toolkit.render_reel --project pp-smoke-02    # explicit project
+    python3 -m video_toolkit.render_reel --preview                # half-scale
+    python3 -m video_toolkit.render_reel --keep                   # auto-version
+    python3 -m video_toolkit.render_reel --output reel-final.mp4  # explicit name
 """
 
 from __future__ import annotations

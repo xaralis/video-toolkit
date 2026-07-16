@@ -16,19 +16,19 @@ git per project policy:
 Usage:
     # Register a freshly-created project on R2 (run once when /video creates
     # a new project — uploads project.json so the Footage Manager UI sees it)
-    python3 tools/sync_project.py --init pp-smoke-03
+    python3 -m video_toolkit.sync_project --init pp-smoke-03
 
     # Push project media TO R2 (after recording / rendering)
-    python3 tools/sync_project.py --push pp-smoke-03
-    python3 tools/sync_project.py --push pp-smoke-03 --only out      # just renders
-    python3 tools/sync_project.py --push pp-smoke-03 --dry-run
+    python3 -m video_toolkit.sync_project --push pp-smoke-03
+    python3 -m video_toolkit.sync_project --push pp-smoke-03 --only out      # just renders
+    python3 -m video_toolkit.sync_project --push pp-smoke-03 --dry-run
 
     # Pull project media FROM R2 (collaborator joining work)
-    python3 tools/sync_project.py --pull pp-smoke-03
-    python3 tools/sync_project.py --pull pp-smoke-03 --only recordings,broll
+    python3 -m video_toolkit.sync_project --pull pp-smoke-03
+    python3 -m video_toolkit.sync_project --pull pp-smoke-03 --only recordings,broll
 
     # List what's in R2 for a project
-    python3 tools/sync_project.py --list pp-smoke-03
+    python3 -m video_toolkit.sync_project --list pp-smoke-03
 
 Bucket and credentials come from .env (R2_BUCKET_NAME / R2_ACCESS_KEY_ID /
 R2_SECRET_ACCESS_KEY / R2_ACCOUNT_ID). Set up via /setup or by hand.

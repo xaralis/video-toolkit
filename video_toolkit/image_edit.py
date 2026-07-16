@@ -14,22 +14,22 @@ Capabilities:
 
 Examples:
   # Background replacement
-  python tools/image_edit.py --input photo.jpg --background "pyramids of Egypt"
+  python3 -m video_toolkit.image_edit --input photo.jpg --background "pyramids of Egypt"
 
   # Style transfer
-  python tools/image_edit.py --input photo.jpg --style "cyberpunk neon city"
+  python3 -m video_toolkit.image_edit --input photo.jpg --style "cyberpunk neon city"
 
   # Custom prompt (full control)
-  python tools/image_edit.py --input photo.jpg --prompt "Add warm sunset lighting"
+  python3 -m video_toolkit.image_edit --input photo.jpg --prompt "Add warm sunset lighting"
 
   # Using Modal instead of RunPod
-  python tools/image_edit.py --input photo.jpg --background "office" --cloud modal
+  python3 -m video_toolkit.image_edit --input photo.jpg --background "office" --cloud modal
 
   # Batch processing
-  python tools/image_edit.py --input-dir ./photos --background "studio backdrop" --output-dir ./edited
+  python3 -m video_toolkit.image_edit --input-dir ./photos --background "studio backdrop" --output-dir ./edited
 
   # With seed for reproducibility
-  python tools/image_edit.py --input photo.jpg --background "office" --seed 42
+  python3 -m video_toolkit.image_edit --input photo.jpg --background "office" --seed 42
 """
 
 import argparse

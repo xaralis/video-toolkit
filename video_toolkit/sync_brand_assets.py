@@ -8,9 +8,9 @@ two in sync — idempotent, size-based skip, surface drift in a brand asset
 gets picked up next sync.
 
 Usage:
-    python3 tools/sync_brand_assets.py <project>           # sync
-    python3 tools/sync_brand_assets.py <project> --dry-run # preview
-    python3 tools/sync_brand_assets.py <project> --strict  # also delete files in public/brand/ that aren't in brand/
+    python3 -m video_toolkit.sync_brand_assets <project>           # sync
+    python3 -m video_toolkit.sync_brand_assets <project> --dry-run # preview
+    python3 -m video_toolkit.sync_brand_assets <project> --strict  # also delete files in public/brand/ that aren't in brand/
 
 Reads `brand` field from `projects/<name>/project.json` to locate the
 source. Called from `/cut` (workflow step 2b) and safe to run any time.

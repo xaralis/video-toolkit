@@ -4,9 +4,9 @@
 Run after /setup to confirm everything is working, or anytime to diagnose issues.
 
 Usage:
-    python3 tools/verify_setup.py           # Full check (no cloud calls)
-    python3 tools/verify_setup.py --test    # Full check + smoke tests (makes cloud GPU calls)
-    python3 tools/verify_setup.py --json    # Machine-readable output
+    python3 -m video_toolkit.verify_setup           # Full check (no cloud calls)
+    python3 -m video_toolkit.verify_setup --test    # Full check + smoke tests (makes cloud GPU calls)
+    python3 -m video_toolkit.verify_setup --json    # Machine-readable output
 """
 
 import json

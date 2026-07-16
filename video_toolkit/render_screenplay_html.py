@@ -7,8 +7,8 @@ The output is a self-contained HTML file with embedded CSS — print-friendly
 (``open SCREENPLAY.html``) or send the file directly to collaborators.
 
 Usage:
-    python3 tools/render_screenplay_html.py <project-name>
-    python3 tools/render_screenplay_html.py --all       # all projects with SCREENPLAY.md
+    python3 -m video_toolkit.render_screenplay_html <project-name>
+    python3 -m video_toolkit.render_screenplay_html --all       # all projects with SCREENPLAY.md
 """
 from __future__ import annotations
 

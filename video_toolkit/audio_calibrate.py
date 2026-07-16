@@ -7,9 +7,9 @@ the musicVolumeDb baseline that puts music TARGET_DIFF LU below the mean
 voice level during voice segments.
 
 Usage:
-    python3 tools/audio_calibrate.py <project>            # measure + recommend
-    python3 tools/audio_calibrate.py <project> --apply    # also patch Root.tsx
-    python3 tools/audio_calibrate.py <project> --target-diff 12   # tighter ducking
+    python3 -m video_toolkit.audio_calibrate <project>            # measure + recommend
+    python3 -m video_toolkit.audio_calibrate <project> --apply    # also patch Root.tsx
+    python3 -m video_toolkit.audio_calibrate <project> --target-diff 12   # tighter ducking
 
 Brand rule #34: music sits TARGET_DIFF=15 LU below voice during voice
 segments. Re-run whenever the music track changes or new voice clips drop in.

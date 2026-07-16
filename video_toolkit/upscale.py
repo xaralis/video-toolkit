@@ -6,19 +6,19 @@ Cloud providers: RunPod (default), Modal.
 
 Usage:
     # Cloud processing (RunPod, default)
-    python tools/upscale.py --input image.jpg --output upscaled.png --cloud runpod
+    python3 -m video_toolkit.upscale --input image.jpg --output upscaled.png --cloud runpod
 
     # Using Modal
-    python tools/upscale.py --input image.jpg --output upscaled.png --cloud modal
+    python3 -m video_toolkit.upscale --input image.jpg --output upscaled.png --cloud modal
 
     # Specify model and scale
-    python tools/upscale.py --input image.jpg --output upscaled.png --model anime --scale 4 --cloud runpod
+    python3 -m video_toolkit.upscale --input image.jpg --output upscaled.png --model anime --scale 4 --cloud runpod
 
     # With face enhancement
-    python tools/upscale.py --input image.jpg --output upscaled.png --face-enhance --cloud runpod
+    python3 -m video_toolkit.upscale --input image.jpg --output upscaled.png --face-enhance --cloud runpod
 
     # Legacy flag (deprecated, use --cloud runpod)
-    python tools/upscale.py --input image.jpg --output upscaled.png --runpod
+    python3 -m video_toolkit.upscale --input image.jpg --output upscaled.png --runpod
 
 Models:
     - general: RealESRGAN_x4plus (default, good for most images)
@@ -443,7 +443,7 @@ def setup_runpod(gpu_id: str = "AMPERE_24", verbose: bool = True) -> dict:
             print(f"Endpoint ID:  {result['endpoint_id']}")
             print()
             print("You can now run:")
-            print("  python tools/upscale.py --input image.jpg --output upscaled.png --runpod")
+            print("  python3 -m video_toolkit.upscale --input image.jpg --output upscaled.png --runpod")
             print()
 
     except Exception as e:
@@ -461,16 +461,16 @@ def parse_args():
         epilog="""
 Examples:
   # Upscale image 4x using cloud GPU
-  python tools/upscale.py --input photo.jpg --output photo_4x.png --cloud runpod
+  python3 -m video_toolkit.upscale --input photo.jpg --output photo_4x.png --cloud runpod
 
   # Use anime model for illustrations
-  python tools/upscale.py --input art.png --output art_4x.png --model anime --cloud runpod
+  python3 -m video_toolkit.upscale --input art.png --output art_4x.png --model anime --cloud runpod
 
   # With face enhancement
-  python tools/upscale.py --input portrait.jpg --output portrait_4x.png --face-enhance --cloud runpod
+  python3 -m video_toolkit.upscale --input portrait.jpg --output portrait_4x.png --face-enhance --cloud runpod
 
   # Setup RunPod endpoint (first-time)
-  python tools/upscale.py --setup
+  python3 -m video_toolkit.upscale --setup
         """,
     )
 

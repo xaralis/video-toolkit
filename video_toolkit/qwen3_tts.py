@@ -7,41 +7,41 @@ Cloud providers: RunPod (default), Modal.
 
 Usage:
     # Built-in speaker (RunPod, default)
-    python tools/qwen3_tts.py --text "Hello world" --speaker Ryan --output hello.mp3
+    python3 -m video_toolkit.qwen3_tts --text "Hello world" --speaker Ryan --output hello.mp3
 
     # Using Modal instead of RunPod
-    python tools/qwen3_tts.py --text "Hello world" --cloud modal --output hello.mp3
+    python3 -m video_toolkit.qwen3_tts --text "Hello world" --cloud modal --output hello.mp3
 
     # With tone preset
-    python tools/qwen3_tts.py --text "Hello world" --tone warm --output hello.mp3
+    python3 -m video_toolkit.qwen3_tts --text "Hello world" --tone warm --output hello.mp3
 
     # With custom emotion/style instruction (overrides --tone)
-    python tools/qwen3_tts.py --text "I'm so excited!" --instruct "Speak enthusiastically" --output excited.mp3
+    python3 -m video_toolkit.qwen3_tts --text "I'm so excited!" --instruct "Speak enthusiastically" --output excited.mp3
 
     # List tone presets
-    python tools/qwen3_tts.py --list-tones
+    python3 -m video_toolkit.qwen3_tts --list-tones
 
     # Voice cloning
-    python tools/qwen3_tts.py --text "Hello" --ref-audio sample.wav --ref-text "transcript" --output cloned.mp3
+    python3 -m video_toolkit.qwen3_tts --text "Hello" --ref-audio sample.wav --ref-text "transcript" --output cloned.mp3
 
     # List built-in voices
-    python tools/qwen3_tts.py --list-voices
+    python3 -m video_toolkit.qwen3_tts --list-voices
 
     # Setup endpoint (RunPod)
-    python tools/qwen3_tts.py --setup
+    python3 -m video_toolkit.qwen3_tts --setup
 
     # Setup endpoint (Modal)
-    python tools/qwen3_tts.py --setup --cloud modal
+    python3 -m video_toolkit.qwen3_tts --setup --cloud modal
 
 Setup:
     RunPod:
         1. Create account at runpod.io
-        2. Run: python tools/qwen3_tts.py --setup
+        2. Run: python3 -m video_toolkit.qwen3_tts --setup
         3. Or manually deploy docker/runpod-qwen3-tts/ and add endpoint ID to .env
 
     Modal:
         1. pip install modal && python3 -m modal setup
-        2. Run: python tools/qwen3_tts.py --setup --cloud modal
+        2. Run: python3 -m video_toolkit.qwen3_tts --setup --cloud modal
         3. Or manually: modal deploy docker/modal-qwen3-tts/app.py
 """
 
@@ -661,7 +661,7 @@ def setup_runpod(gpu_id: str = "AMPERE_24", verbose: bool = True) -> dict:
             print(f"Endpoint ID:  {result['endpoint_id']}")
             print()
             print("You can now run:")
-            print('  python tools/qwen3_tts.py --text "Hello world" --speaker Ryan --output hello.mp3')
+            print('  python3 -m video_toolkit.qwen3_tts --text "Hello world" --speaker Ryan --output hello.mp3')
             print()
 
     except Exception as e:
@@ -812,7 +812,7 @@ def setup_modal(verbose: bool = True) -> dict:
             print(f"Endpoint: {endpoint_url}")
             print()
             print("You can now run:")
-            print('  python tools/qwen3_tts.py --text "Hello world" --cloud modal --output hello.mp3')
+            print('  python3 -m video_toolkit.qwen3_tts --text "Hello world" --cloud modal --output hello.mp3')
             print()
 
     except subprocess.TimeoutExpired:
@@ -834,25 +834,25 @@ def parse_args():
         epilog="""
 Examples:
   # Built-in speaker (RunPod, default)
-  python tools/qwen3_tts.py --text "Hello world" --speaker Ryan --output hello.mp3
+  python3 -m video_toolkit.qwen3_tts --text "Hello world" --speaker Ryan --output hello.mp3
 
   # Using Modal instead
-  python tools/qwen3_tts.py --text "Hello world" --cloud modal --output hello.mp3
+  python3 -m video_toolkit.qwen3_tts --text "Hello world" --cloud modal --output hello.mp3
 
   # With emotion control
-  python tools/qwen3_tts.py --text "Great news!" --instruct "Speak enthusiastically" --output excited.mp3
+  python3 -m video_toolkit.qwen3_tts --text "Great news!" --instruct "Speak enthusiastically" --output excited.mp3
 
   # Voice cloning
-  python tools/qwen3_tts.py --text "Hello" --ref-audio sample.wav --ref-text "transcript" --output cloned.mp3
+  python3 -m video_toolkit.qwen3_tts --text "Hello" --ref-audio sample.wav --ref-text "transcript" --output cloned.mp3
 
   # List voices
-  python tools/qwen3_tts.py --list-voices
+  python3 -m video_toolkit.qwen3_tts --list-voices
 
   # Setup endpoint (RunPod)
-  python tools/qwen3_tts.py --setup
+  python3 -m video_toolkit.qwen3_tts --setup
 
   # Setup endpoint (Modal)
-  python tools/qwen3_tts.py --setup --cloud modal
+  python3 -m video_toolkit.qwen3_tts --setup --cloud modal
         """,
     )
 

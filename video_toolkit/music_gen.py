@@ -22,45 +22,45 @@ Cloud providers:
 
 Examples:
   # Basic background music (uses acemusic cloud API by default)
-  python tools/music_gen.py --prompt "Subtle corporate tech" --duration 60 --output bg.mp3
+  python3 -m video_toolkit.music_gen --prompt "Subtle corporate tech" --duration 60 --output bg.mp3
 
   # Generate 4 variations, pick the best
-  python tools/music_gen.py --prompt "Upbeat electronic" --duration 30 --variations 4 --output intro.mp3
+  python3 -m video_toolkit.music_gen --prompt "Upbeat electronic" --duration 30 --variations 4 --output intro.mp3
 
   # Disable thinking mode for faster generation
-  python tools/music_gen.py --no-thinking --prompt "Quick draft" --duration 30 --output draft.mp3
+  python3 -m video_toolkit.music_gen --no-thinking --prompt "Quick draft" --duration 30 --output draft.mp3
 
   # With musical control
-  python tools/music_gen.py --prompt "Upbeat electronic" --duration 30 --bpm 128 --key "G Major" --output intro.mp3
+  python3 -m video_toolkit.music_gen --prompt "Upbeat electronic" --duration 30 --bpm 128 --key "G Major" --output intro.mp3
 
   # Vocal music with lyrics
-  python tools/music_gen.py --prompt "Indie pop" --lyrics "Hello world\\nWe build together" --duration 30 --output jingle.mp3
+  python3 -m video_toolkit.music_gen --prompt "Indie pop" --lyrics "Hello world\\nWe build together" --duration 30 --output jingle.mp3
 
   # Scene presets for video production
-  python tools/music_gen.py --preset corporate-bg --duration 60 --output bg.mp3
-  python tools/music_gen.py --preset tension --duration 20 --output problem.mp3
-  python tools/music_gen.py --preset cta --duration 15 --brand my-brand --output cta.mp3
+  python3 -m video_toolkit.music_gen --preset corporate-bg --duration 60 --output bg.mp3
+  python3 -m video_toolkit.music_gen --preset tension --duration 20 --output problem.mp3
+  python3 -m video_toolkit.music_gen --preset cta --duration 15 --brand my-brand --output cta.mp3
 
   # Cover / style transfer
-  python tools/music_gen.py --cover --reference theme.mp3 --prompt "Same style, longer" --duration 90 --output extended.mp3
+  python3 -m video_toolkit.music_gen --cover --reference theme.mp3 --prompt "Same style, longer" --duration 90 --output extended.mp3
 
   # Repaint a weak section
-  python tools/music_gen.py --repaint --input track.mp3 --repaint-start 15 --repaint-end 25 --prompt "Guitar solo" --output fixed.mp3
+  python3 -m video_toolkit.music_gen --repaint --input track.mp3 --repaint-start 15 --repaint-end 25 --prompt "Guitar solo" --output fixed.mp3
 
   # Continue from existing audio
-  python tools/music_gen.py --continuation --input track.mp3 --prompt "Continue with jazz piano" --output extended.mp3
+  python3 -m video_toolkit.music_gen --continuation --input track.mp3 --prompt "Continue with jazz piano" --output extended.mp3
 
   # Stem extraction
-  python tools/music_gen.py --extract vocals --input mixed.mp3 --output vocals.mp3
+  python3 -m video_toolkit.music_gen --extract vocals --input mixed.mp3 --output vocals.mp3
 
   # List presets
-  python tools/music_gen.py --list-presets
+  python3 -m video_toolkit.music_gen --list-presets
 
   # Fall back to self-hosted Modal
-  python tools/music_gen.py --cloud modal --prompt "Background music" --duration 60 --output bg.mp3
+  python3 -m video_toolkit.music_gen --cloud modal --prompt "Background music" --duration 60 --output bg.mp3
 
   # Setup RunPod endpoint (first-time, for self-hosted)
-  python tools/music_gen.py --setup
+  python3 -m video_toolkit.music_gen --setup
 """
 
 import argparse
@@ -1126,8 +1126,8 @@ def setup_runpod(gpu_id: str = "AMPERE_24,ADA_24", verbose: bool = True) -> dict
             print(f"Endpoint ID:  {result['endpoint_id']}")
             print()
             print("You can now run:")
-            print('  python tools/music_gen.py --prompt "Upbeat tech" --duration 60 --output music.mp3')
-            print('  python tools/music_gen.py --preset corporate-bg --duration 120 --output bg.mp3')
+            print('  python3 -m video_toolkit.music_gen --prompt "Upbeat tech" --duration 60 --output music.mp3')
+            print('  python3 -m video_toolkit.music_gen --preset corporate-bg --duration 120 --output bg.mp3')
             print()
 
     except Exception as e:

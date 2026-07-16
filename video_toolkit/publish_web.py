@@ -12,9 +12,9 @@ Config (in .env, or override via flags):
    the API token must have write access to the public bucket too.)
 
 Usage:
-  python3 tools/publish_web.py my-video
-  python3 tools/publish_web.py my-video --files out/intro.mp4,out/intro.vtt
-  python3 tools/publish_web.py my-video --prefix intro --bucket my-brand-web-media \
+  python3 -m video_toolkit.publish_web my-video
+  python3 -m video_toolkit.publish_web my-video --files out/intro.mp4,out/intro.vtt
+  python3 -m video_toolkit.publish_web my-video --prefix intro --bucket my-brand-web-media \
       --base-url https://media.example.com
 """
 import argparse

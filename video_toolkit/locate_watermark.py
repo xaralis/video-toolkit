@@ -7,16 +7,16 @@ It extracts frames, overlays grids, and marks regions for visual verification.
 
 Usage:
     # Interactive exploration - extract frames with grid overlay
-    python tools/locate_watermark.py --input video.mp4 --grid --output-dir /tmp/review/
+    python3 -m video_toolkit.locate_watermark --input video.mp4 --grid --output-dir /tmp/review/
 
     # Verify a specific region across multiple frames
-    python tools/locate_watermark.py --input video.mp4 --region 1100,650,150,50 --verify
+    python3 -m video_toolkit.locate_watermark --input video.mp4 --region 1100,650,150,50 --verify
 
     # Use a preset for common watermarks
-    python tools/locate_watermark.py --input video.mp4 --preset notebooklm --verify
+    python3 -m video_toolkit.locate_watermark --input video.mp4 --preset notebooklm --verify
 
     # Quick check - mark single frame
-    python tools/locate_watermark.py --input video.mp4 --region 1100,650,150,50 --mark
+    python3 -m video_toolkit.locate_watermark --input video.mp4 --region 1100,650,150,50 --mark
 
 Presets:
     notebooklm  - Bottom-right corner (Google NotebookLM videos)
@@ -78,16 +78,16 @@ def parse_args():
         epilog="""
 Examples:
   # Extract frames with coordinate grid for exploration
-  python tools/locate_watermark.py --input video.mp4 --grid --output-dir ./review/
+  python3 -m video_toolkit.locate_watermark --input video.mp4 --grid --output-dir ./review/
 
   # Verify NotebookLM watermark position
-  python tools/locate_watermark.py --input video.mp4 --preset notebooklm --verify
+  python3 -m video_toolkit.locate_watermark --input video.mp4 --preset notebooklm --verify
 
   # Mark custom region on multiple frames
-  python tools/locate_watermark.py --input video.mp4 --region 1100,650,150,50 --verify
+  python3 -m video_toolkit.locate_watermark --input video.mp4 --region 1100,650,150,50 --verify
 
   # Output coordinates as JSON (for scripting)
-  python tools/locate_watermark.py --input video.mp4 --preset notebooklm --json
+  python3 -m video_toolkit.locate_watermark --input video.mp4 --preset notebooklm --json
         """,
     )
 
@@ -530,7 +530,7 @@ def main():
 
     if region:
         output["dewatermark_command"] = (
-            f"python tools/dewatermark.py --input \"{args.input}\" "
+            f"python3 -m video_toolkit.dewatermark --input \"{args.input}\" "
             f"--region {region[0]},{region[1]},{region[2]},{region[3]} "
             f"--output \"output_clean.mp4\""
         )
@@ -545,7 +545,7 @@ def main():
             print(f"Region: {region[0]},{region[1]},{region[2]},{region[3]}")
             print()
             print("To remove watermark, run:")
-            print(f"  python tools/dewatermark.py \\")
+            print(f"  python3 -m video_toolkit.dewatermark \\")
             print(f"    --input \"{args.input}\" \\")
             print(f"    --region {region[0]},{region[1]},{region[2]},{region[3]} \\")
             print(f"    --output \"output_clean.mp4\"")

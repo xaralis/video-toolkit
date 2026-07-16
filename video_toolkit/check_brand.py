@@ -12,10 +12,10 @@ Outputs categorized findings:
 Exit code: 1 if any ERRORs, else 0. WARNs alone don't fail the lint.
 
 Usage:
-    python3 tools/check_brand.py                       # auto-detect project
-    python3 tools/check_brand.py --project pp-smoke-02
-    python3 tools/check_brand.py --strict              # WARNs also fail
-    python3 tools/check_brand.py --json                # machine-readable output
+    python3 -m video_toolkit.check_brand                       # auto-detect project
+    python3 -m video_toolkit.check_brand --project pp-smoke-02
+    python3 -m video_toolkit.check_brand --strict              # WARNs also fail
+    python3 -m video_toolkit.check_brand --json                # machine-readable output
 """
 
 from __future__ import annotations

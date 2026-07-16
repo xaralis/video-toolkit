@@ -11,24 +11,24 @@ Capabilities:
 
 Examples:
   # Text-to-image generation
-  python tools/flux2.py --prompt "A sunset over mountains, oil painting style"
+  python3 -m video_toolkit.flux2 --prompt "A sunset over mountains, oil painting style"
 
   # Scene presets for video production
-  python tools/flux2.py --preset title-bg
-  python tools/flux2.py --preset problem --prompt "legacy API migration"
-  python tools/flux2.py --preset cta --brand my-brand
+  python3 -m video_toolkit.flux2 --preset title-bg
+  python3 -m video_toolkit.flux2 --preset problem --prompt "legacy API migration"
+  python3 -m video_toolkit.flux2 --preset cta --brand my-brand
 
   # With custom size and seed
-  python tools/flux2.py --prompt "A cat in a spacesuit" --width 1280 --height 720 --seed 42
+  python3 -m video_toolkit.flux2 --prompt "A cat in a spacesuit" --width 1280 --height 720 --seed 42
 
   # Image editing (pass reference image)
-  python tools/flux2.py --input photo.jpg --prompt "Add a party hat"
+  python3 -m video_toolkit.flux2 --input photo.jpg --prompt "Add a party hat"
 
   # List available presets
-  python tools/flux2.py --list-presets
+  python3 -m video_toolkit.flux2 --list-presets
 
   # Setup RunPod endpoint (first-time)
-  python tools/flux2.py --setup
+  python3 -m video_toolkit.flux2 --setup
 """
 
 import argparse
@@ -786,8 +786,8 @@ def setup_runpod(gpu_id: str = "AMPERE_24,ADA_24", verbose: bool = True) -> dict
             print(f"Endpoint ID:  {result['endpoint_id']}")
             print()
             print("You can now run:")
-            print('  python tools/flux2.py --prompt "A cat in a spacesuit"')
-            print('  python tools/flux2.py --input photo.jpg --prompt "Add sunglasses"')
+            print('  python3 -m video_toolkit.flux2 --prompt "A cat in a spacesuit"')
+            print('  python3 -m video_toolkit.flux2 --input photo.jpg --prompt "Add sunglasses"')
             print()
 
     except Exception as e:

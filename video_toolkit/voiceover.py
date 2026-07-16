@@ -4,27 +4,27 @@ Generate voiceover audio using ElevenLabs or Qwen3-TTS.
 
 Usage:
     # From script file (ElevenLabs, default)
-    python tools/voiceover.py --script VOICEOVER-SCRIPT.md --output public/audio/voiceover.mp3
+    python3 -m video_toolkit.voiceover --script VOICEOVER-SCRIPT.md --output public/audio/voiceover.mp3
 
     # From stdin (for AI piping)
-    echo "Hello world" | python tools/voiceover.py --output voiceover.mp3
+    echo "Hello world" | python3 -m video_toolkit.voiceover --output voiceover.mp3
 
     # With custom voice
-    python tools/voiceover.py --script script.txt --voice-id ABC123 --output out.mp3
+    python3 -m video_toolkit.voiceover --script script.txt --voice-id ABC123 --output out.mp3
 
     # JSON output for machine parsing
-    python tools/voiceover.py --script script.txt --output out.mp3 --json
+    python3 -m video_toolkit.voiceover --script script.txt --output out.mp3 --json
 
     # Per-scene generation (recommended)
-    python tools/voiceover.py --scene-dir public/audio/scenes --json
+    python3 -m video_toolkit.voiceover --scene-dir public/audio/scenes --json
 
     # With concat for narrator lip-sync tools
-    python tools/voiceover.py --scene-dir public/audio/scenes --concat public/audio/voiceover-concat.mp3
+    python3 -m video_toolkit.voiceover --scene-dir public/audio/scenes --concat public/audio/voiceover-concat.mp3
 
     # Using Qwen3-TTS provider
-    python tools/voiceover.py --provider qwen3 --speaker Ryan --scene-dir public/audio/scenes --json
-    python tools/voiceover.py --provider qwen3 --tone warm --scene-dir public/audio/scenes --json
-    python tools/voiceover.py --provider qwen3 --instruct "Speak warmly" --script script.txt --output out.mp3
+    python3 -m video_toolkit.voiceover --provider qwen3 --speaker Ryan --scene-dir public/audio/scenes --json
+    python3 -m video_toolkit.voiceover --provider qwen3 --tone warm --scene-dir public/audio/scenes --json
+    python3 -m video_toolkit.voiceover --provider qwen3 --instruct "Speak warmly" --script script.txt --output out.mp3
 """
 
 import argparse
@@ -56,8 +56,8 @@ def _get_elevenlabs_imports():
             "     pip install elevenlabs\n"
             "\n"
             "  2. Use Qwen3-TTS instead (free, self-hosted):\n"
-            "     python3 tools/voiceover.py --provider qwen3 --speaker Ryan --scene-dir public/audio/scenes --json\n"
-            "     (Requires RunPod account — run: python3 tools/qwen3_tts.py --setup)\n"
+            "     python3 -m video_toolkit.voiceover --provider qwen3 --speaker Ryan --scene-dir public/audio/scenes --json\n"
+            "     (Requires RunPod account — run: python3 -m video_toolkit.qwen3_tts --setup)\n"
             "\n"
             "  3. Skip voiceover entirely:\n"
             "     Videos render fine without audio. Add voiceover later when ready.",
@@ -73,13 +73,13 @@ def parse_args():
         epilog="""
 Examples:
   # ElevenLabs (default)
-  python tools/voiceover.py --script VOICEOVER-SCRIPT.md --output public/audio/voiceover.mp3
-  python tools/voiceover.py --scene-dir public/audio/scenes --json
+  python3 -m video_toolkit.voiceover --script VOICEOVER-SCRIPT.md --output public/audio/voiceover.mp3
+  python3 -m video_toolkit.voiceover --scene-dir public/audio/scenes --json
 
   # Qwen3-TTS
-  python tools/voiceover.py --provider qwen3 --speaker Ryan --scene-dir public/audio/scenes --json
-  python tools/voiceover.py --provider qwen3 --tone warm --scene-dir public/audio/scenes --json
-  python tools/voiceover.py --provider qwen3 --instruct "Speak warmly" --script script.txt --output out.mp3
+  python3 -m video_toolkit.voiceover --provider qwen3 --speaker Ryan --scene-dir public/audio/scenes --json
+  python3 -m video_toolkit.voiceover --provider qwen3 --tone warm --scene-dir public/audio/scenes --json
+  python3 -m video_toolkit.voiceover --provider qwen3 --instruct "Speak warmly" --script script.txt --output out.mp3
         """,
     )
     parser.add_argument(
@@ -159,7 +159,7 @@ Examples:
         "--speaker",
         type=str,
         default="Ryan",
-        help="Qwen3-TTS speaker name (default: Ryan). Use 'python tools/qwen3_tts.py --list-voices' to see options.",
+        help="Qwen3-TTS speaker name (default: Ryan). Use 'python3 -m video_toolkit.qwen3_tts --list-voices' to see options.",
     )
     parser.add_argument(
         "--language",
@@ -176,7 +176,7 @@ Examples:
     parser.add_argument(
         "--tone",
         type=str,
-        help="Qwen3-TTS tone preset (e.g., 'warm', 'professional'). See 'python tools/qwen3_tts.py --list-tones'.",
+        help="Qwen3-TTS tone preset (e.g., 'warm', 'professional'). See 'python3 -m video_toolkit.qwen3_tts --list-tones'.",
     )
     parser.add_argument(
         "--ref-audio",
@@ -736,8 +736,8 @@ def main():
                 "     echo \"ELEVENLABS_API_KEY=your_key\" >> .env\n"
                 "\n"
                 "  2. Use Qwen3-TTS instead (free, self-hosted):\n"
-                "     python3 tools/voiceover.py --provider qwen3 --speaker Ryan --scene-dir public/audio/scenes --json\n"
-                "     (Requires RunPod account — run: python3 tools/qwen3_tts.py --setup)\n"
+                "     python3 -m video_toolkit.voiceover --provider qwen3 --speaker Ryan --scene-dir public/audio/scenes --json\n"
+                "     (Requires RunPod account — run: python3 -m video_toolkit.qwen3_tts --setup)\n"
                 "\n"
                 "  3. Skip voiceover entirely:\n"
                 "     Videos render fine without audio. Add voiceover later when ready.",

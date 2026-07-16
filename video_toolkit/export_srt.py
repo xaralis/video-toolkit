@@ -8,9 +8,9 @@ timings, and for every segment with audio (clip OR broll with
 sentence-segment.
 
 Usage:
-    python3 tools/export_srt.py                       # auto-detect project
-    python3 tools/export_srt.py --project pp-smoke-02
-    python3 tools/export_srt.py --project pp-smoke-02 --output captions.srt
+    python3 -m video_toolkit.export_srt                       # auto-detect project
+    python3 -m video_toolkit.export_srt --project pp-smoke-02
+    python3 -m video_toolkit.export_srt --project pp-smoke-02 --output captions.srt
 """
 
 from __future__ import annotations

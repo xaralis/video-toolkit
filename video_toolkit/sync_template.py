@@ -15,10 +15,10 @@ hash (source files are small; size alone would miss same-length edits). Idempote
 are skipped, so re-running is free and drift shows up as `updated`.
 
 Usage:
-    python3 tools/sync_template.py <project>                   # sync
-    python3 tools/sync_template.py <project> --dry-run         # preview (nothing written)
-    python3 tools/sync_template.py <project> --template <name> # if project.json has no `template`
-    python3 tools/sync_template.py <project> --strict          # also delete project src files the template no longer has
+    python3 -m video_toolkit.sync_template <project>                   # sync
+    python3 -m video_toolkit.sync_template <project> --dry-run         # preview (nothing written)
+    python3 -m video_toolkit.sync_template <project> --template <name> # if project.json has no `template`
+    python3 -m video_toolkit.sync_template <project> --strict          # also delete project src files the template no longer has
 
 Template is read from `projects/<name>/project.json` (`template` field) unless --template is given.
 Run from the toolkit root. Safe to run any time; run it before you edit a vendored component so you

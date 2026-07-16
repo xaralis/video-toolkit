@@ -3,10 +3,10 @@
 Transcribe audio/video via the Modal Whisper endpoint.
 
 Usage:
-    python3 tools/transcribe.py path/to/recording.mp4
-    python3 tools/transcribe.py path/to/recording.mp4 --language en
-    python3 tools/transcribe.py path/to/recording.mp4 --output transcript.json
-    python3 tools/transcribe.py *.mp4 --language cs   # batch
+    python3 -m video_toolkit.transcribe path/to/recording.mp4
+    python3 -m video_toolkit.transcribe path/to/recording.mp4 --language en
+    python3 -m video_toolkit.transcribe path/to/recording.mp4 --output transcript.json
+    python3 -m video_toolkit.transcribe *.mp4 --language cs   # batch
 """
 
 import argparse

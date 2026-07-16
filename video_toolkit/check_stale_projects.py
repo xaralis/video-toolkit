@@ -129,7 +129,7 @@ def main() -> int:
         print(f"  - {name}: {', '.join(bits)}")
     print()
     print("Až uživatel zmíní práci na některém z nich, NEJDŘÍV zavolej:")
-    print("  python3 tools/sync_project.py --pull <name>")
+    print("  python3 -m video_toolkit.sync_project --pull <name>")
     print("a teprve potom dělej cokoli s jeho soubory.")
     return 0
 

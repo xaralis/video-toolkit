@@ -7,22 +7,22 @@ via RunPod or Modal serverless GPUs.
 
 Usage:
     # Local processing (requires NVIDIA GPU + ProPainter installation)
-    python tools/dewatermark.py --input video.mp4 --region 1080,660,195,40 --output clean.mp4
+    python3 -m video_toolkit.dewatermark --input video.mp4 --region 1080,660,195,40 --output clean.mp4
 
     # Cloud processing via Modal (works from any machine)
-    python tools/dewatermark.py --input video.mp4 --region 1080,660,195,40 --output clean.mp4 --cloud modal
+    python3 -m video_toolkit.dewatermark --input video.mp4 --region 1080,660,195,40 --output clean.mp4 --cloud modal
 
     # Cloud processing via RunPod
-    python tools/dewatermark.py --input video.mp4 --region 1080,660,195,40 --output clean.mp4 --cloud runpod
+    python3 -m video_toolkit.dewatermark --input video.mp4 --region 1080,660,195,40 --output clean.mp4 --cloud runpod
 
     # Use custom mask image (white = area to remove, black = keep)
-    python tools/dewatermark.py --input video.mp4 --mask mask.png --output clean.mp4
+    python3 -m video_toolkit.dewatermark --input video.mp4 --mask mask.png --output clean.mp4
 
     # Install ProPainter for local processing (first-time setup)
-    python tools/dewatermark.py --install
+    python3 -m video_toolkit.dewatermark --install
 
     # Check installation status
-    python tools/dewatermark.py --status
+    python3 -m video_toolkit.dewatermark --status
 
 Cloud Setup:
     Modal:  pip install modal && python3 -m modal setup
@@ -482,13 +482,13 @@ def parse_args():
         epilog="""
 Examples:
   # Remove NotebookLM watermark (bottom-right corner)
-  python tools/dewatermark.py --input video.mp4 --region 1080,660,195,40 --output clean.mp4
+  python3 -m video_toolkit.dewatermark --input video.mp4 --region 1080,660,195,40 --output clean.mp4
 
   # Use higher quality (slower)
-  python tools/dewatermark.py --input video.mp4 --region 1080,660,195,40 --output clean.mp4 --fp32
+  python3 -m video_toolkit.dewatermark --input video.mp4 --region 1080,660,195,40 --output clean.mp4 --fp32
 
   # Install ProPainter
-  python tools/dewatermark.py --install
+  python3 -m video_toolkit.dewatermark --install
         """,
     )
 
@@ -1599,7 +1599,7 @@ def setup_runpod(gpu_id: str = "AMPERE_24", verbose: bool = True) -> dict:
             print(f"Endpoint ID:  {result['endpoint_id']}")
             print()
             print("You can now run:")
-            print("  python tools/dewatermark.py --input video.mp4 --region x,y,w,h --output out.mp4 --cloud runpod")
+            print("  python3 -m video_toolkit.dewatermark --input video.mp4 --region x,y,w,h --output out.mp4 --cloud runpod")
             print()
 
     except Exception as e:
@@ -1773,7 +1773,7 @@ def main():
     status = check_propainter_installed(propainter_path)
     if not status["installed"]:
         print("ProPainter is not installed.", file=sys.stderr)
-        print(f"Run: python tools/dewatermark.py --install", file=sys.stderr)
+        print(f"Run: python3 -m video_toolkit.dewatermark --install", file=sys.stderr)
         print()
         print("This is an OPTIONAL COMPONENT that requires:")
         print("  - ~2GB disk space for model weights")

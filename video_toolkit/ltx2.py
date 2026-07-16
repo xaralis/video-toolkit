@@ -7,23 +7,23 @@ Supports text-to-video and image-to-video with joint audio generation.
 
 Examples:
   # Text-to-video
-  python tools/ltx2.py --prompt "A cat playing with yarn in a sunlit room"
+  python3 -m video_toolkit.ltx2 --prompt "A cat playing with yarn in a sunlit room"
 
   # Higher resolution
-  python tools/ltx2.py --prompt "Ocean waves at sunset" --width 1024 --height 576
+  python3 -m video_toolkit.ltx2 --prompt "Ocean waves at sunset" --width 1024 --height 576
 
   # Image-to-video (animate a still image)
-  python tools/ltx2.py --prompt "Camera slowly pans right" --input photo.jpg
+  python3 -m video_toolkit.ltx2 --prompt "Camera slowly pans right" --input photo.jpg
 
   # Fast mode (fewer steps, lower quality)
-  python tools/ltx2.py --prompt "A rocket launch" --quality fast
+  python3 -m video_toolkit.ltx2 --prompt "A rocket launch" --quality fast
 
   # Custom parameters
-  python tools/ltx2.py --prompt "A timelapse of flowers blooming" \\
+  python3 -m video_toolkit.ltx2 --prompt "A timelapse of flowers blooming" \\
       --num-frames 161 --fps 24 --steps 40 --seed 42
 
   # Output to specific file
-  python tools/ltx2.py --prompt "A dog running on the beach" --output dog_beach.mp4
+  python3 -m video_toolkit.ltx2 --prompt "A dog running on the beach" --output dog_beach.mp4
 """
 
 import argparse
