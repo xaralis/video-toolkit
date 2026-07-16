@@ -9,15 +9,15 @@ videos served on the PP website. Builds on shared primitives in `lib/`
 ```
 1.  cp -r templates/web-program-intro projects/<name>   # or use /video
 2.  /narrate                                             # author SCREENPLAY.md
-2b. python3 tools/render_screenplay_html.py <name>       # SCREENPLAY.html (pro kolegy)
+2b. python3 -m video_toolkit.render_screenplay_html <name>       # SCREENPLAY.html (pro kolegy)
 3.  (natoč talking heads + b-roll; drop into public/recordings + public/broll)
 4.  /sync push recordings,broll                          # back up footage to R2
 5.  /cut                                                 # footage → defaultProps
 6.  /fine-tune                                           # iterate in Studio (lock final timing)
 7.  /add-music                                           # lively bg.mp3 (optional; BRAND-RULE #35)
-7b. python3 tools/audio_calibrate.py <name> --apply --target-diff 16   # ~-15 dB, livelier (BRAND-RULE #35)
+7b. python3 -m video_toolkit.audio_calibrate <name> --apply --target-diff 16   # ~-15 dB, livelier (BRAND-RULE #35)
 8.  /render                                              # out/intro.mp4
-9.  python3 tools/export_vtt.py <name>                   # out/intro.vtt (Whisper → WebVTT)
+9.  python3 -m video_toolkit.export_vtt <name>                   # out/intro.vtt (Whisper → WebVTT)
 10. (manuálně oprava ~2-3 míst v intro.vtt)
 11. /sync push out                                       # MP4 + VTT do R2 (privátní ops bucket, záloha)
 12. /publish                                             # MP4 + VTT + poster → veřejný bucket (web)
@@ -68,7 +68,7 @@ N/A:
 Same as reels:
 - `SCREENPLAY.md` — INTENT + plán natáčení (human-editable). Po každé
   úpravě regenerovat `SCREENPLAY.html` přes
-  `python3 tools/render_screenplay_html.py <name>` a commitnout oba.
+  `python3 -m video_toolkit.render_screenplay_html <name>` a commitnout oba.
 - `src/Root.tsx` inline `defaultProps={{...}}` — CURRENT CUT STATE (Studio Save target)
 - `out/intro.mp4` + `out/intro.vtt` — outputs
 

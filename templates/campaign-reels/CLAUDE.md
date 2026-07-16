@@ -16,7 +16,7 @@ renders an editor for the entire schema in the sidebar.
 5.  /cut                                              # map footage → defaultProps
 6.  /fine-tune                                        # iterate in Studio (lock final timing)
 7.  /add-music                                        # generate bg.mp3 sized to final reel (optional)
-7b. python3 tools/audio_calibrate.py <name> --apply   # calibrate musicVolumeDb against voice LUFS (brand rule #34)
+7b. python3 -m video_toolkit.audio_calibrate <name> --apply   # calibrate musicVolumeDb against voice LUFS (brand rule #34)
 8.  /render                                           # final MP4 (or /render preview)
 9.  /sync push out                                    # back up renders to R2
 10. /sync share                                       # generate short URL (TinyURL of presigned R2)
@@ -76,7 +76,7 @@ concepts, urban studies — but never portraits of real people or photoreal
 "events". Always set `aiGenerated: true` on AI-derived broll segments — this
 auto-renders the mandatory ▸ AI VIZUALIZACE tag.
 
-Generate stills with `tools/flux2.py`; short animated clips with `tools/ltx2.py`
+Generate stills with `video_toolkit.flux2`; short animated clips with `video_toolkit.ltx2`
 (if available).
 
 ## Key files (don't touch unless you know what you're doing)
@@ -92,7 +92,7 @@ Generate stills with `tools/flux2.py`; short animated clips with `tools/ltx2.py`
   brand rules at `brands/<brand>/BRAND-RULES.md`.
 - `public/brand/` — brand assets (watermark, skyline, outro, logos) mirrored
   from `brands/<brand>/assets/`. Synced automatically by `/cut` (step 2b)
-  via `tools/sync_brand_assets.py`; re-run that command if a brand asset
+  via `video_toolkit.sync_brand_assets`; re-run that command if a brand asset
   is added after scaffolding.
 
 ## Tests

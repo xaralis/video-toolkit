@@ -51,7 +51,7 @@ claude-code-video-toolkit/        # this repo (the core)
 ├── .claude/
 │   ├── skills/          # Domain knowledge for Claude
 │   └── commands/        # Guided workflows
-├── tools/               # Python CLI automation
+├── video_toolkit/       # Python CLI automation (installable package)
 ├── templates/           # Video templates
 │   ├── campaign-reels/  # Vertical 9:16 social reel template
 │   └── web-program-intro/ # Talking-head web intro template
@@ -139,7 +139,7 @@ Collaborator joining mid-project:
 /video → resume → /sync pull → /fine-tune (or wherever the work is)
 ```
 
-**Auto-pull pravidlo (lazy sync)**: SessionStart hook spouští `tools/check_stale_projects.py`, který tiše prohlédne R2 a vypíše banner `=== R2 STALE PROJECTS ===`, pokud některý lokální projekt zaostává. Když uživatel v dalším promptu zmíní práci na takovém projektu (resume přes `/video`, "pokračujme v X", "co je v X", atd.), **NEJDŘÍV** spusť `/sync pull <name>` (= git pull + R2 pull, jeden krok) a teprve potom dělej cokoli s jeho soubory. Bez čekání na další explicitní pokyn. Projekty, které v banneru nejsou, jsou aktuální — sync přeskoč. Pokud banner chybí úplně (R2 nedostupné, není nakonfigurováno), pracuj s lokálním stavem.
+**Auto-pull pravidlo (lazy sync)**: SessionStart hook spouští `python3 -m video_toolkit.check_stale_projects`, který tiše prohlédne R2 a vypíše banner `=== R2 STALE PROJECTS ===`, pokud některý lokální projekt zaostává. Když uživatel v dalším promptu zmíní práci na takovém projektu (resume přes `/video`, "pokračujme v X", "co je v X", atd.), **NEJDŘÍV** spusť `/sync pull <name>` (= git pull + R2 pull, jeden krok) a teprve potom dělej cokoli s jeho soubory. Bez čekání na další explicitní pokyn. Projekty, které v banneru nejsou, jsou aktuální — sync přeskoč. Pokud banner chybí úplně (R2 nedostupné, není nakonfigurováno), pracuj s lokálním stavem.
 
 The schema-driven template uses Zod (`src/config/schema.ts`) so Studio's sidebar renders a full editor for every segment, overlay, and transition. Brand rules at `brands/<brand>/BRAND-RULES.md` are loaded by `/narrate` and `/cut` to enforce accent emphasis-only, 3s minimums, L-cut audio inheritance, and other authoritative discipline. `/sync` keeps raw footage + renders in Cloudflare R2 so heavy media never goes to git but is still shareable across the team.
 
@@ -169,10 +169,10 @@ import { AnimatedBackground, SlideTransition, Label } from '../../../../lib/comp
 
 ## Python Tools
 
-Audio, video, and image tools in `tools/`. Three things you need to know:
+Audio, video, and image tools in `video_toolkit/`. Three things you need to know:
 
-- **Setup**: `pip install -r tools/requirements.txt`
-- **Always invoke from toolkit root** (`cd /path/to/claude-code-video-toolkit && python3 tools/...`). Tool paths are relative; running from inside a project dir will fail. Critical for background commands.
+- **Setup**: `pip install -e .`
+- **Always invoke from toolkit root** (`cd /path/to/claude-code-video-toolkit && python3 -m video_toolkit.<tool>`). Critical for background commands.
 - **Every tool supports `--help`** for full CLI options.
 
 Per-tool categories:
@@ -193,7 +193,7 @@ For ready-to-copy invocations of each tool (voiceover, sync_timing, qwen3_tts, i
 4. **Scene review** - Run `/scene-review` to verify visuals in Remotion Studio
 5. **Design refinement** - Use `/design` or the "Refine" option in scene-review to improve slide visuals
 6. **Generate audio** - Use `/generate-voiceover` for AI narration
-7. **Sync timing** - Run `python3 tools/sync_timing.py --apply` to update config durations
+7. **Sync timing** - Run `python3 -m video_toolkit.sync_timing --apply` to update config durations
 8. **Preview** - `npm run studio` in project directory
 9. **Iterate** - Adjust timing, content, styling with Claude Code
 10. **Render** - `npm run render` for final MP4
@@ -225,7 +225,7 @@ Core principles (full reference in **`docs/video-timing.md`**):
 - **Voiceover drives timing.** Generate audio first, anchor visuals to actual measured durations — don't estimate.
 - **~150 WPM** standard reading pace (2.5 words/second). Title scenes 0-10% narration density; Overview/Stats 70-90%; Demo 30-50%.
 - **All videos run at 30fps** (frames = seconds × 30).
-- **TTS drifts.** ElevenLabs and Qwen3-TTS compress pauses and speed through short sentences; a 50s script may produce 40-45s of audio. Always run `python3 tools/sync_timing.py --apply` after voiceover generation to update `durationInFrames` to match actual audio.
+- **TTS drifts.** ElevenLabs and Qwen3-TTS compress pauses and speed through short sentences; a 50s script may produce 40-45s of audio. Always run `python3 -m video_toolkit.sync_timing --apply` after voiceover generation to update `durationInFrames` to match actual audio.
 - **Two timeline strategies:** audio-anchored absolute `start=` timestamps (tight ad-style edits, sub-30s spots) vs. `<Series>` auto-chained durations (long-form sprint reviews). Mix per section as needed.
 
 The full doc covers: speaking-rate tiers, narration-density tables, word-count budgeting, drift patterns + fixes, audio-anchored Python/moviepy pattern with example, and `<Series>` vs. absolute-start trade-offs.

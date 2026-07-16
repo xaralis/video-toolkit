@@ -28,7 +28,7 @@ docker build -t ghcr.io/YOUR_USERNAME/video-toolkit-realesrgan:latest .
 docker push ghcr.io/YOUR_USERNAME/video-toolkit-realesrgan:latest
 
 # Or use automated setup from CLI
-python tools/upscale.py --setup
+python3 -m video_toolkit.upscale --setup
 ```
 
 ## API Usage
@@ -113,6 +113,6 @@ curl -X POST http://localhost:8000/run \
 
 ## Related
 
-- [tools/upscale.py](../../tools/upscale.py) - CLI wrapper
+- [video_toolkit/upscale.py](../../video_toolkit/upscale.py) - CLI wrapper
 - [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) - Original project
 - [GFPGAN](https://github.com/TencentARC/GFPGAN) - Face enhancement

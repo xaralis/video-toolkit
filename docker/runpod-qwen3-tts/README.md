@@ -36,7 +36,7 @@ docker push ghcr.io/conalmullan/video-toolkit-qwen3-tts:latest
 
 Or use the automated setup:
 ```bash
-python tools/qwen3_tts.py --setup
+python3 -m video_toolkit.qwen3_tts --setup
 ```
 
 ## API

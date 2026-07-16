@@ -22,7 +22,7 @@ Thank you for your interest in contributing! This toolkit is designed to help pe
    ```bash
    python -m venv .venv
    source .venv/bin/activate
-   pip install -r tools/requirements.txt
+   pip install -e .
    ```
 3. Add your ElevenLabs API key to `.env`
 
@@ -31,7 +31,7 @@ Thank you for your interest in contributing! This toolkit is designed to help pe
 ```
 ├── .claude/skills/     # Domain knowledge for Claude Code
 ├── .claude/commands/   # Guided workflow commands
-├── tools/              # Python CLI tools
+├── video_toolkit/      # Python CLI tools (installable package)
 ├── templates/          # Video templates
 ├── brands/             # Brand profiles
 └── docs/               # Documentation

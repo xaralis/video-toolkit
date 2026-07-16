@@ -9,7 +9,7 @@ Renders out of the box with **zero external assets** — solid colour background
 ```bash
 # From the toolkit root (one-time — installs moviepy, Pillow, matplotlib
 # alongside the rest of the toolkit's optional Python deps):
-python3 -m pip install -r tools/requirements.txt
+python3 -m pip install -e .
 
 # Then:
 cd examples/quick-spot
@@ -34,18 +34,18 @@ See the **moviepy** skill (`.claude/skills/moviepy/SKILL.md`) for the full patte
 
 3. **Optional VO + ducked music.** `build_audio()` checks for per-scene mp3 files and mixes them only if all are present, otherwise renders silent. Music is ducked to 22% volume under VO at 115% — tuned defaults from production use.
 
-4. **Solid-colour backgrounds with fades.** No external video required. Swap these for `VideoFileClip("ltx_broll.mp4")` if you generate b-roll with `tools/ltx2.py`.
+4. **Solid-colour backgrounds with fades.** No external video required. Swap these for `VideoFileClip("ltx_broll.mp4")` if you generate b-roll with `video_toolkit.ltx2`.
 
 ## Adding voiceover
 
 ```bash
 # 1. Generate per-scene VO from the script (uses Qwen3-TTS by default; pass --provider elevenlabs for ElevenLabs)
-python3 ../../tools/voiceover.py \
+python3 -m video_toolkit.voiceover \
     --script VOICEOVER-SCRIPT.md \
     --scene-dir public/audio/scenes
 
 # 2. Optional: generate background music
-python3 ../../tools/music_gen.py \
+python3 -m video_toolkit.music_gen \
     --preset cta --duration 15 \
     --output public/audio/music.mp3
 
@@ -53,7 +53,7 @@ python3 ../../tools/music_gen.py \
 python3 build.py
 ```
 
-After the first audio render, run `python3 ../../tools/sync_timing.py --voiceover-json` against the generated audio to verify your scene-anchored timestamps still match the actual audio durations. If the audio is significantly longer/shorter than your timeline, edit the `start=` values and the comment block at the top of `build.py`.
+After the first audio render, run `python3 -m video_toolkit.sync_timing --voiceover-json` against the generated audio to verify your scene-anchored timestamps still match the actual audio durations. If the audio is significantly longer/shorter than your timeline, edit the `start=` values and the comment block at the top of `build.py`.
 
 ## Adding LTX-2 b-roll
 
@@ -83,7 +83,7 @@ clips.append(
 Generate b-roll with:
 
 ```bash
-python3 ../../tools/ltx2.py \
+python3 -m video_toolkit.ltx2 \
     --prompt "Dark moody abstract background, blue light streaks, cinematic" \
     --num-frames 121 \
     --output public/broll/scene1.mp4

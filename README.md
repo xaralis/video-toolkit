@@ -17,7 +17,7 @@ An AI-native video production workspace for [Claude Code](https://claude.ai/code
 ```bash
 git clone https://github.com/xaralis/video-toolkit.git
 cd video-toolkit
-python3 -m pip install -r tools/requirements.txt   # Optional: AI voiceover, image gen, music, moviepy examples
+python3 -m pip install -e .                        # Optional: AI voiceover, image gen, music, moviepy examples
 claude                                              # Open Claude Code in the toolkit
 ```
 
@@ -83,7 +83,7 @@ python3 scripts/migrate_to_codex.py --reset
 
 **What's free:** The toolkit leans heavily on open-source AI models — voiceovers (Qwen3-TTS), image generation (FLUX.2), music (ACE-Step), and more. You deploy them to your own cloud GPU account and run them at cost. Cloudflare R2 has a generous free tier (10GB, zero egress), and Modal gives $30/month free compute on the Starter plan — more than enough for a few 5-minute videos a month.
 
-**Requirements:** [Node.js](https://nodejs.org/) 18+ and [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Python 3.9+ recommended for AI tools. FFmpeg optional.
+**Requirements:** [Node.js](https://nodejs.org/) 18+ and [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Python 3.10+ recommended for AI tools. FFmpeg optional.
 
 > **Want to skip setup and just render something?**
 > ```bash
@@ -193,48 +193,48 @@ See [lib/project/README.md](lib/project/README.md) for schema details, scene sta
 
 ### Python Tools
 
-Audio, video, and image tools in `tools/`:
+Audio, video, and image tools in `video_toolkit/`:
 
 ```bash
 # Generate voiceover (ElevenLabs)
-python tools/voiceover.py --script script.md --output voiceover.mp3
+python3 -m video_toolkit.voiceover --script script.md --output voiceover.mp3
 
 # Generate voiceover (Qwen3-TTS — self-hosted, cheaper alternative)
-python tools/voiceover.py --provider qwen3 --speaker Ryan --scene-dir public/audio/scenes --json
-python tools/qwen3_tts.py --text "Hello world" --tone warm --output hello.mp3
+python3 -m video_toolkit.voiceover --provider qwen3 --speaker Ryan --scene-dir public/audio/scenes --json
+python3 -m video_toolkit.qwen3_tts --text "Hello world" --tone warm --output hello.mp3
 
 # Generate background music (ACE-Step — free cloud API, XL Turbo 4B model)
-python tools/music_gen.py --preset corporate-bg --duration 120 --output music.mp3
-python tools/music_gen.py --prompt "Dramatic cinematic" --duration 30 --bpm 90 --key "D Minor" --output reveal.mp3
-python tools/music_gen.py --prompt "Upbeat indie rock" --duration 60 --variations 4 --output intro.mp3
+python3 -m video_toolkit.music_gen --preset corporate-bg --duration 120 --output music.mp3
+python3 -m video_toolkit.music_gen --prompt "Dramatic cinematic" --duration 30 --bpm 90 --key "D Minor" --output reveal.mp3
+python3 -m video_toolkit.music_gen --prompt "Upbeat indie rock" --duration 60 --variations 4 --output intro.mp3
 
 # Generate sound effects
-python tools/sfx.py --preset whoosh --output sfx.mp3
+python3 -m video_toolkit.sfx --preset whoosh --output sfx.mp3
 
 # Add background music to existing video
-python tools/addmusic.py --input video.mp4 --prompt "Subtle ambient" --output output.mp4
+python3 -m video_toolkit.addmusic --input video.mp4 --prompt "Subtle ambient" --output output.mp4
 
 # AI image editing (style transfer, backgrounds, custom prompts)
-python tools/image_edit.py --input photo.jpg --style cyberpunk --cloud modal
-python tools/image_edit.py --input photo.jpg --prompt "Add sunglasses" --cloud modal
+python3 -m video_toolkit.image_edit --input photo.jpg --style cyberpunk --cloud modal
+python3 -m video_toolkit.image_edit --input photo.jpg --prompt "Add sunglasses" --cloud modal
 
 # AI image upscaling (2x/4x)
-python tools/upscale.py --input photo.jpg --output photo_4x.png --cloud modal
+python3 -m video_toolkit.upscale --input photo.jpg --output photo_4x.png --cloud modal
 
 # Remove watermarks (requires cloud GPU)
-python tools/dewatermark.py --input video.mp4 --preset sora --output clean.mp4 --cloud modal
+python3 -m video_toolkit.dewatermark --input video.mp4 --preset sora --output clean.mp4 --cloud modal
 
 # Locate watermark coordinates
-python tools/locate_watermark.py --input video.mp4 --grid --output-dir ./review/
+python3 -m video_toolkit.locate_watermark --input video.mp4 --grid --output-dir ./review/
 
 # AI image generation (FLUX.2 Klein 4B — text-to-image + editing)
-python tools/flux2.py --prompt "A sunset over mountains" --cloud modal
-python tools/flux2.py --preset title-bg --brand my-brand --cloud modal
-python tools/flux2.py --list-presets
+python3 -m video_toolkit.flux2 --prompt "A sunset over mountains" --cloud modal
+python3 -m video_toolkit.flux2 --preset title-bg --brand my-brand --cloud modal
+python3 -m video_toolkit.flux2 --list-presets
 
 # AI video generation (LTX-2.3 22B — text-to-video + image-to-video)
-python tools/ltx2.py --prompt "A sunset over the ocean, cinematic" --cloud modal
-python tools/ltx2.py --prompt "Gentle camera drift" --input photo.jpg --cloud modal
+python3 -m video_toolkit.ltx2 --prompt "A sunset over the ocean, cinematic" --cloud modal
+python3 -m video_toolkit.ltx2 --prompt "Gentle camera drift" --input photo.jpg --cloud modal
 ```
 
 **Tool Categories:**
@@ -261,7 +261,7 @@ python tools/ltx2.py --prompt "Gentle camera drift" --input photo.jpg --cloud mo
 
 **Modal (recommended):** Each tool deploys from `docker/modal-*/app.py` — Modal builds and hosts the containers. $30/month free compute on the Starter plan, typical usage is $1-2/month. Run `/setup` to deploy all tools automatically.
 
-**RunPod (alternative):** Uses pre-built Docker images from `ghcr.io/conalmullan/video-toolkit-*`. Pay-per-second, no minimums. Run `python3 tools/<tool>.py --setup` to create endpoints.
+**RunPod (alternative):** Uses pre-built Docker images from `ghcr.io/conalmullan/video-toolkit-*`. Pay-per-second, no minimums. Run `python3 -m video_toolkit.<tool> --setup` to create endpoints.
 
 See [docs/modal-setup.md](docs/modal-setup.md) and [docs/runpod-setup.md](docs/runpod-setup.md) for details.
 
@@ -279,7 +279,7 @@ claude-code-video-toolkit/
 │   ├── transitions/     # Scene transition effects (7 custom + 4 official)
 │   ├── theme/           # ThemeProvider, useTheme
 │   └── project/         # Multi-session project system
-├── tools/               # Python CLI tools
+├── video_toolkit/       # Python CLI tools (installable package)
 ├── templates/           # Video templates
 ├── brands/default/      # Neutral scaffold brand — real brands live in the consuming repo
 ├── examples/            # Curated showcase projects with finished videos

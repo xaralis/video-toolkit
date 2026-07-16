@@ -49,7 +49,7 @@ RUNPOD_ENDPOINT_ID=your_endpoint_id_here
 ### Use It
 
 ```bash
-python tools/dewatermark.py \
+python3 -m video_toolkit.dewatermark \
     --input video.mp4 \
     --region 1080,660,195,40 \
     --output clean.mp4 \

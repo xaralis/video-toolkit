@@ -9,7 +9,7 @@ Renders out of the box with the included `data/star_series.json` (real GitHub st
 ```bash
 # From the toolkit root (one-time — installs matplotlib, moviepy, and
 # Pillow alongside the rest of the toolkit's optional Python deps):
-python3 -m pip install -r tools/requirements.txt
+python3 -m pip install -e .
 
 # Then:
 cd examples/data-viz-chart
@@ -64,7 +64,7 @@ The chart re-renders automatically because the data file mtime is newer than the
 Same pattern as `examples/quick-spot`:
 
 ```bash
-python3 ../../tools/voiceover.py \
+python3 -m video_toolkit.voiceover \
     --script VOICEOVER-SCRIPT.md \
     --scene-dir public/audio/scenes
 ```

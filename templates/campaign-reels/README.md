@@ -33,7 +33,7 @@ Real reels come from a slash-command workflow:
   `audioMode: 'inherit-from-clip'` continues a talking-head's voice over
   the b-roll visual.
 - **Transcript-driven captions**: clip segments load `<source>.transcript.json`
-  (produced by `tools/transcribe.py`) and render synced captions in lime + coal stroke.
+  (produced by `video_toolkit.transcribe`) and render synced captions in lime + coal stroke.
 
 ## Segment types
 

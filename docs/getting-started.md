@@ -17,7 +17,7 @@ This guide will help you create your first video using the claude-code-video-too
 
 ### Optional: Full Toolkit
 
-- [Python](https://python.org/) 3.9+ — for audio tools, image editing, upscaling
+- [Python](https://python.org/) 3.10+ — for audio tools, image editing, upscaling
 - [FFmpeg](https://ffmpeg.org/) — for media conversion and compression
 - [RunPod account](https://runpod.io/) — for cloud GPU processing (TTS, image editing, watermark removal, talking heads)
 - [ElevenLabs API key](https://elevenlabs.io/) — for premium AI voices
