@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Iterable
 
 ROOT = Path(__file__).resolve().parent.parent
-TRANSCRIBE_PY = ROOT / "tools" / "transcribe.py"
+TRANSCRIBE_PY = ROOT / "video_toolkit" / "transcribe.py"
 
 
 @dataclass(frozen=True)

@@ -227,7 +227,7 @@ def main() -> int:
     print(f"   logged to out/HISTORY.md")
 
     # Auto-export SRT alongside (Task 1)
-    srt_script = REPO_ROOT / "tools" / "export_srt.py"
+    srt_script = REPO_ROOT / "video_toolkit" / "export_srt.py"
     if srt_script.exists():
         subprocess.run(
             ["python3", str(srt_script), "--project", project_name],

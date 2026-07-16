@@ -43,8 +43,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Make tools/ importable for the shared R2 helpers
-sys.path.insert(0, str(REPO_ROOT / "tools"))
+# Add parent to path for local imports
+sys.path.insert(0, str(Path(__file__).parent))
 from file_transfer import get_r2_client  # noqa: E402
 
 # Subdirs of a project that get synced (relative to project root). Order

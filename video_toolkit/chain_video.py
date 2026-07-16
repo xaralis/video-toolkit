@@ -104,7 +104,7 @@ SCENE_TIMEOUT = 1200  # 20 minutes — generous buffer over ltx2's 15min cloud t
 def generate_scene(input_image, prompt, output_path, cloud, extra_args, use_progress):
     """Run ltx2.py to generate a video clip from an image."""
     cmd = [
-        sys.executable, os.path.join(TOOLKIT_ROOT, "tools", "ltx2.py"),
+        sys.executable, os.path.join(TOOLKIT_ROOT, "video_toolkit", "ltx2.py"),
         "--input", input_image,
         "--prompt", prompt,
         "--output", output_path,
