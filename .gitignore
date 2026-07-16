@@ -134,4 +134,3 @@ examples/*/chart_anim.mp4
 !templates/**/public/brand/*.mov
 
 # Per-host runtime markers (e.g., CloudCLI server vs. local dev)
-.claude/host-env.md

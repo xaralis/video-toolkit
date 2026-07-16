@@ -5,10 +5,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cat .claude/host-env.md 2>/dev/null || true"
-          },
-          {
-            "type": "command",
             "command": "python3 -m video_toolkit.check_stale_projects 2>/dev/null || true"
           }
         ]
