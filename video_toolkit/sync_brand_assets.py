@@ -24,7 +24,7 @@ import shutil
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+from video_toolkit.paths import NotFound, find_brand, workspace_root
 
 
 def main() -> int:
@@ -34,7 +34,7 @@ def main() -> int:
     ap.add_argument("--strict", action="store_true", help="also delete files in public/brand/ that aren't in brand/assets/")
     args = ap.parse_args()
 
-    proj = REPO_ROOT / "projects" / args.project
+    proj = workspace_root() / "projects" / args.project
     project_json = proj / "project.json"
     if not project_json.exists():
         print(f"!! {project_json} not found", file=sys.stderr)
@@ -45,7 +45,12 @@ def main() -> int:
         print(f"!! no `brand` field in {project_json}", file=sys.stderr)
         return 1
 
-    src = REPO_ROOT / "brands" / brand_name / "assets"
+    try:
+        brand_dir = find_brand(brand_name)
+    except NotFound as e:
+        print(f"!! {e}", file=sys.stderr)
+        return 1
+    src = brand_dir / "assets"
     if not src.is_dir():
         print(f"!! brand assets dir not found: {src}", file=sys.stderr)
         return 1
@@ -85,7 +90,15 @@ def main() -> int:
                     (dst / name).unlink()
                 removed.append(name)
 
-    print(f"-> brand={brand_name}  src={src.relative_to(REPO_ROOT)}  dst={dst.relative_to(REPO_ROOT)}")
+    root = workspace_root()
+
+    def _rel(p: Path) -> Path:
+        try:
+            return p.relative_to(root)
+        except ValueError:
+            return p
+
+    print(f"-> brand={brand_name}  src={_rel(src)}  dst={_rel(dst)}")
     for name in copied:
         print(f"   copied   {name}")
     for name in updated:

@@ -18,7 +18,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from video_toolkit.paths import workspace_root
 
 CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -286,7 +286,7 @@ def render(md_path: Path, html_path: Path) -> None:
 
 
 def project_dir(name: str) -> Path:
-    p = ROOT / "projects" / name
+    p = workspace_root() / "projects" / name
     if not p.is_dir():
         sys.exit(f"error: project directory not found: {p}")
     return p
@@ -310,7 +310,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.all:
-        projects_dir = ROOT / "projects"
+        projects_dir = workspace_root() / "projects"
         targets = sorted(p.name for p in projects_dir.iterdir() if p.is_dir() and (p / "SCREENPLAY.md").is_file())
         if not targets:
             sys.exit("error: no projects with SCREENPLAY.md found")

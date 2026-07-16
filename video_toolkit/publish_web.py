@@ -26,7 +26,7 @@ from pathlib import Path
 import boto3
 from botocore.config import Config
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+from video_toolkit.paths import workspace_root
 
 CONTENT_TYPES = {
     ".mp4": "video/mp4",
@@ -122,7 +122,7 @@ def ensure_poster(proj: Path, rel: str) -> None:
 
 
 def load_env() -> None:
-    env = REPO_ROOT / ".env"
+    env = workspace_root() / ".env"
     if not env.exists():
         return
     for line in env.read_text().splitlines():
@@ -161,7 +161,7 @@ def main() -> int:
         print("ERROR: no public base URL. Set R2_PUBLIC_BASE_URL in .env or pass --base-url.", file=sys.stderr)
         return 2
 
-    proj = REPO_ROOT / "projects" / args.project
+    proj = workspace_root() / "projects" / args.project
     if not proj.is_dir():
         print(f"ERROR: project not found: {proj}", file=sys.stderr)
         return 2

@@ -29,7 +29,8 @@ from pathlib import Path
 
 import json5  # type: ignore[import-untyped]
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+from video_toolkit.paths import workspace_root
+
 ACCENT_PATTERN = re.compile(r"\{(lime|teal):([^}]+)\}")
 VALID_PLACEMENTS = {
     "upper-third", "center", "lower-third",
@@ -50,12 +51,12 @@ class Finding:
 
 def detect_project(explicit: str | None) -> Path:
     if explicit:
-        p = REPO_ROOT / "projects" / explicit
+        p = workspace_root() / "projects" / explicit
         if not p.exists():
             raise SystemExit(f"ERROR: project not found: {p}")
         return p
     cwd = Path.cwd().resolve()
-    projects_dir = REPO_ROOT / "projects"
+    projects_dir = workspace_root() / "projects"
     try:
         rel = cwd.relative_to(projects_dir)
         return projects_dir / rel.parts[0]

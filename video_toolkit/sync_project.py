@@ -41,7 +41,7 @@ import os
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+from video_toolkit.paths import workspace_root
 
 # Add parent to path for local imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -61,7 +61,7 @@ def humansize(num: int) -> str:
 
 
 def project_path(name: str) -> Path:
-    p = REPO_ROOT / "projects" / name
+    p = workspace_root() / "projects" / name
     if not p.exists():
         raise SystemExit(f"ERROR: project not found: {p}")
     return p

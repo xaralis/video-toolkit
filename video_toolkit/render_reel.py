@@ -28,17 +28,20 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from video_toolkit.paths import NotFound, WorkspaceNotFound, find_brand, workspace_root
+
+# Sibling-module path only — export_srt.py genuinely lives beside this package.
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def detect_project(explicit: str | None) -> Path:
     if explicit:
-        p = REPO_ROOT / "projects" / explicit
+        p = workspace_root() / "projects" / explicit
         if not p.exists():
             raise SystemExit(f"ERROR: project not found: {p}")
         return p
     cwd = Path.cwd().resolve()
-    projects_dir = REPO_ROOT / "projects"
+    projects_dir = workspace_root() / "projects"
     try:
         rel = cwd.relative_to(projects_dir)
         return projects_dir / rel.parts[0]
@@ -93,7 +96,13 @@ def detect_brand_lut(project_path: Path) -> Path | None:
         return None
     if not brand:
         return None
-    lut_path = REPO_ROOT / "brands" / brand / "grading" / "default.cube"
+    try:
+        brand_dir = find_brand(brand)
+    except NotFound:
+        # A brand LUT is optional grading, not a required asset — same
+        # graceful-skip as a brand dir that exists but has no LUT file.
+        return None
+    lut_path = brand_dir / "grading" / "default.cube"
     return lut_path if lut_path.exists() else None
 
 
@@ -199,7 +208,11 @@ def main() -> int:
     # Brand color grading: apply <brand>/grading/default.cube if present
     lut_path = detect_brand_lut(project_path)
     if lut_path and not args.no_lut:
-        print(f"-> applying brand LUT: {lut_path.relative_to(REPO_ROOT)}")
+        try:
+            lut_display = lut_path.relative_to(workspace_root())
+        except (WorkspaceNotFound, ValueError):
+            lut_display = lut_path
+        print(f"-> applying brand LUT: {lut_display}")
         grade_start = time.monotonic()
         if apply_lut(output_path, lut_path):
             print(f"   graded in {time.monotonic() - grade_start:.0f}s")

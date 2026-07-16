@@ -21,7 +21,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+from video_toolkit.paths import WorkspaceNotFound, workspace_root
 
 
 SUBDIRS = ["public/recordings", "public/broll", "public/audio", "out"]
@@ -96,7 +96,10 @@ def main() -> int:
         return 0
 
     bucket = r2["bucket_name"]
-    projects_dir = REPO_ROOT / "projects"
+    try:
+        projects_dir = workspace_root() / "projects"
+    except WorkspaceNotFound:
+        return 0  # silent — never block SessionStart
     if not projects_dir.is_dir():
         return 0
 

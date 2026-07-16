@@ -22,7 +22,8 @@ from pathlib import Path
 
 import json5  # type: ignore[import-untyped]
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+from video_toolkit.paths import workspace_root
+
 OUTRO_SEC = 6.0  # 180 frames @ 30 fps
 # Consecutive L-cut windows that inherit from the same source are "contiguous"
 # if the next window's source-start sits within this tolerance of the current
@@ -35,12 +36,12 @@ L_CUT_GAP_TOLERANCE_SEC = 0.15
 
 def detect_project(explicit: str | None) -> Path:
     if explicit:
-        p = REPO_ROOT / "projects" / explicit
+        p = workspace_root() / "projects" / explicit
         if not p.exists():
             raise SystemExit(f"ERROR: project not found: {p}")
         return p
     cwd = Path.cwd().resolve()
-    projects_dir = REPO_ROOT / "projects"
+    projects_dir = workspace_root() / "projects"
     try:
         rel = cwd.relative_to(projects_dir)
         return projects_dir / rel.parts[0]
@@ -368,7 +369,8 @@ def main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(format_srt(cues), encoding="utf-8")
     total = sum(s["durationSec"] for s in timed)
-    rel = output.relative_to(REPO_ROOT) if output.is_relative_to(REPO_ROOT) else output
+    root = workspace_root()
+    rel = output.relative_to(root) if output.is_relative_to(root) else output
     print(f"   wrote {rel} — {len(cues)} cue(s), reel duration ~{total:.1f}s")
 
 

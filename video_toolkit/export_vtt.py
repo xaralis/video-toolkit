@@ -28,6 +28,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from video_toolkit.paths import workspace_root
+
 ROOT = Path(__file__).resolve().parent.parent
 TRANSCRIBE_PY = ROOT / "video_toolkit" / "transcribe.py"
 
@@ -194,7 +196,7 @@ def main() -> int:
     parser.add_argument("--output", help="Override output VTT path (default: projects/<name>/out/intro.vtt).")
     args = parser.parse_args()
 
-    project_dir = ROOT / "projects" / args.project
+    project_dir = workspace_root() / "projects" / args.project
     if not project_dir.is_dir():
         sys.exit(f"error: project directory not found: {project_dir}")
 

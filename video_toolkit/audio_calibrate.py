@@ -24,8 +24,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+from video_toolkit.paths import workspace_root
+
 TARGET_DIFF_LU = 15  # music sits this many LU below voice during voice segments
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def measure_lufs(path: Path) -> float:
@@ -88,7 +89,7 @@ def main() -> int:
                     help=f"target music-below-voice differential in LU (default {TARGET_DIFF_LU})")
     args = ap.parse_args()
 
-    proj = REPO_ROOT / "projects" / args.project
+    proj = workspace_root() / "projects" / args.project
     root_tsx = proj / "src" / "Root.tsx"
     if not root_tsx.exists():
         print(f"!! {root_tsx} not found", file=sys.stderr)
@@ -146,7 +147,7 @@ def main() -> int:
 
     if args.apply:
         patch_volume(root_tsx, recommended)
-        print(f"\n-> patched {root_tsx.relative_to(REPO_ROOT)} musicVolumeDb = {recommended}")
+        print(f"\n-> patched {root_tsx.relative_to(workspace_root())} musicVolumeDb = {recommended}")
     else:
         print("\n  (dry run; pass --apply to patch Root.tsx)")
     return 0

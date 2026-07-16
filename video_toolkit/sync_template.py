@@ -34,7 +34,7 @@ import shutil
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+from video_toolkit.paths import NotFound, find_template, workspace_root
 
 # Files the PROJECT owns. The template ships its own versions (a demo cut), but a project's copies are
 # its actual content — overwriting them destroys the user's work. Never written, never deleted.
@@ -114,7 +114,7 @@ def main() -> int:
     ap.add_argument("--strict", action="store_true", help="also delete project src files the template no longer has")
     args = ap.parse_args()
 
-    proj = REPO_ROOT / "projects" / args.project
+    proj = workspace_root() / "projects" / args.project
     if not proj.is_dir():
         print(f"!! project not found: {proj}", file=sys.stderr)
         return 1
@@ -128,7 +128,12 @@ def main() -> int:
         )
         return 1
 
-    src = REPO_ROOT / "templates" / template / "src"
+    try:
+        template_dir = find_template(template)
+    except NotFound as e:
+        print(f"!! {e}", file=sys.stderr)
+        return 1
+    src = template_dir / "src"
     if not src.is_dir():
         print(f"!! template src not found: {src}", file=sys.stderr)
         return 1
@@ -138,7 +143,15 @@ def main() -> int:
     copied, updated = report["copied"], report["updated"]
     skipped, preserved, removed = report["skipped"], report["preserved"], report["removed"]
 
-    print(f"-> template={template}  src={src.relative_to(REPO_ROOT)}  dst={dst.relative_to(REPO_ROOT)}")
+    root = workspace_root()
+
+    def _rel(p: Path) -> Path:
+        try:
+            return p.relative_to(root)
+        except ValueError:
+            return p
+
+    print(f"-> template={template}  src={_rel(src)}  dst={_rel(dst)}")
     for rel in copied:
         print(f"   copied     {rel}")
     for rel in updated:

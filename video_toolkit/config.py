@@ -6,16 +6,18 @@ import sys
 from pathlib import Path
 
 
-# Find workspace root (where _internal/ lives)
+# Kept as a name for existing callers; paths.py is the single source of truth.
 def find_workspace_root() -> Path:
-    """Find the workspace root by looking for _internal directory."""
-    current = Path(__file__).resolve().parent
-    while current != current.parent:
-        if (current / "_internal").exists():
-            return current
-        current = current.parent
-    # Fallback to parent of tools/
-    return Path(__file__).resolve().parent.parent
+    """Find the workspace root. Delegates to paths.workspace_root().
+
+    This used to walk up looking for _internal/, which lives in *core* — so
+    inside a brand repo it resolved to the toolkit submodule rather than the
+    brand repo, and every projects/ lookup landed in a directory that does not
+    exist.
+    """
+    from video_toolkit.paths import workspace_root
+
+    return workspace_root()
 
 
 _DOTENV_WARNED = False
