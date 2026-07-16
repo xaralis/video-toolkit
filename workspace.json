@@ -1,0 +1,5 @@
+{
+  "name": "video-toolkit-core",
+  "kind": "core",
+  "comment": "Marks the workspace root. paths.workspace_root() walks up to find this file. Core carries one so it keeps working standalone, exactly as before the split."
+}
