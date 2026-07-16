@@ -1,0 +1,135 @@
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+
+# Build outputs
+dist/
+build/
+out/
+*.mp4
+*.webm
+*.gif
+*.mov
+
+# But DO track the README banner assets
+!assets/banner/**
+
+# Test fixtures (synthetic and reference video clips)
+!tests/fixtures/*.mp4
+
+# Template sample recordings (demo/test videos bundled with templates)
+!templates/**/public/recordings/*.mp4
+
+# And the two ds-crt-stinger reference assets: the LTX-2 boot clip costs ~$0.30
+# + 4 min to regenerate, and the GIF is the example's README preview.
+!examples/ds-crt-stinger/ds_boot_astro.mp4
+!examples/ds-crt-stinger/ds_stinger_astro.gif
+
+# Remotion
+.remotion/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Local Claude Code settings (per-user)
+.claude/settings.local.json
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Voice samples (may contain personal audio)
+assets/voices/*.mp3
+assets/voices/*.wav
+assets/voices/*.m4a
+
+# Projects directory — track source files (Root.tsx, project.json,
+# SCREENPLAY.md, src/, transcripts) so team members get working projects
+# on git pull. Heavy media stays out of git (synced via R2 with /sync push/pull).
+!projects/
+projects/*/node_modules/
+projects/*/out/
+projects/*/.remotion/
+projects/*/.thumbnails/
+projects/*/.timing*/
+projects/*/public/audio/
+# Brand assets copied into projects (small, brand identity — re-allow despite global *.mp4 ignore)
+!projects/*/public/brand/*.mp4
+!projects/*/public/brand/*.mp3
+!projects/*/public/brand/*.png
+!projects/*/public/brand/*.svg
+
+# Examples directory IS tracked (curated showcase projects)
+!examples/
+
+# But ignore large media files in examples
+examples/*/public/demos/*.mp4
+examples/*/public/audio/*.mp3
+examples/*/node_modules/
+examples/*/.remotion/
+examples/*/out/
+
+# moviepy examples — auto-generated PIL text caches and intermediate renders
+examples/*/.text_cache/
+examples/*/chart_anim.mp4
+
+.ai_dev/
+
+# Superpowers brainstorm sessions
+.superpowers/
+
+# Brand-profile videos (outro stingers, brand bumpers) are version-controlled
+!brands/**/*.mp4
+!brands/**/*.webm
+!brands/**/*.mov
+# Template-bundled brand assets (copied into project public/ at template-copy time)
+!templates/**/public/brand/*.mp4
+!templates/**/public/brand/*.webm
+!templates/**/public/brand/*.mov
+
+# Per-host runtime markers (e.g., CloudCLI server vs. local dev)
+.claude/host-env.md

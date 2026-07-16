@@ -1,0 +1,42 @@
+export const theme = {
+  colors: {
+    coal:    '#0a0a0a',
+    linen:   '#f5f5f0',
+    lime:    '#c6f432',
+    teal:    '#2ad4c5',
+    muted:   '#9a9a95',
+  },
+  safeZones: { topPx: 250, bottomPx: 250 },
+  watermark: {
+    asset: 'brand/watermark.png',
+    corner: 'top-right' as const,
+    sizePx: 160,
+    marginPx: 48,
+    alpha: 0.85,
+  },
+  disclaimer: {
+    text: 'Zpracovatel: <Your Brand> · Zadavatel: <Your Brand>',
+    fontSize: 18,
+    color: '#9a9a95',
+    bottomOffsetPx: 0,
+  },
+  chevron: {
+    fontSize: 36,
+    color: '#c6f432',
+    strokeColor: '#0a0a0a',
+    strokeWidthPx: 3,
+    letterSpacing: '0.08em',
+    offsetTopPx: 260,
+    offsetSidePx: 40,
+  },
+  caption: {
+    fontFamily: 'JetBrains Mono, monospace',
+    fontSize: 52,
+    fontWeight: 700,
+    color: '#c6f432',
+    strokeColor: '#0a0a0a',
+    strokeWidthPx: 4,
+    maxWidthPct: 0.86,
+    bottomPct: 0.28,
+  },
+};

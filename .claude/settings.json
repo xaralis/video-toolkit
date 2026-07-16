@@ -1,0 +1,22 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat .claude/onboarding-prompt.md"
+          },
+          {
+            "type": "command",
+            "command": "cat .claude/host-env.md 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "command": "python3 tools/check_stale_projects.py 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}

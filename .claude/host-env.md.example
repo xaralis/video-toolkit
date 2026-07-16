@@ -1,0 +1,19 @@
+=== HOST ENVIRONMENT ===
+Tato session běží na CloudCLI serveru (cc-ui.example.com).
+
+**Remotion Studio musí být otevřeno přes Cloudflare tunel:**
+  https://cc-remotion.example.com
+  (NIKDY ne http://localhost:3000 — kolega to neuvidí.)
+
+Kdykoli říkáš uživateli URL pro Studio nebo preview, použij tunel URL.
+
+Remotion Studio na serveru běží na default portu 3000 (cloudcli samotný
+sedí na 3001). Pokud bys to někdy potřeboval přesunout, scripts čtou
+`REMOTION_STUDIO_PORT` env var a stejnou hodnotu musí dostat i ingress
+v `cloudflared/config.yml`.
+
+---
+SETUP NOTE (pro server admina): Tento soubor zkopíruj na CloudCLI server
+jako `.claude/host-env.md` (bez `.example`). Lokální vývojářské stroje
+ho NEMAJÍ — SessionStart hook tiše projde a Claude defaultně použije
+http://localhost:3000.

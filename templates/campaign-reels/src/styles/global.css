@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@theme {
+  --color-coal:           #0a0a0a;
+  --color-linen:          #f5f5f0;
+  --color-lime:           #c6f432;
+  --color-teal:           #2ad4c5;
+  --color-surface-2:      #0e0e0e;
+  --color-surface-3:      #111111;
+  --color-border:         #222222;
+  --color-text-muted:     #9a9a95;
+  --font-sans:            "Geist", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono:            "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Brand fonts are loaded at runtime via src/lib/load-fonts.ts using Remotion's
+   FontFace API + staticFile() — webpack's css-loader cannot resolve /fonts/*.ttf
+   from inside CSS at build time because those URLs are served from public/ at
+   render time, not bundled as modules. */
