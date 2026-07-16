@@ -69,10 +69,10 @@ Use for reproducibility when iterating on prompts.
 
 ```bash
 # First attempt
-python tools/image_edit.py --input photo.jpg --prompt "..." --seed 12345
+python3 -m video_toolkit.image_edit --input photo.jpg --prompt "..." --seed 12345
 
 # Same seed, different prompt - compare results
-python tools/image_edit.py --input photo.jpg --prompt "..." --seed 12345
+python3 -m video_toolkit.image_edit --input photo.jpg --prompt "..." --seed 12345
 ```
 
 ## Cost vs Quality Tradeoffs
@@ -97,4 +97,4 @@ These are supported by the handler but not yet exposed in the CLI:
 | `auto_resize` | true | Auto-resize input for optimal processing |
 | `true_cfg_scale` | 4.0 | Internal CFG scale |
 
-To expose these, edit `tools/image_edit.py`.
+To expose these, edit `video_toolkit/image_edit.py`.

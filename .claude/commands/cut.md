@@ -41,7 +41,7 @@ Brand-level assets (watermark, skyline, outro mp3/mp4, logos) live in
 Mirror them with:
 
 ```bash
-python3 tools/sync_brand_assets.py <name>
+python3 -m video_toolkit.sync_brand_assets <name>
 ```
 
 The tool is idempotent (size-based skip), so it's safe to re-run on every
@@ -76,10 +76,10 @@ For each segment in SCREENPLAY.md:
 
 ### Step 4: Transcribe
 
-Run `tools/transcribe.py` on all unique `clip` source files:
+Run `python3 -m video_toolkit.transcribe` on all unique `clip` source files:
 
 ```bash
-python3 tools/transcribe.py \
+python3 -m video_toolkit.transcribe \
   projects/<name>/public/recordings/<file1>.MP4 \
   projects/<name>/public/recordings/<file2>.MP4 \
   --language cs \

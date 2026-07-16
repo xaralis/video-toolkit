@@ -83,23 +83,23 @@ All cloud GPU tools accept `--cloud modal`:
 
 ```bash
 # AI voiceover
-python3 tools/qwen3_tts.py --text "Hello world" --speaker Ryan --output hello.mp3 --cloud modal
+python3 -m video_toolkit.qwen3_tts --text "Hello world" --speaker Ryan --output hello.mp3 --cloud modal
 
 # AI image generation
-python3 tools/flux2.py --prompt "A sunset over mountains" --output sunset.png --cloud modal
+python3 -m video_toolkit.flux2 --prompt "A sunset over mountains" --output sunset.png --cloud modal
 
 # AI image editing
-python3 tools/image_edit.py --input photo.jpg --style cyberpunk --cloud modal
+python3 -m video_toolkit.image_edit --input photo.jpg --style cyberpunk --cloud modal
 
 # AI upscaling
-python3 tools/upscale.py --input photo.jpg --output photo_4x.png --cloud modal
+python3 -m video_toolkit.upscale --input photo.jpg --output photo_4x.png --cloud modal
 
 # AI music generation (acemusic cloud API is now default — no Modal needed)
-python3 tools/music_gen.py --preset corporate-bg --duration 60 --output bg.mp3
-# Or use Modal: python3 tools/music_gen.py --preset corporate-bg --duration 60 --output bg.mp3 --cloud modal
+python3 -m video_toolkit.music_gen --preset corporate-bg --duration 60 --output bg.mp3
+# Or use Modal: python3 -m video_toolkit.music_gen --preset corporate-bg --duration 60 --output bg.mp3 --cloud modal
 
 # Watermark removal
-python3 tools/dewatermark.py --input video.mp4 --region 1080,660,195,40 --output clean.mp4 --cloud modal
+python3 -m video_toolkit.dewatermark --input video.mp4 --region 1080,660,195,40 --output clean.mp4 --cloud modal
 ```
 
 ## Tools & Costs
@@ -143,7 +143,7 @@ modal billing report --for today --json
 modal app logs video-toolkit-upscale
 
 # Verify your setup
-python3 tools/verify_setup.py
+python3 -m video_toolkit.verify_setup
 ```
 
 ## Architecture
@@ -155,7 +155,7 @@ Each tool has its own Modal app (`docker/modal-*/app.py`), deployed independentl
 - **R2 file transfer** — large results upload to Cloudflare R2 (if configured), otherwise base64
 - **Scale to zero** — `scaledown_window=60` means containers shut down after 1 minute idle
 
-The client-side abstraction lives in `tools/cloud_gpu.py`, which routes `call_cloud_endpoint()` to either `_call_runpod()` (submit + poll) or `_call_modal()` (synchronous POST).
+The client-side abstraction lives in `video_toolkit/cloud_gpu.py`, which routes `call_cloud_endpoint()` to either `_call_runpod()` (submit + poll) or `_call_modal()` (synchronous POST).
 
 ## RunPod (Alternative)
 

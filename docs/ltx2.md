@@ -6,16 +6,16 @@ Generate ~5 second video clips from text prompts or images using the LTX-2.3 22B
 
 ```bash
 # Text-to-video
-python3 tools/ltx2.py --prompt "A cat playing with yarn in a sunlit room"
+python3 -m video_toolkit.ltx2 --prompt "A cat playing with yarn in a sunlit room"
 
 # Image-to-video (animate a still image)
-python3 tools/ltx2.py --prompt "Camera slowly pans right" --input photo.jpg
+python3 -m video_toolkit.ltx2 --prompt "Camera slowly pans right" --input photo.jpg
 
 # Higher resolution
-python3 tools/ltx2.py --prompt "Ocean waves at sunset" --width 1024 --height 576
+python3 -m video_toolkit.ltx2 --prompt "Ocean waves at sunset" --width 1024 --height 576
 
 # Fast mode (fewer steps, quicker but lower quality)
-python3 tools/ltx2.py --prompt "A rocket launch" --quality fast
+python3 -m video_toolkit.ltx2 --prompt "A rocket launch" --quality fast
 ```
 
 ## Setup
@@ -53,7 +53,7 @@ LTX-2 runs on Modal cloud GPU (A100-80GB). Setup takes about 15 minutes — most
 4. **Test it:**
 
    ```bash
-   python3 tools/ltx2.py --prompt "A single lit candle flickering on a dark table, cinematic lighting"
+   python3 -m video_toolkit.ltx2 --prompt "A single lit candle flickering on a dark table, cinematic lighting"
    ```
 
 ## Parameters
@@ -172,10 +172,10 @@ Total baked weight: ~55 GB. The pipeline manages memory by loading and freeing c
 Reduce dimensions or frame count:
 ```bash
 # Try smaller resolution
-python3 tools/ltx2.py --prompt "..." --width 512 --height 512
+python3 -m video_toolkit.ltx2 --prompt "..." --width 512 --height 512
 
 # Or fewer frames
-python3 tools/ltx2.py --prompt "..." --num-frames 73
+python3 -m video_toolkit.ltx2 --prompt "..." --num-frames 73
 ```
 
 ### "Modal endpoint is scaling up"

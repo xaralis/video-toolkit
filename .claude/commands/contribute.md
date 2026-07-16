@@ -91,7 +91,7 @@ git status
 git checkout -b improve/short-description
 
 # Stage toolkit files only
-git add .claude/ templates/ lib/ docs/ _internal/ tools/ brands/default/
+git add .claude/ templates/ lib/ docs/ _internal/ video_toolkit/ brands/default/
 
 # Commit with description
 git commit -m "$(cat <<'EOF'
@@ -330,12 +330,12 @@ Provide externally recorded screen/app footage
 
 ### Voiceover
 ```bash
-python tools/voiceover.py --script VOICEOVER-SCRIPT.md --output public/audio/voiceover.mp3
+python3 -m video_toolkit.voiceover --script VOICEOVER-SCRIPT.md --output public/audio/voiceover.mp3
 ```
 
 ### Background music
 ```bash
-python tools/music_gen.py --prompt "subtle tech ambient" --duration 180 --output public/audio/background-music.mp3
+python3 -m video_toolkit.music_gen --prompt "subtle tech ambient" --duration 180 --output public/audio/background-music.mp3
 ```
 ```
 
@@ -419,7 +419,7 @@ Adds {name} as a showcase example.
 Large media files are gitignored. Users create their own using:
 - Externally recorded screen/app footage
 - /generate-voiceover for narration
-- tools/music_gen.py for background music
+- python3 -m video_toolkit.music_gen for background music
 
 ---
 🤖 Generated with Claude Code"

@@ -52,7 +52,7 @@ use it; else scan `projects/`.
 
 ### Step 2: Verify state
 1. `out/intro.mp4` exists (run `/render` first if not).
-2. `out/intro.vtt` exists (run `python3 tools/export_vtt.py <name>` + proofread
+2. `out/intro.vtt` exists (run `python3 -m video_toolkit.export_vtt <name>` + proofread
    proper nouns if not — see web-program-intro CLAUDE.md step 9-10).
 3. `.env` has `R2_PUBLIC_BUCKET` + `R2_PUBLIC_BASE_URL` (else stop, point at the
    prereqs above).
@@ -60,7 +60,7 @@ use it; else scan `projects/`.
 ### Step 3: Publish
 
 ```bash
-python3 tools/publish_web.py <name>
+python3 -m video_toolkit.publish_web <name>
 ```
 
 The tool:

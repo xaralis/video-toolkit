@@ -1,0 +1,16 @@
+[project]
+name = "video-toolkit"
+version = "0.1.0"
+description = "Shared core for the AI-native video production toolkit"
+requires-python = ">=3.10"
+dynamic = ["dependencies"]
+
+[tool.setuptools]
+packages = ["video_toolkit"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["video_toolkit/requirements.txt"] }
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

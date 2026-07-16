@@ -12,7 +12,7 @@ This guide will help you create your first video using the claude-code-video-too
 
 | Provider | Cost | Setup |
 |----------|------|-------|
-| Qwen3-TTS | Free (self-hosted) | RunPod account + `python tools/qwen3_tts.py --setup` |
+| Qwen3-TTS | Free (self-hosted) | RunPod account + `python3 -m video_toolkit.qwen3_tts --setup` |
 | ElevenLabs | Pay-per-use | API key in `.env` |
 
 ### Optional: Full Toolkit
@@ -47,7 +47,7 @@ No API keys needed. Edit `src/config/sprint-config.ts` to customize content.
    ```bash
    python -m venv .venv
    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   pip install -r tools/requirements.txt
+   pip install -e .
    ```
 
 3. **Start Claude Code and run the setup wizard**

@@ -1,6 +1,6 @@
 import json
 
-from tools.sync_template import PROJECT_OWNED, resolve_template, sync_template
+from video_toolkit.sync_template import PROJECT_OWNED, resolve_template, sync_template
 
 
 def _make_template(root):

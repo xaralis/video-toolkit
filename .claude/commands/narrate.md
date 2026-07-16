@@ -45,7 +45,7 @@ Flow:
 1. **Inventory** — list all clips in `public/recordings/` and `public/broll/`. Show the user the count and total raw duration.
 2. **Confirm path** — "I can transcribe these and propose a screenplay based on what was actually said. Or you can describe the intent and I'll plan around the footage. Which way?"
 3. **If transcribe-first**:
-   - Run `python3 tools/transcribe.py public/recordings/*.MP4 --language cs` (no `--screenplay` flag yet since we don't have one).
+   - Run `python3 -m video_toolkit.transcribe public/recordings/*.MP4 --language cs` (no `--screenplay` flag yet since we don't have one).
    - Read each `<file>.transcript.json` in full.
    - **Proofread the transcripts** (brand rule #27): scan for obvious Whisper errors — proper-noun mangling (Pardubice → patubickým), phonetic swaps (ploše → tloše, vozidel → lozidel), missing diacritics. Edit the JSON in place to fix CLEAR errors before they propagate into the screenplay + captions.
    - **Summarize what was said** to the user in chat — clip by clip, in 1–2 sentences each. Identify the strongest takes, repetitions, filler.
@@ -163,7 +163,7 @@ Every time `SCREENPLAY.md` is written or edited, regenerate its HTML companion
 in the same breath — they are a pair and must never drift:
 
 ```bash
-python3 tools/render_screenplay_html.py <name>
+python3 -m video_toolkit.render_screenplay_html <name>
 ```
 
 This produces `projects/<name>/SCREENPLAY.html` (dark PP-branded pandoc render,

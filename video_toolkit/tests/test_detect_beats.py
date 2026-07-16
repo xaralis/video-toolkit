@@ -1,5 +1,5 @@
 import numpy as np, soundfile as sf, tempfile, os
-from tools.detect_beats import detect_beats
+from video_toolkit.detect_beats import detect_beats
 
 def _click_track(bpm=120, secs=8, sr=44100):
     # Broadband percussive hits: a short white-noise burst shaped by a

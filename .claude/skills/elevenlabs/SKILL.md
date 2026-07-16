@@ -154,7 +154,7 @@ Use the toolkit's voiceover tool to generate audio for each scene:
 
 ```bash
 # Generate voiceover files for each scene
-python tools/voiceover.py --scene-dir public/audio/scenes --json
+python3 -m video_toolkit.voiceover --scene-dir public/audio/scenes --json
 
 # Output:
 # public/audio/scenes/

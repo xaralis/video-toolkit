@@ -114,7 +114,7 @@ gh pr create
 | `templates/` | Yes | Video templates |
 | `lib/` | Yes | Shared components |
 | `docs/` | Yes | Documentation |
-| `tools/` | Yes | Python CLI tools |
+| `video_toolkit/` | Yes | Python CLI tools |
 | `brands/` | Careful | Only share generic brands |
 | `projects/` | No | Your private video work |
 | `assets/voices/` | No | Your voice samples |

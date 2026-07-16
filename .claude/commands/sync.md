@@ -109,7 +109,7 @@ Two commits, in this order, then one push:
 2. **Project commit** — `projects/<name>/`, the reel itself.
 
 Resolve `<brand>` from `projects/<name>/project.json` (`.brand`). Never stage
-`tools/`, `docs/`, or *other* projects — those remain the author's separate
+`video_toolkit/`, `docs/`, or *other* projects — those remain the author's separate
 concern. Both commit messages use a fixed template (no per-file categorization).
 
 ```bash
@@ -167,10 +167,10 @@ Files:
 ### Step 6: R2 operation
 
 ```bash
-python3 tools/sync_project.py --push <name> [--only <subdirs>] [--dry-run]
-python3 tools/sync_project.py --pull <name> [--only <subdirs>] [--dry-run]
-python3 tools/sync_project.py --list <name>
-python3 tools/sync_project.py --share <name> [--file <path>] [--expires-days N]
+python3 -m video_toolkit.sync_project --push <name> [--only <subdirs>] [--dry-run]
+python3 -m video_toolkit.sync_project --pull <name> [--only <subdirs>] [--dry-run]
+python3 -m video_toolkit.sync_project --list <name>
+python3 -m video_toolkit.sync_project --share <name> [--file <path>] [--expires-days N]
 ```
 
 Run from repo root (the tool's paths are repo-root relative).
@@ -251,7 +251,7 @@ For collaborators joining mid-project:
 ## Notes
 
 - **Both git and R2 in one step.** Non-technical collaborators never need to know git exists. The author (xaralis) gets the same convenience plus laik scope guardrail (see `docs/non-dev-playbook.md`).
-- **Commit scope: project + its toolkit deps.** `/sync push` stages `projects/<name>/` (project commit) plus `lib/` and `brands/<brand>/` (a separate toolkit commit) — so a project that uses a new `lib/` primitive isn't broken for whoever pulls. `tools/`, `docs/`, and *other* projects are never auto-committed — the author's separate concern.
+- **Commit scope: project + its toolkit deps.** `/sync push` stages `projects/<name>/` (project commit) plus `lib/` and `brands/<brand>/` (a separate toolkit commit) — so a project that uses a new `lib/` primitive isn't broken for whoever pulls. `video_toolkit/`, `docs/`, and *other* projects are never auto-committed — the author's separate concern.
 - **Commit message is fixed.** `sync(<project>): update` with the file list in the body. The diff describes what changed; the subject keeps history scannable by project name.
 - **Size-based skip is conservative** (R2). Same size = same file is assumed. If someone replaces a clip with a re-edit at exactly the same size, force with `--overwrite`.
 - **Same R2 bucket** already powers Modal transcription / image-edit / music-gen flows — no separate bucket needed, just a `projects/<name>/` prefix.

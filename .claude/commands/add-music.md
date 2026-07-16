@@ -58,7 +58,7 @@ Volume:
 Run from the repo root (tool paths are relative):
 
 ```bash
-python3 tools/music_gen.py \
+python3 -m video_toolkit.music_gen \
   [--preset <preset> | --prompt "<text>"] \
   --duration <N> \
   --output projects/<name>/public/audio/bg.mp3
@@ -153,7 +153,7 @@ Re-running `/add-music` on a project with existing music:
   generate 4 picks and pick the best. `/add-music` doesn't expose this
   by default to keep the command simple — pass `--variations 4` through
   if you want it.
-- For songs with vocals (`--lyrics`), use `tools/music_gen.py` directly.
+- For songs with vocals (`--lyrics`), use `python3 -m video_toolkit.music_gen` directly.
   `/add-music` is scoped to instrumental background tracks for reels.
 - The brand rule for PP audio mixing: music sits at `-6 dB` (loud enough
   to feel, low enough not to compete with voice). Caption-driven b-roll

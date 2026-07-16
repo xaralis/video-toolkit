@@ -1,5 +1,5 @@
 import subprocess, os, tempfile, json
-from tools.ingest_media import probe_media, ingest
+from video_toolkit.ingest_media import probe_media, ingest
 
 def _make_video(path, w, h, rotate_meta=0, secs=2):
     cmd = ["ffmpeg","-y","-f","lavfi","-i",f"testsrc=size={w}x{h}:rate=30:duration={secs}"]

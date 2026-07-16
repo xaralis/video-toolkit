@@ -81,7 +81,7 @@ fi
 
 **Tone:**
 - Žádný report do chatu, pokud git neměl nic ke stažení (output filtering — viz 5.7).
-- Pokud git stáhl něco netriviálního (např. změny v `templates/` nebo `tools/`),
+- Pokud git stáhl něco netriviálního (např. změny v `templates/` nebo `video_toolkit/`),
   Claude jednou větou zmíní: *„Mimochodem, mezitím přišly nějaké vylepšení toolkitu — máš je teď automaticky."*  
   Bez výpisu commitů, bez SHA, bez technických detailů.
 - Při konfliktu stash pop / rebase: stash zůstává jako `stash@{0}`, eskalovat na xaralise per 5.8.
@@ -287,6 +287,6 @@ Profil rozhoduje, do kterých částí repu Claude v dané session smí Edit/Wri
 
 Active project = projekt vybraný přes `/video` v aktuální session. Pokud žádný projekt aktivní není, profile `laik` / `zdatný` nesmí ani do `projects/` — musí napřed spustit `/video`.
 
-**Proč:** netech kolega nesmí rozbít sdílenou infrastrukturu (`tools/`, `lib/`, `_internal/`, brandy, šablony). Stejné pravidlo zaručuje, že `/sync push` má vždy konzistentní commit scope (`git add projects/<name>/`) — laik žádné změny mimo nemohl vytvořit.
+**Proč:** netech kolega nesmí rozbít sdílenou infrastrukturu (`video_toolkit/`, `lib/`, `_internal/`, brandy, šablony). Stejné pravidlo zaručuje, že `/sync push` má vždy konzistentní commit scope (`git add projects/<name>/`) — laik žádné změny mimo nemohl vytvořit.
 
 **Enforcement:** zatím dokumentační. Hard hook (PreToolUse v settings.json detekující aktivní profil + projekt) je plánován jako follow-up.

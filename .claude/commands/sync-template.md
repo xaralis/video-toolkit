@@ -21,7 +21,7 @@ still being worked on you sometimes want them. `/sync-template` does that safely
 /sync-template <project> --strict           # also delete files the template no longer has
 ```
 
-Runs `python3 tools/sync_template.py` from the toolkit root.
+Runs `python3 -m video_toolkit.sync_template` from the toolkit root.
 
 ## What it will never touch
 
@@ -59,6 +59,6 @@ files are skipped and genuine drift shows as `updated`. Idempotent: re-running i
 
 ## Related
 
-- `tools/sync_brand_assets.py` — the same idea for brand assets (`brands/<brand>/assets` →
+- `python3 -m video_toolkit.sync_brand_assets` — the same idea for brand assets (`brands/<brand>/assets` →
   `projects/<name>/public/brand`). Also a copy, not a link, for the same snapshot reason.
 - `/sync` — moves project source + heavy media between git and R2. Different job entirely.

@@ -297,7 +297,7 @@ Help refine:
 
 8. **Register the project on R2** (so the Footage Manager UI sees it):
    ```bash
-   python3 tools/sync_project.py --init {name}
+   python3 -m video_toolkit.sync_project --init {name}
    ```
    Run from the toolkit root. Idempotent — uploads only `project.json`,
    establishes the `projects/{name}/` prefix so collaborators can drop

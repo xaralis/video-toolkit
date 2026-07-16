@@ -5,7 +5,7 @@ from pathlib import Path
 # Make tools/ importable as a sibling package.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from tools.export_vtt import Word, chunk_words_into_cues, format_timestamp, render_vtt
+from video_toolkit.export_vtt import Word, chunk_words_into_cues, format_timestamp, render_vtt
 
 
 def W(start, end, word):
@@ -73,7 +73,7 @@ def test_format_timestamp_under_one_hour():
 
 
 def test_render_vtt_emits_webvtt_header_and_cues():
-    from tools.export_vtt import Cue
+    from video_toolkit.export_vtt import Cue
     cues = [
         Cue(start=0.0, end=1.6, text="Pardubice mají všechno,"),
         Cue(start=1.6, end=3.2, text="co moderní město potřebuje."),

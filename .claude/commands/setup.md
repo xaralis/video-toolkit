@@ -80,7 +80,7 @@ Check and report. Don't install anything automatically — just tell the user wh
 ### Recommended
 
 - **Python 3.9+**: `python3 --version`. If missing: "Install from https://python.org/ — needed for AI voiceover, image editing, and all cloud GPU tools"
-- **pip packages**: `python3 -c "import dotenv; import requests"`. If missing: guide through `pip install -r tools/requirements.txt` (or venv setup)
+- **pip packages**: `python3 -c "import dotenv; import requests"`. If missing: guide through `pip install -r video_toolkit/requirements.txt` (or venv setup)
 - **FFmpeg**: `ffmpeg -version`. If missing: "Install with `brew install ffmpeg` (macOS) or see https://ffmpeg.org/ — needed for media conversion"
 
 ### Output
@@ -295,12 +295,12 @@ MODAL_FLUX2_ENDPOINT_URL=https://username--video-toolkit-flux2-...modal.run
 For each selected tool, run the `--setup` command:
 
 ```bash
-python3 tools/qwen3_tts.py --setup
-python3 tools/flux2.py --setup
-python3 tools/image_edit.py --setup
-python3 tools/upscale.py --setup
-python3 tools/music_gen.py --setup
-python3 tools/dewatermark.py --setup
+python3 -m video_toolkit.qwen3_tts --setup
+python3 -m video_toolkit.flux2 --setup
+python3 -m video_toolkit.image_edit --setup
+python3 -m video_toolkit.upscale --setup
+python3 -m video_toolkit.music_gen --setup
+python3 -m video_toolkit.dewatermark --setup
 ```
 
 Each `--setup` command creates a RunPod template + endpoint and saves the endpoint ID to .env automatically.
@@ -311,7 +311,7 @@ After deployment, run a quick test for at least one tool to verify the pipeline 
 
 **If Qwen3-TTS was deployed (most common):**
 ```bash
-python3 tools/qwen3_tts.py --text "Setup complete! Your video toolkit is ready." \
+python3 -m video_toolkit.qwen3_tts --text "Setup complete! Your video toolkit is ready." \
   --speaker Ryan --tone warm --output /tmp/setup-test.mp3 \
   --cloud modal
 ```
@@ -320,7 +320,7 @@ Check that it produces an audio file. If it does, the full pipeline (upload → 
 
 **If FLUX.2 was deployed:**
 ```bash
-python3 tools/flux2.py --prompt "A minimal geometric logo on dark background" \
+python3 -m video_toolkit.flux2 --prompt "A minimal geometric logo on dark background" \
   --output /tmp/setup-test.png --cloud modal
 ```
 
@@ -349,7 +349,7 @@ Qwen3-TTS is ready! Available speakers:
 Default speaker: Ryan (warm male voice)
 
 You can change the speaker per-video or set a default in your brand's voice.json.
-To preview voices: python3 tools/qwen3_tts.py --list-voices
+To preview voices: python3 -m video_toolkit.qwen3_tts --list-voices
 ```
 
 ### ElevenLabs Setup (Optional)
@@ -473,17 +473,17 @@ lines = Path('.env').read_text().splitlines()
 
 ## Verification Script
 
-Use `tools/verify_setup.py` throughout and at the end of setup:
+Use `python3 -m video_toolkit.verify_setup` throughout and at the end of setup:
 
 ```bash
 # Quick check (no cloud calls) — use at start to detect current state
-python3 tools/verify_setup.py
+python3 -m video_toolkit.verify_setup
 
 # With smoke tests (makes cloud GPU calls, ~$0.01) — use at end to verify
-python3 tools/verify_setup.py --test
+python3 -m video_toolkit.verify_setup --test
 
 # Machine-readable — use to programmatically check what's configured
-python3 tools/verify_setup.py --json
+python3 -m video_toolkit.verify_setup --json
 ```
 
 Run `verify_setup.py --json` at the start of `/setup` to detect current state and skip already-configured phases. Run it with `--test` at the end for the Phase 6 verification.

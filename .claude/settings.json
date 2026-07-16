@@ -13,7 +13,7 @@
           },
           {
             "type": "command",
-            "command": "python3 tools/check_stale_projects.py 2>/dev/null || true"
+            "command": "python3 -m video_toolkit.check_stale_projects 2>/dev/null || true"
           }
         ]
       }

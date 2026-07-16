@@ -124,10 +124,10 @@ pipe.to("cuda")
 
 ```bash
 # Basic test
-python3 tools/image_edit.py --input photo.jpg --prompt "description" --steps 8
+python3 -m video_toolkit.image_edit --input photo.jpg --prompt "description" --steps 8
 
 # With seed for reproducibility
-python3 tools/image_edit.py --input photo.jpg --prompt "description" --seed 42
+python3 -m video_toolkit.image_edit --input photo.jpg --prompt "description" --seed 42
 ```
 
 ## Sample Results

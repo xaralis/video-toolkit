@@ -149,7 +149,7 @@ Before gathering configuration, check if we're in a project context:
    **ElevenLabs — Per-scene mode (recommended):**
    ```bash
    cd REPO_ROOT/PROJECT_DIR
-   python ../tools/voiceover.py \
+   python3 -m video_toolkit.voiceover \
      --scene-dir public/audio/scenes \
      --json
    ```
@@ -157,7 +157,7 @@ Before gathering configuration, check if we're in a project context:
    **ElevenLabs — Single-file mode (legacy):**
    ```bash
    cd REPO_ROOT/PROJECT_DIR
-   python ../tools/voiceover.py \
+   python3 -m video_toolkit.voiceover \
      --script "SCRIPT_PATH" \
      --output "public/audio/voiceover.mp3" \
      --json
@@ -166,7 +166,7 @@ Before gathering configuration, check if we're in a project context:
    **Qwen3-TTS — Per-scene mode:**
    ```bash
    cd REPO_ROOT/PROJECT_DIR
-   python ../tools/voiceover.py \
+   python3 -m video_toolkit.voiceover \
      --provider qwen3 \
      --speaker SPEAKER_NAME \
      --scene-dir public/audio/scenes \
@@ -176,7 +176,7 @@ Before gathering configuration, check if we're in a project context:
    **Qwen3-TTS — With brand clone profile:**
    ```bash
    cd REPO_ROOT/PROJECT_DIR
-   python ../tools/voiceover.py \
+   python3 -m video_toolkit.voiceover \
      --provider qwen3 \
      --brand BRAND_NAME \
      --scene-dir public/audio/scenes \
@@ -186,7 +186,7 @@ Before gathering configuration, check if we're in a project context:
    **Qwen3-TTS — With tone preset:**
    ```bash
    cd REPO_ROOT/PROJECT_DIR
-   python ../tools/voiceover.py \
+   python3 -m video_toolkit.voiceover \
      --provider qwen3 \
      --speaker Ryan \
      --tone warm \
@@ -197,7 +197,7 @@ Before gathering configuration, check if we're in a project context:
    **Qwen3-TTS — With custom instruction (overrides --tone):**
    ```bash
    cd REPO_ROOT/PROJECT_DIR
-   python ../tools/voiceover.py \
+   python3 -m video_toolkit.voiceover \
      --provider qwen3 \
      --speaker Ryan \
      --instruct "Speak warmly and calmly" \
@@ -208,7 +208,7 @@ Before gathering configuration, check if we're in a project context:
    **Qwen3-TTS — Single-file mode:**
    ```bash
    cd REPO_ROOT/PROJECT_DIR
-   python ../tools/voiceover.py \
+   python3 -m video_toolkit.voiceover \
      --provider qwen3 \
      --speaker Ryan \
      --script "SCRIPT_PATH" \
@@ -248,8 +248,8 @@ Before gathering configuration, check if we're in a project context:
 
 ## Tool Location
 
-- Voiceover tool: `tools/voiceover.py` (run from the toolkit root, or use `../tools/voiceover.py` from a project directory)
-- Qwen3-TTS tool: `tools/qwen3_tts.py`
+- Voiceover tool: `python3 -m video_toolkit.voiceover` (invocable from any CWD once installed)
+- Qwen3-TTS tool: `python3 -m video_toolkit.qwen3_tts`
 - Config: `_internal/toolkit-registry.json` (voice ID)
 - API Key: `.env` file (`ELEVENLABS_API_KEY` for ElevenLabs, `RUNPOD_API_KEY` + `RUNPOD_QWEN3_TTS_ENDPOINT_ID` for Qwen3)
 
@@ -301,7 +301,7 @@ Share these tips with the user:
 
 **Qwen3-TTS:**
 - If `RUNPOD_API_KEY` is missing, tell user to add it to `.env`
-- If `RUNPOD_QWEN3_TTS_ENDPOINT_ID` is missing, tell user to run `python tools/qwen3_tts.py --setup`
+- If `RUNPOD_QWEN3_TTS_ENDPOINT_ID` is missing, tell user to run `python3 -m video_toolkit.qwen3_tts --setup`
 
 **Both:**
 - If script file not found, offer to create a template

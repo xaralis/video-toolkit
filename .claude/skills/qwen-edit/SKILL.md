@@ -36,24 +36,24 @@ Use when the user wants to:
 
 ```bash
 # Basic edit
-python tools/image_edit.py --input photo.jpg --prompt "Add sunglasses"
+python3 -m video_toolkit.image_edit --input photo.jpg --prompt "Add sunglasses"
 
 # With negative prompt (recommended)
-python tools/image_edit.py --input photo.jpg \
+python3 -m video_toolkit.image_edit --input photo.jpg \
   --prompt "Reframe as portrait with full head visible" \
   --negative "blur, distortion, artifacts"
 
 # Style transfer
-python tools/image_edit.py --input photo.jpg --style cyberpunk
+python3 -m video_toolkit.image_edit --input photo.jpg --style cyberpunk
 
 # Background (use cautiously - often fails)
-python tools/image_edit.py --input photo.jpg --background office
+python3 -m video_toolkit.image_edit --input photo.jpg --background office
 
 # Higher quality
-python tools/image_edit.py --input photo.jpg --prompt "..." --steps 16 --guidance 3.0
+python3 -m video_toolkit.image_edit --input photo.jpg --prompt "..." --steps 16 --guidance 3.0
 
 # Multi-image composite (identity-preserving)
-python tools/image_edit.py --input person.jpg background.jpg \
+python3 -m video_toolkit.image_edit --input person.jpg background.jpg \
   --prompt "The [ethnicity] [gender] with [hair description] from first image is now in [scene] from second image. Same [features], [outfit]." \
   --negative "different ethnicity, different hair color, different face shape, generic stock photo" \
   --steps 16 --guidance 2.0
@@ -67,7 +67,7 @@ python tools/image_edit.py --input person.jpg background.jpg \
 
 ## Tool Location
 
-`tools/image_edit.py` - CLI wrapper for RunPod endpoint
+`python3 -m video_toolkit.image_edit` - CLI wrapper for RunPod endpoint
 
 ## Related Docs
 

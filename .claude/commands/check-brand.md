@@ -31,7 +31,7 @@ assets, accent-block over-coloring, pacing gaps.
 ### Step 2: Run the linter
 
 ```bash
-python3 tools/check_brand.py --project <name>
+python3 -m video_toolkit.check_brand --project <name>
 ```
 
 The linter reads `src/Root.tsx`, extracts the inline `defaultProps` literal
@@ -75,7 +75,7 @@ Exit code:
 | #4 / #11 / #18 / #25 | Editorial / visual judgment — needs human review |
 | #27 | Transcript proofreading is a workflow step, not a config check |
 
-When new brand rules become machine-checkable (e.g., we add a `faceZone` field on clip segments per rule #28), extend `tools/check_brand.py`. The linter is the durable home for "this rule must be enforced without me having to remember".
+When new brand rules become machine-checkable (e.g., we add a `faceZone` field on clip segments per rule #28), extend `video_toolkit/check_brand.py`. The linter is the durable home for "this rule must be enforced without me having to remember".
 
 ## When to run
 

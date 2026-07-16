@@ -40,7 +40,7 @@ Quick preflight to catch common breakage before spending render time:
 
 3. **Transcripts present** (only matters if clips reference captions): for
    each `clip` segment, verify `<source>.transcript.json` exists next to
-   the source file. Missing transcripts → offer to run `tools/transcribe.py`
+   the source file. Missing transcripts → offer to run `python3 -m video_toolkit.transcribe`
    with `--screenplay` (if `SCREENPLAY.md` exists) before continuing.
 
 4. **node_modules installed**: `ls node_modules/.bin/remotion`. If missing,
@@ -55,7 +55,7 @@ fix in one pass.
 
 ### Step 3: Decide mode + invoke the wrapper
 
-Use `tools/render_reel.py` rather than `npm run render` directly. The wrapper adds:
+Use `python3 -m video_toolkit.render_reel` rather than `npm run render` directly. The wrapper adds:
 - `--preview` → half-scale 540×960 to `out/preview.mp4`
 - `--keep` → auto-version (`reel-v2.mp4`, `reel-v3.mp4`, ...) instead of overwriting
 - Automatic `out/HISTORY.md` log entry per render (size, mode, render time)
@@ -63,13 +63,13 @@ Use `tools/render_reel.py` rather than `npm run render` directly. The wrapper ad
 
 ```bash
 # Full quality, overwrites previous
-python3 tools/render_reel.py --project <name>
+python3 -m video_toolkit.render_reel --project <name>
 
 # Half-scale preview
-python3 tools/render_reel.py --project <name> --preview
+python3 -m video_toolkit.render_reel --project <name> --preview
 
 # Full quality, auto-versioned
-python3 tools/render_reel.py --project <name> --keep
+python3 -m video_toolkit.render_reel --project <name> --keep
 ```
 
 Direct `npm run render` still works for ad-hoc use; the wrapper just adds the polish.
@@ -93,7 +93,7 @@ If the render hits errors:
 
 ### Step 5: SRT captions + history log
 
-`tools/render_reel.py` automatically:
+`python3 -m video_toolkit.render_reel` automatically:
 - Exports `out/reel.srt` (one cue per Whisper sentence, mapped through the L-cut audio timeline). Upload alongside the MP4 for IG/TikTok/FB algorithm boost + accessibility.
 - Appends a row to `out/HISTORY.md` with timestamp + filename + mode + size + render time.
 

@@ -168,5 +168,5 @@ Both `qwen3` and `qwen3.clone` are optional. Set `clone` to `null` or omit it to
 Once saved, use `--brand` to load it automatically:
 
 ```bash
-python tools/voiceover.py --provider qwen3 --brand my-company --scene-dir public/audio/scenes --json
+python3 -m video_toolkit.voiceover --provider qwen3 --brand my-company --scene-dir public/audio/scenes --json
 ```

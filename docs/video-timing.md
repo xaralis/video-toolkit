@@ -82,9 +82,9 @@ TTS engines do NOT consistently produce 150 WPM output. In practice:
 **The feedback loop after TTS generation:**
 
 1. Generate per-scene audio files
-2. Run `python3 tools/sync_timing.py` to compare actual vs config
+2. Run `python3 -m video_toolkit.sync_timing` to compare actual vs config
    durations
-3. Run `python3 tools/sync_timing.py --apply` to update config
+3. Run `python3 -m video_toolkit.sync_timing --apply` to update config
    automatically
 4. For demo scenes: recalculate
    `playbackRate = rawDemoDuration / actualNarrationDuration`

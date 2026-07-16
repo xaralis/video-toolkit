@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tools/sync-brand.sh <brand-name>
+# video_toolkit/sync-brand.sh <brand-name>
 #
 # Copies files listed in brands/<brand-name>/.sync.json from the source
 # repo into the brand profile. Idempotent.
@@ -8,7 +8,7 @@ set -euo pipefail
 
 BRAND="${1:-}"
 if [[ -z "$BRAND" ]]; then
-  echo "Usage: tools/sync-brand.sh <brand-name>" >&2
+  echo "Usage: video_toolkit/sync-brand.sh <brand-name>" >&2
   exit 1
 fi
 
