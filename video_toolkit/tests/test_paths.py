@@ -11,7 +11,7 @@ def test_workspace_root_finds_marker_in_start_dir(tmp_path):
 def test_workspace_root_walks_up_from_nested_dir(tmp_path):
     """Tools get invoked from inside a project, not just the workspace root."""
     (tmp_path / "workspace.json").write_text("{}")
-    nested = tmp_path / "projects" / "roost-reel-01" / "src"
+    nested = tmp_path / "projects" / "my-project" / "src"
     nested.mkdir(parents=True)
 
     assert workspace_root(nested) == tmp_path

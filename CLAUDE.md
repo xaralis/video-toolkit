@@ -2,21 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with this video production toolkit.
 
-## Komunikace
-
-**Veškerá komunikace s uživatelem v tomto projektu probíhá v češtině — bez výjimek.** Týká se to všech odpovědí, otázek, hlášení výsledků i souhrnů. Obsah souborů (kód, commit messages, technická dokumentace v repu) zůstává v angličtině, jak je v repu zvykem.
-
-## Onboarding kolegů
-
-Toolkit mohou používat i netechničtí kolegové přes CloudCLI UI (`cc-ui.example.com`). Při SessionStart hooku se aktivuje krátký check tech-levelu (laik / zdatný / vývojář).
-
-- **Plný protokol** chování pro každý profil: `docs/non-dev-playbook.md`
-- **Klíčové pravidlo**: u profilu `laik` / `zdatný` Claude NIKDY neukazuje raw outputy příkazů, NEPOUŽÍVÁ termíny jako `defaultProps` nebo `fps`, a před drahými/destruktivními akcemi VŽDY potvrzuje s vyčíslením následků.
-- **File handover** pro kolegy jde výhradně přes web Footage Manager (brand-specific URL, viz brand repo). Kolega NIKDY nepouští `/sync push` ručně — Claude ano.
-- **Studio URL** záleží na hosting prostředí (lokál vs. CloudCLI server). Detekce přes `.claude/host-env.md` (gitignored, existuje jen na serveru). Detaily v playbooku, sekce 5.6.
-
-Pro vývojářský profil (default odpověď `xaralis` nebo `vývojář`) se toto chování vypne a jede standardní technický mode.
-
 ## Overview
 
 **claude-code-video-toolkit** is an AI-native video production workspace. It provides Claude Code with the skills, commands, and tools to create professional videos from concept to final render.
@@ -283,4 +268,3 @@ project needs belongs in that project's brand repo; a fix every brand needs belo
 - `docs/creating-templates.md` - Build new templates
 - `docs/creating-brands.md` - Create brand profiles
 - `docs/optional-components.md` - Setup for optional ML-based tools (ProPainter, etc.)
-- `docs/non-dev-playbook.md` - Behavior protocol for non-developer collaborators

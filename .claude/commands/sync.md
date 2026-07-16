@@ -250,7 +250,7 @@ For collaborators joining mid-project:
 
 ## Notes
 
-- **Both git and R2 in one step.** Non-technical collaborators never need to know git exists. The author (xaralis) gets the same convenience plus laik scope guardrail (see `docs/non-dev-playbook.md`).
+- **Both git and R2 in one step.** Non-technical collaborators never need to know git exists, and the author (xaralis) gets the same one-step convenience.
 - **Commit scope: project + its toolkit deps.** `/sync push` stages `projects/<name>/` (project commit) plus `lib/` and `brands/<brand>/` (a separate toolkit commit) — so a project that uses a new `lib/` primitive isn't broken for whoever pulls. `video_toolkit/`, `docs/`, and *other* projects are never auto-committed — the author's separate concern.
 - **Commit message is fixed.** `sync(<project>): update` with the file list in the body. The diff describes what changed; the subject keeps history scannable by project name.
 - **Size-based skip is conservative** (R2). Same size = same file is assumed. If someone replaces a clip with a re-edit at exactly the same size, force with `--overwrite`.
