@@ -21,3 +21,7 @@ matplotlib>=3.7
 # Beat detection (tools/detect_beats.py) — tempo/beat/downbeat
 # extraction from an audio track via onset-strength + dynamic programming
 librosa>=0.10
+
+# Brand linting (check_brand.py) and SRT export (export_srt.py) parse
+# Root.tsx-adjacent config that contains trailing commas, which json can't read
+json5>=0.9
