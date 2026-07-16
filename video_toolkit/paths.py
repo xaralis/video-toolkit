@@ -33,3 +33,40 @@ def workspace_root(start: Path | None = None) -> Path:
 def toolkit_root() -> Path:
     """Directory holding the toolkit's templates/ and lib/."""
     return Path(__file__).resolve().parent.parent
+
+
+class NotFound(RuntimeError):
+    """A named template or brand exists in neither the workspace nor the toolkit."""
+
+
+def _find(kind: str, name: str) -> Path:
+    """Nearest-wins lookup: the workspace's own copy beats the toolkit's.
+
+    `templates/` and `brands/` legitimately exist in both repos — a brand ships
+    its own template (ROOST has templates/roost-reels) while core ships the
+    shared ones. Binding either to a single root would hide the other.
+    """
+    candidates = []
+    try:
+        candidates.append(workspace_root() / kind / name)
+    except WorkspaceNotFound:
+        pass
+    candidates.append(toolkit_root() / kind / name)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    raise NotFound(
+        f"no {kind[:-1]} named {name!r} — looked in: "
+        + ", ".join(str(c) for c in candidates)
+    )
+
+
+def find_template(name: str) -> Path:
+    """Locate a template by name, preferring the workspace's own."""
+    return _find("templates", name)
+
+
+def find_brand(name: str) -> Path:
+    """Locate a brand by name, preferring the workspace's own."""
+    return _find("brands", name)
