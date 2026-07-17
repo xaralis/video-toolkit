@@ -27,6 +27,8 @@ Usage:
     python3 -m video_toolkit.voiceover --provider qwen3 --instruct "Speak warmly" --script script.txt --output out.mp3
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os

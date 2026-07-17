@@ -31,6 +31,8 @@ Examples:
   python3 -m video_toolkit.flux2 --setup
 """
 
+from __future__ import annotations
+
 import argparse
 import base64
 import json

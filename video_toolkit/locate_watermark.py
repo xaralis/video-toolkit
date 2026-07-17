@@ -26,6 +26,8 @@ Presets:
     stock-center - Center watermark (common in stock footage)
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os

@@ -45,6 +45,8 @@ Setup:
         3. Or manually: modal deploy docker/modal-qwen3-tts/app.py
 """
 
+from __future__ import annotations
+
 import argparse
 import base64
 import json
