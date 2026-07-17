@@ -9,8 +9,6 @@ same directory only while the toolkit and the projects lived in one repo:
 A brand repo consumes the toolkit as a `toolkit/` submodule, so they differ.
 """
 
-from __future__ import annotations
-
 from pathlib import Path
 
 MARKER = "workspace.json"

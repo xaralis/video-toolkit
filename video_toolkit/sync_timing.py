@@ -26,8 +26,6 @@ Usage:
     python3 -m video_toolkit.sync_timing --json
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import math

@@ -40,8 +40,6 @@ Cost:
     - RunPod: RTX 3090 (~$0.34/hr) by default
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import os

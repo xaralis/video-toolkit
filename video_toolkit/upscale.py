@@ -26,8 +26,6 @@ Models:
     - photo: realesr-general-x4v3 (alternative general model)
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import os

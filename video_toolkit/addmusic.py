@@ -22,8 +22,6 @@ Usage:
     python3 -m video_toolkit.addmusic -i video.mp4 -p "Upbeat tech" --dry-run
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import subprocess

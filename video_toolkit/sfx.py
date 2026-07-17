@@ -13,8 +13,6 @@ Usage:
     python3 -m video_toolkit.sfx --prompt "UI click" --duration 0.5 --output click.mp3 --json
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import os

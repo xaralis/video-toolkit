@@ -9,8 +9,6 @@ Supported providers:
 - modal: Modal web endpoints (new)
 """
 
-from __future__ import annotations
-
 import json as _json
 import os
 import sys
