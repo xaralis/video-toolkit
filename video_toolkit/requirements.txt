@@ -4,8 +4,8 @@ python-dotenv>=1.0.0
 requests>=2.28.0
 boto3>=1.28.0  # For Cloudflare R2 (S3-compatible)
 
-# Image processing — used by tools/flux2.py, tools/image_edit.py, and the
-# moviepy examples for PIL-based text rendering
+# Image processing — used by video_toolkit/flux2.py, video_toolkit/image_edit.py,
+# and the moviepy examples for PIL-based text rendering
 Pillow>=10.0
 
 # Array math — transitive dep of moviepy, pinned here because
@@ -18,7 +18,7 @@ numpy>=1.24
 moviepy>=2.0
 matplotlib>=3.7
 
-# Beat detection (tools/detect_beats.py) — tempo/beat/downbeat
+# Beat detection (video_toolkit/detect_beats.py) — tempo/beat/downbeat
 # extraction from an audio track via onset-strength + dynamic programming
 librosa>=0.10
 
