@@ -261,6 +261,14 @@ Consider how visual intensity builds across scenes:
 Keep these separate. Don't mix toolkit improvements with video production — a fix that a specific
 project needs belongs in that project's brand repo; a fix every brand needs belongs here.
 
+**The criterion, authoritative:** anything reusable by *any* brand or repo that uses the toolkit —
+a component, a Python tool, a skill, a helper, a pattern, not just a video primitive — is core by
+nature and belongs here; brand-specific material stays in the brand repo. Ownership is decided by
+nature, not by who needs it today. Brand repos apply this **proactively**: when work there produces
+something core-worthy, Claude flags it and offers to upstream it — without blocking the work, and
+leaving an easy path to swap the local copy for core's once it lands (see a brand repo's own
+CLAUDE.md, and `.claude/superpowers/specs/2026-07-18-core-upstreaming-convention-design.md`).
+
 ## Documentation
 
 - `docs/tools-reference.md` - CLI cheat sheet for every Python tool
