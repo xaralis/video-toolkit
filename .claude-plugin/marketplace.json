@@ -1,11 +1,11 @@
 {
-  "name": "core-toolkit",
+  "name": "video-toolkit",
   "owner": {
     "name": "xaralis"
   },
   "plugins": [
     {
-      "name": "core",
+      "name": "toolkit",
       "source": "./",
       "description": "Shared video-toolkit commands and skills"
     }
