@@ -12,8 +12,8 @@ Deep-dive visual refinement for slides and components:
 ## Usage
 
 ```
-/design              # Discover project, list scenes, choose one
-/design [scene-id]   # Jump directly to a specific scene
+/toolkit:design              # Discover project, list scenes, choose one
+/toolkit:design [scene-id]   # Jump directly to a specific scene
 ```
 
 ---
@@ -228,7 +228,7 @@ These are common scene types, but projects may have different ones:
 ## Example Session
 
 ```
-User: /design
+User: /toolkit:design
 
 Claude: Let me discover your project...
 

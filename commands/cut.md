@@ -10,16 +10,16 @@ generated `defaultProps={{...}}` literal into `src/Root.tsx`.
 ## Quick start
 
 ```
-/cut                  # cut the current project
-/cut <project-name>   # explicitly target
+/toolkit:cut                  # cut the current project
+/toolkit:cut <project-name>   # explicitly target
 ```
 
 ## Flow
 
 ### Step 1: Detect project + screenplay
 
-1. Detect project (same as `/narrate`).
-2. Verify `SCREENPLAY.md` exists. If not, suggest `/narrate` first.
+1. Detect project (same as `/toolkit:narrate`).
+2. Verify `SCREENPLAY.md` exists. If not, suggest `/toolkit:narrate` first.
 3. Read the screenplay; parse segments, overlays, brand, duration targets.
 
 ### Step 2: Inventory footage
@@ -31,7 +31,7 @@ List files in:
 If both directories are empty, output a message: "No footage found. Per the
 shooting checklist in SCREENPLAY.md, drop your recordings into
 `public/recordings/` (talking heads) and `public/broll/` (b-roll), then run
-/cut again."
+/toolkit:cut again."
 
 ### Step 2b: Sync brand assets
 
@@ -45,11 +45,11 @@ python3 -m video_toolkit.sync_brand_assets <name>
 ```
 
 The tool is idempotent (size-based skip), so it's safe to re-run on every
-`/cut`. Run BEFORE the render-time logic in later steps so missing
+`/toolkit:cut`. Run BEFORE the render-time logic in later steps so missing
 assets (`brand/skyline.svg`, etc.) don't blow up Studio /
-`/render` with "Error loading image". A new brand asset shipped after
+`/toolkit:render` with "Error loading image". A new brand asset shipped after
 the project was scaffolded won't appear automatically — re-running
-`/cut` (or invoking `sync_brand_assets.py` directly) pulls it in.
+`/toolkit:cut` (or invoking `sync_brand_assets.py` directly) pulls it in.
 
 ### Step 3: Map source files to segments
 
@@ -158,7 +158,7 @@ Segments:        11 (10 mapped, 1 outro)
 Total duration:  ~46.2s
 Warnings:        0
 
-Next: /fine-tune to iterate in Studio.
+Next: /toolkit:fine-tune to iterate in Studio.
 ```
 
 If there are warnings (3s violations, unused source files, missing transcripts),
@@ -166,19 +166,19 @@ list them.
 
 ### Step 9: Re-run semantics
 
-Re-running `/cut` on a project with an existing `defaultProps`:
+Re-running `/toolkit:cut` on a project with an existing `defaultProps`:
 - Re-read SCREENPLAY.md (it may have been edited)
 - Re-detect footage (some may have been added or replaced)
 - Re-transcribe only newly-added or replaced files
 - Compute a diff between current `defaultProps` and the freshly generated one
 - Show diff to user; ask before writing.
 
-This keeps `/cut` safe to re-run after partial re-shoots or screenplay edits.
+This keeps `/toolkit:cut` safe to re-run after partial re-shoots or screenplay edits.
 
 ## Notes
 
-- `/cut` doesn't touch user code outside `Root.tsx`. Custom overlays or
+- `/toolkit:cut` doesn't touch user code outside `Root.tsx`. Custom overlays or
   components written by hand stay intact.
 - If a user has manually edited `defaultProps` (e.g., via Studio Save),
-  `/cut` will diff and offer to merge rather than overwrite — the goal
+  `/toolkit:cut` will diff and offer to merge rather than overwrite — the goal
   is to respect human edits while still reflecting screenplay updates.

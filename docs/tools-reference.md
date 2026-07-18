@@ -46,7 +46,7 @@ python3 -m video_toolkit.sync_template <project> --strict           # also delet
 
 `src/Root.tsx` and `src/config/demo.config.json` are **project-owned and never written** (they are
 the project's actual cut) — reported as `preserved`. Compares by content hash; idempotent.
-**Never run it on a finished project.** See `/sync-template` for the full workflow.
+**Never run it on a finished project.** See `/toolkit:sync-template` for the full workflow.
 
 Brand assets have the same snapshot model — mirrored by copy, not linked:
 

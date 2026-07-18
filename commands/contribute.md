@@ -57,7 +57,7 @@ gh issue create \
 [If bug]
 
 ---
-Reported via /contribute command"
+Reported via /toolkit:contribute command"
 ```
 
 ---
@@ -418,7 +418,7 @@ Adds {name} as a showcase example.
 
 Large media files are gitignored. Users create their own using:
 - Externally recorded screen/app footage
-- /generate-voiceover for narration
+- /toolkit:generate-voiceover for narration
 - python3 -m video_toolkit.music_gen for background music
 
 ---

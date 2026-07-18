@@ -68,24 +68,24 @@ repo never contains another brand's `brands/` or `projects/` content.
 
 **First-time setup (optional, ~5 minutes):**
 ```
-/setup
+/toolkit:setup
 ```
 
 Walks through cloud GPU, file transfer (R2), and voice configuration. Most features are free. Skip this if you just want to render videos with Node.js.
 
 **Work on a video project:**
 ```
-/video
+/toolkit:video
 ```
 
 This command will:
 1. Scan for existing projects (resume or create new)
 2. Choose template (campaign-reels, web-program-intro)
-3. Choose brand (or create one with `/brand`)
+3. Choose brand (or create one with `/toolkit:brand`)
 4. Plan scenes interactively
 5. Create project with VOICEOVER-SCRIPT.md
 
-**Multi-session support:** Projects span multiple sessions. Run `/video` to resume where you left off. Each project tracks its phase, scenes, assets, and session history in `project.json`.
+**Multi-session support:** Projects span multiple sessions. Run `/toolkit:video` to resume where you left off. Each project tracks its phase, scenes, assets, and session history in `project.json`.
 
 **Or manually:**
 ```bash
@@ -108,27 +108,27 @@ Vertical 9:16 (1080x1920) short-form reels for social campaigns. Three-layer com
 **Canonical workflow:**
 
 ```
-/video                          # create projects/<name>/
-/narrate                        # author SCREENPLAY.md (intent + segments)
+/toolkit:video                          # create projects/<name>/
+/toolkit:narrate                        # author SCREENPLAY.md (intent + segments)
 (film footage; drop into public/recordings + public/broll)
-/sync push recordings,broll     # back up code + raw footage (git + R2)
-/cut                            # map footage → defaultProps in Root.tsx
-/fine-tune                      # iterate timing/text in Studio (lock final durations here)
-/add-music                      # generate ACE-Step bg music sized to the final reel (optional)
-/render                         # final MP4 (or /render preview for half-scale)
-/sync push out                  # back up code + renders (git + R2)
-/sync share                     # short URL of out/reel.mp4 — send to reviewers
+/toolkit:sync push recordings,broll     # back up code + raw footage (git + R2)
+/toolkit:cut                            # map footage → defaultProps in Root.tsx
+/toolkit:fine-tune                      # iterate timing/text in Studio (lock final durations here)
+/toolkit:add-music                      # generate ACE-Step bg music sized to the final reel (optional)
+/toolkit:render                         # final MP4 (or /toolkit:render preview for half-scale)
+/toolkit:sync push out                  # back up code + renders (git + R2)
+/toolkit:sync share                     # short URL of out/reel.mp4 — send to reviewers
 ```
 
 Collaborator joining mid-project:
 
 ```
-/video → resume → /sync pull → /fine-tune (or wherever the work is)
+/toolkit:video → resume → /toolkit:sync pull → /toolkit:fine-tune (or wherever the work is)
 ```
 
-**Auto-pull pravidlo (lazy sync)**: SessionStart hook spouští `python3 -m video_toolkit.check_stale_projects`, který tiše prohlédne R2 a vypíše banner `=== R2 STALE PROJECTS ===`, pokud některý lokální projekt zaostává. Když uživatel v dalším promptu zmíní práci na takovém projektu (resume přes `/video`, "pokračujme v X", "co je v X", atd.), **NEJDŘÍV** spusť `/sync pull <name>` (= git pull + R2 pull, jeden krok) a teprve potom dělej cokoli s jeho soubory. Bez čekání na další explicitní pokyn. Projekty, které v banneru nejsou, jsou aktuální — sync přeskoč. Pokud banner chybí úplně (R2 nedostupné, není nakonfigurováno), pracuj s lokálním stavem.
+**Auto-pull pravidlo (lazy sync)**: SessionStart hook spouští `python3 -m video_toolkit.check_stale_projects`, který tiše prohlédne R2 a vypíše banner `=== R2 STALE PROJECTS ===`, pokud některý lokální projekt zaostává. Když uživatel v dalším promptu zmíní práci na takovém projektu (resume přes `/toolkit:video`, "pokračujme v X", "co je v X", atd.), **NEJDŘÍV** spusť `/toolkit:sync pull <name>` (= git pull + R2 pull, jeden krok) a teprve potom dělej cokoli s jeho soubory. Bez čekání na další explicitní pokyn. Projekty, které v banneru nejsou, jsou aktuální — sync přeskoč. Pokud banner chybí úplně (R2 nedostupné, není nakonfigurováno), pracuj s lokálním stavem.
 
-The schema-driven template uses Zod (`src/config/schema.ts`) so Studio's sidebar renders a full editor for every segment, overlay, and transition. Brand rules at `brands/<brand>/BRAND-RULES.md` are loaded by `/narrate` and `/cut` to enforce accent emphasis-only, 3s minimums, L-cut audio inheritance, and other authoritative discipline. `/sync` keeps raw footage + renders in Cloudflare R2 so heavy media never goes to git but is still shareable across the team.
+The schema-driven template uses Zod (`src/config/schema.ts`) so Studio's sidebar renders a full editor for every segment, overlay, and transition. Brand rules at `brands/<brand>/BRAND-RULES.md` are loaded by `/toolkit:narrate` and `/toolkit:cut` to enforce accent emphasis-only, 3s minimums, L-cut audio inheritance, and other authoritative discipline. `/toolkit:sync` keeps raw footage + renders in Cloudflare R2 so heavy media never goes to git but is still shareable across the team.
 
 ## Brand Profiles
 
@@ -174,12 +174,12 @@ For ready-to-copy invocations of each tool (voiceover, sync_timing, qwen3_tts, i
 
 ## Video Production Workflow
 
-1. **Create/resume project** - Run `/video`, choose template and brand (or resume existing)
+1. **Create/resume project** - Run `/toolkit:video`, choose template and brand (or resume existing)
 2. **Review script** - Edit `VOICEOVER-SCRIPT.md` to plan content
 3. **Gather assets** - Add external video footage
-4. **Scene review** - Run `/scene-review` to verify visuals in Remotion Studio
-5. **Design refinement** - Use `/design` or the "Refine" option in scene-review to improve slide visuals
-6. **Generate audio** - Use `/generate-voiceover` for AI narration
+4. **Scene review** - Run `/toolkit:scene-review` to verify visuals in Remotion Studio
+5. **Design refinement** - Use `/toolkit:design` or the "Refine" option in scene-review to improve slide visuals
+6. **Generate audio** - Use `/toolkit:generate-voiceover` for AI narration
 7. **Sync timing** - Run `python3 -m video_toolkit.sync_timing --apply` to update config durations
 8. **Preview** - `npm run studio` in project directory
 9. **Iterate** - Adjust timing, content, styling with Claude Code
@@ -197,7 +197,7 @@ planning → assets → review → audio → editing → rendering → complete
 |-------|-------------|
 | `planning` | Defining scenes, writing script |
 | `assets` | Recording demos, gathering materials |
-| `review` | Scene-by-scene review in Remotion Studio (`/scene-review`) |
+| `review` | Scene-by-scene review in Remotion Studio (`/toolkit:scene-review`) |
 | `audio` | Generating voiceover, music |
 | `editing` | Adjusting timing, previewing |
 | `rendering` | Final render in progress |
@@ -228,8 +228,8 @@ Toolkit-specific Remotion conventions (animation hooks, Series sequencing, `<Off
 The `frontend-design` skill elevates slide visuals from generic to distinctive.
 
 ### Usage
-- **During scene review** (`/scene-review`): Choose "Refine" for visual improvements
-- **Focused sessions** (`/design`): Deep-dive on a specific scene — `/design title`, `/design cta`
+- **During scene review** (`/toolkit:scene-review`): Choose "Refine" for visual improvements
+- **Focused sessions** (`/toolkit:design`): Deep-dive on a specific scene — `/toolkit:design title`, `/toolkit:design cta`
 
 ### When to Use
 - Slide scenes that feel generic
@@ -256,7 +256,7 @@ Consider how visual intensity builds across scenes:
 - Happens in a brand repo, not here — this core repo has no `projects/` of its own
 - Each project has `project.json` (machine-readable state) and auto-generated `CLAUDE.md`
 - A brand repo consumes this repo's templates/tools/skills via the `toolkit/` submodule and
-  `/sync-template` pulls in template fixes without touching the project's own cut
+  `/toolkit:sync-template` pulls in template fixes without touching the project's own cut
 
 Keep these separate. Don't mix toolkit improvements with video production — a fix that a specific
 project needs belongs in that project's brand repo; a fix every brand needs belongs here.

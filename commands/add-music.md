@@ -8,29 +8,29 @@ Generate background music for a reel via ACE-Step (acemusic cloud API,
 with Modal fallback) and wire the resulting `bg.mp3` into the project's
 `defaultProps.audio` block.
 
-**Workflow position:** runs AFTER `/fine-tune`, BEFORE `/render`. The
+**Workflow position:** runs AFTER `/toolkit:fine-tune`, BEFORE `/toolkit:render`. The
 reasoning: music duration must match the FINAL reel duration. If you
-generate music before `/fine-tune`, any timing change in Studio
+generate music before `/toolkit:fine-tune`, any timing change in Studio
 invalidates the music length and forces a regeneration.
 
 ## Quick start
 
 ```
-/add-music                                  # use SCREENPLAY.md's musicPrompt + duration
-/add-music --preset corporate-bg            # override with a scene preset
-/add-music --prompt "subtle tech, calm"     # custom prompt
-/add-music --provider modal                 # skip acemusic, go straight to Modal
-/add-music --volume-db -10                  # override default -6 dB
-/add-music --duration 45                    # override derived duration
+/toolkit:add-music                                  # use SCREENPLAY.md's musicPrompt + duration
+/toolkit:add-music --preset corporate-bg            # override with a scene preset
+/toolkit:add-music --prompt "subtle tech, calm"     # custom prompt
+/toolkit:add-music --provider modal                 # skip acemusic, go straight to Modal
+/toolkit:add-music --volume-db -10                  # override default -6 dB
+/toolkit:add-music --duration 45                    # override derived duration
 ```
 
 ## Flow
 
 ### Step 1: Detect project + state
 
-1. Detect project (same convention as `/narrate` / `/cut` / `/fine-tune`).
+1. Detect project (same convention as `/toolkit:narrate` / `/toolkit:cut` / `/toolkit:fine-tune`).
 2. Read `src/Root.tsx`; confirm `defaultProps` has real segments (not template demos).
-   - If still on demo defaults → suggest `/cut` first.
+   - If still on demo defaults → suggest `/toolkit:cut` first.
 3. Read `SCREENPLAY.md` frontmatter for hints:
    - `musicPrompt` (string) → default prompt
    - `musicVolumeDb` (number) → default volume (else `-6`)
@@ -65,7 +65,7 @@ python3 -m video_toolkit.music_gen \
 ```
 
 If a `--brand` is set in screenplay frontmatter, pass `--brand <name>` so
-brand-specific hints (BPM/key/style) flow from `brands/<name>/brand.json`.
+brand-specific hints (BPM/key/style) flow from `brands/<name>/toolkit:brand.json`.
 
 **Provider strategy:**
 
@@ -79,7 +79,7 @@ brand-specific hints (BPM/key/style) flow from `brands/<name>/brand.json`.
 
 If NEITHER provider is configured (no `ACEMUSIC_API_KEY`, no
 `MODAL_MUSIC_GEN_ENDPOINT_URL`):
-- Suggest `/setup` for Modal, or paste an `ACEMUSIC_API_KEY` from
+- Suggest `/toolkit:setup` for Modal, or paste an `ACEMUSIC_API_KEY` from
   https://acemusic.ai/api-key.
 
 ### Step 4: Verify output
@@ -135,12 +135,12 @@ Prompt:      <prompt used>
 Volume:      -6 dB
 Generation:  87s
 
-Root.tsx updated with audio block. Run /fine-tune or /render to hear it.
+Root.tsx updated with audio block. Run /toolkit:fine-tune or /toolkit:render to hear it.
 ```
 
 ## Re-run semantics
 
-Re-running `/add-music` on a project with existing music:
+Re-running `/toolkit:add-music` on a project with existing music:
 - The previous `bg.mp3` is overwritten in place (no auto-versioning).
 - The `audio` block in Root.tsx is updated in place.
 - If the user has manually adjusted `musicVolumeDb` via Studio Save, the
@@ -150,11 +150,11 @@ Re-running `/add-music` on a project with existing music:
 ## Notes
 
 - `music_gen.py` already supports `--variations N` (acemusic only) to
-  generate 4 picks and pick the best. `/add-music` doesn't expose this
+  generate 4 picks and pick the best. `/toolkit:add-music` doesn't expose this
   by default to keep the command simple — pass `--variations 4` through
   if you want it.
 - For songs with vocals (`--lyrics`), use `python3 -m video_toolkit.music_gen` directly.
-  `/add-music` is scoped to instrumental background tracks for reels.
+  `/toolkit:add-music` is scoped to instrumental background tracks for reels.
 - The brand rule for PP audio mixing: music sits at `-6 dB` (loud enough
   to feel, low enough not to compete with voice). Caption-driven b-roll
   segments rely on this balance — don't push to `-3 dB` without checking

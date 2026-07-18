@@ -5,10 +5,21 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -m video_toolkit.check_stale_projects 2>/dev/null || true"
+            "command": ".venv/bin/python -m video_toolkit.check_stale_projects 2>/dev/null || true"
           }
         ]
       }
     ]
+  },
+  "extraKnownMarketplaces": {
+    "video-toolkit": {
+      "source": {
+        "source": "directory",
+        "path": "./"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "toolkit@video-toolkit": true
   }
 }

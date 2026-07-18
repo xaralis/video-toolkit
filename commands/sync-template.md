@@ -10,15 +10,15 @@ final render, so upgrading the toolkit later (new Remotion, refactored component
 delivered video. Each project also pins its own `node_modules`, so dependency versions are frozen too.
 
 The cost of that isolation: a project **doesn't** automatically get template fixes. While a project is
-still being worked on you sometimes want them. `/sync-template` does that safely.
+still being worked on you sometimes want them. `/toolkit:sync-template` does that safely.
 
 ## Quick start
 
 ```
-/sync-template <project>                    # pull template fixes in
-/sync-template <project> --dry-run          # preview — writes nothing
-/sync-template <project> --template <name>  # if project.json has no `template` field
-/sync-template <project> --strict           # also delete files the template no longer has
+/toolkit:sync-template <project>                    # pull template fixes in
+/toolkit:sync-template <project> --dry-run          # preview — writes nothing
+/toolkit:sync-template <project> --template <name>  # if project.json has no `template` field
+/toolkit:sync-template <project> --strict           # also delete files the template no longer has
 ```
 
 Runs `python3 -m video_toolkit.sync_template` from the toolkit root.
@@ -53,7 +53,7 @@ files are skipped and genuine drift shows as `updated`. Idempotent: re-running i
    project intentionally diverged (a project-specific tweak living in a shared component), syncing
    will overwrite that tweak — move it into `Root.tsx`/config, or skip the sync.
 3. **Run for real** (drop `--dry-run`).
-4. **Verify the project still renders** — `/render preview` or a still. The template may have moved on
+4. **Verify the project still renders** — `/toolkit:render preview` or a still. The template may have moved on
    in ways the project's config doesn't expect (a renamed schema field, a new required prop).
 5. Commit the project's `src/` change with a message naming what the template fix was.
 
@@ -61,4 +61,4 @@ files are skipped and genuine drift shows as `updated`. Idempotent: re-running i
 
 - `python3 -m video_toolkit.sync_brand_assets` — the same idea for brand assets (`brands/<brand>/assets` →
   `projects/<name>/public/brand`). Also a copy, not a link, for the same snapshot reason.
-- `/sync` — moves project source + heavy media between git and R2. Different job entirely.
+- `/toolkit:sync` — moves project source + heavy media between git and R2. Different job entirely.

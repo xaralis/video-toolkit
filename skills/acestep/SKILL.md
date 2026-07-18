@@ -315,7 +315,7 @@ For music-forward scenes (title, CTA): can use higher volume or vocal tracks.
 
 ### Brand Consistency
 
-Use `--brand <name>` to load hints from `brands/<name>/brand.json`.
+Use `--brand <name>` to load hints from `brands/<name>/toolkit:brand.json`.
 Use `--cover --reference brand_theme.mp3` to create variations of a brand's sonic identity.
 For consistent sound across a project: fix the seed (`--seed 42`) and vary only duration/prompt.
 

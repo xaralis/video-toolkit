@@ -81,7 +81,7 @@ Version Check
 
   New in v0.3.0:
   - Added transitions library
-  - New /design command
+  - New /toolkit:design command
   - Frontend-design skill
 
   To upgrade:
@@ -168,9 +168,9 @@ Toolkit updated to v0.3.0
 
 Changes:
 - Added lib/transitions/ with 7 custom transitions
-- New /design command for visual refinement
+- New /toolkit:design command for visual refinement
 - Frontend-design skill for distinctive aesthetics
-- Bug fixes in /scene-review
+- Bug fixes in /toolkit:scene-review
 
 See _internal/CHANGELOG.md for full details.
 
@@ -183,7 +183,7 @@ Restart Claude Code to load new skills and commands.
 
 Consider running version check automatically:
 
-1. **On /video resume** - Check project before starting work
+1. **On /toolkit:video resume** - Check project before starting work
 2. **Before render** - Warn if mismatches detected
 3. **Weekly reminder** - Check for toolkit updates
 

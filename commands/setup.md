@@ -50,7 +50,7 @@ Voice:          Not configured
 ElevenLabs:     Not configured (optional, paid)
 
 Let's get you set up! We'll go through each feature one at a time.
-You can skip any step and come back later with /setup.
+You can skip any step and come back later with /toolkit:setup.
 ```
 
 **If everything is already configured**, show status and offer to verify/test:
@@ -155,7 +155,7 @@ Explain dual-provider benefits:
 
 ### Option D: Skip
 
-"No problem — you can still create and render videos with just Node.js. Run /setup anytime to add cloud features later."
+"No problem — you can still create and render videos with just Node.js. Run /toolkit:setup anytime to add cloud features later."
 
 ---
 
@@ -421,14 +421,14 @@ Cost summary:
   - Qwen3-TTS: Free (runs on Modal compute)
   - ElevenLabs: Not configured
 
-You're ready! Run /video to create your first video.
+You're ready! Run /toolkit:video to create your first video.
 ```
 
 ---
 
 ## Re-run Behavior
 
-When `/setup` is run again on an already-configured toolkit:
+When `/toolkit:setup` is run again on an already-configured toolkit:
 
 1. Show current state (Phase 6 summary style)
 2. Offer options:
@@ -486,13 +486,13 @@ python3 -m video_toolkit.verify_setup --test
 python3 -m video_toolkit.verify_setup --json
 ```
 
-Run `verify_setup.py --json` at the start of `/setup` to detect current state and skip already-configured phases. Run it with `--test` at the end for the Phase 6 verification.
+Run `verify_setup.py --json` at the start of `/toolkit:setup` to detect current state and skip already-configured phases. Run it with `--test` at the end for the Phase 6 verification.
 
 ## Integration with Other Commands
 
-- `/video` should check for cloud GPU configuration and mention `/setup` if not configured
-- `/generate-voiceover` should suggest `/setup` if no TTS provider is configured
-- `/versions` could include a setup status check
+- `/toolkit:video` should check for cloud GPU configuration and mention `/toolkit:setup` if not configured
+- `/toolkit:generate-voiceover` should suggest `/toolkit:setup` if no TTS provider is configured
+- `/toolkit:versions` could include a setup status check
 
 ---
 

@@ -27,8 +27,8 @@ This toolkit is designed to grow through use. Every interaction is an opportunit
 
 ### Commands Evolve
 Commands start simple and grow based on real usage:
-- `/video` started as `/new-sprint-video`, expanded to multi-template, multi-session
-- `/brand` merged creation and listing into one entry point
+- `/toolkit:video` started as `/new-sprint-video`, expanded to multi-template, multi-session
+- `/toolkit:brand` merged creation and listing into one entry point
 - Patterns that work get documented; patterns that don't get removed
 
 ### Skills Mature

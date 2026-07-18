@@ -13,7 +13,7 @@ On invocation, scan for brands and adapt:
 ### Step 1: Scan Brands
 
 ```
-1. Glob brands/*/brand.json
+1. Glob brands/*/toolkit:brand.json
 2. For each brand found:
    - Read brand.json
    - Extract name, primary color, description
@@ -245,7 +245,7 @@ Files:
 Next steps:
   1. Add your logo to brands/{name}/assets/logo.png
   2. Update voice.json with your ElevenLabs voice ID
-  3. Use with /video when creating projects
+  3. Use with /toolkit:video when creating projects
 
 See docs/creating-brands.md for more details.
 ```
@@ -320,7 +320,7 @@ When extracting from a website:
 ## Integration
 
 This command is referenced by:
-- `/video` - when selecting brand for new projects
+- `/toolkit:video` - when selecting brand for new projects
 - Templates - load brand via `src/config/brand.ts`
 
 ---
@@ -337,4 +337,4 @@ This command evolves through use. If something's awkward or missing:
 - Issues: `github.com/digitalsamba/claude-code-video-toolkit/issues`
 - PRs welcome for new features, bug fixes, documentation
 
-History: `/new-brand` → `/brand` (unified with list/edit support)
+History: `/new-brand` → `/toolkit:brand` (unified with list/edit support)

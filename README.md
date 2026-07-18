@@ -17,18 +17,21 @@ An AI-native video production workspace for [Claude Code](https://claude.ai/code
 ```bash
 git clone https://github.com/xaralis/video-toolkit.git
 cd video-toolkit
-python3 -m pip install -e .                        # Optional: AI voiceover, image gen, music, moviepy examples
-claude                                              # Open Claude Code in the toolkit
+python3 -m venv .venv && .venv/bin/pip install -e .   # Python 3.13+ (3.14 preferred)
+claude plugin install toolkit@video-toolkit           # load the /toolkit:* slash commands
+claude                                                # Open Claude Code in the toolkit
 ```
 
 Then in Claude Code:
 
 ```
-/setup                    # Configure cloud GPU, storage, voice (~5 min, mostly free)
-/video                    # Create your first video
+/toolkit:setup            # Configure cloud GPU, storage, voice (~5 min, mostly free)
+/toolkit:video            # Create your first video
 ```
 
-**That's it.** `/setup` walks you through everything interactively — cloud GPU provider, file transfer, voice config. `/video` creates a project from a template and guides you through the whole workflow.
+**That's it.** `/toolkit:setup` walks you through everything interactively — cloud GPU provider, file transfer, voice config. `/toolkit:video` creates a project from a template and guides you through the whole workflow.
+
+The commands ship as a **Claude Code plugin**: this repo is both the toolkit and the plugin (`commands/` + `skills/` at the root, declared by `.claude-plugin/`). `claude plugin install toolkit@video-toolkit` is what turns them into working slash commands — without it they report "Unknown command". A per-brand repo consumes the exact same plugin by vendoring this repo as a `toolkit/` submodule; the commands are identical, invoked as `/toolkit:<name>` everywhere. See a brand repo's own README for that setup.
 
 ## Using with Codex
 
@@ -83,7 +86,7 @@ python3 scripts/migrate_to_codex.py --reset
 
 **What's free:** The toolkit leans heavily on open-source AI models — voiceovers (Qwen3-TTS), image generation (FLUX.2), music (ACE-Step), and more. You deploy them to your own cloud GPU account and run them at cost. Cloudflare R2 has a generous free tier (10GB, zero egress), and Modal gives $30/month free compute on the Starter plan — more than enough for a few 5-minute videos a month.
 
-**Requirements:** [Node.js](https://nodejs.org/) 18+ and [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Python 3.10+ recommended for AI tools. FFmpeg optional.
+**Requirements:** [Node.js](https://nodejs.org/) 18+ and [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Python 3.13+ recommended for AI tools. FFmpeg optional.
 
 > **Want to skip setup and just render something?**
 > ```bash
@@ -113,16 +116,16 @@ Claude Code has deep knowledge in:
 
 | Command | Description |
 |---------|-------------|
-| `/setup` | First-time setup — cloud GPU, file transfer, voice, prerequisites |
-| `/video` | Video projects — list, resume, or create new |
-| `/scene-review` | Scene-by-scene review in Remotion Studio |
-| `/design` | Focused design refinement session for a scene |
-| `/brand` | Brand profiles — list, edit, or create new |
-| `/template` | List available templates or create new ones |
-| `/skills` | List installed skills or create new ones |
-| `/contribute` | Share improvements — issues, PRs, examples |
-| `/generate-voiceover` | Generate AI voiceover from a script |
-| `/versions` | Check dependency versions and toolkit updates |
+| `/toolkit:setup` | First-time setup — cloud GPU, file transfer, voice, prerequisites |
+| `/toolkit:video` | Video projects — list, resume, or create new |
+| `/toolkit:scene-review` | Scene-by-scene review in Remotion Studio |
+| `/toolkit:design` | Focused design refinement session for a scene |
+| `/toolkit:brand` | Brand profiles — list, edit, or create new |
+| `/toolkit:template` | List available templates or create new ones |
+| `/toolkit:skills` | List installed skills or create new ones |
+| `/toolkit:contribute` | Share improvements — issues, PRs, examples |
+| `/toolkit:generate-voiceover` | Generate AI voiceover from a script |
+| `/toolkit:versions` | Check dependency versions and toolkit updates |
 
 > **Note:** After creating or modifying commands/skills, restart Claude Code to load changes.
 
@@ -160,7 +163,7 @@ See [lib/transitions/README.md](lib/transitions/README.md) for full documentatio
 
 ### Brand Profiles
 
-Visual identity — colors, fonts, voice, styling — is defined per brand in `brands/<brand>/`. When you create a project with `/video`, the selected brand's identity is automatically applied.
+Visual identity — colors, fonts, voice, styling — is defined per brand in `brands/<brand>/`. When you create a project with `/toolkit:video`, the selected brand's identity is automatically applied.
 
 ```
 brands/my-brand/
@@ -171,7 +174,7 @@ brands/my-brand/
 
 This core repo ships only the neutral `default` scaffold. Real brands live in the top-level `brands/` of the repo that vendors this toolkit as a submodule — each brand gets its own repo, so no brand's identity is visible from another's.
 
-Create your own with `/brand`.
+Create your own with `/toolkit:brand`.
 
 ### Project Management System
 
@@ -259,7 +262,7 @@ python3 -m video_toolkit.ltx2 --prompt "Gentle camera drift" --input photo.jpg -
 | `ltx2` | AI video generation (text-to-video, image-to-video) | ~$0.23 |
 | `dewatermark` | Video watermark removal | ~$0.10 |
 
-**Modal (recommended):** Each tool deploys from `docker/modal-*/app.py` — Modal builds and hosts the containers. $30/month free compute on the Starter plan, typical usage is $1-2/month. Run `/setup` to deploy all tools automatically.
+**Modal (recommended):** Each tool deploys from `docker/modal-*/app.py` — Modal builds and hosts the containers. $30/month free compute on the Starter plan, typical usage is $1-2/month. Run `/toolkit:setup` to deploy all tools automatically.
 
 **RunPod (alternative):** Uses pre-built Docker images from `ghcr.io/conalmullan/video-toolkit-*`. Pay-per-second, no minimums. Run `python3 -m video_toolkit.<tool> --setup` to create endpoints.
 
@@ -273,7 +276,7 @@ This repo — the shared core:
 claude-code-video-toolkit/
 ├── .claude/
 │   ├── skills/          # Domain knowledge for Claude
-│   └── commands/        # Slash commands (/video, /brand, etc.)
+│   └── commands/        # Slash commands (/toolkit:video, /toolkit:brand, etc.)
 ├── lib/                 # Shared components, theme system, utilities
 │   ├── components/      # Reusable video components (11 components)
 │   ├── transitions/     # Scene transition effects (7 custom + 4 official)
@@ -295,7 +298,7 @@ material):
 my-brand-videos/
 ├── toolkit/             # this repo, vendored as a pinned git submodule
 ├── brands/<brand>/      # this brand's colors, fonts, voice, BRAND-RULES.md
-├── projects/            # this brand's video projects (source in git; heavy media via /sync to R2)
+├── projects/            # this brand's video projects (source in git; heavy media via /toolkit:sync to R2)
 └── CLAUDE.md            # thin, brand-specific instructions on top of toolkit/CLAUDE.md
 ```
 
@@ -313,15 +316,15 @@ my-brand-videos/
 ## Video Workflow
 
 ```
-/video → Script → Assets → Scene Review → Design → Audio → Preview → Render
+/toolkit:video → Script → Assets → Scene Review → Design → Audio → Preview → Render
 ```
 
-1. **Create project** — Run `/video`, choose template and brand
+1. **Create project** — Run `/toolkit:video`, choose template and brand
 2. **Review script** — Edit `VOICEOVER-SCRIPT.md` to plan content and assets
 3. **Gather assets** — Add external video footage
-4. **Scene review** — Run `/scene-review` to verify visuals in Remotion Studio
-5. **Design refinement** — Use `/design` to improve slide visuals with the frontend-design skill
-6. **Generate audio** — AI voiceover with `/generate-voiceover`
+4. **Scene review** — Run `/toolkit:scene-review` to verify visuals in Remotion Studio
+5. **Design refinement** — Use `/toolkit:design` to improve slide visuals with the frontend-design skill
+6. **Generate audio** — AI voiceover with `/toolkit:generate-voiceover`
 7. **Configure** — Update config file with asset paths and timing
 8. **Preview** — `npm run studio` for live preview
 9. **Iterate** — Work with Claude Code to adjust timing, styling, content

@@ -350,12 +350,12 @@ export const SafeAudio: React.FC<{ src: string }> = ({ src }) => {
 };
 ```
 
-### Toolkit Command: /generate-voiceover
+### Toolkit Command: /toolkit:generate-voiceover
 
-The `/generate-voiceover` command handles the full workflow:
+The `/toolkit:generate-voiceover` command handles the full workflow:
 
 ```
-/generate-voiceover
+/toolkit:generate-voiceover
 
 1. Reads VOICEOVER-SCRIPT.md
 2. Extracts narration for each scene

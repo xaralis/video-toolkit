@@ -11,8 +11,8 @@ what overlay text appears when, what language the candidate uses.
 ## Quick start
 
 ```
-/narrate                 # author or edit SCREENPLAY.md in the current project
-/narrate <project-name>  # explicitly target a project
+/toolkit:narrate                 # author or edit SCREENPLAY.md in the current project
+/toolkit:narrate <project-name>  # explicitly target a project
 ```
 
 ## Flow
@@ -21,7 +21,7 @@ what overlay text appears when, what language the candidate uses.
 
 1. If invoked from inside a `projects/<name>/` directory, use that project.
 2. Else scan `projects/` for active projects (any directory with `src/Root.tsx`).
-3. If multiple, ask user which one. If none, suggest running `/video` first.
+3. If multiple, ask user which one. If none, suggest running `/toolkit:video` first.
 
 ### Step 2: Detect existing screenplay or footage
 
@@ -57,7 +57,7 @@ Flow:
    - Mark `Source: <filename>.MP4` directly (no `TBD` — we know which file backs each segment).
 5. **Confirm** — show the proposed screenplay outline before writing. Iterate with the user.
 6. **Write SCREENPLAY.md** in the standard format (Step 5 below) but SKIP the Shooting Checklist section — footage already exists.
-7. Next step: `/cut` to convert the screenplay into `defaultProps`.
+7. Next step: `/toolkit:cut` to convert the screenplay into `defaultProps`.
 
 This branch turns a pile of phone clips into a structured reel. It's also the right path when someone hands off a finished shoot to you without context.
 
@@ -105,7 +105,7 @@ chevron: <CATEGORY>
 brand: <brand-name>
 brandRulesPath: brands/<brand>/BRAND-RULES.md
 durationTargetSec: <number>
-musicPrompt: "<short ACE-Step prompt>" # optional, used by /cut if music is desired
+musicPrompt: "<short ACE-Step prompt>" # optional, used by /toolkit:cut if music is desired
 musicVolumeDb: -6 # optional default
 ---
 
@@ -147,7 +147,7 @@ SCREENPLAY.md:
 ```markdown
 ## Shooting Checklist
 
-Recommended filename convention: `segNN_<short-description>.MP4` so `/cut`
+Recommended filename convention: `segNN_<short-description>.MP4` so `/toolkit:cut`
 can auto-map source files to segments. E.g., `seg01_intro.MP4` lands on
 seg-001.
 
@@ -169,7 +169,7 @@ python3 -m video_toolkit.render_screenplay_html <name>
 This produces `projects/<name>/SCREENPLAY.html` (dark PP-branded pandoc render,
 shareable/printable). Do NOT hand-author a bespoke HTML — the tool is the
 single source of the house style. Run it on the planning path, the
-footage-first path, AND on every re-run of `/narrate` that edits an existing
+footage-first path, AND on every re-run of `/toolkit:narrate` that edits an existing
 screenplay (Branch A). If `pandoc` is missing, warn the user and continue.
 
 ### Step 8: Update project state
@@ -177,20 +177,20 @@ screenplay (Branch A). If `pandoc` is missing, warn the user and continue.
 - Record the screenplay generation in `projects/<name>/project.json` if it
   exists (add a session entry).
 - Suggest next steps:
-  - If footage not yet filmed: "Film per the shooting checklist, then run `/cut`."
-  - If footage exists: "Run `/cut` to map your recordings to the screenplay."
+  - If footage not yet filmed: "Film per the shooting checklist, then run `/toolkit:cut`."
+  - If footage exists: "Run `/toolkit:cut` to map your recordings to the screenplay."
 
 ## Notes
 
 - The screenplay is human-editable. Users can hand-edit `SCREENPLAY.md`
-  in any editor; subsequent `/cut` runs respect the edits.
+  in any editor; subsequent `/toolkit:cut` runs respect the edits.
 - Brand rules are LOADED, not hardcoded — switching brands or updating
-  `BRAND-RULES.md` changes future `/narrate` proposals automatically.
-- Re-running `/narrate` on an existing screenplay is always interactive;
+  `BRAND-RULES.md` changes future `/toolkit:narrate` proposals automatically.
+- Re-running `/toolkit:narrate` on an existing screenplay is always interactive;
   never destructive without confirmation.
 - The three branches (existing screenplay / footage-first / planning) all
   produce the SAME artifact — a `SCREENPLAY.md` in the project's standard
-  format — so `/cut` doesn't care which branch was taken.
+  format — so `/toolkit:cut` doesn't care which branch was taken.
 - Footage-first transcription does NOT use the `--screenplay` flag (no
   screenplay yet to seed Whisper's `initial_prompt`). Transcription
   accuracy is therefore baseline; if proper-noun errors show up,

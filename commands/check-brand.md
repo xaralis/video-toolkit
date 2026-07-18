@@ -14,10 +14,10 @@ assets, accent-block over-coloring, pacing gaps.
 ## Quick start
 
 ```
-/check-brand                       # current project
-/check-brand <project-name>        # explicit
-/check-brand --strict              # warnings also fail the lint (CI-style)
-/check-brand --json                # machine-readable output for tooling
+/toolkit:check-brand                       # current project
+/toolkit:check-brand <project-name>        # explicit
+/toolkit:check-brand --strict              # warnings also fail the lint (CI-style)
+/toolkit:check-brand --json                # machine-readable output for tooling
 ```
 
 ## Flow
@@ -35,7 +35,7 @@ python3 -m video_toolkit.check_brand --project <name>
 ```
 
 The linter reads `src/Root.tsx`, extracts the inline `defaultProps` literal
-via the same JSON5 path used by `/render`'s SRT exporter, and walks each
+via the same JSON5 path used by `/toolkit:render`'s SRT exporter, and walks each
 segment + overlay against the rules.
 
 ### Step 3: Report
@@ -79,6 +79,6 @@ When new brand rules become machine-checkable (e.g., we add a `faceZone` field o
 
 ## When to run
 
-- After `/cut` — catch any defaultProps issues before opening Studio.
-- Before `/render` — verify a clean rule pass before spending render time.
+- After `/toolkit:cut` — catch any defaultProps issues before opening Studio.
+- Before `/toolkit:render` — verify a clean rule pass before spending render time.
 - In CI (if the project is in a git repo with workflows) — exit-code-driven.

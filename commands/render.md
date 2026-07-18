@@ -10,12 +10,12 @@ runs the Remotion render, and reports the output path + size + duration.
 ## Quick start
 
 ```
-/render                            # current project, full quality (overwrites reel.mp4)
-/render preview                    # half-scale 540x960 (faster, overwrites preview.mp4)
-/render keep                       # full quality, auto-versions (reel.mp4, reel-v2.mp4, ...)
-/render preview keep               # preview + auto-version (preview.mp4, preview-v2.mp4, ...)
-/render <project-name>             # explicitly target a project
-/render <project-name> preview
+/toolkit:render                            # current project, full quality (overwrites reel.mp4)
+/toolkit:render preview                    # half-scale 540x960 (faster, overwrites preview.mp4)
+/toolkit:render keep                       # full quality, auto-versions (reel.mp4, reel-v2.mp4, ...)
+/toolkit:render preview keep               # preview + auto-version (preview.mp4, preview-v2.mp4, ...)
+/toolkit:render <project-name>             # explicitly target a project
+/toolkit:render <project-name> preview
 ```
 
 ## Flow
@@ -24,7 +24,7 @@ runs the Remotion render, and reports the output path + size + duration.
 
 1. If invoked from inside a `projects/<name>/` directory, use that project.
 2. Else scan `projects/` for active projects with `src/Root.tsx`.
-3. If multiple, ask which one. If none, suggest `/video`.
+3. If multiple, ask which one. If none, suggest `/toolkit:video`.
 
 ### Step 2: Verify state
 
@@ -32,7 +32,7 @@ Quick preflight to catch common breakage before spending render time:
 
 1. **defaultProps populated**: read `src/Root.tsx` and confirm the inline
    `defaultProps={{...}}` block has real segments (not the template's demo
-   `sample.mp4` defaults). If still on demo defaults, suggest `/cut` first.
+   `sample.mp4` defaults). If still on demo defaults, suggest `/toolkit:cut` first.
 
 2. **Source files present**: for each `clip` / `broll` / `multi-clip` segment,
    verify the referenced `source` file exists under `public/recordings/` or
@@ -111,7 +111,7 @@ Duration:     46.2s (1386 frames @ 30 fps)
 Mode:         full quality
 Render time:  2m 34s
 
-Next: post to socials or run /render preview to iterate again.
+Next: post to socials or run /toolkit:render preview to iterate again.
 ```
 
 For preview renders, label the output clearly so the user doesn't accidentally
@@ -123,16 +123,16 @@ Output:       projects/<name>/out/preview.mp4  (PREVIEW — half scale)
 
 ### Step 7: Iteration hints
 
-If the user re-runs `/render` quickly (within ~5 minutes of a previous
+If the user re-runs `/toolkit:render` quickly (within ~5 minutes of a previous
 render) it likely means they're iterating. Useful nudges:
 
-- "Studio is faster than render for visual iteration. Want to launch with `/fine-tune`?"
-- "If you're iterating timing, preview mode (`/render preview`) is 4× faster."
-- "If you changed `SCREENPLAY.md`, re-run `/cut` before rendering."
+- "Studio is faster than render for visual iteration. Want to launch with `/toolkit:fine-tune`?"
+- "If you're iterating timing, preview mode (`/toolkit:render preview`) is 4× faster."
+- "If you changed `SCREENPLAY.md`, re-run `/toolkit:cut` before rendering."
 
 ## Notes
 
-- `/render` doesn't modify any source files. Output lands in `out/`.
+- `/toolkit:render` doesn't modify any source files. Output lands in `out/`.
 - The default output filename is `reel.mp4` (full) or `preview.mp4` (preview).
   These are overwritten on each run — no auto-versioning. If the user wants
   to keep iterations, suggest renaming manually (e.g., `out/reel-v3.mp4`)
@@ -145,5 +145,5 @@ render) it likely means they're iterating. Useful nudges:
 
 ## Re-run semantics
 
-Re-running `/render` simply re-renders. Files are overwritten in place. There's
+Re-running `/toolkit:render` simply re-renders. Files are overwritten in place. There's
 no state to invalidate — Remotion picks up whatever's currently in `src/`.

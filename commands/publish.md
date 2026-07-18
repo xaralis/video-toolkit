@@ -23,16 +23,16 @@ Both are normalized to limited-range yuv420p (`out_range=tv`) — some Android
 hardware decoders mishandle the full-range signal Remotion emits. Renditions
 re-encode only when missing or older than the master.
 
-This is distinct from `/sync push`, which mirrors the whole project (raw
+This is distinct from `/toolkit:sync push`, which mirrors the whole project (raw
 footage, renders, transcripts) to the **private** ops bucket for backup.
-`/publish` exposes only the final, web-facing files on the public domain.
+`/toolkit:publish` exposes only the final, web-facing files on the public domain.
 
 ## Quick start
 
 ```
-/publish                         # current project
-/publish <project-name>          # explicit
-/publish <name> --files out/intro.mp4,out/intro.vtt   # custom file set
+/toolkit:publish                         # current project
+/toolkit:publish <project-name>          # explicit
+/toolkit:publish <name> --files out/intro.mp4,out/intro.vtt   # custom file set
 ```
 
 ## Prereqs (one-time, already set up)
@@ -42,16 +42,16 @@ footage, renders, transcripts) to the **private** ops bucket for backup.
   origin (needed for the `<track>` captions).
 - `.env` has `R2_PUBLIC_BUCKET` + `R2_PUBLIC_BASE_URL`.
 - The R2 API token (`R2_ACCESS_KEY_ID`) has **Object Read & Write** on
-  `my-brand-web-media` (and still on the ops bucket for `/sync`).
+  `my-brand-web-media` (and still on the ops bucket for `/toolkit:sync`).
 
 ## Flow
 
 ### Step 1: Detect project
-Same convention as `/render` / `/sync`. If invoked inside `projects/<name>/`,
+Same convention as `/toolkit:render` / `/toolkit:sync`. If invoked inside `projects/<name>/`,
 use it; else scan `projects/`.
 
 ### Step 2: Verify state
-1. `out/intro.mp4` exists (run `/render` first if not).
+1. `out/intro.mp4` exists (run `/toolkit:render` first if not).
 2. `out/intro.vtt` exists (run `python3 -m video_toolkit.export_vtt <name>` + proofread
    proper nouns if not — see web-program-intro CLAUDE.md step 9-10).
 3. `.env` has `R2_PUBLIC_BUCKET` + `R2_PUBLIC_BASE_URL` (else stop, point at the
@@ -86,18 +86,18 @@ Print the three public URLs + the embed snippet for the website team:
        crossorigin="anonymous" controls playsinline>
   <track src="https://media.example.com/<name>/intro.vtt"
          kind="subtitles" srclang="cs" label="Čeština" default>
-</video>
+</toolkit:video>
 ```
 
 ## Notes
 
 - **Public vs private buckets are deliberately separate.** Raw footage / WIP
-  renders live in the private ops bucket (`/sync`); only polished, web-facing
-  files go public via `/publish`. Never bind the ops bucket to a public domain.
+  renders live in the private ops bucket (`/toolkit:sync`); only polished, web-facing
+  files go public via `/toolkit:publish`. Never bind the ops bucket to a public domain.
 - **Re-publishing** overwrites the same keys (`<name>/intro.mp4`, …). The
   `Cache-Control` max-age is 1h; if the website caches longer, purge the
   Cloudflare cache after a re-publish.
 - **Poster** defaults to the first frame. To use a different frame, drop your
   own `out/intro-poster.jpg` before running (the tool only generates it if
   missing).
-- Workflow position: `/render` → `export_vtt` (+ proofread) → **`/publish`**.
+- Workflow position: `/toolkit:render` → `export_vtt` (+ proofread) → **`/toolkit:publish`**.

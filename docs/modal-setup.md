@@ -2,7 +2,7 @@
 
 Modal is the recommended cloud GPU provider for the toolkit's AI tools. It offers $30/month free compute on the Starter plan, fast cold starts, and scale-to-zero billing.
 
-> **Fastest path:** Run `/setup` in Claude Code — it handles Modal installation, deployment, and `.env` configuration interactively. This doc is the reference for what `/setup` does under the hood, and for manual setup.
+> **Fastest path:** Run `/toolkit:setup` in Claude Code — it handles Modal installation, deployment, and `.env` configuration interactively. This doc is the reference for what `/toolkit:setup` does under the hood, and for manual setup.
 
 ## Create a Modal Account
 
@@ -56,7 +56,7 @@ MODAL_MUSIC_GEN_ENDPOINT_URL=https://yourname--video-toolkit-music-gen-...modal.
 MODAL_DEWATERMARK_ENDPOINT_URL=https://yourname--video-toolkit-dewatermark-...modal.run
 ```
 
-> **Tip:** `/setup` automates this — it runs each deploy, parses the URL, and writes it to `.env` for you.
+> **Tip:** `/toolkit:setup` automates this — it runs each deploy, parses the URL, and writes it to `.env` for you.
 
 ## Cloudflare R2 (Recommended)
 
@@ -64,7 +64,7 @@ R2 is free file storage that bridges your local machine and cloud GPUs. Without 
 
 **R2 free tier:** 10GB storage, 10 million operations/month, zero egress fees.
 
-See the R2 section in `/setup`, or configure manually:
+See the R2 section in `/toolkit:setup`, or configure manually:
 
 1. Sign up at [dash.cloudflare.com](https://dash.cloudflare.com/)
 2. Go to R2 Object Storage → Create bucket (name it `video-toolkit`)

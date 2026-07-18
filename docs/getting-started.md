@@ -54,7 +54,7 @@ No API keys needed. Edit `src/config/sprint-config.ts` to customize content.
    ```bash
    claude
    ```
-   Then type `/setup` — this walks you through configuring cloud GPU, file transfer, and voice in about 5 minutes. Most features are free:
+   Then type `/toolkit:setup` — this walks you through configuring cloud GPU, file transfer, and voice in about 5 minutes. Most features are free:
    - **Cloudflare R2**: Free (10GB storage, zero egress)
    - **Modal**: $30/month free compute on Starter plan
    - **Qwen3-TTS**: Free AI voiceovers (runs on your Modal compute)
@@ -94,16 +94,16 @@ python3 scripts/migrate_to_codex.py --reset
 
 ## Your First Video
 
-The easiest way to create a video is using the `/video` command:
+The easiest way to create a video is using the `/toolkit:video` command:
 
 ```
-/video
+/toolkit:video
 ```
 
 This unified command will:
 1. Scan for existing projects (or start fresh if none found)
-2. Let you choose a template (see `/template` for the current list)
-3. Let you choose a brand (or create one with `/brand`)
+2. Let you choose a template (see `/toolkit:template` for the current list)
+3. Let you choose a brand (or create one with `/toolkit:brand`)
 4. Gather your content (paste notes, provide URLs, or describe what you want)
 5. Plan scenes interactively with your input
 6. Create a project in `projects/` with all scaffolding ready
@@ -120,7 +120,7 @@ If you prefer manual setup:
    ```
 
 2. **Author the content**
-   Run `/narrate` to write `SCREENPLAY.md`, then `/cut` to map your footage into `src/Root.tsx` defaultProps.
+   Run `/toolkit:narrate` to write `SCREENPLAY.md`, then `/toolkit:cut` to map your footage into `src/Root.tsx` defaultProps.
 
 3. **Add footage**
    Place clips in `public/recordings/` and `public/broll/`
@@ -139,16 +139,16 @@ If you prefer manual setup:
 
 | Command | Description |
 |---------|-------------|
-| `/setup` | First-time setup - cloud GPU, file transfer, voice, prerequisites |
-| `/video` | Video projects - list, resume, or create new |
-| `/scene-review` | Scene-by-scene review in Remotion Studio |
-| `/design` | Focused design refinement session for a scene |
-| `/brand` | Brand profiles - list, edit, or create new |
-| `/template` | List available templates or create new ones |
-| `/generate-voiceover` | Generate AI voiceover from script (supports per-scene mode) |
-| `/skills` | List installed skills or create new ones |
-| `/contribute` | Share improvements - issues, PRs, examples |
-| `/versions` | Check dependency versions and toolkit updates |
+| `/toolkit:setup` | First-time setup - cloud GPU, file transfer, voice, prerequisites |
+| `/toolkit:video` | Video projects - list, resume, or create new |
+| `/toolkit:scene-review` | Scene-by-scene review in Remotion Studio |
+| `/toolkit:design` | Focused design refinement session for a scene |
+| `/toolkit:brand` | Brand profiles - list, edit, or create new |
+| `/toolkit:template` | List available templates or create new ones |
+| `/toolkit:generate-voiceover` | Generate AI voiceover from script (supports per-scene mode) |
+| `/toolkit:skills` | List installed skills or create new ones |
+| `/toolkit:contribute` | Share improvements - issues, PRs, examples |
+| `/toolkit:versions` | Check dependency versions and toolkit updates |
 
 ## Project Structure
 
@@ -171,10 +171,10 @@ projects/my-video/
 
 ## Multi-Session Workflow
 
-Projects can span multiple Claude Code sessions. The `/video` command tracks progress:
+Projects can span multiple Claude Code sessions. The `/toolkit:video` command tracks progress:
 
 ```
-/video
+/toolkit:video
 ```
 
 When you have existing projects, you'll see:
@@ -199,7 +199,7 @@ Which project? (or 'new' for a new project)
 |-------|-------------|
 | `planning` | Defining scenes, writing script |
 | `assets` | Recording demos, gathering materials |
-| `review` | Scene-by-scene review in Remotion Studio (`/scene-review`) |
+| `review` | Scene-by-scene review in Remotion Studio (`/toolkit:scene-review`) |
 | `audio` | Generating voiceover, music |
 | `editing` | Adjusting timing, previewing |
 | `rendering` | Final render in progress |

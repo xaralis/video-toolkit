@@ -9,15 +9,15 @@ Interactive scene-by-scene review using Remotion Studio. Critical quality gate b
 ## Quick Start
 
 ```
-/scene-review           # Review all scenes from beginning
-/scene-review title     # Jump to specific scene by type
-/scene-review 3         # Jump to scene 3
+/toolkit:scene-review           # Review all scenes from beginning
+/toolkit:scene-review title     # Jump to specific scene by type
+/toolkit:scene-review 3         # Jump to scene 3
 ```
 
 ## Example Session
 
 ```
-$ /scene-review
+$ /toolkit:scene-review
 
 Remotion Studio running at http://localhost:3000
 
@@ -254,7 +254,7 @@ Reviewed: {N}/{total} scenes
 Issues flagged: {count}
 
 {if all reviewed and no blocking issues}
-Ready for voiceover. Run `/generate-voiceover`
+Ready for voiceover. Run `/toolkit:generate-voiceover`
 
 {if issues exist}
 Outstanding issues:
@@ -288,7 +288,7 @@ Options:
 
 ## Re-running Review
 
-If `/scene-review` is run on an already-reviewed project:
+If `/toolkit:scene-review` is run on an already-reviewed project:
 
 ```
 Previous review found.

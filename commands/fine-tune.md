@@ -11,8 +11,8 @@ Save button.
 ## Quick start
 
 ```
-/fine-tune                 # current project
-/fine-tune <project-name>  # explicit
+/toolkit:fine-tune                 # current project
+/toolkit:fine-tune <project-name>  # explicit
 ```
 
 ## Flow
@@ -22,7 +22,7 @@ Save button.
 1. Detect project.
 2. Read `src/Root.tsx`; verify `defaultProps={{...}}` is populated with
    real segments (not just the template's demo defaults). If still default,
-   suggest running `/cut` first.
+   suggest running `/toolkit:cut` first.
 3. Verify the project's prereqs:
    - `.prettierrc.json` exists in project root (required for Studio Save).
    - `node_modules` is installed (`ls node_modules/.bin/remotion`).
@@ -102,7 +102,7 @@ pkill -f "remotion studio" 2>/dev/null
 - Studio's Save only writes to **inline literal defaultProps**, not to
   imported references. The template's Root.tsx satisfies this. If user
   hand-edits to use an import, Save will fail with a clear error message.
-- If user re-edits SCREENPLAY.md between `/cut` and `/fine-tune`, those
-  changes do NOT auto-flow into the config — re-run `/cut` to refresh.
+- If user re-edits SCREENPLAY.md between `/toolkit:cut` and `/toolkit:fine-tune`, those
+  changes do NOT auto-flow into the config — re-run `/toolkit:cut` to refresh.
 - For deep timeline changes (reorder segments, add/remove multiple), it's
-  often easier to re-run `/cut` than to drag in Studio.
+  often easier to re-run `/toolkit:cut` than to drag in Studio.

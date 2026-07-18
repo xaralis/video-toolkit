@@ -15,9 +15,9 @@ On invocation, scan for projects and adapt:
 If `.env` does not exist or no cloud GPU provider is configured (no `MODAL_*_ENDPOINT_URL` or `RUNPOD_*_ENDPOINT_ID` values set):
 
 ```
-Tip: Run /setup to configure AI voiceovers, image generation, and music.
+Tip: Run /toolkit:setup to configure AI voiceovers, image generation, and music.
 It takes ~5 minutes and most features are free. You can skip this and
-create videos with just Node.js — run /setup anytime later.
+create videos with just Node.js — run /toolkit:setup anytime later.
 ```
 
 This is a one-line hint, not a blocker. Proceed to Step 1 immediately.
@@ -128,7 +128,7 @@ Resuming: my-release-video (campaign-reels)
    Provide external video for this scene
 
 2. **Generate voiceover** (after demos complete)
-   Run `/generate-voiceover`
+   Run `/toolkit:generate-voiceover`
 
 Ready to record the login flow?
 ```
@@ -166,7 +166,7 @@ Which template would you like to use?
 
 List available brands from `brands/` directory:
 ```
-1. Read each brands/*/brand.json
+1. Read each brands/*/toolkit:brand.json
 2. Extract name and primary color
 3. Present list with "Create new brand" option
 ```
@@ -176,7 +176,7 @@ Which brand?
 
   1. default - #3B82F6 (blue)
   2. my-brand - #c6f432 (lime)
-  3. Create new brand → /brand
+  3. Create new brand → /toolkit:brand
 ```
 
 **Project Name:**
@@ -279,7 +279,7 @@ Help refine:
    ```
 
 3. **Generate brand.ts:**
-   Read `brands/{brand}/brand.json` → generate `src/config/brand.ts`
+   Read `brands/{brand}/toolkit:brand.json` → generate `src/config/brand.ts`
 
 4. **Write VOICEOVER-SCRIPT.md:**
    Full script with narration and asset markers
@@ -399,7 +399,7 @@ Update `phase` automatically based on state:
 
 ## Review Phase
 
-**CRITICAL:** When all assets are present and phase is `review`, delegate to `/scene-review`.
+**CRITICAL:** When all assets are present and phase is `review`, delegate to `/toolkit:scene-review`.
 
 ### When Review is Triggered
 
@@ -408,10 +408,10 @@ When resuming a project where `phase: "review"` or transitioning from `assets` �
 ```
 All demo assets are recorded! Time to review before generating voiceover.
 
-Run `/scene-review` to walk through each scene in Remotion Studio.
+Run `/toolkit:scene-review` to walk through each scene in Remotion Studio.
 ```
 
-**Do NOT** attempt to do review inline in `/video`. The `/scene-review` command:
+**Do NOT** attempt to do review inline in `/toolkit:video`. The `/toolkit:scene-review` command:
 - Starts Remotion Studio for visual verification
 - Walks through scenes one by one
 - Lets user see exactly what will render
@@ -419,20 +419,20 @@ Run `/scene-review` to walk through each scene in Remotion Studio.
 
 ### After Review Complete
 
-When `/scene-review` marks review as complete:
+When `/toolkit:scene-review` marks review as complete:
 1. Phase transitions to `audio`
-2. `/video` will show: "Review complete. Run `/generate-voiceover`"
+2. `/toolkit:video` will show: "Review complete. Run `/toolkit:generate-voiceover`"
 
 ---
 
 ## Integration with Other Commands
 
-### /scene-review
+### /toolkit:scene-review
 
 When phase is `review`:
-- `/video` prompts user to run `/scene-review`
-- `/scene-review` handles the actual review flow
-- After completion, `/scene-review` updates phase to `audio`
+- `/toolkit:video` prompts user to run `/toolkit:scene-review`
+- `/toolkit:scene-review` handles the actual review flow
+- After completion, `/toolkit:scene-review` updates phase to `audio`
 
 ### Providing demos
 
@@ -443,7 +443,7 @@ After a demo video is provided externally:
 4. Add session entry
 5. Regenerate CLAUDE.md
 
-### /generate-voiceover
+### /toolkit:generate-voiceover
 
 After generation:
 1. Move file to project's `public/audio/`
@@ -477,4 +477,4 @@ This command evolves through use. If something's awkward or missing:
 - Issues: `github.com/digitalsamba/claude-code-video-toolkit/issues`
 - PRs welcome for new features, bug fixes, documentation
 
-History: `/new-sprint-video` → `/new-video` → `/video` (unified with resume support)
+History: `/new-sprint-video` → `/new-video` → `/toolkit:video` (unified with resume support)

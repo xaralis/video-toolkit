@@ -45,7 +45,7 @@ Available templates:
 
 Actions:
   → View template details: enter number
-  → Create video with template: /video
+  → Create video with template: /toolkit:video
   → Create new template: 'new'
 ```
 
@@ -79,12 +79,12 @@ title, quote-pull, stat-callout, source-tag
 
 Schema-driven via `src/config/schema.ts` (Zod discriminated unions) — Studio
 renders a full editor for every segment, overlay, and transition. Real reels
-are authored through `/narrate` → `/cut`, not by hand-editing config.
+are authored through `/toolkit:narrate` → `/toolkit:cut`, not by hand-editing config.
 
 ## Usage
 
 Create a project with this template:
-  /video → select "campaign-reels"
+  /toolkit:video → select "campaign-reels"
 
 Preview locally:
   cd projects/{name} && npm run studio
@@ -198,11 +198,11 @@ Next steps:
   1. Edit config to define your content structure
   2. Create/modify components for your scene types
   3. Test with: cd templates/{name} && npm run studio
-  4. Use with: /video → select your new template
+  4. Use with: /toolkit:video → select your new template
 
 See docs/creating-templates.md for detailed guidance.
 
-⚠️  Restart Claude Code to see the new template in /video.
+⚠️  Restart Claude Code to see the new template in /toolkit:video.
 ```
 
 ---
