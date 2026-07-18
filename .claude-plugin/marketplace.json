@@ -1,0 +1,13 @@
+{
+  "name": "core-toolkit",
+  "owner": {
+    "name": "xaralis"
+  },
+  "plugins": [
+    {
+      "name": "core",
+      "source": "./",
+      "description": "Shared video-toolkit commands and skills"
+    }
+  ]
+}

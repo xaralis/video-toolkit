@@ -1,0 +1,7 @@
+{
+  "name": "core",
+  "version": "0.1.0",
+  "description": "Shared video-toolkit commands and skills for AI-native video production",
+  "commands": ["./.claude/commands"],
+  "skills": "./.claude/skills"
+}
