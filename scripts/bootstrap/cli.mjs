@@ -92,10 +92,69 @@ async function runInit(argv) {
     mkdirSync(targetDir, { recursive: true });
     git(['init', '-q'], targetDir);
 
-    // --- later tasks append scaffold + install + next-steps here ---
+    addToolkitSubmodule(targetDir, toolkitUrl, opts.ref);
+    scaffoldWorkspace(targetDir, brand);
+    scaffoldBrand(targetDir, brand);
+    scaffoldProjects(targetDir);
+
+    // --- later tasks append config-files + commit + install + next-steps here ---
   } finally {
     rl?.close();
   }
+}
+
+function addToolkitSubmodule(targetDir, url, ref) {
+  info(`• Adding toolkit submodule (${url}) …`);
+  const pre = isLocalPath(url) ? ['-c', 'protocol.file.allow=always'] : [];
+  git([...pre, 'submodule', 'add', '--depth', '1', url, 'toolkit'], targetDir);
+  if (ref && ref !== 'main') {
+    git([...pre, '-C', 'toolkit', 'fetch', '--depth', '1', 'origin', ref], targetDir);
+    git(['-C', 'toolkit', 'checkout', ref], targetDir);
+  }
+}
+
+function scaffoldWorkspace(targetDir, brand) {
+  writeJson(join(targetDir, 'workspace.json'), {
+    name: `${brand}-videos`,
+    kind: 'brand',
+    comment: 'Marks this brand workspace. video_toolkit.paths.workspace_root() walks up to find it.',
+  });
+}
+
+function scaffoldBrand(targetDir, brand) {
+  const src = join(targetDir, 'toolkit', 'brands', 'default');
+  const dst = join(targetDir, 'brands', brand);
+  cpSync(src, dst, { recursive: true });
+  const bjPath = join(dst, 'brand.json');
+  const bj = JSON.parse(readFileSync(bjPath, 'utf8'));
+  bj.name = brand;
+  bj.description = `Brand profile for ${brand}`;
+  writeJson(bjPath, bj);
+  writeFileSync(join(dst, 'BRAND-RULES.md'), brandRulesStub(brand));
+}
+
+function brandRulesStub(brand) {
+  return `# ${brand} — Brand Rules
+
+Authoritative, machine- and human-enforced rules for this brand's videos. Every
+rule here should be learned from a real defect; \`/toolkit:cut\` and
+\`/toolkit:narrate\` load this file to enforce discipline.
+
+Start by running \`/toolkit:brand\` to fill in colors, fonts, and voice, then add
+rules as you go. Baseline conventions inherited from the toolkit:
+
+- Accent color is for **emphasis only**, never large fills.
+- Segments run **≥ 3s** on screen.
+- Audio inherits across L-cuts unless explicitly overridden.
+
+See \`toolkit/docs/video-timing.md\` and \`toolkit/docs/remotion-patterns.md\`.
+`;
+}
+
+function scaffoldProjects(targetDir) {
+  const dir = join(targetDir, 'projects');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, '.gitkeep'), '');
 }
 
 function printUsage() {

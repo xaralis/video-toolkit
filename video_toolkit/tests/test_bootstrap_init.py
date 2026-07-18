@@ -73,3 +73,28 @@ def test_init_creates_git_repo(tmp_path):
               "--toolkit-url", str(REPO_ROOT)])
     assert r.returncode == 0, r.stdout + r.stderr
     assert (target / ".git").exists()
+
+
+def test_scaffold_files(tmp_path):
+    target = tmp_path / "brand-b"
+    r = _run(["init", str(target), "--brand", "acme", "--yes", "--skip-install",
+              "--toolkit-url", str(REPO_ROOT)])
+    assert r.returncode == 0, r.stdout + r.stderr
+
+    # submodule present
+    assert (target / "toolkit" / "brands" / "default" / "brand.json").exists()
+    assert (target / ".gitmodules").exists()
+
+    # workspace marker with kind=brand
+    ws = json.loads((target / "workspace.json").read_text())
+    assert ws["kind"] == "brand"
+    assert ws["name"] == "acme-videos"
+
+    # brand copied from default, name overridden
+    bj = json.loads((target / "brands" / "acme" / "brand.json").read_text())
+    assert bj["name"] == "acme"
+    assert (target / "brands" / "acme" / "voice.json").exists()
+    assert (target / "brands" / "acme" / "BRAND-RULES.md").exists()
+
+    # projects dir kept
+    assert (target / "projects" / ".gitkeep").exists()
