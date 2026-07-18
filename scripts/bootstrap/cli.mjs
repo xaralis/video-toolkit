@@ -109,7 +109,7 @@ function addToolkitSubmodule(targetDir, url, ref) {
   git([...pre, 'submodule', 'add', '--depth', '1', url, 'toolkit'], targetDir);
   if (ref && ref !== 'main') {
     git([...pre, '-C', 'toolkit', 'fetch', '--depth', '1', 'origin', ref], targetDir);
-    git(['-C', 'toolkit', 'checkout', ref], targetDir);
+    git([...pre, '-C', 'toolkit', 'checkout', 'FETCH_HEAD'], targetDir);
   }
 }
 

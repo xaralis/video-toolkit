@@ -98,3 +98,39 @@ def test_scaffold_files(tmp_path):
 
     # projects dir kept
     assert (target / "projects" / ".gitkeep").exists()
+
+
+def test_ref_pins_submodule_to_requested_commit(tmp_path):
+    # Local clone of this repo used as the toolkit source, tagged so we have
+    # a non-default ref to pin against (brands/default, .env.example,
+    # CLAUDE.md all exist at HEAD, satisfying the later scaffold steps).
+    fixture_toolkit = tmp_path / "fixture-toolkit"
+    clone = subprocess.run(["git", "clone", str(REPO_ROOT), str(fixture_toolkit)],
+                            capture_output=True, text=True, timeout=120)
+    assert clone.returncode == 0, clone.stdout + clone.stderr
+
+    # -m avoids relying on an interactive editor; the user's global
+    # tag.gpgsign=true would otherwise force an annotated tag with no message.
+    tag = subprocess.run(["git", "-C", str(fixture_toolkit), "tag", "-m", "test pin",
+                           "vtk-test-pin"],
+                          capture_output=True, text=True, timeout=30)
+    assert tag.returncode == 0, tag.stdout + tag.stderr
+
+    # ^{commit} peels an annotated tag (forced by the user's global
+    # tag.gpgsign=true) down to the commit it points at.
+    rev_parse = subprocess.run(
+        ["git", "-C", str(fixture_toolkit), "rev-parse", "vtk-test-pin^{commit}"],
+        capture_output=True, text=True, timeout=30)
+    assert rev_parse.returncode == 0, rev_parse.stdout + rev_parse.stderr
+    pinned_sha = rev_parse.stdout.strip()
+
+    target = tmp_path / "brand-ref"
+    r = _run(["init", str(target), "--brand", "acme", "--yes", "--skip-install",
+              "--toolkit-url", str(fixture_toolkit), "--ref", "vtk-test-pin"])
+    assert r.returncode == 0, r.stdout + r.stderr
+
+    submodule_head = subprocess.run(
+        ["git", "-C", str(target / "toolkit"), "rev-parse", "HEAD"],
+        capture_output=True, text=True, timeout=30)
+    assert submodule_head.returncode == 0, submodule_head.stdout + submodule_head.stderr
+    assert submodule_head.stdout.strip() == pinned_sha
