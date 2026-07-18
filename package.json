@@ -1,0 +1,19 @@
+{
+  "name": "video-toolkit",
+  "version": "0.1.0",
+  "description": "AI-native video production toolkit. Bootstrap a brand repo: npx github:xaralis/video-toolkit init <dir>",
+  "bin": {
+    "video-toolkit": "scripts/bootstrap/cli.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "scripts/bootstrap"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xaralis/video-toolkit.git"
+  }
+}
