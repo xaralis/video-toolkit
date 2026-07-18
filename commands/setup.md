@@ -55,8 +55,9 @@ EOF
 
 ### Step 1: Detect Current State
 
-Resolve both roots up front and use them for every path below. In the core repo they are the same
-directory, so single-repo setup is unchanged:
+Resolve both roots up front and use them for every path below. When `$TOOLKIT` and `$WS` are the
+same directory (a single-repo layout), these resolve identically — the path handling below stays
+correct either way:
 
 ```bash
 PY="$([ -x .venv/bin/python ] && echo .venv/bin/python || echo python3)"
@@ -353,17 +354,19 @@ on the account and only creates a new one otherwise. Run per selected tool (from
 workspace Python):
 
 ```bash
-"$WS/.venv/bin/python" -m video_toolkit.qwen3_tts --setup
-#   video_toolkit.flux2 --setup
-#   video_toolkit.image_edit --setup
-#   video_toolkit.upscale --setup
-#   video_toolkit.music_gen --setup
-#   video_toolkit.dewatermark --setup
+"$WS/.venv/bin/python" -m video_toolkit.qwen3_tts --setup --cloud runpod
+#   video_toolkit.flux2 --setup --cloud runpod
+#   video_toolkit.upscale --setup --cloud runpod
+#   video_toolkit.music_gen --setup --cloud runpod
+#   video_toolkit.dewatermark --setup --cloud runpod
 ```
 
 Each `--setup` writes the endpoint ID to the workspace `.env` (`$WS/.env`), creating it only if
 missing — so re-running in a second brand repo just re-registers/records the endpoint, it never
 rebuilds an image.
+
+Image editing (qwen-edit) has a GHCR image but no `--setup` automation — set its RunPod endpoint
+up manually (see `toolkit/docker/runpod-qwen-edit/`) if needed.
 
 ### Smoke Test
 
