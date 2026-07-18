@@ -19,8 +19,13 @@ moviepy>=2.0
 matplotlib>=3.7
 
 # Beat detection (video_toolkit/detect_beats.py) — tempo/beat/downbeat
-# extraction from an audio track via onset-strength + dynamic programming
-librosa>=0.10
+# extraction from an audio track via onset-strength + dynamic programming.
+# Floor is 0.11, not 0.10: 0.11 is the first release that supports NumPy 2 and
+# Python 3.13+, and the first to declare the `standard-sunau` shim (stdlib sunau,
+# which librosa's audioread backend imports, was removed in 3.13). On a >=3.13
+# interpreter an 0.10.x resolution would install without that shim and crash at
+# `import librosa`. The floor must track requires-python (>=3.13).
+librosa>=0.11
 
 # Brand linting (check_brand.py) and SRT export (export_srt.py) parse
 # Root.tsx-adjacent config that contains trailing commas, which json can't read
