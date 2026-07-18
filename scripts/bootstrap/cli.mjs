@@ -263,12 +263,11 @@ __pycache__/
 node_modules/
 npm-debug.log*
 
-# Build outputs / heavy media (kept in R2 via /toolkit:sync)
+# Heavy media & renders — kept in R2 via /toolkit:sync, never in git
 out/
-*.mp4
-*.webm
-*.gif
-*.mov
+public/recordings/
+public/broll/
+public/audio/
 
 # OS
 .DS_Store
