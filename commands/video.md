@@ -10,21 +10,11 @@ Unified command for video projects. Scans for existing projects and offers to re
 
 On invocation, scan for projects and adapt:
 
-### Step 0: Check Setup (first-time only)
-
-If `.env` does not exist or no cloud GPU provider is configured (no `MODAL_*_ENDPOINT_URL` or `RUNPOD_*_ENDPOINT_ID` values set):
-
-```
-Tip: Run /toolkit:setup to configure AI voiceovers, image generation, and music.
-It takes ~5 minutes and most features are free. You can skip this and
-create videos with just Node.js — run /toolkit:setup anytime later.
-```
-
-This is a one-line hint, not a blocker. Proceed to Step 1 immediately.
-
-### Step 0b: Brand-repo check (projects live in a brand repo)
+### Step 0: Brand-repo check (projects live in a brand repo)
 
 Before scanning, confirm this is a brand repo — projects belong in a brand repo, not the toolkit core:
+
+Note: this snippet assumes it runs from the brand-repo root — the `.venv/bin/python` check is CWD-relative, so running it from a project subdirectory may silently fall back to system `python3`.
 
 ```bash
 PY="$([ -x .venv/bin/python ] && echo .venv/bin/python || echo python3)"
@@ -49,7 +39,19 @@ Tell the user projects live in a brand repo:
 >
 > then run /toolkit:setup (cloud tools) and /toolkit:video here. Or `cd` into an existing brand repo.
 
-Otherwise proceed to Step 1.
+Otherwise proceed to Step 0b.
+
+### Step 0b: Check Setup (first-time only)
+
+If `.env` does not exist or no cloud GPU provider is configured (no `MODAL_*_ENDPOINT_URL` or `RUNPOD_*_ENDPOINT_ID` values set):
+
+```
+Tip: Run /toolkit:setup to configure AI voiceovers, image generation, and music.
+It takes ~5 minutes and most features are free. You can skip this and
+create videos with just Node.js — run /toolkit:setup anytime later.
+```
+
+This is a one-line hint, not a blocker. Proceed to Step 1 immediately.
 
 ---
 

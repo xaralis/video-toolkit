@@ -25,6 +25,8 @@ Everything this wizard writes — `.env`, cloud endpoints — belongs to a **bra
 toolkit core. Use the brand repo's Python (`.venv/bin/python`, created by `npx … init`; fall back to
 `python3` in the core or an activated venv). Resolve the workspace first:
 
+Note: this snippet assumes it runs from the brand-repo root — the `.venv/bin/python` check is CWD-relative, so running it from a project subdirectory may silently fall back to system `python3`.
+
 ```bash
 PY="$([ -x .venv/bin/python ] && echo .venv/bin/python || echo python3)"
 "$PY" - <<'EOF'
@@ -72,7 +74,7 @@ WS="$("$PY" -c 'from video_toolkit.paths import workspace_root; print(workspace_
 1. Check .env exists — if not, create from .env.example
 2. Read current .env values (which keys are set vs placeholder)
 3. Check prerequisites: node --version, python3 --version, ffmpeg -version
-4. Check pip packages: python3 -c "import dotenv; import requests"
+4. Check pip packages: "$WS/.venv/bin/python" -c "import dotenv; import requests"
 5. Check Modal CLI: modal --version (if installed)
 6. Check for existing Modal apps: modal app list (if authenticated)
 7. Summarize what's ready vs what needs setup
@@ -370,11 +372,13 @@ up manually (see `toolkit/docker/runpod-qwen-edit/`) if needed.
 
 ### Smoke Test
 
+Use the workspace Python (`$WS/.venv/bin/python`, resolved in Step 1; re-resolve `WS` with the Step 1 snippet if starting a fresh shell).
+
 After deployment, run a quick test for at least one tool to verify the pipeline works:
 
 **If Qwen3-TTS was deployed (most common):**
 ```bash
-python3 -m video_toolkit.qwen3_tts --text "Setup complete! Your video toolkit is ready." \
+"$WS/.venv/bin/python" -m video_toolkit.qwen3_tts --text "Setup complete! Your video toolkit is ready." \
   --speaker Ryan --tone warm --output /tmp/setup-test.mp3 \
   --cloud modal
 ```
@@ -383,7 +387,7 @@ Check that it produces an audio file. If it does, the full pipeline (upload → 
 
 **If FLUX.2 was deployed:**
 ```bash
-python3 -m video_toolkit.flux2 --prompt "A minimal geometric logo on dark background" \
+"$WS/.venv/bin/python" -m video_toolkit.flux2 --prompt "A minimal geometric logo on dark background" \
   --output /tmp/setup-test.png --cloud modal
 ```
 
@@ -412,7 +416,7 @@ Qwen3-TTS is ready! Available speakers:
 Default speaker: Ryan (warm male voice)
 
 You can change the speaker per-video or set a default in your brand's voice.json.
-To preview voices: python3 -m video_toolkit.qwen3_tts --list-voices
+To preview voices: "$WS/.venv/bin/python" -m video_toolkit.qwen3_tts --list-voices
 ```
 
 ### ElevenLabs Setup (Optional)
@@ -436,6 +440,8 @@ ELEVENLABS_VOICE_ID=xxx
 ---
 
 ## Phase 6: Verify & Summary
+
+Use the workspace Python (`$WS/.venv/bin/python`, resolved in Step 1; re-resolve `WS` with the Step 1 snippet if starting a fresh shell).
 
 ### Run Final Checks
 
@@ -536,17 +542,17 @@ lines = Path('.env').read_text().splitlines()
 
 ## Verification Script
 
-Use `python3 -m video_toolkit.verify_setup` throughout and at the end of setup:
+Use `"$WS/.venv/bin/python" -m video_toolkit.verify_setup` throughout and at the end of setup:
 
 ```bash
 # Quick check (no cloud calls) — use at start to detect current state
-python3 -m video_toolkit.verify_setup
+"$WS/.venv/bin/python" -m video_toolkit.verify_setup
 
 # With smoke tests (makes cloud GPU calls, ~$0.01) — use at end to verify
-python3 -m video_toolkit.verify_setup --test
+"$WS/.venv/bin/python" -m video_toolkit.verify_setup --test
 
 # Machine-readable — use to programmatically check what's configured
-python3 -m video_toolkit.verify_setup --json
+"$WS/.venv/bin/python" -m video_toolkit.verify_setup --json
 ```
 
 Run `verify_setup.py --json` at the start of `/toolkit:setup` to detect current state and skip already-configured phases. Run it with `--test` at the end for the Phase 6 verification.
