@@ -13,7 +13,7 @@ export type {
   ThemeSpacing,
   ThemeBorderRadius,
   ThemeTypography,
-} from '../../../../lib/theme';
+} from '@video-toolkit/lib/theme';
 
 // Sprint configuration types
 export interface SprintInfo {

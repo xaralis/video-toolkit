@@ -4,7 +4,7 @@ import { sprintConfig, seconds } from './config/sprint-config';
 
 // Core components
 import { AnimatedBackground, SlideTransition, NarratorPiP } from './components/core';
-import { MazeDecoration } from '../../../lib/components';
+import { MazeDecoration } from '@video-toolkit/lib/components';
 
 // Slides
 import { TitleSlide, OverviewSlide, SummarySlide, EndCredits } from './components/slides';
