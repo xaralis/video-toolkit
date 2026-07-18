@@ -23,6 +23,12 @@ my-brand-videos/
 └── CLAUDE.md        # thin, brand-specific instructions layered on top of toolkit/CLAUDE.md
 ```
 
+A new brand repo is bootstrapped with `npx github:xaralis/video-toolkit init <dir>` (Node CLI in
+`scripts/bootstrap/`): it adds the `toolkit/` submodule, scaffolds `workspace.json`
+(`kind: "brand"`), a starter brand, `projects/`, and `.claude/settings.json` (which enables the
+`toolkit@video-toolkit` plugin), then installs the Python toolkit into `.venv`. No manual cloning
+or submodule linking.
+
 **Key capabilities:**
 - Programmatic video creation with Remotion (React-based)
 - AI voiceover generation with ElevenLabs or Qwen3-TTS

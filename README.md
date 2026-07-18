@@ -12,6 +12,23 @@ An AI-native video production workspace for [Claude Code](https://claude.ai/code
 
 **This repo is the shared core toolkit** — templates, shared `lib/` components, Python tools, Claude Code skills/commands, and docs. It ships no brand identity and no video projects of its own (`brands/default` is a neutral scaffold, not a real brand). Real brand profiles and video projects live in separate per-brand repos, each vendoring this repo as a `toolkit/` git submodule — see [Project Structure](#project-structure) below.
 
+## Create a new brand repo
+
+You do **not** clone this core or wire up submodules by hand. From an empty directory name, run:
+
+```bash
+npx github:xaralis/video-toolkit init my-brand-videos
+```
+
+This scaffolds a ready-to-use brand repo: the toolkit vendored as a `toolkit/` submodule, a
+`workspace.json` marker, a starter brand copied from the neutral default, the `projects/` folder,
+and `.claude/settings.json` that pre-enables the `toolkit@video-toolkit` plugin. It then installs
+the Python toolkit into `.venv`. Node 18+ and git are required (both are already needed to render).
+
+When it finishes, `cd` into the new directory and **launch Claude Code** (`claude`) — the
+`/toolkit:*` slash commands live inside Claude Code. Then run `/toolkit:brand` to fill in your
+colors/fonts/voice and `/toolkit:video` to start your first video.
+
 ## Quick Start
 
 ```bash
@@ -31,7 +48,7 @@ Then in Claude Code:
 
 **That's it.** `/toolkit:setup` walks you through everything interactively — cloud GPU provider, file transfer, voice config. `/toolkit:video` creates a project from a template and guides you through the whole workflow.
 
-The commands ship as a **Claude Code plugin**: this repo is both the toolkit and the plugin (`commands/` + `skills/` at the root, declared by `.claude-plugin/`). `claude plugin install toolkit@video-toolkit` is what turns them into working slash commands — without it they report "Unknown command". A per-brand repo consumes the exact same plugin by vendoring this repo as a `toolkit/` submodule; the commands are identical, invoked as `/toolkit:<name>` everywhere. See a brand repo's own README for that setup.
+The commands ship as a **Claude Code plugin**: this repo is both the toolkit and the plugin (`commands/` + `skills/` at the root, declared by `.claude-plugin/`). `claude plugin install toolkit@video-toolkit` is what turns them into working slash commands — without it they report "Unknown command". A per-brand repo consumes the exact same plugin by vendoring this repo as a `toolkit/` submodule; the commands are identical, invoked as `/toolkit:<name>` everywhere. **`npx github:xaralis/video-toolkit init` sets all of this up for you** — see [Create a new brand repo](#create-a-new-brand-repo).
 
 ## Using with Codex
 

@@ -4,6 +4,10 @@ Brand profiles let you maintain consistent visual identity across videos. Each b
 
 > **Quick Start:** Run `/toolkit:brand` in Claude Code to create a brand interactively. It can extract colors from a website URL, generate a palette from a single color, or let you specify colors manually.
 
+> **New repo?** `npx github:xaralis/video-toolkit init my-brand-videos` scaffolds the whole brand
+> repo (toolkit submodule + a starter brand). Then `/toolkit:brand` fills in the brand's colors,
+> fonts, and voice. Use `init` once per repo; use `/toolkit:brand` to create/edit brands within it.
+
 ## Brand Structure
 
 ```

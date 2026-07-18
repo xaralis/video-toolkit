@@ -653,6 +653,15 @@
       "requires": "python-docx",
       "created": "2026-07-18",
       "updated": "2026-07-18"
+    },
+    "bootstrap": {
+      "path": "scripts/bootstrap/cli.mjs",
+      "description": "Scaffold a new brand repo (toolkit submodule + brand + plugin wiring) and install deps. Run via: npx github:xaralis/video-toolkit init <dir>",
+      "usage": "npx github:xaralis/video-toolkit init <dir> [--brand <slug>] [--toolkit-url <url>] [--ref <ref>] [--skip-install] [--yes]",
+      "status": "stable",
+      "category": "bootstrap",
+      "created": "2026-07-18",
+      "updated": "2026-07-18"
     }
   },
   "optionalComponents": {

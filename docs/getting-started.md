@@ -33,6 +33,21 @@ npm run render    # Export MP4
 
 No API keys needed. Edit `src/config/sprint-config.ts` to customize content.
 
+## Starting your own brand repo
+
+The quick start above renders a bundled example straight from this core. To make **your own**
+videos, create a brand repo (a separate repo that vendors this toolkit):
+
+```bash
+npx github:xaralis/video-toolkit init my-brand-videos
+cd my-brand-videos
+claude    # the /toolkit:* commands live inside Claude Code
+```
+
+`init` adds the toolkit as a `toolkit/` submodule, scaffolds a starter brand and `projects/`,
+pre-wires the `toolkit@video-toolkit` plugin, and installs the Python tools into `.venv`. Inside
+Claude Code, run `/toolkit:brand` then `/toolkit:video`.
+
 ## Full Setup (for AI Tools)
 
 > This is optional — you can render videos with just Node.js installed.
