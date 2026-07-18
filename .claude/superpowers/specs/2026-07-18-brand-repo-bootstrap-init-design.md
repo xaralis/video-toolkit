@@ -104,6 +104,26 @@ Next steps:
   Optional: ffmpeg for media; RunPod/ElevenLabs keys in .env for AI voice
 ```
 
+## Documentation updates (part of the deliverable)
+
+The bootstrap must become the **documented, obvious** way to start a brand repo — not a hidden
+script. In the same change:
+
+- **`README.md`** — add a prominent "Create a new brand repo" section near the top (right where
+  it currently describes the submodule/plugin consumption model) leading with
+  `npx github:xaralis/video-toolkit init my-brand-videos`, a one-line description of what it
+  produces, and the "then launch `claude` inside the new dir" note. Reconcile the existing
+  Project Structure / plugin-install prose so the manual submodule steps are presented as
+  "what `init` does for you," not as the primary path.
+- **`docs/getting-started.md`** — surface the `init` command as the first-time entry point for
+  starting a brand repo (distinct from the "render an example with just Node" quick start).
+- **`docs/creating-brands.md`** — cross-link: `init` scaffolds the repo + first brand;
+  `/toolkit:brand` fills in identity.
+- **`CLAUDE.md`** (core) — a short pointer in the brand-repo/submodule discussion so future
+  Claude sessions know `init` is the bootstrap entry point.
+- **`_internal/toolkit-registry.json`** — register the bootstrap CLI so it is discoverable in
+  the canonical registry alongside the other tools/commands.
+
 ## Testing
 
 Pytest (existing `tests/` infra) invokes the Node CLI via `subprocess`:
