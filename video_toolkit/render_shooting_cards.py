@@ -116,20 +116,57 @@ def parse_screenplay(md: str) -> Screenplay:
     return sp
 
 
-def _take_font_pt(lines: list[str]) -> int:
-    """Pick a giant but page-fitting size from how much text the take carries.
+import math
 
-    Landscape A4 gives ~26×15 cm of usable area; a single short punch line wants
-    to be huge, a three-sentence passage a bit smaller but still readable at
-    arm's length. Tuned against the hand-made reference cards."""
-    total = sum(len(l) for l in lines)
-    for limit, size in ((60, 80), (120, 60), (230, 46), (340, 38)):
-        if total <= limit:
-            return size
-    return 32
+# --- One-page-per-take fit (a take is a cue card; the speaker must never turn a
+# page mid-speech, so each take is GUARANTEED to fit its landscape A4 page — and
+# fills it as fully as possible: the font is the LARGEST size that still fits). --
+#
+# The size is derived from the page geometry, not a char-count guess: estimate
+# the take's rendered height at each candidate size and keep the largest that
+# fits. The search is per-point (not a coarse ladder) so a take fills its page
+# instead of dropping a whole tier and leaving whitespace. The model stays a
+# touch pessimistic (average glyph a hair wider than common bold sans, line
+# spacing above the 1.15 actually applied, 5 % height slack) so the guarantee
+# survives Word's own line-breaking and font substitution. Geometry MUST match
+# the per-take section in build_docx (landscape A4, 20 mm sides, 16 mm top/bottom).
+_CARD_USABLE_W_PT = (297 - 2 * 20) / 25.4 * 72  # 257 mm ≈ 728.5 pt
+_CARD_USABLE_H_PT = (210 - 2 * 16) / 25.4 * 72  # 178 mm ≈ 504.6 pt
+_TAG_BLOCK_PT = 14 * 1.20 + 16              # "PROMLUVA n — label" line + its space_after
+_AVG_CHAR_W = 0.56          # bold-sans advance as a fraction of em (a hair over Arial/Calibri bold)
+_MODEL_LINE_SPACING = 1.20  # above the 1.15 actually applied → built-in slack
+_PARA_AFTER = 0.30          # space after each fragment, as a fraction of the font size
+_FIT_SAFETY = 0.95          # never fill more than 95 % of the usable height (buffer for model error)
+_MAX_TAKE_PT = 80           # never larger than this even for a one-word take
+_MIN_TAKE_PT = 22           # readable floor; below this we warn instead of shrinking further
 
 
-def build_docx(sp: Screenplay, out_path: Path) -> None:
+def _estimate_take_height_pt(lines: list[str], size: int) -> float:
+    """Conservative rendered height (pt) of a take at the given font size."""
+    chars_per_line = max(1, int(_CARD_USABLE_W_PT / (_AVG_CHAR_W * size)))
+    height = _TAG_BLOCK_PT
+    for line in lines:
+        wrapped = max(1, math.ceil(len(line) / chars_per_line))
+        height += wrapped * size * _MODEL_LINE_SPACING + size * _PARA_AFTER
+    return height
+
+
+def _fit_take_font(lines: list[str]) -> tuple[int, bool]:
+    """Largest per-point size whose take fits one landscape page.
+
+    Returns ``(size_pt, fits)``. ``fits`` is False only when even the minimum
+    size overflows — the take is too long for a single card and the caller warns
+    the author to split it."""
+    budget = _CARD_USABLE_H_PT * _FIT_SAFETY
+    for size in range(_MAX_TAKE_PT, _MIN_TAKE_PT - 1, -1):
+        if _estimate_take_height_pt(lines, size) <= budget:
+            return size, True
+    return _MIN_TAKE_PT, False
+
+
+def build_docx(sp: Screenplay, out_path: Path) -> list[int]:
+    """Write the cue-card document; return the 1-based indices of any takes too
+    long to fit a single page even at the minimum font size (empty when all fit)."""
     from docx import Document
     from docx.enum.section import WD_ORIENT, WD_SECTION
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -183,7 +220,8 @@ def build_docx(sp: Screenplay, out_path: Path) -> None:
             r.bold = True
             r.font.size = Pt(12)
 
-    # --- One giant-font landscape page per take ---
+    # --- One giant-font landscape page per take (guaranteed to fit) ---
+    overflow: list[int] = []
     for i, take in enumerate(sp.takes, 1):
         s = doc.add_section(WD_SECTION.NEW_PAGE)
         s.orientation = WD_ORIENT.LANDSCAPE
@@ -194,19 +232,29 @@ def build_docx(sp: Screenplay, out_path: Path) -> None:
         tag = doc.add_paragraph()
         tr = tag.add_run(f"PROMLUVA {i} — {take.label}")
         tr.bold = True
+        tr.font.name = "Arial"
         tr.font.size = Pt(14)
-        tag.paragraph_format.space_after = Pt(18)
+        tag.paragraph_format.space_before = Pt(0)
+        tag.paragraph_format.space_after = Pt(16)
+        tag.paragraph_format.line_spacing = 1.15
 
-        size = _take_font_pt(take.lines)
+        size, fits = _fit_take_font(take.lines)
+        if not fits:
+            overflow.append(i)
         for line in take.lines:
             p = doc.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-            p.paragraph_format.space_after = Pt(size // 2)
+            pf = p.paragraph_format
+            pf.space_before = Pt(0)
+            pf.space_after = Pt(size * _PARA_AFTER)
+            pf.line_spacing = 1.15
             r = p.add_run(line)
             r.bold = True
+            r.font.name = "Arial"
             r.font.size = Pt(size)
 
     doc.save(str(out_path))
+    return overflow
 
 
 def project_dir(name: str) -> Path:
@@ -225,7 +273,15 @@ def render_project(name: str) -> Path:
     if not sp.takes:
         sys.exit(f"error: no spoken takes found in {md} — nothing to put on cards")
     out = p / "NATACENI.docx"
-    build_docx(sp, out)
+    overflow = build_docx(sp, out)
+    for i in overflow:
+        label = sp.takes[i - 1].label
+        print(
+            f"⚠ warning: take {i} ({label!r}) is too long to fit one page even at "
+            f"{_MIN_TAKE_PT}pt — split it into shorter takes so the speaker never "
+            f"turns a page mid-speech.",
+            file=sys.stderr,
+        )
     return out
 
 
