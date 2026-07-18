@@ -22,6 +22,37 @@ create videos with just Node.js — run /toolkit:setup anytime later.
 
 This is a one-line hint, not a blocker. Proceed to Step 1 immediately.
 
+### Step 0b: Brand-repo check (projects live in a brand repo)
+
+Before scanning, confirm this is a brand repo — projects belong in a brand repo, not the toolkit core:
+
+```bash
+PY="$([ -x .venv/bin/python ] && echo .venv/bin/python || echo python3)"
+"$PY" - <<'EOF'
+import json, sys
+from video_toolkit.paths import workspace_root, WorkspaceNotFound
+try:
+    ws = workspace_root()
+except WorkspaceNotFound:
+    print("NO_WORKSPACE"); sys.exit(0)
+print(json.loads((ws / "workspace.json").read_text()).get("kind", ""))
+EOF
+```
+
+If the output is not `brand` (it's `core`, or `NO_WORKSPACE`), **do not scan or create projects here.**
+Tell the user projects live in a brand repo:
+
+> Video projects live in a *brand repo*. Create one:
+>
+>     npx github:xaralis/video-toolkit init my-brand-videos
+>     cd my-brand-videos && claude
+>
+> then run /toolkit:setup (cloud tools) and /toolkit:video here. Or `cd` into an existing brand repo.
+
+Otherwise proceed to Step 1.
+
+---
+
 ### Step 1: Scan Projects
 
 ```

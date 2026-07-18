@@ -29,6 +29,13 @@ A new brand repo is bootstrapped with `npx github:xaralis/video-toolkit init <di
 `toolkit@video-toolkit` plugin), then installs the Python toolkit into `.venv`. No manual cloning
 or submodule linking.
 
+**First-run order (canonical):** `npx github:xaralis/video-toolkit init <dir>` → `cd <dir>` + `claude`
+→ `/toolkit:setup` (writes `.env` and deploys/registers the cloud GPU tools — Modal/RunPod — for this
+brand repo) → `/toolkit:video`. Per-repo configuration (`.env`, cloud endpoints, `.venv`) installs
+**only into the brand repo, never into the core**. Cloud images are account-level (Modal builds
+remotely on deploy; RunPod uses prebuilt GHCR images), so setup records the resulting endpoints in the
+brand repo's `.env` and only deploys what the account is missing.
+
 **Key capabilities:**
 - Programmatic video creation with Remotion (React-based)
 - AI voiceover generation with ElevenLabs or Qwen3-TTS
