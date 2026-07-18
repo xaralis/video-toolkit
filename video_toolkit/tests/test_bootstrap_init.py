@@ -134,3 +134,37 @@ def test_ref_pins_submodule_to_requested_commit(tmp_path):
         capture_output=True, text=True, timeout=30)
     assert submodule_head.returncode == 0, submodule_head.stdout + submodule_head.stderr
     assert submodule_head.stdout.strip() == pinned_sha
+
+
+def test_plugin_wiring_and_commit_and_nextsteps(tmp_path):
+    target = tmp_path / "brand-c"
+    r = _run(["init", str(target), "--brand", "acme", "--yes", "--skip-install",
+              "--toolkit-url", str(REPO_ROOT)])
+    assert r.returncode == 0, r.stdout + r.stderr
+
+    # .claude/settings.json lights up the plugin, marketplace points at ./toolkit
+    settings = json.loads((target / ".claude" / "settings.json").read_text())
+    assert settings["enabledPlugins"]["toolkit@video-toolkit"] is True
+    mp = settings["extraKnownMarketplaces"]["video-toolkit"]["source"]
+    assert mp["path"] == "./toolkit"
+
+    # thin CLAUDE.md references the toolkit + brand
+    claude = (target / "CLAUDE.md").read_text()
+    assert "toolkit/CLAUDE.md" in claude
+    assert "acme" in claude
+
+    # supporting files
+    assert (target / ".gitignore").exists()
+    assert (target / ".env.example").exists()
+    assert (target / "README.md").exists()
+
+    # an initial commit exists
+    log = subprocess.run(["git", "-C", str(target), "log", "--oneline"],
+                         capture_output=True, text=True)
+    assert log.returncode == 0 and log.stdout.strip()
+
+    # next-steps insists on launching Claude Code; commands live inside
+    out = r.stdout
+    assert "claude" in out
+    assert "/toolkit:brand" in out
+    assert "/toolkit:video" in out

@@ -97,7 +97,12 @@ async function runInit(argv) {
     scaffoldBrand(targetDir, brand);
     scaffoldProjects(targetDir);
 
-    // --- later tasks append config-files + commit + install + next-steps here ---
+    scaffoldClaudeSettings(targetDir);
+    scaffoldTopLevelFiles(targetDir, brand);
+    commitScaffold(targetDir, brand);
+
+    const pyOk = opts.skipInstall ? false : false; // install lands in Task 4
+    printNextSteps(targetDir, brand, { skipInstall: opts.skipInstall, pyOk });
   } finally {
     rl?.close();
   }
@@ -155,6 +160,144 @@ function scaffoldProjects(targetDir) {
   const dir = join(targetDir, 'projects');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, '.gitkeep'), '');
+}
+
+function scaffoldClaudeSettings(targetDir) {
+  const dir = join(targetDir, '.claude');
+  mkdirSync(dir, { recursive: true });
+  writeJson(join(dir, 'settings.json'), {
+    hooks: {
+      SessionStart: [{
+        hooks: [{
+          type: 'command',
+          command: '.venv/bin/python -m video_toolkit.check_stale_projects 2>/dev/null || true',
+        }],
+      }],
+    },
+    extraKnownMarketplaces: {
+      'video-toolkit': { source: { source: 'directory', path: './toolkit' } },
+    },
+    enabledPlugins: { 'toolkit@video-toolkit': true },
+  });
+}
+
+function scaffoldTopLevelFiles(targetDir, brand) {
+  writeFileSync(join(targetDir, 'CLAUDE.md'), claudeMd(brand));
+  writeFileSync(join(targetDir, '.gitignore'), gitignore());
+  const envSrc = join(targetDir, 'toolkit', '.env.example');
+  if (existsSync(envSrc)) cpSync(envSrc, join(targetDir, '.env.example'));
+  writeFileSync(join(targetDir, 'README.md'), readmeMd(brand));
+}
+
+function claudeMd(brand) {
+  return `# ${brand} — video projects
+
+Brand repo for **${brand}**. It vendors the shared video toolkit as the
+\`toolkit/\` submodule and consumes its skills/commands as the
+\`toolkit@video-toolkit\` plugin (invoked as \`/toolkit:<name>\`).
+
+## Read first
+- \`toolkit/CLAUDE.md\` — the authoritative toolkit guidance (workflow, tools, patterns).
+- \`brands/${brand}/BRAND-RULES.md\` — this brand's authoritative video rules.
+
+## Layout
+- \`toolkit/\` — shared core (git submodule; update its pin to take upstream fixes).
+- \`brands/${brand}/\` — this brand's colors, fonts, voice, BRAND-RULES.md.
+- \`projects/\` — this brand's video projects (source in git; heavy media via \`/toolkit:sync\` to R2).
+
+## Start
+- \`/toolkit:brand\` — fill in brand identity.
+- \`/toolkit:video\` — create or resume a video project.
+`;
+}
+
+function gitignore() {
+  return `# Environment and secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# Build outputs / heavy media (kept in R2 via /toolkit:sync)
+out/
+*.mp4
+*.webm
+*.gif
+*.mov
+
+# OS
+.DS_Store
+`;
+}
+
+function readmeMd(brand) {
+  return `# ${brand} — video projects
+
+Brand repo scaffolded by the video toolkit. See \`CLAUDE.md\` for how it fits together.
+
+## Getting started
+1. Launch Claude Code in this directory: \`claude\`
+2. The \`/toolkit:*\` commands are available inside Claude Code (the plugin is
+   pre-wired in \`.claude/settings.json\`).
+3. Run \`/toolkit:brand\` to fill in brand identity, then \`/toolkit:video\`.
+
+## Python tools
+The toolkit's Python CLI is installed into \`.venv\` (\`source .venv/bin/activate\`).
+To reinstall: \`python3 -m venv .venv && .venv/bin/pip install -e toolkit\`.
+
+## Updating the toolkit
+\`git submodule update --remote toolkit\` then commit the new pin.
+`;
+}
+
+function commitScaffold(targetDir, brand) {
+  git(['add', '-A'], targetDir);
+  const idFlags = [];
+  const hasEmail = spawnSync('git', ['config', 'user.email'], { cwd: targetDir, stdio: 'ignore' }).status === 0;
+  if (!hasEmail) idFlags.push('-c', 'user.email=bootstrap@video-toolkit.local', '-c', 'user.name=video-toolkit');
+  git([...idFlags, 'commit', '-q', '-m', `chore: bootstrap ${brand} brand repo via video-toolkit init`], targetDir);
+}
+
+function printNextSteps(targetDir, brand, { skipInstall, pyOk }) {
+  const dir = basename(targetDir);
+  const lines = [
+    '',
+    `✓ Brand repo ready at ${dir}/`,
+    '',
+    'Next steps:',
+    `  cd ${dir}`,
+    '  claude                  # launch Claude Code — the /toolkit:* commands live INSIDE it',
+    '                          # (the plugin is already wired up in .claude/settings.json)',
+    '',
+    '  Then, inside Claude Code:',
+    '    /toolkit:brand        # fill in your brand colors, fonts, voice',
+    '    /toolkit:video        # start your first video project',
+    '',
+  ];
+  if (skipInstall) {
+    lines.push('  ! Dependencies not installed (--skip-install). To install the Python tools:');
+    lines.push('      python3 -m venv .venv && .venv/bin/pip install -e toolkit');
+  } else if (pyOk) {
+    lines.push('  Python tools installed into .venv (activate: source .venv/bin/activate)');
+  } else {
+    lines.push('  ! Python toolkit not installed. Install Python 3.13+, then:');
+    lines.push('      python3 -m venv .venv && .venv/bin/pip install -e toolkit');
+  }
+  lines.push('  Optional: ffmpeg for media; RunPod/ElevenLabs keys in .env for AI voice');
+  console.log(lines.join('\n'));
 }
 
 function printUsage() {
