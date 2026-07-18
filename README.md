@@ -289,35 +289,47 @@ See [docs/modal-setup.md](docs/modal-setup.md) and [docs/runpod-setup.md](docs/r
 
 ## Project Structure
 
-This repo — the shared core:
+This repo — the shared core (also a Claude Code plugin):
 
 ```
 claude-code-video-toolkit/
-├── .claude/
-│   ├── skills/          # Domain knowledge for Claude
-│   └── commands/        # Slash commands (/toolkit:video, /toolkit:brand, etc.)
+├── .claude-plugin/      # plugin.json + marketplace.json — exposes commands/ + skills/ as the toolkit@video-toolkit plugin
+├── commands/            # Slash commands (/toolkit:video, /toolkit:setup, /toolkit:brand, …)
+├── skills/              # Domain knowledge for Claude
+├── scripts/bootstrap/   # `npx github:xaralis/video-toolkit init` — scaffolds a new brand repo
 ├── lib/                 # Shared components, theme system, utilities
-│   ├── components/      # Reusable video components (11 components)
+│   ├── components/      # Reusable video components
 │   ├── transitions/     # Scene transition effects (7 custom + 4 official)
 │   ├── theme/           # ThemeProvider, useTheme
 │   └── project/         # Multi-session project system
 ├── video_toolkit/       # Python CLI tools (installable package)
-├── templates/           # Video templates
-├── brands/default/      # Neutral scaffold brand — real brands live in the consuming repo
-├── examples/            # Curated showcase projects with finished videos
+├── docker/              # Cloud GPU images (Modal apps + RunPod Dockerfiles)
+├── brands/default/      # Neutral scaffold brand — real brands live in the consuming brand repo
+├── examples/            # Curated reference projects
+├── showcase/            # Runnable demos (e.g. the transitions gallery)
 ├── assets/              # Shared assets
 ├── docs/                # Documentation
-└── _internal/           # Toolkit metadata & roadmap
+├── .claude/             # the core's OWN settings (SessionStart hook) — NOT the plugin
+├── package.json         # bin for `npx github:xaralis/video-toolkit init`
+└── _internal/           # Toolkit metadata & registry
 ```
+
+> **Note:** core ships **no `templates/`** — templates are brand-shaped and live in each brand repo. See [Templates (brand-owned)](#templates-brand-owned).
 
 A brand repo that consumes this toolkit (own org/repo per brand, so brands never see each other's
 material):
+
+Everything below is scaffolded by `npx github:xaralis/video-toolkit init` (see [Create a new brand repo](#create-a-new-brand-repo)) — no manual cloning or submodule wiring:
 
 ```
 my-brand-videos/
 ├── toolkit/             # this repo, vendored as a pinned git submodule
 ├── brands/<brand>/      # this brand's colors, fonts, voice, BRAND-RULES.md
 ├── projects/            # this brand's video projects (source in git; heavy media via /toolkit:sync to R2)
+├── workspace.json       # marks this a brand workspace (kind: "brand")
+├── .claude/settings.json # enables the toolkit@video-toolkit plugin so /toolkit:* work here
+├── .venv/               # the Python toolkit installed into this repo (pip install -e toolkit)
+├── .env                 # this brand's config + cloud endpoints (written by /toolkit:setup)
 └── CLAUDE.md            # thin, brand-specific instructions on top of toolkit/CLAUDE.md
 ```
 
