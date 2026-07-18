@@ -40,7 +40,7 @@ Toolkit Setup
 
 Prerequisites:
   [check] Node.js 20.x
-  [check] Python 3.12
+  [check] Python 3.14
   [check] FFmpeg 7.1
   [check] pip packages installed
 
@@ -79,7 +79,7 @@ Check and report. Don't install anything automatically — just tell the user wh
 
 ### Recommended
 
-- **Python 3.10+**: `python3 --version`. If missing: "Install from https://python.org/ — needed for AI voiceover, image editing, and all cloud GPU tools"
+- **Python 3.13+**: `python3 --version`. If missing: "Install from https://python.org/ — needed for AI voiceover, image editing, and all cloud GPU tools"
 - **pip packages**: `python3 -c "import dotenv; import requests"`. If missing: guide through `pip install -r video_toolkit/requirements.txt` (or venv setup)
 - **FFmpeg**: `ffmpeg -version`. If missing: "Install with `brew install ffmpeg` (macOS) or see https://ffmpeg.org/ — needed for media conversion"
 
@@ -394,7 +394,7 @@ Setup Complete!
 
 Prerequisites:
   [check] Node.js 20.x
-  [check] Python 3.12
+  [check] Python 3.14
   [check] FFmpeg 7.1
   [check] pip packages
 
