@@ -20,7 +20,23 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from dotenv import load_dotenv
 
-load_dotenv()
+
+def _load_workspace_env() -> None:
+    """Load .env from the workspace (brand-repo) root, so verification doesn't
+    depend on the directory a command happens to run from. Falls back to a
+    plain load_dotenv() when there is no workspace (e.g. a bare checkout)."""
+    try:
+        from video_toolkit.paths import workspace_root, WorkspaceNotFound
+    except ImportError:
+        load_dotenv()
+        return
+    try:
+        load_dotenv(workspace_root() / ".env")
+    except WorkspaceNotFound:
+        load_dotenv()
+
+
+_load_workspace_env()
 
 
 def check_command(cmd: list[str]) -> tuple[bool, str]:
