@@ -65,6 +65,36 @@ function parseArgs(argv) {
   return opts;
 }
 
+function findPython() {
+  for (const c of ['python3', 'python']) if (commandExists(c)) return c;
+  return null;
+}
+
+function installPython(targetDir) {
+  const py = findPython();
+  if (!py) {
+    info('\n• Python 3 not found — skipping toolkit install (see next steps).');
+    return false;
+  }
+  info(`\n• Installing Python toolkit into .venv (using ${py}) …`);
+  const venv = join(targetDir, '.venv');
+  const mk = spawnSync(py, ['-m', 'venv', venv], { cwd: targetDir, stdio: 'inherit' });
+  if (mk.status !== 0) {
+    info('  ! venv creation failed — skipping (see next steps).');
+    return false;
+  }
+  const venvPy = process.platform === 'win32'
+    ? join(venv, 'Scripts', 'python.exe')
+    : join(venv, 'bin', 'python');
+  const pip = spawnSync(venvPy, ['-m', 'pip', 'install', '-e', 'toolkit', '-q'],
+    { cwd: targetDir, stdio: 'inherit' });
+  if (pip.status !== 0) {
+    info('  ! pip install -e toolkit failed — see next steps.');
+    return false;
+  }
+  return true;
+}
+
 function nodeMajor() { return parseInt(process.versions.node.split('.')[0], 10); }
 
 function assertPreflight() {
@@ -101,7 +131,9 @@ async function runInit(argv) {
     scaffoldTopLevelFiles(targetDir, brand);
     commitScaffold(targetDir, brand);
 
-    const pyOk = opts.skipInstall ? false : false; // install lands in Task 4
+    let pyOk = false;
+    if (opts.skipInstall) info('\n• Skipping dependency install (--skip-install).');
+    else pyOk = installPython(targetDir);
     printNextSteps(targetDir, brand, { skipInstall: opts.skipInstall, pyOk });
   } finally {
     rl?.close();

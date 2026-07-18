@@ -168,3 +168,13 @@ def test_plugin_wiring_and_commit_and_nextsteps(tmp_path):
     assert "claude" in out
     assert "/toolkit:brand" in out
     assert "/toolkit:video" in out
+
+
+def test_skip_install_leaves_no_venv_and_notes_it(tmp_path):
+    target = tmp_path / "brand-d"
+    r = _run(["init", str(target), "--brand", "acme", "--yes", "--skip-install",
+              "--toolkit-url", str(REPO_ROOT)])
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not (target / ".venv").exists()
+    assert "--skip-install" in r.stdout
+    assert "pip install -e toolkit" in r.stdout
