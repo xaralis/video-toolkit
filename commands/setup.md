@@ -19,7 +19,53 @@ Interactive setup wizard for new users. Checks prerequisites, guides cloud GPU a
 
 On invocation, assess current state and adapt:
 
+### Step 0: Workspace check (configure the brand repo, not the core)
+
+Everything this wizard writes — `.env`, cloud endpoints — belongs to a **brand repo**, never to the
+toolkit core. Use the brand repo's Python (`.venv/bin/python`, created by `npx … init`; fall back to
+`python3` in the core or an activated venv). Resolve the workspace first:
+
+```bash
+PY="$([ -x .venv/bin/python ] && echo .venv/bin/python || echo python3)"
+"$PY" - <<'EOF'
+import json, sys
+from video_toolkit.paths import workspace_root, WorkspaceNotFound
+try:
+    ws = workspace_root()
+except WorkspaceNotFound:
+    print("NO_WORKSPACE"); sys.exit(0)
+kind = json.loads((ws / "workspace.json").read_text()).get("kind", "")
+print(f"{kind}\t{ws}")
+EOF
+```
+
+- `brand<TAB><path>` → you're in a brand repo. Proceed to Step 1.
+- `core<TAB><path>` or `NO_WORKSPACE` → **stop; do not configure the current directory.** Tell the user:
+
+  > Setup configures a *brand repo* — its `.env` and cloud endpoints live there, not in the core.
+  > Create one and run setup inside it:
+  >
+  >     npx github:xaralis/video-toolkit init my-brand-videos
+  >     cd my-brand-videos
+  >     claude          # then run /toolkit:setup here
+  >
+  > (Or `cd` into an existing brand repo and re-run /toolkit:setup.)
+
+---
+
 ### Step 1: Detect Current State
+
+Resolve both roots up front and use them for every path below. In the core repo they are the same
+directory, so single-repo setup is unchanged:
+
+```bash
+PY="$([ -x .venv/bin/python ] && echo .venv/bin/python || echo python3)"
+TOOLKIT="$("$PY" -c 'from video_toolkit.paths import toolkit_root; print(toolkit_root())')"
+WS="$("$PY" -c 'from video_toolkit.paths import workspace_root; print(workspace_root())')"
+```
+
+- Toolkit assets (Docker apps, requirements) live under `$TOOLKIT`.
+- All `.env` reads and writes target `$WS/.env`.
 
 ```
 1. Check .env exists — if not, create from .env.example
@@ -80,7 +126,7 @@ Check and report. Don't install anything automatically — just tell the user wh
 ### Recommended
 
 - **Python 3.13+**: `python3 --version`. If missing: "Install from https://python.org/ — needed for AI voiceover, image editing, and all cloud GPU tools"
-- **pip packages**: `python3 -c "import dotenv; import requests"`. If missing: guide through `pip install -r video_toolkit/requirements.txt` (or venv setup)
+- **pip packages**: `"$WS/.venv/bin/python" -c "import dotenv; import requests"`. If missing: the toolkit is normally installed by `npx … init` into `.venv`; (re)install with `"$WS/.venv/bin/pip" install -e "$TOOLKIT"`.
 - **FFmpeg**: `ffmpeg -version`. If missing: "Install with `brew install ffmpeg` (macOS) or see https://ffmpeg.org/ — needed for media conversion"
 
 ### Output
@@ -207,9 +253,8 @@ R2_BUCKET_NAME=video-toolkit
 
 Test R2 connectivity:
 ```bash
-python3 -c "
-import sys; sys.path.insert(0, 'tools')
-from file_transfer import upload_to_r2, delete_from_r2
+"$WS/.venv/bin/python" -c "
+from video_toolkit.file_transfer import upload_to_r2, delete_from_r2
 import tempfile, os
 # Create tiny test file
 tmp = tempfile.NamedTemporaryFile(suffix='.txt', delete=False)
@@ -269,17 +314,27 @@ Recommend "all" — with Modal's free tier, there's no cost to having them deplo
 
 ### Modal Deployment Flow
 
-For each selected tool, run `modal deploy` and capture the endpoint URL:
+For each selected tool, **deploy only if it isn't already on the account.** The image builds remotely
+in Modal's cloud and is cached per account, so a second brand repo usually deploys nothing and just
+records the existing endpoints.
 
 ```bash
-# Deploy each app and capture the URL from output
-modal deploy docker/modal-qwen3-tts/app.py
-modal deploy docker/modal-flux2/app.py
-modal deploy docker/modal-image-edit/app.py
-modal deploy docker/modal-upscale/app.py
-modal deploy docker/modal-music-gen/app.py
-modal deploy docker/modal-propainter/app.py
+# What's already deployed on this Modal account:
+modal app list
+
+# Deploy a tool only when its app is missing. Run from the toolkit root so the
+# app.py build context resolves. Repeat per selected tool:
+cd "$TOOLKIT" && modal deploy docker/modal-qwen3-tts/app.py
+#   docker/modal-flux2/app.py
+#   docker/modal-image-edit/app.py
+#   docker/modal-upscale/app.py
+#   docker/modal-music-gen/app.py
+#   docker/modal-propainter/app.py
 ```
+
+If a tool's `MODAL_<TOOL>_ENDPOINT_URL` is already set in `$WS/.env` (or its app appears in
+`modal app list`), skip the deploy and keep the existing URL. Otherwise parse the `.modal.run` URL
+from the deploy output and write it to `$WS/.env`.
 
 After each deploy, Modal prints the endpoint URL. Parse it and save to .env:
 ```
@@ -292,18 +347,23 @@ MODAL_FLUX2_ENDPOINT_URL=https://username--video-toolkit-flux2-...modal.run
 
 ### RunPod Deployment Flow
 
-For each selected tool, run the `--setup` command:
+RunPod tools use **prebuilt images published to GHCR** (`ghcr.io/conalmullan/video-toolkit-*`) —
+nothing builds locally. `--setup` reuses an existing template/endpoint if one is already registered
+on the account and only creates a new one otherwise. Run per selected tool (from `$WS`, using the
+workspace Python):
 
 ```bash
-python3 -m video_toolkit.qwen3_tts --setup
-python3 -m video_toolkit.flux2 --setup
-python3 -m video_toolkit.image_edit --setup
-python3 -m video_toolkit.upscale --setup
-python3 -m video_toolkit.music_gen --setup
-python3 -m video_toolkit.dewatermark --setup
+"$WS/.venv/bin/python" -m video_toolkit.qwen3_tts --setup
+#   video_toolkit.flux2 --setup
+#   video_toolkit.image_edit --setup
+#   video_toolkit.upscale --setup
+#   video_toolkit.music_gen --setup
+#   video_toolkit.dewatermark --setup
 ```
 
-Each `--setup` command creates a RunPod template + endpoint and saves the endpoint ID to .env automatically.
+Each `--setup` writes the endpoint ID to the workspace `.env` (`$WS/.env`), creating it only if
+missing — so re-running in a second brand repo just re-registers/records the endpoint, it never
+rebuilds an image.
 
 ### Smoke Test
 
