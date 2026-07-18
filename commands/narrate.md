@@ -172,6 +172,26 @@ single source of the house style. Run it on the planning path, the
 footage-first path, AND on every re-run of `/toolkit:narrate` that edits an existing
 screenplay (Branch A). If `pandoc` is missing, warn the user and continue.
 
+### Step 7b: Render printable shooting cards (before footage is shot)
+
+When footage does NOT yet exist — the planning path (Branch C), and any Branch A
+re-edit of a screenplay whose clips haven't been filmed — also regenerate the
+field shooting cards so the person in front of the camera can read their lines
+straight off the page:
+
+```bash
+python3 -m video_toolkit.render_shooting_cards <name>
+```
+
+This produces `projects/<name>/NATACENI.docx`: an overview page (b-roll shot list,
+speaking tips, take outline) plus one **giant-font landscape page per spoken
+take**, where a "take" is a face-to-camera clip and every following b-roll
+segment whose audio L-cuts from it. Print it and take it to the shoot. Do NOT
+hand-edit `NATACENI.docx` — regenerate it whenever the screenplay changes; the
+tool is the single source. Skip it on the footage-first path (Branch B — footage
+already exists, so there is nothing left to read on camera). If `python-docx` is
+missing, warn the user and continue.
+
 ### Step 8: Update project state
 
 - Record the screenplay generation in `projects/<name>/project.json` if it

@@ -30,3 +30,6 @@ librosa>=0.11
 # Brand linting (check_brand.py) and SRT export (export_srt.py) parse
 # Root.tsx-adjacent config that contains trailing commas, which json can't read
 json5>=0.9
+
+# Printable field shooting cards (render_shooting_cards.py) — SCREENPLAY.md → .docx
+python-docx>=1.1

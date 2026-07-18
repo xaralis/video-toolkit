@@ -643,6 +643,16 @@
       "created": "2026-07-15",
       "updated": "2026-07-15",
       "usage": "python3 tools/sync_template.py <project> [--template NAME] [--dry-run] [--strict]"
+    },
+    "render_shooting_cards": {
+      "path": "video_toolkit/render_shooting_cards.py",
+      "description": "Render SCREENPLAY.md → NATACENI.docx: printable field shooting cue-cards (overview page + giant-font landscape page per spoken take). Final step of /toolkit:narrate on the planning path.",
+      "usage": "python3 -m video_toolkit.render_shooting_cards <project-name>",
+      "status": "stable",
+      "category": "project",
+      "requires": "python-docx",
+      "created": "2026-07-18",
+      "updated": "2026-07-18"
     }
   },
   "optionalComponents": {
