@@ -12,7 +12,7 @@ description: Toolkit-specific Remotion patterns — custom transitions, shared c
 Reusable video components in `lib/components/`. Import in templates via:
 
 ```tsx
-import { AnimatedBackground, SlideTransition, Label } from '../../../../lib/components';
+import { AnimatedBackground, SlideTransition, Label } from '@video-toolkit/lib/components';
 ```
 
 | Component | Purpose |
@@ -37,7 +37,7 @@ The toolkit includes a transitions library at `lib/transitions/` for scene-to-sc
 ```tsx
 import { TransitionSeries, linearTiming } from '@remotion/transitions';
 // Import custom transitions from lib (adjust path based on your project location)
-import { glitch, lightLeak, clockWipe, checkerboard } from '../../../../lib/transitions';
+import { glitch, lightLeak, clockWipe, checkerboard } from '@video-toolkit/lib/transitions';
 // Or import from @remotion/transitions for official ones
 import { slide, fade } from '@remotion/transitions/slide';
 

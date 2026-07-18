@@ -43,7 +43,7 @@ best-use descriptions. Full documentation lives in
 
 ```tsx
 import { TransitionSeries, linearTiming } from '@remotion/transitions';
-import { glitch, lightLeak, zoomBlur } from '../../../lib/transitions';
+import { glitch, lightLeak, zoomBlur } from '@video-toolkit/lib/transitions';
 
 <TransitionSeries>
   <TransitionSeries.Sequence durationInFrames={90}>

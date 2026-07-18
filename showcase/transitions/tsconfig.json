@@ -8,7 +8,11 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@video-toolkit/lib/*": ["../../lib/*"]
+    }
   },
   "include": ["src/**/*", "../../lib/**/*"]
 }

@@ -826,42 +826,7 @@
       "updated": "2026-05-19"
     }
   },
-  "templates": {
-    "campaign-reels": {
-      "path": "templates/campaign-reels/",
-      "description": "1080x1920 vertical reel template — clip-based composition with brand overlays, multi-clip layouts (split/pip/quad), motion-graphic plates, transcript-driven captions",
-      "aspectRatio": "9:16",
-      "duration": "≤90s",
-      "fps": 30,
-      "category": "social-video",
-      "status": "beta",
-      "sceneTypes": [
-        "clip",
-        "broll",
-        "multi-clip",
-        "card",
-        "outro"
-      ],
-      "created": "2026-05-19",
-      "updated": "2026-05-19"
-    },
-    "web-program-intro": {
-      "path": "templates/web-program-intro/",
-      "description": "1920x1080 talking-head intro pro programové body na webu PP. Bez overlays (captions externí přes <track>), bez § 16d disclaimer, bez outra. Ambient bg music, b-roll cutaways s L-cut audio.",
-      "aspectRatio": "16:9",
-      "resolution": "1920x1080",
-      "fps": 30,
-      "category": "web-embed",
-      "status": "beta",
-      "sceneTypes": [
-        "clip",
-        "broll",
-        "multi-clip"
-      ],
-      "created": "2026-06-04",
-      "updated": "2026-06-04"
-    }
-  },
+  "templates": {},
   "transitions": {
     "glitch": {
       "path": "lib/transitions/presentations/glitch.tsx",

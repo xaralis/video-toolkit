@@ -16,7 +16,7 @@ Transitions work with Remotion's `TransitionSeries` component:
 
 ```tsx
 import { TransitionSeries, linearTiming, springTiming } from '@remotion/transitions';
-import { glitch, rgbSplit, lightLeak } from '../../../lib/transitions';
+import { glitch, rgbSplit, lightLeak } from '@video-toolkit/lib/transitions';
 
 export const MyVideo = () => {
   return (
@@ -240,7 +240,7 @@ Opens Remotion Studio with a visual gallery showing each transition as Scene A â
 Add the gallery to your own project's Root.tsx:
 
 ```tsx
-import { TransitionGallery, transitionGalleryConfig } from '../../../lib/transitions';
+import { TransitionGallery, transitionGalleryConfig } from '@video-toolkit/lib/transitions';
 
 // Register in Root.tsx
 <Composition
@@ -260,7 +260,7 @@ Then run `npm run studio` and select "TransitionGallery" to preview all transiti
 For interactive previews (e.g., with `@remotion/player`):
 
 ```tsx
-import { SingleTransitionPreview, transitionMap } from '../../../lib/transitions';
+import { SingleTransitionPreview, transitionMap } from '@video-toolkit/lib/transitions';
 
 // Preview a specific transition
 <SingleTransitionPreview transitionName="glitch" />

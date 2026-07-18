@@ -110,7 +110,8 @@ This unified command will:
 
 ## Manual Project Creation
 
-If you prefer manual setup:
+If you prefer manual setup (from a brand repo, which carries its own `templates/` —
+core itself ships none):
 
 1. **Copy a template**
    ```bash

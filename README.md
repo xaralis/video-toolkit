@@ -129,14 +129,16 @@ Claude Code has deep knowledge in:
 
 > **Note:** After creating or modifying commands/skills, restart Claude Code to load changes.
 
-### Templates
+### Templates (brand-owned)
 
-Pre-built video structures in `templates/`:
+Templates are brand-shaped and live in each brand repo, not in core — for example:
 
 - **campaign-reels** — Vertical 9:16 short-form reels with brand overlays and clip-based composition
 - **web-program-intro** — 16:9 talking-head intros for web embeds
 
-See `examples/` for finished projects you can learn from — `hello-world`, `quick-spot`, `data-viz-chart`, and more.
+Core ships the machinery they are built from (`lib/` components + transitions,
+`reel-config-base` schemas, the Python tools). See `examples/` for runnable reference
+projects — `hello-world`, `quick-spot`, `data-viz-chart`, and more.
 
 ### Scene Transitions
 

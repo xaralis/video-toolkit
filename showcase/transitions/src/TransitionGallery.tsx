@@ -13,13 +13,13 @@ import { fade } from '@remotion/transitions/fade';
 import { wipe } from '@remotion/transitions/wipe';
 import { flip } from '@remotion/transitions/flip';
 // Custom transitions from lib
-import { glitch } from '../../../lib/transitions/presentations/glitch';
-import { rgbSplit } from '../../../lib/transitions/presentations/rgb-split';
-import { zoomBlur } from '../../../lib/transitions/presentations/zoom-blur';
-import { lightLeak } from '../../../lib/transitions/presentations/light-leak';
-import { clockWipe } from '../../../lib/transitions/presentations/clock-wipe';
-import { pixelate } from '../../../lib/transitions/presentations/pixelate';
-import { checkerboard } from '../../../lib/transitions/presentations/checkerboard';
+import { glitch } from '@video-toolkit/lib/transitions/presentations/glitch';
+import { rgbSplit } from '@video-toolkit/lib/transitions/presentations/rgb-split';
+import { zoomBlur } from '@video-toolkit/lib/transitions/presentations/zoom-blur';
+import { lightLeak } from '@video-toolkit/lib/transitions/presentations/light-leak';
+import { clockWipe } from '@video-toolkit/lib/transitions/presentations/clock-wipe';
+import { pixelate } from '@video-toolkit/lib/transitions/presentations/pixelate';
+import { checkerboard } from '@video-toolkit/lib/transitions/presentations/checkerboard';
 
 // Scene colors for visual variety
 const SCENE_A_COLOR = '#1a1a2e';

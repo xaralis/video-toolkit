@@ -39,16 +39,20 @@ claude-code-video-toolkit/        # this repo (the core) — also a Claude Code 
 ├── skills/              # Domain knowledge for Claude
 ├── .claude/             # core's own settings (SessionStart hook); no commands/skills here
 ├── video_toolkit/       # Python CLI automation (installable package)
-├── templates/           # Video templates
-│   ├── campaign-reels/  # Vertical 9:16 social reel template
-│   └── web-program-intro/ # Talking-head web intro template
-├── lib/                 # Shared components, theme system, project system
+├── lib/                 # Shared components, transitions, theme, reel-config-base, transcripts
 ├── brands/default/      # Neutral scaffold brand (colors, fonts, voice) — real brands live in the consuming brand repo
-├── examples/            # Curated showcase projects (shared)
+├── examples/            # Curated reference projects (hello-world, quick-spot, …)
+├── showcase/            # Runnable demos (e.g. the transitions gallery)
 ├── assets/              # Shared assets (voices, images)
 ├── docs/                # Documentation
 └── _internal/           # Toolkit metadata & registry
 ```
+
+**Core ships no templates.** Templates are brand-shaped and live in each brand repo
+(campaign-reels + web-program-intro in the Progresivní Pardubice repo, roost-reels in
+ROOST's). Core ships the *machinery* they are built from — `lib/` components,
+transitions, `reel-config-base` schemas, the Python tools — plus `examples/` as the
+reference for how it fits together.
 
 When consumed as a submodule, a brand repo has its own top-level `brands/<brand>/` and
 `projects/` that sit *alongside* `toolkit/` (this repo) — they are never copied into it, and this
@@ -87,7 +91,7 @@ This command will:
 
 **Multi-session support:** Projects span multiple sessions. Run `/toolkit:video` to resume where you left off. Each project tracks its phase, scenes, assets, and session history in `project.json`.
 
-**Or manually:**
+**Or manually** (from a brand repo, which carries its own `templates/`):
 ```bash
 cp -r templates/campaign-reels projects/my-video
 cd projects/my-video
@@ -98,11 +102,16 @@ npm run render   # Export
 
 > **Note:** After creating or modifying commands/skills, restart Claude Code to load changes.
 
-## Templates
+## Templates (brand-owned)
 
-Templates live in `templates/`. Each is a standalone Remotion project. See registry `templates` section for the full list.
+**Core ships no templates** — they are brand-shaped and live in each brand repo
+(`templates/campaign-reels`, `templates/web-program-intro` in the PP repo;
+`templates/roost-reels` in ROOST's). What core ships is the machinery a template is
+built from: `lib/` components + transitions, `reel-config-base` schemas, and the Python
+tools. The workflow below is how a brand uses the `campaign-reels` template — documented
+here because the toolkit's commands drive it.
 
-### campaign-reels
+### campaign-reels (a brand template)
 Vertical 9:16 (1080x1920) short-form reels for social campaigns. Three-layer composition: persistent brand overlay (watermark + legal disclaimer) + per-segment overlays (chevron, captions, stat callouts, quote pulls) + clip-based video track (clip / broll / multi-clip / card / outro segments). Brand-agnostic by design — any brand's colors, fonts, and copy discipline apply via `brands/<brand>/BRAND-RULES.md` in the consuming brand repo.
 
 **Canonical workflow:**
@@ -151,7 +160,7 @@ out of another brand's view. See `docs/creating-brands.md` for how to create one
 Reusable video components in `lib/components/`. See registry `components` section for the full list with descriptions. Import in templates via:
 
 ```tsx
-import { AnimatedBackground, SlideTransition, Label } from '../../../../lib/components';
+import { AnimatedBackground, SlideTransition, Label } from '@video-toolkit/lib/components';
 ```
 
 ## Python Tools

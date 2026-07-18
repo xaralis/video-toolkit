@@ -29,7 +29,10 @@ templates/
 
 ## Starting a New Template
 
-1. **Copy an existing template**
+Templates live in a brand repo (core ships none of its own). Start from an existing
+one there, or from an `examples/` project as the reference.
+
+1. **Copy an existing template** (in a brand repo)
    ```bash
    cp -r templates/campaign-reels templates/my-template
    cd templates/my-template
@@ -130,7 +133,7 @@ Use the transitions library for scene-to-scene effects:
 
 ```tsx
 import { TransitionSeries, linearTiming } from '@remotion/transitions';
-import { glitch, lightLeak, checkerboard } from '../../../../lib/transitions';
+import { glitch, lightLeak, checkerboard } from '@video-toolkit/lib/transitions';
 
 <TransitionSeries>
   <TransitionSeries.Sequence durationInFrames={90}>
