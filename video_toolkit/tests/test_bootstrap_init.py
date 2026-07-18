@@ -178,3 +178,15 @@ def test_skip_install_leaves_no_venv_and_notes_it(tmp_path):
     assert not (target / ".venv").exists()
     assert "--skip-install" in r.stdout
     assert "pip install -e toolkit" in r.stdout
+
+
+def test_setup_is_recommended(tmp_path):
+    target = tmp_path / "brand-e"
+    r = _run(["init", str(target), "--brand", "acme", "--yes", "--skip-install",
+              "--toolkit-url", str(REPO_ROOT)])
+    assert r.returncode == 0, r.stdout + r.stderr
+    # next-steps output points at setup
+    assert "/toolkit:setup" in r.stdout
+    # and so do the generated docs
+    assert "/toolkit:setup" in (target / "README.md").read_text()
+    assert "/toolkit:setup" in (target / "CLAUDE.md").read_text()

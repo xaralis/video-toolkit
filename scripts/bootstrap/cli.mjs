@@ -239,6 +239,7 @@ Brand repo for **${brand}**. It vendors the shared video toolkit as the
 
 ## Start
 - \`/toolkit:brand\` — fill in brand identity.
+- \`/toolkit:setup\` — configure \`.env\` and deploy/register cloud AI tools (Modal/RunPod). Rendering works without it (Node only); AI tools need it.
 - \`/toolkit:video\` — create or resume a video project.
 `;
 }
@@ -283,7 +284,9 @@ Brand repo scaffolded by the video toolkit. See \`CLAUDE.md\` for how it fits to
 1. Launch Claude Code in this directory: \`claude\`
 2. The \`/toolkit:*\` commands are available inside Claude Code (the plugin is
    pre-wired in \`.claude/settings.json\`).
-3. Run \`/toolkit:brand\` to fill in brand identity, then \`/toolkit:video\`.
+3. Run \`/toolkit:brand\` (brand identity), then \`/toolkit:setup\` (configure
+   \`.env\` + deploy cloud AI tools), then \`/toolkit:video\`. Rendering works with
+   just Node; the AI cloud tools need \`/toolkit:setup\`.
 
 ## Python tools
 The toolkit's Python CLI is installed into \`.venv\` (\`source .venv/bin/activate\`).
@@ -315,6 +318,7 @@ function printNextSteps(targetDir, brand, { skipInstall, pyOk }) {
     '',
     '  Then, inside Claude Code:',
     '    /toolkit:brand        # fill in your brand colors, fonts, voice',
+    '    /toolkit:setup        # configure env + deploy cloud AI tools (Modal/RunPod)',
     '    /toolkit:video        # start your first video project',
     '',
   ];
