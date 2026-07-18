@@ -233,7 +233,7 @@ git log HEAD..origin/main --oneline
 This command evolves through use. If something's awkward or missing:
 
 **Local improvements:**
-1. Edit `.claude/commands/versions.md`
+1. Edit `commands/versions.md`
 2. Share upstream → `gh pr create`
 
 **Future ideas:**

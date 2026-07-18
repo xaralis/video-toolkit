@@ -29,8 +29,8 @@ Thank you for your interest in contributing! This toolkit is designed to help pe
 ## Project Structure
 
 ```
-├── .claude/skills/     # Domain knowledge for Claude Code
-├── .claude/commands/   # Guided workflow commands
+├── skills/     # Domain knowledge for Claude Code
+├── commands/   # Guided workflow commands
 ├── video_toolkit/      # Python CLI tools (installable package)
 ├── templates/          # Video templates
 ├── brands/             # Brand profiles
@@ -48,7 +48,7 @@ Thank you for your interest in contributing! This toolkit is designed to help pe
 
 ## Adding a New Skill
 
-1. Create a folder in `.claude/skills/`
+1. Create a folder in `skills/`
 2. Add `SKILL.md` with the skill definition
 3. Optionally add `reference.md` for detailed docs
 4. Register it in `_internal/toolkit-registry.json`
@@ -57,7 +57,7 @@ Thank you for your interest in contributing! This toolkit is designed to help pe
 
 ## Adding a New Command
 
-1. Create a markdown file in `.claude/commands/`
+1. Create a markdown file in `commands/`
 2. Follow the existing command format
 3. Register it in `_internal/toolkit-registry.json`
 4. **Update documentation** (see checklist below)

@@ -2,7 +2,7 @@
 
 CLI examples for every Python tool in `video_toolkit/`. This file is a backup
 reference; the canonical source for each tool is its own `--help` output
-and (where it exists) the corresponding skill in `.claude/skills/`. Use
+and (where it exists) the corresponding skill in `skills/`. Use
 this file when you want a single-page lookup of common invocations.
 
 See also: `_internal/toolkit-registry.json` (`tools` section) for
@@ -127,7 +127,7 @@ python3 -m video_toolkit.upscale --input photo.jpg --output photo_4x.png --cloud
 python3 -m video_toolkit.upscale --input photo.jpg --scale 2 --model anime --face-enhance --cloud runpod
 ```
 
-See `docs/qwen-edit-patterns.md` and `.claude/skills/qwen-edit/` for
+See `docs/qwen-edit-patterns.md` and `skills/qwen-edit/` for
 prompting guidance.
 
 ## AI Music Generation (ACE-Step 1.5)
@@ -178,7 +178,7 @@ python3 -m video_toolkit.music_gen --list-presets
 ```
 
 8 scene presets: `corporate-bg`, `upbeat-tech`, `ambient`, `dramatic`,
-`tension`, `hopeful`, `cta`, `lofi`. See `.claude/skills/acestep/` for
+`tension`, `hopeful`, `cta`, `lofi`. See `skills/acestep/` for
 prompt engineering patterns and video production integration guide.
 
 ## Watermark Removal

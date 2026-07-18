@@ -330,7 +330,7 @@ This command is referenced by:
 This command evolves through use. If something's awkward or missing:
 
 **Local improvements:**
-1. Edit `.claude/commands/brand.md` → Update `_internal/CHANGELOG.md`
+1. Edit `commands/brand.md` → Update `_internal/CHANGELOG.md`
 2. Share upstream → `gh pr create`
 
 **Remote contributions:**

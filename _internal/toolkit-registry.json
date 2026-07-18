@@ -5,7 +5,7 @@
   "repository": "https://github.com/digitalsamba/claude-code-video-toolkit",
   "skills": {
     "remotion-official": {
-      "path": ".claude/skills/remotion-official/",
+      "path": "skills/remotion-official/",
       "description": "Official Remotion framework knowledge (synced from remotion-dev/skills)",
       "status": "stable",
       "upstream": "https://github.com/remotion-dev/skills",
@@ -13,35 +13,35 @@
       "updated": "2026-02-19"
     },
     "remotion": {
-      "path": ".claude/skills/remotion/",
+      "path": "skills/remotion/",
       "description": "Toolkit-specific Remotion patterns — custom transitions, shared components, conventions",
       "status": "stable",
       "created": "2025-12-04",
       "updated": "2026-02-19"
     },
     "elevenlabs": {
-      "path": ".claude/skills/elevenlabs/",
+      "path": "skills/elevenlabs/",
       "description": "ElevenLabs audio - TTS, voice cloning, music, SFX",
       "status": "stable",
       "created": "2025-12-04",
       "updated": "2025-12-04"
     },
     "ffmpeg": {
-      "path": ".claude/skills/ffmpeg/",
+      "path": "skills/ffmpeg/",
       "description": "FFmpeg video/audio processing for Remotion assets",
       "status": "beta",
       "created": "2025-12-08",
       "updated": "2025-12-09"
     },
     "frontend-design": {
-      "path": ".claude/skills/frontend-design/",
+      "path": "skills/frontend-design/",
       "description": "Visual design refinement for distinctive, production-grade aesthetics",
       "status": "stable",
       "created": "2025-12-10",
       "updated": "2025-12-13"
     },
     "qwen-edit": {
-      "path": ".claude/skills/qwen-edit/",
+      "path": "skills/qwen-edit/",
       "description": "AI image editing prompting patterns and best practices for Qwen-Image-Edit",
       "status": "stable",
       "category": "image-editing",
@@ -50,21 +50,21 @@
       "updated": "2026-01-05"
     },
     "runpod": {
-      "path": ".claude/skills/runpod/",
+      "path": "skills/runpod/",
       "description": "Cloud GPU setup, Docker images, endpoint management, troubleshooting",
       "status": "stable",
       "created": "2026-02-23",
       "updated": "2026-02-24"
     },
     "acestep": {
-      "path": ".claude/skills/acestep/",
+      "path": "skills/acestep/",
       "description": "AI music generation — prompt engineering, scene presets, lyrics formatting, video production integration",
       "status": "beta",
       "created": "2026-03-22",
       "updated": "2026-03-22"
     },
     "ltx2": {
-      "path": ".claude/skills/ltx2/",
+      "path": "skills/ltx2/",
       "description": "AI video generation — prompting guide, parameters, video production use cases (b-roll, animated slides, portraits)",
       "status": "beta",
       "created": "2026-03-25",
@@ -73,133 +73,133 @@
   },
   "commands": {
     "video": {
-      "path": ".claude/commands/video.md",
+      "path": "commands/video.md",
       "description": "Video projects - list, resume, or create new",
       "status": "stable",
       "created": "2025-12-09",
       "updated": "2025-12-09"
     },
     "brand": {
-      "path": ".claude/commands/brand.md",
+      "path": "commands/brand.md",
       "description": "Brand profiles - list, edit, or create new",
       "status": "stable",
       "created": "2025-12-09",
       "updated": "2025-12-09"
     },
     "template": {
-      "path": ".claude/commands/template.md",
+      "path": "commands/template.md",
       "description": "List available templates and their features",
       "status": "stable",
       "created": "2025-12-09",
       "updated": "2025-12-09"
     },
     "skills": {
-      "path": ".claude/commands/skills.md",
+      "path": "commands/skills.md",
       "description": "List installed skills or create new ones",
       "status": "stable",
       "created": "2025-12-10",
       "updated": "2025-12-10"
     },
     "generate-voiceover": {
-      "path": ".claude/commands/generate-voiceover.md",
+      "path": "commands/generate-voiceover.md",
       "description": "Generate TTS voiceover using ElevenLabs or Qwen3-TTS",
       "status": "stable",
       "created": "2025-12-08",
       "updated": "2026-02-19"
     },
     "contribute": {
-      "path": ".claude/commands/contribute.md",
+      "path": "commands/contribute.md",
       "description": "Share improvements - issues, PRs, skills, templates",
       "status": "stable",
       "created": "2025-12-10",
       "updated": "2025-12-10"
     },
     "scene-review": {
-      "path": ".claude/commands/scene-review.md",
+      "path": "commands/scene-review.md",
       "description": "Scene-by-scene review in Remotion Studio before voiceover",
       "status": "stable",
       "created": "2025-12-10",
       "updated": "2025-12-10"
     },
     "design": {
-      "path": ".claude/commands/design.md",
+      "path": "commands/design.md",
       "description": "Focused design refinement session for a scene",
       "status": "stable",
       "created": "2025-12-10",
       "updated": "2025-12-13"
     },
     "versions": {
-      "path": ".claude/commands/versions.md",
+      "path": "commands/versions.md",
       "description": "Check dependency versions and toolkit updates",
       "status": "stable",
       "created": "2025-12-20",
       "updated": "2025-12-20"
     },
     "setup": {
-      "path": ".claude/commands/setup.md",
+      "path": "commands/setup.md",
       "description": "First-time toolkit setup - cloud GPU, file transfer, voice, and prerequisites",
       "status": "beta",
       "created": "2026-03-23",
       "updated": "2026-03-23"
     },
     "narrate": {
-      "path": ".claude/commands/narrate.md",
+      "path": "commands/narrate.md",
       "description": "Author or edit SCREENPLAY.md (intent + segments) for a reel project. Three branches: existing screenplay (edit), footage-first (listen → propose), or planning (no footage yet → write + shooting checklist)",
       "status": "beta",
       "created": "2026-05-20",
       "updated": "2026-05-20"
     },
     "cut": {
-      "path": ".claude/commands/cut.md",
+      "path": "commands/cut.md",
       "description": "Bridge SCREENPLAY.md + footage into reel config — auto-maps source files, transcribes via Whisper, writes defaultProps in Root.tsx",
       "status": "beta",
       "created": "2026-05-20",
       "updated": "2026-05-20"
     },
     "fine-tune": {
-      "path": ".claude/commands/fine-tune.md",
+      "path": "commands/fine-tune.md",
       "description": "Launch Remotion Studio for slider + text-input iteration on a cut reel; Save persists to Root.tsx",
       "status": "beta",
       "created": "2026-05-20",
       "updated": "2026-05-20"
     },
     "render": {
-      "path": ".claude/commands/render.md",
+      "path": "commands/render.md",
       "description": "Render the final MP4 for a reel project (preview half-scale or full quality), with state validation and progress reporting",
       "status": "beta",
       "created": "2026-05-20",
       "updated": "2026-05-20"
     },
     "add-music": {
-      "path": ".claude/commands/add-music.md",
+      "path": "commands/add-music.md",
       "description": "Generate background music via ACE-Step (acemusic cloud, Modal fallback) and wire it into Root.tsx defaultProps.audio block",
       "status": "beta",
       "created": "2026-05-20",
       "updated": "2026-05-20"
     },
     "check-brand": {
-      "path": ".claude/commands/check-brand.md",
+      "path": "commands/check-brand.md",
       "description": "Lint a reel project's defaultProps against machine-checkable brand rules (3s minimums, placement enum, accent word count, asset existence, pacing). Exit 1 on errors.",
       "status": "beta",
       "created": "2026-05-20",
       "updated": "2026-05-20"
     },
     "publish": {
-      "path": ".claude/commands/publish.md",
+      "path": "commands/publish.md",
       "description": "Publish a web-program-intro's final outputs (video + VTT + poster) to the public R2 bucket for website embedding",
       "status": "beta",
       "created": "2026-06-09",
       "updated": "2026-06-09"
     },
     "sync": {
-      "path": ".claude/commands/sync.md",
+      "path": "commands/sync.md",
       "description": "Push / pull a reel project (git source + R2 media) — one step for non-technical collaborators",
       "status": "beta",
       "created": "2026-05-21",
       "updated": "2026-05-21"
     },
     "sync-template": {
-      "path": ".claude/commands/sync-template.md",
+      "path": "commands/sync-template.md",
       "description": "Pull template fixes into a project's vendored src — without touching the project's own cut",
       "status": "stable",
       "created": "2026-07-15",

@@ -24,7 +24,7 @@ That's it. ~15 seconds later you have `out.mp4` — a silent text-on-colour spot
 
 Use moviepy for sub-30s, tightly-timed content where every frame matters and where text must be deterministic — trailers, promos, news lower thirds, social captions. The Remotion templates (`sprint-review`, `product-demo`) are designed for longer, design-system-driven work; moviepy is the right tool for ad-style spots.
 
-See the **moviepy** skill (`.claude/skills/moviepy/SKILL.md`) for the full pattern guide and the genres where this approach shines.
+See the **moviepy** skill (`skills/moviepy/SKILL.md`) for the full pattern guide and the genres where this approach shines.
 
 ## What this example demonstrates
 

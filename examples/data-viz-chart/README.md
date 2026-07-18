@@ -29,7 +29,7 @@ First run takes ~30 seconds (matplotlib renders 450 frames, moviepy composites).
 
 This is exactly how real news graphics are produced. The data layer comes from a data tool (R, Python, D3); the text layer is composited deterministically on top so that names, sources, and headline figures are guaranteed correct. AI video generation models cannot guarantee any of that — that's the whole reason this pattern exists.
 
-The **moviepy** skill (`.claude/skills/moviepy/SKILL.md`) has the full "trustworthy text" framing and the genres where this approach matters most.
+The **moviepy** skill (`skills/moviepy/SKILL.md`) has the full "trustworthy text" framing and the genres where this approach matters most.
 
 ## What this example demonstrates
 

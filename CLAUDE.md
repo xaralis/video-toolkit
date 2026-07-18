@@ -10,9 +10,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 Claude Code skills/commands, and docs — but no brand identity and no video projects of its own
 (`brands/` here holds only the `default` scaffold, for local testing/reference). Real brand
 profiles and video projects live in **separate per-brand repos** (one per client/org), each of
-which vendors this repo as a `toolkit/` git submodule and symlinks `.claude/{skills,commands}`
-from it. That keeps every brand's material isolated from every other brand while all brands stay
-on one versioned core. A brand repo typically looks like:
+which vendors this repo as a `toolkit/` git submodule and consumes its skills/commands as a
+**Claude Code plugin** (`toolkit@video-toolkit`, invoked as `/toolkit:<name>`). That keeps every
+brand's material isolated from every other brand while all brands stay on one versioned core. A
+brand repo typically looks like:
 
 ```
 my-brand-videos/
@@ -32,10 +33,11 @@ my-brand-videos/
 ## Directory Structure
 
 ```
-claude-code-video-toolkit/        # this repo (the core)
-├── .claude/
-│   ├── skills/          # Domain knowledge for Claude
-│   └── commands/        # Guided workflows
+claude-code-video-toolkit/        # this repo (the core) — also a Claude Code plugin
+├── .claude-plugin/      # plugin.json + marketplace.json (exposes commands/ + skills/)
+├── commands/            # Guided workflow slash commands (→ /toolkit:<name> when consumed)
+├── skills/              # Domain knowledge for Claude
+├── .claude/             # core's own settings (SessionStart hook); no commands/skills here
 ├── video_toolkit/       # Python CLI automation (installable package)
 ├── templates/           # Video templates
 │   ├── campaign-reels/  # Vertical 9:16 social reel template
@@ -168,7 +170,7 @@ Per-tool categories:
 | **Utility tools** | addmusic, locate_watermark | Quick transformations on existing videos |
 | **Cloud GPU** | image_edit, upscale, dewatermark, qwen3_tts, music_gen, flux2 | AI processing via RunPod or Modal (`--cloud runpod\|modal`) |
 
-For ready-to-copy invocations of each tool (voiceover, sync_timing, qwen3_tts, image_edit, music_gen, dewatermark, transcribe, plus RunPod/Modal setup) see **`docs/tools-reference.md`**. Deeper patterns live in the corresponding `.claude/skills/<tool>/` directory and in `_internal/toolkit-registry.json`.
+For ready-to-copy invocations of each tool (voiceover, sync_timing, qwen3_tts, image_edit, music_gen, dewatermark, transcribe, plus RunPod/Modal setup) see **`docs/tools-reference.md`**. Deeper patterns live in the corresponding `skills/<tool>/` directory and in `_internal/toolkit-registry.json`.
 
 ## Video Production Workflow
 

@@ -94,7 +94,7 @@ git clone https://github.com/digitalsamba/claude-code-video-toolkit ~/toolkit-co
 cd ~/toolkit-contrib
 
 # Copy only the files you improved
-cp -r /path/to/your/work/.claude/commands/improved-command.md .claude/commands/
+cp -r /path/to/your/work/commands/improved-command.md commands/
 
 # Commit and PR
 git checkout -b improve/description
@@ -109,8 +109,8 @@ gh pr create
 
 | Directory | Shared? | Contains |
 |-----------|---------|----------|
-| `.claude/commands/` | Yes | Slash commands |
-| `.claude/skills/` | Yes | Skill documentation |
+| `commands/` | Yes | Slash commands |
+| `skills/` | Yes | Skill documentation |
 | `templates/` | Yes | Video templates |
 | `lib/` | Yes | Shared components |
 | `docs/` | Yes | Documentation |

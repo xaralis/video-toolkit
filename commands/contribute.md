@@ -70,7 +70,7 @@ Reported via /contribute command"
 Let me check what would be shared...
 
 ✅ Safe to share:
-   .claude/commands/video.md (modified)
+   commands/video.md (modified)
    .claude/skills/ffmpeg/SKILL.md (modified)
 
 ❌ Ignored (stays private):
@@ -448,7 +448,7 @@ git status --porcelain | grep -E "^(projects/|assets/voices/|\.env)" && echo "�
 This command evolves through use. If something's awkward or missing:
 
 **Local improvements:**
-1. Edit `.claude/commands/contribute.md` → Update `_internal/CHANGELOG.md`
+1. Edit `commands/contribute.md` → Update `_internal/CHANGELOG.md`
 2. Share upstream → `gh pr create`
 
 **Remote contributions:**
