@@ -1,10 +1,17 @@
 {
   "templates": {
-    "spinner": {
-      "description": "Looping circular loader ring",
-      "file": "spinner.json",
-      "colorSlots": { "accent": [ ["layers", 0, "shapes", 0, "it", 1, "c", "k"] ] },
-      "valueSlots": {}
-    }
+    "spinner":  { "description": "Looping circular loader ring",     "file": "spinner.json",  "colorSlots": { "accent": [ ["layers",0,"shapes",0,"it",1,"c","k"] ] }, "valueSlots": {} },
+    "pulse":    { "description": "Pulsing dot (scale + fade), loops",  "file": "pulse.json",    "colorSlots": { "accent": [ ["layers",0,"shapes",0,"it",1,"c","k"] ] }, "valueSlots": {} },
+    "arrow":    { "description": "Directional arrow nudging, loops",   "file": "arrow.json",    "colorSlots": { "accent": [ ["layers",0,"shapes",0,"it",1,"c","k"] ] }, "valueSlots": {} },
+    "confetti": { "description": "Celebratory confetti burst",         "file": "confetti.json", "colorSlots": {
+        "accent":      [ ["layers",0,"shapes",0,"it",1,"c","k"], ["layers",2,"shapes",0,"it",1,"c","k"] ],
+        "accentLight": [ ["layers",1,"shapes",0,"it",1,"c","k"], ["layers",3,"shapes",0,"it",1,"c","k"] ]
+      }, "valueSlots": {} },
+    "check":    { "description": "Draw-on success checkmark",          "file": "check.json",    "colorSlots": { "accent": [ ["layers",0,"shapes",0,"it",1,"c","k"] ] }, "valueSlots": {} },
+    "cross":    { "description": "Draw-on error cross (X)",            "file": "cross.json",    "colorSlots": { "accent": [ ["layers",0,"shapes",0,"it",1,"c","k"], ["layers",0,"shapes",1,"it",1,"c","k"] ] }, "valueSlots": {} },
+    "progress": { "description": "Progress bar filling to a value",    "file": "progress.json", "colorSlots": {
+        "accent": [ ["layers",0,"shapes",1,"it",1,"c","k"] ],
+        "track":  [ ["layers",0,"shapes",0,"it",1,"c","k"] ]
+      }, "valueSlots": { "value": ["layers",0,"shapes",1,"it",2,"e","k",1,"s",0] } }
   }
 }
