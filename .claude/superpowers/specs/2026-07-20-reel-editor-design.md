@@ -94,6 +94,29 @@ MVP at "list" depth**:
   preview to select that sub-clip). The list covers the reviewer's need; on-frame region-picking is
   the expensive part and is added later.
 
+## Overlay model & extensibility
+
+Overlays (captions, chevron, stat callouts, quote pulls, and future bespoke animated graphics) are
+handled through an **overlay registry + common contract**, so new special overlays can be added
+**without any editor work**.
+
+- **Overlay lane on the timeline.** Above the segment track, an overlay lane shows each overlay as a
+  time-ranged chip for **placement / visibility / selection**. Selecting a chip opens its panel in
+  the inspector.
+- **Common contract — every overlay satisfies it.** Each overlay exposes `{ id, type, startMs,
+  durationMs, enabled, anchor? }`. From this alone the editor can always: drag its time range on the
+  lane, toggle show/hide, and nudge its position (anchor pad) — for **any** type, known or not.
+- **Registered types get bespoke panels.** Known types register a richer inspector panel (caption →
+  text field + Akcent button; stat callout → its fields; etc.).
+- **Unknown / special overlays degrade to the contract only.** A bespoke animated graphic with no
+  registered panel is still fully render-correct in the live preview (the composition draws it) and
+  gets timing / toggle / position from the contract. Its **internals** (content, animation, colours)
+  are edited in Studio / Claude, not here. *(Chosen over render-only, and over auto-generating a Zod
+  form: the contract keeps special elements genuinely usable without dragging "numbers" back in.)*
+
+Implementation note: the template's overlay schemas must adopt the common-contract fields (some
+already carry timing implicitly via their segment); reconciling this is part of the plan.
+
 ## Brand rules as live, non-blocking warnings
 
 The editor reuses the `/toolkit:check-brand` logic to surface brand-rule violations inline (scene
@@ -106,6 +129,8 @@ differentiator the generic Editor Starter cannot provide.
 - Edit existing segments' reviewer fields (table above) for clip / broll / multi-clip.
 - Transitions (junction popover).
 - Multi-clip at list depth (variant 2).
+- Overlay lane + registry + common contract, with graceful degradation for unregistered/special
+  overlays (timing / toggle / position only; internals elsewhere).
 - Live preview via `@remotion/player` mounting the real composition.
 - `config.json` source-of-truth seam + migration.
 - Brand-rule warnings (non-blocking).
@@ -134,6 +159,7 @@ lib/editor/
 │   ├── Editor.tsx    # shell: preview + inspector + timeline (layout A)
 │   ├── Timeline.tsx  # segment blocks, drag edges, transition junction badges
 │   ├── Inspector/    # take picker, filmstrip trim, caption+accent, audio, transitions, multi-clip list
+│   ├── overlays/     # overlay registry: common contract + per-type panels + unknown fallback
 │   └── FrameOverlay.tsx  # focus dot + crop rectangle on the Player canvas
 ├── save-endpoint.ts  # local dev-server route that writes config.json
 ├── brand-warnings.ts # reuse of check-brand rule detectors
