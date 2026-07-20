@@ -1,0 +1,37 @@
+.root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.dot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.marker {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #b6ff5a;
+  border: 2px solid #1c1e24;
+  box-shadow: 0 0 0 1px #b6ff5a;
+}
+
+.label {
+  font-size: 10px;
+  color: #1c1e24;
+  background: #b6ff5a;
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  white-space: nowrap;
+}
