@@ -147,7 +147,9 @@ export const LottieAnimation: React.FC<LottieAnimationProps> = ({
           finishLoading();
         }
       })
-      .catch((err) => cancelRender(err));
+      .catch((err) => {
+        if (!cancelled) cancelRender(err);
+      });
     return () => {
       cancelled = true;
     };
