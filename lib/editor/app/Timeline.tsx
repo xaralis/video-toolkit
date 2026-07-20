@@ -4,6 +4,7 @@ import {
   segmentDurationFrames,
   totalDurationFrames,
 } from '@video-toolkit/lib/reel-config-base/duration';
+import { frameFromClientX, rulerTicks } from './timeline-util';
 import styles from './Timeline.module.css';
 
 /**
@@ -35,6 +36,18 @@ export interface TimelineProps {
    * are inert) without it.
    */
   onTrim?: (id: string, edge: TrimEdge, deltaFrames: number) => void;
+  /**
+   * Called with the frame under the pointer when the user presses down on
+   * the timeline TRACK (the row of blocks — not a trim handle) and again on
+   * each subsequent pointermove while still pressed, i.e. a click-to-seek or
+   * click-and-drag-to-scrub gesture. The frame is computed from the pointer's
+   * clientX against the track's own bounding rect via `frameFromClientX`, and
+   * is independent of which block (if any) is under the cursor. Optional —
+   * the Timeline renders and behaves the same (no seek gesture) without it.
+   * A trim-handle drag always stopPropagation()s before this can fire, so
+   * trimming never also seeks.
+   */
+  onSeek?: (frame: number) => void;
   fps: number;
   outroFrames: number;
   /**
@@ -70,12 +83,18 @@ type DragState = {
  * segment is styled distinctly and grows thin left/right drag handles.
  * Dragging a handle reports incremental deltaFrames via `onTrim` — see that
  * prop's doc for the contract. Dragging a handle never triggers `onSelect`.
+ *
+ * A thin time ruler renders above the blocks with `rulerTicks` positions.
+ * Pressing anywhere on the block TRACK (not a handle) reports the frame
+ * under the pointer via `onSeek`, and continues to do so on drag (scrub);
+ * see that prop's doc for the contract.
  */
 export function Timeline({
   segments,
   selectedId,
   onSelect,
   onTrim,
+  onSeek,
   fps,
   outroFrames,
   playheadFrame,
@@ -83,6 +102,14 @@ export function Timeline({
   const dragRef = useRef<DragState | null>(null);
   const onTrimRef = useRef(onTrim);
   onTrimRef.current = onTrim;
+  const onSeekRef = useRef(onSeek);
+  onSeekRef.current = onSeek;
+  // Latest total, kept in a ref so the stable pointermove handler (created
+  // once, like the trim handlers below) always reads the current value
+  // rather than closing over a stale one from the render that started the
+  // gesture.
+  const totalRef = useRef(0);
+  const seekDragRef = useRef<{ trackLeft: number; trackWidth: number } | null>(null);
 
   // Stable (created once, on mount) so add/removeEventListener target the
   // same function identity across renders. Reads current drag state and the
@@ -102,6 +129,43 @@ export function Timeline({
     window.removeEventListener('pointermove', handlePointerMoveRef.current);
     window.removeEventListener('pointerup', handlePointerUpRef.current);
   });
+
+  // Same stable-ref-on-window pattern as the trim drag above (jsdom doesn't
+  // implement setPointerCapture, so window listeners are what make this
+  // testable — see startSeek's feature-detected setPointerCapture call for
+  // the real-browser affordance that's layered on top).
+  const handleSeekPointerMoveRef = useRef((e: PointerEvent) => {
+    const drag = seekDragRef.current;
+    if (!drag) return;
+    const frame = frameFromClientX(e.clientX, drag.trackLeft, drag.trackWidth, totalRef.current);
+    onSeekRef.current?.(frame);
+  });
+
+  const handleSeekPointerUpRef = useRef(() => {
+    seekDragRef.current = null;
+    window.removeEventListener('pointermove', handleSeekPointerMoveRef.current);
+    window.removeEventListener('pointerup', handleSeekPointerUpRef.current);
+  });
+
+  function startSeek(e: ReactPointerEvent<HTMLDivElement>) {
+    const track = e.currentTarget;
+    const rect = track.getBoundingClientRect();
+    seekDragRef.current = { trackLeft: rect.left, trackWidth: rect.width };
+
+    // Feature-detected: real browsers support it (keeps the gesture bound to
+    // the track even if the pointer leaves it); jsdom does not implement it
+    // at all, so skip rather than throw in tests. The window listeners above
+    // are what actually drive the gesture either way.
+    if (typeof track.setPointerCapture === 'function') {
+      track.setPointerCapture(e.pointerId);
+    }
+
+    const frame = frameFromClientX(e.clientX, rect.left, rect.width, totalRef.current);
+    onSeekRef.current?.(frame);
+
+    window.addEventListener('pointermove', handleSeekPointerMoveRef.current);
+    window.addEventListener('pointerup', handleSeekPointerUpRef.current);
+  }
 
   function startDrag(
     e: ReactPointerEvent<HTMLSpanElement>,
@@ -135,10 +199,14 @@ export function Timeline({
     return () => {
       window.removeEventListener('pointermove', handlePointerMoveRef.current);
       window.removeEventListener('pointerup', handlePointerUpRef.current);
+      window.removeEventListener('pointermove', handleSeekPointerMoveRef.current);
+      window.removeEventListener('pointerup', handleSeekPointerUpRef.current);
     };
   }, []);
 
   const total = totalDurationFrames(segments, fps, outroFrames);
+  totalRef.current = total;
+  const ticks = rulerTicks(total, fps);
   const hasPlayhead = playheadFrame !== undefined && playheadFrame !== null;
   const clampedPlayheadFrame = hasPlayhead
     ? Math.min(Math.max(playheadFrame as number, 0), total)
@@ -147,48 +215,62 @@ export function Timeline({
   const playheadLeftPct = hasPlayhead && total > 0 ? (clampedPlayheadFrame / total) * 100 : 0;
 
   return (
-    <div className={styles.timeline}>
-      {hasPlayhead && (
-        <div
-          className={styles.playhead}
-          data-testid="playhead"
-          data-left-pct={playheadLeftPct}
-          style={{ left: `${playheadLeftPct}%`, pointerEvents: 'none' }}
-        />
-      )}
-      {segments.map((seg, index) => {
-        const durationFrames = segmentDurationFrames(seg, fps, outroFrames);
-        const isSelected = seg.id === selectedId;
-        return (
-          <button
-            key={seg.id}
-            type="button"
-            className={isSelected ? `${styles.block} ${styles.selected}` : styles.block}
-            style={{ flexGrow: durationFrames, flexBasis: 0 }}
-            data-duration-frames={durationFrames}
-            onClick={() => onSelect(seg.id)}
-            title={labelFor(seg, index)}
+    <div className={styles.root}>
+      <div className={styles.ruler} data-testid="ruler">
+        {ticks.map((tick) => (
+          <div
+            key={tick.frame}
+            className={styles.tick}
+            data-testid={`tick-${tick.frame}`}
+            style={{ left: total > 0 ? `${(tick.frame / total) * 100}%` : '0%' }}
           >
-            {isSelected && (
-              <>
-                <span
-                  className={styles.handleStart}
-                  data-testid={`trim-handle-start-${seg.id}`}
-                  onClick={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => startDrag(e, seg.id, 'start', durationFrames)}
-                />
-                <span
-                  className={styles.handleEnd}
-                  data-testid={`trim-handle-end-${seg.id}`}
-                  onClick={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => startDrag(e, seg.id, 'end', durationFrames)}
-                />
-              </>
-            )}
-            <span className={styles.label}>{labelFor(seg, index)}</span>
-          </button>
-        );
-      })}
+            <span className={styles.tickLabel}>{tick.label}</span>
+          </div>
+        ))}
+      </div>
+      <div className={styles.timeline} data-testid="track" onPointerDown={startSeek}>
+        {hasPlayhead && (
+          <div
+            className={styles.playhead}
+            data-testid="playhead"
+            data-left-pct={playheadLeftPct}
+            style={{ left: `${playheadLeftPct}%`, pointerEvents: 'none' }}
+          />
+        )}
+        {segments.map((seg, index) => {
+          const durationFrames = segmentDurationFrames(seg, fps, outroFrames);
+          const isSelected = seg.id === selectedId;
+          return (
+            <button
+              key={seg.id}
+              type="button"
+              className={isSelected ? `${styles.block} ${styles.selected}` : styles.block}
+              style={{ flexGrow: durationFrames, flexBasis: 0 }}
+              data-duration-frames={durationFrames}
+              onClick={() => onSelect(seg.id)}
+              title={labelFor(seg, index)}
+            >
+              {isSelected && (
+                <>
+                  <span
+                    className={styles.handleStart}
+                    data-testid={`trim-handle-start-${seg.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => startDrag(e, seg.id, 'start', durationFrames)}
+                  />
+                  <span
+                    className={styles.handleEnd}
+                    data-testid={`trim-handle-end-${seg.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => startDrag(e, seg.id, 'end', durationFrames)}
+                  />
+                </>
+              )}
+              <span className={styles.label}>{labelFor(seg, index)}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -186,6 +186,186 @@ describe('Timeline', () => {
     expect(screen.queryByTestId('trim-handle-end-b')).toBeInTheDocument();
   });
 
+  describe('time ruler', () => {
+    // total = 90 + 90 + 180 = 360 frames = 12s @ 30fps
+
+    it('renders a tick at 0:00 and at the final duration', () => {
+      render(
+        <Timeline
+          segments={segments}
+          selectedId={null}
+          onSelect={vi.fn()}
+          fps={30}
+          outroFrames={180}
+        />
+      );
+      const ruler = screen.getByTestId('ruler');
+      expect(ruler).toBeInTheDocument();
+      expect(screen.getByText('0:00')).toBeInTheDocument();
+      expect(screen.getByText('0:12')).toBeInTheDocument();
+    });
+
+    it('renders no more than 8 ticks by default', () => {
+      render(
+        <Timeline
+          segments={segments}
+          selectedId={null}
+          onSelect={vi.fn()}
+          fps={30}
+          outroFrames={180}
+        />
+      );
+      const ruler = screen.getByTestId('ruler');
+      expect(ruler.querySelectorAll('[data-testid^="tick-"]').length).toBeLessThanOrEqual(8);
+    });
+  });
+
+  describe('seek transport', () => {
+    // total = 90 + 90 + 180 = 360 frames; stub the TRACK's rect (not a
+    // block's) so clientX maps to frames across the whole timeline.
+    function stubTrackRect() {
+      const track = screen.getByTestId('track');
+      vi.spyOn(track, 'getBoundingClientRect').mockReturnValue({
+        width: 360,
+        height: 40,
+        top: 0,
+        left: 0,
+        right: 360,
+        bottom: 40,
+        x: 0,
+        y: 0,
+        toJSON: () => {},
+      } as DOMRect);
+      return track;
+    }
+
+    it('calls onSeek with the frame under the pointer on pointerdown', () => {
+      const onSeek = vi.fn();
+      render(
+        <Timeline
+          segments={segments}
+          selectedId={null}
+          onSelect={vi.fn()}
+          onSeek={onSeek}
+          fps={30}
+          outroFrames={180}
+        />
+      );
+      const track = stubTrackRect();
+      fireEvent.pointerDown(track, { clientX: 180 });
+      expect(onSeek).toHaveBeenCalledWith(180);
+    });
+
+    it('continues calling onSeek on pointermove while pressed (scrub)', () => {
+      const onSeek = vi.fn();
+      render(
+        <Timeline
+          segments={segments}
+          selectedId={null}
+          onSelect={vi.fn()}
+          onSeek={onSeek}
+          fps={30}
+          outroFrames={180}
+        />
+      );
+      const track = stubTrackRect();
+      fireEvent.pointerDown(track, { clientX: 180 });
+      fireEvent.pointerMove(window, { clientX: 270 });
+      expect(onSeek).toHaveBeenCalledWith(180);
+      expect(onSeek).toHaveBeenCalledWith(270);
+      fireEvent.pointerUp(window, { clientX: 270 });
+    });
+
+    it('stops calling onSeek after pointerup', () => {
+      const onSeek = vi.fn();
+      render(
+        <Timeline
+          segments={segments}
+          selectedId={null}
+          onSelect={vi.fn()}
+          onSeek={onSeek}
+          fps={30}
+          outroFrames={180}
+        />
+      );
+      const track = stubTrackRect();
+      fireEvent.pointerDown(track, { clientX: 180 });
+      fireEvent.pointerUp(window, { clientX: 180 });
+      onSeek.mockClear();
+      fireEvent.pointerMove(window, { clientX: 270 });
+      expect(onSeek).not.toHaveBeenCalled();
+    });
+
+    it('still calls onSelect for the block clicked while seeking', () => {
+      const onSeek = vi.fn();
+      const onSelect = vi.fn();
+      render(
+        <Timeline
+          segments={segments}
+          selectedId={null}
+          onSelect={onSelect}
+          onSeek={onSeek}
+          fps={30}
+          outroFrames={180}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'broll · 2' }));
+      expect(onSelect).toHaveBeenCalledWith('b');
+    });
+
+    it('works without onSeek (prop is optional)', () => {
+      render(
+        <Timeline
+          segments={segments}
+          selectedId={null}
+          onSelect={vi.fn()}
+          fps={30}
+          outroFrames={180}
+        />
+      );
+      const track = stubTrackRect();
+      expect(() => fireEvent.pointerDown(track, { clientX: 180 })).not.toThrow();
+    });
+
+    it('does not call onSeek when dragging a trim handle', () => {
+      const onSeek = vi.fn();
+      const onTrim = vi.fn();
+      render(
+        <Timeline
+          segments={segments}
+          selectedId="b"
+          onSelect={vi.fn()}
+          onTrim={onTrim}
+          onSeek={onSeek}
+          fps={30}
+          outroFrames={180}
+        />
+      );
+      stubTrackRect();
+
+      const block = screen.getByRole('button', { name: 'broll · 2' });
+      vi.spyOn(block, 'getBoundingClientRect').mockReturnValue({
+        width: 300,
+        height: 40,
+        top: 0,
+        left: 0,
+        right: 300,
+        bottom: 40,
+        x: 0,
+        y: 0,
+        toJSON: () => {},
+      } as DOMRect);
+
+      const endHandle = screen.getByTestId('trim-handle-end-b');
+      fireEvent.pointerDown(endHandle, { clientX: 100 });
+      fireEvent.pointerMove(window, { clientX: 130 });
+      fireEvent.pointerUp(window, { clientX: 130 });
+
+      expect(onTrim).toHaveBeenCalledTimes(1);
+      expect(onSeek).not.toHaveBeenCalled();
+    });
+  });
+
   describe('playhead', () => {
     // total = 90 (clip) + 90 (broll) + 180 (outro) = 360 frames
 
