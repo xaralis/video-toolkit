@@ -1,7 +1,7 @@
 import { readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { rewriteDefaultProps } from './default-props-writer';
+import { readDefaultProps, rewriteDefaultProps } from './default-props-writer';
 
 export async function saveDefaultPropsToFile(
   filePath: string,
@@ -10,6 +10,10 @@ export async function saveDefaultPropsToFile(
 ): Promise<void> {
   const source = await readFile(filePath, 'utf8');
   const next = rewriteDefaultProps(source, props, opts);
+  // Verify the rewritten source is re-readable BEFORE touching the target file. Root.tsx is the
+  // single source of truth for Studio and /toolkit:render; if rewriteDefaultProps ever produced
+  // malformed output, we must fail here rather than clobber the user's working file.
+  readDefaultProps(next, opts);
   // Atomic write: write a temp sibling, then rename over the target.
   const tmp = join(dirname(filePath), `.${randomUUID()}.Root.tsx.tmp`);
   try {
