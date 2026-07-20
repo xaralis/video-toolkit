@@ -347,7 +347,7 @@ my-brand-videos/
 ## Video Workflow
 
 ```
-/toolkit:video → Script → Assets → Scene Review → Design → Audio → Preview → Render
+/toolkit:video → Script → Assets → Slide Review → Slide Design → Audio → Preview → Render
 ```
 
 1. **Create project** — Run `/toolkit:video`, choose template and brand
