@@ -45,27 +45,37 @@ We build a **purpose-built browser editor** on the free `@remotion/player`, over
 
 ## Architecture
 
-### Two load-bearing decisions (confirm at spec review)
+### Two load-bearing decisions (resolved)
 
 1. **Editor UI lives in core; it runs in the context of a project.** The editor is reusable
    machinery (brand-agnostic, benefits any brand using `campaign-reels`), so it ships from core
    (`lib/editor/`). It renders live preview by mounting **the project's own Remotion composition**
    (`./src/Root`) inside `@remotion/player` with the current config as props — so the preview is
    pixel-identical to the final render. A template gains an `npm run editor` script that serves the
-   editor app pointed at that project's `src/` + `public/` + `config.json`.
+   editor app pointed at that project's `src/` + `public/` and the reel config it reads from
+   `src/Root.tsx`.
 
-2. **`config.json` becomes the source of truth**, replacing the inline `defaultProps={{...}}` in
-   `src/Root.tsx`. `Root.tsx` imports it (`import config from '../config.json'` →
-   `defaultProps={config}`). The editor, `/toolkit:cut`, `/toolkit:fine-tune`, and Studio all
-   read/write this one file. This removes fragile TSX parsing/rewriting from the browser editor —
-   it reads and writes plain JSON. Requires a one-time template change + migration of existing
-   projects (extract current `defaultProps` into `config.json`).
+2. **Single source of truth stays the inlined `defaultProps={{…}}` literal in `src/Root.tsx`.**
+   `Root.tsx` deliberately inlines the props as a literal because **Remotion Studio's Save requires
+   an inlined literal** (imported references won't persist —
+   https://remotion.dev/docs/visual-editing#requirements). We keep that. The editor therefore does
+   **not** introduce a `config.json` and needs **no migration**, and `/toolkit:cut` /
+   `/toolkit:fine-tune` (which already write this literal) are **unchanged**. Studio Save keeps
+   working alongside the editor. *(Rejected the earlier `config.json` import seam: it would have
+   broken Studio Save while gaining little — see Save below.)*
 
 ### Save
 
-The editor dev server exposes a small local endpoint that writes `config.json` back to disk on
-Save. (Local file write — we do not reuse Studio's static-analysis save path, since `config.json`
-is plain data.)
+The editor's dev server exposes a small **local Node endpoint** that persists edits by rewriting the
+`defaultProps` literal in `src/Root.tsx` **via AST**, reusing Remotion's own save-default-props
+mechanism (the same path Studio's Save uses; `@remotion/studio` exposes it). Crucially the **browser
+only ever sends plain JSON** to the endpoint — the fragile TSX rewrite happens server-side in Node,
+not in the browser. This keeps one source of truth, preserves Studio Save, and avoids any migration.
+
+**Plan prerequisite (de-risk first):** confirm Remotion's save-default-props API can be invoked
+headless from our endpoint (not only from a running Studio). If it cannot, fall back to a
+purpose-built AST writer (Babel/ts-morph) that replaces the `defaultProps={{…}}` object literal.
+This spike is the first task of the plan.
 
 ## Editing surface (layout: classic NLE)
 
@@ -132,7 +142,8 @@ differentiator the generic Editor Starter cannot provide.
 - Overlay lane + registry + common contract, with graceful degradation for unregistered/special
   overlays (timing / toggle / position only; internals elsewhere).
 - Live preview via `@remotion/player` mounting the real composition.
-- `config.json` source-of-truth seam + migration.
+- Save via a local Node endpoint that rewrites the `Root.tsx` `defaultProps` literal by AST
+  (browser sends JSON only). No `config.json`, no migration, Studio Save preserved.
 - Brand-rule warnings (non-blocking).
 
 **Out of MVP (stays in Studio / Claude):**
@@ -142,14 +153,15 @@ differentiator the generic Editor Starter cannot provide.
 - **Final render** — stays on `/toolkit:render`.
 - **Hosting / one-click launcher** — MVP launches via `npm run editor`.
 
-## config.json migration
+## Config source & save (no migration)
 
-1. Template change: `campaign-reels` `src/Root.tsx` imports `config.json` instead of inlining
-   `defaultProps`.
-2. Migration for existing projects: extract the current `defaultProps` object into a sibling
-   `config.json`; `/toolkit:sync-template` can carry the `Root.tsx` change into vendored project
-   copies.
-3. `/toolkit:cut` and `/toolkit:fine-tune` updated to write `config.json`.
+1. **No template data change.** `campaign-reels` `src/Root.tsx` keeps its inlined
+   `defaultProps={{…}}` literal. There is no `config.json` and nothing to migrate.
+2. **Read:** the editor obtains the current props by importing the composition's registered
+   `defaultProps` at load (the same object Remotion/Studio use), not by parsing TSX in the browser.
+3. **Write:** Save POSTs the edited props (JSON) to the local Node endpoint, which rewrites the
+   `defaultProps` literal in `src/Root.tsx` via AST (Remotion save-default-props, or a Babel/ts-morph
+   fallback). `/toolkit:cut` and `/toolkit:fine-tune` are unchanged.
 
 ## Proposed file layout (core)
 
@@ -161,23 +173,24 @@ lib/editor/
 │   ├── Inspector/    # take picker, filmstrip trim, caption+accent, audio, transitions, multi-clip list
 │   ├── overlays/     # overlay registry: common contract + per-type panels + unknown fallback
 │   └── FrameOverlay.tsx  # focus dot + crop rectangle on the Player canvas
-├── save-endpoint.ts  # local dev-server route that writes config.json
+├── save-endpoint.ts  # local Node route: rewrites Root.tsx defaultProps literal via AST
 ├── brand-warnings.ts # reuse of check-brand rule detectors
 └── README.md
 ```
 
-Template wiring: `campaign-reels` `package.json` gains `"editor": "…"`; `Root.tsx` imports
-`config.json`.
+Template wiring: `campaign-reels` `package.json` gains an `"editor"` script; `Root.tsx` is
+unchanged.
 
 ## Data flow
 
 1. `npm run editor` (in a project) → serves `lib/editor` app, pointed at the project's `src/` +
-   `public/` + `config.json`.
-2. App loads `config.json` → renders `@remotion/player` with the project composition + config as
-   props → live preview.
-3. Reviewer manipulates (drag / click / type) → updates in-memory config → Player re-renders live.
-4. Brand-warning detectors run on the in-memory config → inline warnings.
-5. Save → POST to local endpoint → writes `config.json` → (later) `/toolkit:render` produces MP4.
+   `public/`.
+2. App reads the composition's current `defaultProps` → renders `@remotion/player` with the project
+   composition + those props → live preview.
+3. Reviewer manipulates (drag / click / type) → updates in-memory props → Player re-renders live.
+4. Brand-warning detectors run on the in-memory props → inline warnings.
+5. Save → POST JSON to local endpoint → endpoint AST-rewrites `Root.tsx` `defaultProps` → (later)
+   `/toolkit:render` produces MP4.
 
 ## Error handling & edge cases
 
@@ -187,17 +200,18 @@ Template wiring: `campaign-reels` `package.json` gains `"editor": "…"`; `Root.
   clamp at the drag handle; surface as a brand warning rather than silently accepting.
 - **Missing take/source file** (referenced `source` not in `public/`): mark the take slot as
   missing; don't break preview.
-- **Concurrent edits** (Studio open on the same `config.json`): last-write-wins is acceptable for a
+- **Concurrent edits** (Studio open on the same `Root.tsx`): last-write-wins is acceptable for a
   single local user; note it, don't engineer locking in MVP.
 
 ## Testing
 
-- **Unit:** `config.json` ↔ Zod schema round-trip; trim/duration math incl. min-duration clamping;
-  transition frames ↔ seconds/preset conversion; brand-warning detectors.
+- **Unit:** trim/duration math incl. min-duration clamping; transition frames ↔ seconds/preset
+  conversion; brand-warning detectors; the AST rewrite (props object → rewritten `Root.tsx` →
+  re-parsed props equal the input).
 - **Integration:** load a fixture reel → simulate drag edits + caption edit + transition change →
-  Save → assert written `config.json` validates against the template's Zod schema and matches
-  expected values.
-- **Preview parity (manual/smoke):** the Player preview and a `/toolkit:render` of the same config
+  Save → assert the rewritten `Root.tsx` still compiles and its `defaultProps` validates against the
+  template's Zod schema and matches expected values.
+- **Preview parity (manual/smoke):** the Player preview and a `/toolkit:render` of the same props
   agree visually on a sample reel.
 
 ## Later phases (not this spec)
@@ -209,8 +223,9 @@ Template wiring: `campaign-reels` `package.json` gains `"editor": "…"`; `Root.
 - Hosted editor (URL, config from R2/git) — true zero-terminal.
 - Humanized Studio schema form (cheap parallel win for power users).
 
-## Open decisions to confirm at spec review
+## Resolved architecture decisions
 
-1. Editor UI in core, running in project context (mounts the project's composition) — OK?
-2. `config.json` as the new source of truth, with template change + migration of existing
-   projects — OK?
+1. **Editor UI in core, running in project context** (mounts the project's composition). ✔
+2. **Single source of truth stays the inlined `Root.tsx` `defaultProps` literal**; the editor saves
+   by AST-rewriting it server-side (Studio Save preserved, no migration). ✔ *(Revised from the
+   original `config.json` seam after finding it would break Studio Save.)*
