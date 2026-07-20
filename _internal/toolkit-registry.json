@@ -114,19 +114,19 @@
       "created": "2025-12-10",
       "updated": "2025-12-10"
     },
-    "scene-review": {
-      "path": "commands/scene-review.md",
-      "description": "Scene-by-scene review in Remotion Studio before voiceover",
+    "slide-review": {
+      "path": "commands/slide-review.md",
+      "description": "Scene-by-scene review of a slide deck in Remotion Studio, before voiceover",
       "status": "stable",
       "created": "2025-12-10",
-      "updated": "2025-12-10"
+      "updated": "2026-07-20"
     },
-    "design": {
-      "path": "commands/design.md",
-      "description": "Focused design refinement session for a scene",
+    "slide-design": {
+      "path": "commands/slide-design.md",
+      "description": "Focused visual-design refinement of a slide scene (frontend-design skill)",
       "status": "stable",
       "created": "2025-12-10",
-      "updated": "2025-12-13"
+      "updated": "2026-07-20"
     },
     "versions": {
       "path": "commands/versions.md",
@@ -156,12 +156,12 @@
       "created": "2026-05-20",
       "updated": "2026-05-20"
     },
-    "fine-tune": {
-      "path": "commands/fine-tune.md",
-      "description": "Launch Remotion Studio for slider + text-input iteration on a cut reel; Save persists to Root.tsx",
+    "cut-tune": {
+      "path": "commands/cut-tune.md",
+      "description": "Launch Remotion Studio to tune a cut reel's timing + overlay text; Save persists to Root.tsx",
       "status": "beta",
       "created": "2026-05-20",
-      "updated": "2026-05-20"
+      "updated": "2026-07-20"
     },
     "render": {
       "path": "commands/render.md",

@@ -1,4 +1,4 @@
-# Design Refinement
+# Slide Design
 
 Focused design session for improving video scene visuals using the frontend-design skill.
 
@@ -12,8 +12,8 @@ Deep-dive visual refinement for slides and components:
 ## Usage
 
 ```
-/toolkit:design              # Discover project, list scenes, choose one
-/toolkit:design [scene-id]   # Jump directly to a specific scene
+/toolkit:slide-design              # Discover project, list scenes, choose one
+/toolkit:slide-design [scene-id]   # Jump directly to a specific scene
 ```
 
 ---
@@ -228,7 +228,7 @@ These are common scene types, but projects may have different ones:
 ## Example Session
 
 ```
-User: /toolkit:design
+User: /toolkit:slide-design
 
 Claude: Let me discover your project...
 

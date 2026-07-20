@@ -2,22 +2,22 @@
 description: Scene-by-scene review in Remotion Studio (before voiceover)
 ---
 
-# Scene Review
+# Slide Review
 
 Interactive scene-by-scene review using Remotion Studio. Critical quality gate before voiceover generation.
 
 ## Quick Start
 
 ```
-/toolkit:scene-review           # Review all scenes from beginning
-/toolkit:scene-review title     # Jump to specific scene by type
-/toolkit:scene-review 3         # Jump to scene 3
+/toolkit:slide-review           # Review all scenes from beginning
+/toolkit:slide-review title     # Jump to specific scene by type
+/toolkit:slide-review 3         # Jump to scene 3
 ```
 
 ## Example Session
 
 ```
-$ /toolkit:scene-review
+$ /toolkit:slide-review
 
 Remotion Studio running at http://localhost:3000
 
@@ -288,7 +288,7 @@ Options:
 
 ## Re-running Review
 
-If `/toolkit:scene-review` is run on an already-reviewed project:
+If `/toolkit:slide-review` is run on an already-reviewed project:
 
 ```
 Previous review found.

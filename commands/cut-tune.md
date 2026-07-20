@@ -2,7 +2,7 @@
 description: Launch Studio for slider + text-input iteration on a cut reel
 ---
 
-# Fine-tune
+# Cut Tune
 
 Launch Remotion Studio for interactive iteration on a reel's timing
 and overlay text. Changes save back to `src/Root.tsx` via Studio's
@@ -11,8 +11,8 @@ Save button.
 ## Quick start
 
 ```
-/toolkit:fine-tune                 # current project
-/toolkit:fine-tune <project-name>  # explicit
+/toolkit:cut-tune                 # current project
+/toolkit:cut-tune <project-name>  # explicit
 ```
 
 ## Flow
@@ -102,7 +102,7 @@ pkill -f "remotion studio" 2>/dev/null
 - Studio's Save only writes to **inline literal defaultProps**, not to
   imported references. The template's Root.tsx satisfies this. If user
   hand-edits to use an import, Save will fail with a clear error message.
-- If user re-edits SCREENPLAY.md between `/toolkit:cut` and `/toolkit:fine-tune`, those
+- If user re-edits SCREENPLAY.md between `/toolkit:cut` and `/toolkit:cut-tune`, those
   changes do NOT auto-flow into the config — re-run `/toolkit:cut` to refresh.
 - For deep timeline changes (reorder segments, add/remove multiple), it's
   often easier to re-run `/toolkit:cut` than to drag in Studio.
