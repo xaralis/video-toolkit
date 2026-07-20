@@ -6,6 +6,16 @@ All notable changes to claude-code-video-toolkit.
 
 ---
 
+## 2026-07-20
+
+### Changed
+- **Renamed review/design commands by template lineage** (hard rename, no behavior change):
+  `/toolkit:scene-review` → `/toolkit:slide-review`, `/toolkit:design` → `/toolkit:slide-design`
+  (both slide-template commands), and `/toolkit:fine-tune` → `/toolkit:cut-tune` (campaign-reels).
+  Reload Claude Code to pick up the new slash commands; the old names no longer resolve.
+
+---
+
 ## 2026-04-09 (v0.14.2)
 
 ### Added

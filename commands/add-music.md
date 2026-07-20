@@ -8,9 +8,9 @@ Generate background music for a reel via ACE-Step (acemusic cloud API,
 with Modal fallback) and wire the resulting `bg.mp3` into the project's
 `defaultProps.audio` block.
 
-**Workflow position:** runs AFTER `/toolkit:fine-tune`, BEFORE `/toolkit:render`. The
+**Workflow position:** runs AFTER `/toolkit:cut-tune`, BEFORE `/toolkit:render`. The
 reasoning: music duration must match the FINAL reel duration. If you
-generate music before `/toolkit:fine-tune`, any timing change in Studio
+generate music before `/toolkit:cut-tune`, any timing change in Studio
 invalidates the music length and forces a regeneration.
 
 ## Quick start
@@ -28,7 +28,7 @@ invalidates the music length and forces a regeneration.
 
 ### Step 1: Detect project + state
 
-1. Detect project (same convention as `/toolkit:narrate` / `/toolkit:cut` / `/toolkit:fine-tune`).
+1. Detect project (same convention as `/toolkit:narrate` / `/toolkit:cut` / `/toolkit:cut-tune`).
 2. Read `src/Root.tsx`; confirm `defaultProps` has real segments (not template demos).
    - If still on demo defaults → suggest `/toolkit:cut` first.
 3. Read `SCREENPLAY.md` frontmatter for hints:
@@ -135,7 +135,7 @@ Prompt:      <prompt used>
 Volume:      -6 dB
 Generation:  87s
 
-Root.tsx updated with audio block. Run /toolkit:fine-tune or /toolkit:render to hear it.
+Root.tsx updated with audio block. Run /toolkit:cut-tune or /toolkit:render to hear it.
 ```
 
 ## Re-run semantics

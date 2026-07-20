@@ -135,7 +135,7 @@ Vertical 9:16 (1080x1920) short-form reels for social campaigns. Three-layer com
 (film footage; drop into public/recordings + public/broll)
 /toolkit:sync push recordings,broll     # back up code + raw footage (git + R2)
 /toolkit:cut                            # map footage → defaultProps in Root.tsx
-/toolkit:fine-tune                      # iterate timing/text in Studio (lock final durations here)
+/toolkit:cut-tune                      # iterate timing/text in Studio (lock final durations here)
 /toolkit:add-music                      # generate ACE-Step bg music sized to the final reel (optional)
 /toolkit:render                         # final MP4 (or /toolkit:render preview for half-scale)
 /toolkit:sync push out                  # back up code + renders (git + R2)
@@ -145,7 +145,7 @@ Vertical 9:16 (1080x1920) short-form reels for social campaigns. Three-layer com
 Collaborator joining mid-project:
 
 ```
-/toolkit:video → resume → /toolkit:sync pull → /toolkit:fine-tune (or wherever the work is)
+/toolkit:video → resume → /toolkit:sync pull → /toolkit:cut-tune (or wherever the work is)
 ```
 
 **Auto-pull pravidlo (lazy sync)**: SessionStart hook spouští `python3 -m video_toolkit.check_stale_projects`, který tiše prohlédne R2 a vypíše banner `=== R2 STALE PROJECTS ===`, pokud některý lokální projekt zaostává. Když uživatel v dalším promptu zmíní práci na takovém projektu (resume přes `/toolkit:video`, "pokračujme v X", "co je v X", atd.), **NEJDŘÍV** spusť `/toolkit:sync pull <name>` (= git pull + R2 pull, jeden krok) a teprve potom dělej cokoli s jeho soubory. Bez čekání na další explicitní pokyn. Projekty, které v banneru nejsou, jsou aktuální — sync přeskoč. Pokud banner chybí úplně (R2 nedostupné, není nakonfigurováno), pracuj s lokálním stavem.
@@ -199,8 +199,8 @@ For ready-to-copy invocations of each tool (voiceover, sync_timing, qwen3_tts, i
 1. **Create/resume project** - Run `/toolkit:video`, choose template and brand (or resume existing)
 2. **Review script** - Edit `VOICEOVER-SCRIPT.md` to plan content
 3. **Gather assets** - Add external video footage
-4. **Scene review** - Run `/toolkit:scene-review` to verify visuals in Remotion Studio
-5. **Design refinement** - Use `/toolkit:design` or the "Refine" option in scene-review to improve slide visuals
+4. **Slide review** - Run `/toolkit:slide-review` to verify visuals in Remotion Studio
+5. **Slide design** - Use `/toolkit:slide-design` or the "Refine" option in slide-review to improve slide visuals
 6. **Generate audio** - Use `/toolkit:generate-voiceover` for AI narration
 7. **Sync timing** - Run `python3 -m video_toolkit.sync_timing --apply` to update config durations
 8. **Preview** - `npm run studio` in project directory
@@ -219,7 +219,7 @@ planning → assets → review → audio → editing → rendering → complete
 |-------|-------------|
 | `planning` | Defining scenes, writing script |
 | `assets` | Recording demos, gathering materials |
-| `review` | Scene-by-scene review in Remotion Studio (`/toolkit:scene-review`) |
+| `review` | Scene-by-scene review in Remotion Studio (`/toolkit:slide-review`) |
 | `audio` | Generating voiceover, music |
 | `editing` | Adjusting timing, previewing |
 | `rendering` | Final render in progress |
@@ -250,8 +250,8 @@ Toolkit-specific Remotion conventions (animation hooks, Series sequencing, `<Off
 The `frontend-design` skill elevates slide visuals from generic to distinctive.
 
 ### Usage
-- **During scene review** (`/toolkit:scene-review`): Choose "Refine" for visual improvements
-- **Focused sessions** (`/toolkit:design`): Deep-dive on a specific scene — `/toolkit:design title`, `/toolkit:design cta`
+- **During slide review** (`/toolkit:slide-review`): Choose "Refine" for visual improvements
+- **Focused sessions** (`/toolkit:slide-design`): Deep-dive on a specific scene — `/toolkit:slide-design title`, `/toolkit:slide-design cta`
 
 ### When to Use
 - Slide scenes that feel generic

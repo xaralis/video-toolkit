@@ -158,7 +158,7 @@ Segments:        11 (10 mapped, 1 outro)
 Total duration:  ~46.2s
 Warnings:        0
 
-Next: /toolkit:fine-tune to iterate in Studio.
+Next: /toolkit:cut-tune to iterate in Studio.
 ```
 
 If there are warnings (3s violations, unused source files, missing transcripts),

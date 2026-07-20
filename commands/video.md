@@ -432,7 +432,7 @@ Update `phase` automatically based on state:
 
 ## Review Phase
 
-**CRITICAL:** When all assets are present and phase is `review`, delegate to `/toolkit:scene-review`.
+**CRITICAL:** When all assets are present and phase is `review`, delegate to `/toolkit:slide-review`.
 
 ### When Review is Triggered
 
@@ -441,10 +441,10 @@ When resuming a project where `phase: "review"` or transitioning from `assets` â
 ```
 All demo assets are recorded! Time to review before generating voiceover.
 
-Run `/toolkit:scene-review` to walk through each scene in Remotion Studio.
+Run `/toolkit:slide-review` to walk through each scene in Remotion Studio.
 ```
 
-**Do NOT** attempt to do review inline in `/toolkit:video`. The `/toolkit:scene-review` command:
+**Do NOT** attempt to do review inline in `/toolkit:video`. The `/toolkit:slide-review` command:
 - Starts Remotion Studio for visual verification
 - Walks through scenes one by one
 - Lets user see exactly what will render
@@ -452,7 +452,7 @@ Run `/toolkit:scene-review` to walk through each scene in Remotion Studio.
 
 ### After Review Complete
 
-When `/toolkit:scene-review` marks review as complete:
+When `/toolkit:slide-review` marks review as complete:
 1. Phase transitions to `audio`
 2. `/toolkit:video` will show: "Review complete. Run `/toolkit:generate-voiceover`"
 
@@ -460,12 +460,12 @@ When `/toolkit:scene-review` marks review as complete:
 
 ## Integration with Other Commands
 
-### /toolkit:scene-review
+### /toolkit:slide-review
 
 When phase is `review`:
-- `/toolkit:video` prompts user to run `/toolkit:scene-review`
-- `/toolkit:scene-review` handles the actual review flow
-- After completion, `/toolkit:scene-review` updates phase to `audio`
+- `/toolkit:video` prompts user to run `/toolkit:slide-review`
+- `/toolkit:slide-review` handles the actual review flow
+- After completion, `/toolkit:slide-review` updates phase to `audio`
 
 ### Providing demos
 

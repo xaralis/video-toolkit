@@ -153,8 +153,8 @@ core itself ships none):
 |---------|-------------|
 | `/toolkit:setup` | First-time setup - cloud GPU, file transfer, voice, prerequisites |
 | `/toolkit:video` | Video projects - list, resume, or create new |
-| `/toolkit:scene-review` | Scene-by-scene review in Remotion Studio |
-| `/toolkit:design` | Focused design refinement session for a scene |
+| `/toolkit:slide-review` | Scene-by-scene review in Remotion Studio |
+| `/toolkit:slide-design` | Focused design refinement session for a scene |
 | `/toolkit:brand` | Brand profiles - list, edit, or create new |
 | `/toolkit:template` | List available templates or create new ones |
 | `/toolkit:generate-voiceover` | Generate AI voiceover from script (supports per-scene mode) |
@@ -211,7 +211,7 @@ Which project? (or 'new' for a new project)
 |-------|-------------|
 | `planning` | Defining scenes, writing script |
 | `assets` | Recording demos, gathering materials |
-| `review` | Scene-by-scene review in Remotion Studio (`/toolkit:scene-review`) |
+| `review` | Scene-by-scene review in Remotion Studio (`/toolkit:slide-review`) |
 | `audio` | Generating voiceover, music |
 | `editing` | Adjusting timing, previewing |
 | `rendering` | Final render in progress |

@@ -78,7 +78,7 @@ Resources created or updated by `python3 scripts/migrate_to_codex.py --force`:
 11. `~/.codex/skills/contribute/`
 12. `~/.codex/skills/design/`
 13. `~/.codex/skills/generate-voiceover/`
-14. `~/.codex/skills/scene-review/`
+14. `~/.codex/skills/slide-review/`
 15. `~/.codex/skills/setup/`
 16. `~/.codex/skills/skills/`
 17. `~/.codex/skills/template/`
@@ -135,8 +135,8 @@ Claude Code has deep knowledge in:
 |---------|-------------|
 | `/toolkit:setup` | First-time setup — cloud GPU, file transfer, voice, prerequisites |
 | `/toolkit:video` | Video projects — list, resume, or create new |
-| `/toolkit:scene-review` | Scene-by-scene review in Remotion Studio |
-| `/toolkit:design` | Focused design refinement session for a scene |
+| `/toolkit:slide-review` | Scene-by-scene review in Remotion Studio |
+| `/toolkit:slide-design` | Focused design refinement session for a scene |
 | `/toolkit:brand` | Brand profiles — list, edit, or create new |
 | `/toolkit:template` | List available templates or create new ones |
 | `/toolkit:skills` | List installed skills or create new ones |
@@ -353,8 +353,8 @@ my-brand-videos/
 1. **Create project** — Run `/toolkit:video`, choose template and brand
 2. **Review script** — Edit `VOICEOVER-SCRIPT.md` to plan content and assets
 3. **Gather assets** — Add external video footage
-4. **Scene review** — Run `/toolkit:scene-review` to verify visuals in Remotion Studio
-5. **Design refinement** — Use `/toolkit:design` to improve slide visuals with the frontend-design skill
+4. **Slide review** — Run `/toolkit:slide-review` to verify visuals in Remotion Studio
+5. **Slide design** — Use `/toolkit:slide-design` to improve slide visuals with the frontend-design skill
 6. **Generate audio** — AI voiceover with `/toolkit:generate-voiceover`
 7. **Configure** — Update config file with asset paths and timing
 8. **Preview** — `npm run studio` for live preview

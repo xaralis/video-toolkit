@@ -126,7 +126,7 @@ Output:       projects/<name>/out/preview.mp4  (PREVIEW — half scale)
 If the user re-runs `/toolkit:render` quickly (within ~5 minutes of a previous
 render) it likely means they're iterating. Useful nudges:
 
-- "Studio is faster than render for visual iteration. Want to launch with `/toolkit:fine-tune`?"
+- "Studio is faster than render for visual iteration. Want to launch with `/toolkit:cut-tune`?"
 - "If you're iterating timing, preview mode (`/toolkit:render preview`) is 4× faster."
 - "If you changed `SCREENPLAY.md`, re-run `/toolkit:cut` before rendering."
 

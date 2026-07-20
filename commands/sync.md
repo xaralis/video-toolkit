@@ -219,7 +219,7 @@ If git step had no remote (`origin` missing) or branch had no upstream and push 
 
 After a successful operation, hint at the next typical step:
 
-- **Just pulled?** → "Footage in place. Run `/toolkit:cut` to (re)map clips, or `/toolkit:fine-tune` to iterate in Studio."
+- **Just pulled?** → "Footage in place. Run `/toolkit:cut` to (re)map clips, or `/toolkit:cut-tune` to iterate in Studio."
 - **Pushed recordings only?** → "Footage backed up. Continue with `/toolkit:cut`."
 - **Pushed out/ only?** → "Render in R2. Use `/toolkit:sync share` to get a public URL."
 - **Pushed everything?** → "Project mirrored. Safe to clean the local copy if disk pressure."
@@ -234,7 +234,7 @@ After a successful operation, hint at the next typical step:
 (film footage; drop into public/recordings + public/broll)
 /toolkit:sync push recordings,broll               # ← code + raw footage to git+R2
 /toolkit:cut                                      # map footage → defaultProps
-/toolkit:fine-tune                                # iterate in Studio
+/toolkit:cut-tune                                # iterate in Studio
 /toolkit:add-music                                # generate bg.mp3 (optional)
 /toolkit:render                                   # produce reel.mp4
 /toolkit:sync push out                            # ← code + renders to git+R2
@@ -245,7 +245,7 @@ For collaborators joining mid-project:
 ```
 /toolkit:video                                    # detects existing project (resume)
 /toolkit:sync pull                                # ← code + all media in one step
-/toolkit:fine-tune  (or wherever the work is)
+/toolkit:cut-tune  (or wherever the work is)
 ```
 
 ## Notes

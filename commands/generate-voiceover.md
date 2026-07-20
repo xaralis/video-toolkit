@@ -24,10 +24,10 @@ Before gathering configuration, check if we're in a project context:
    - Timing mismatches
    - Wasted API credits if script needs changes
 
-   Run `/toolkit:scene-review` first to verify each scene in Remotion Studio.
+   Run `/toolkit:slide-review` first to verify each scene in Remotion Studio.
 
    Options:
-   1. Run /toolkit:scene-review first (recommended)
+   1. Run /toolkit:slide-review first (recommended)
    2. Generate voiceover anyway (not recommended)
    ```
 
