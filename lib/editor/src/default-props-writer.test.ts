@@ -75,3 +75,32 @@ describe('rewriteDefaultProps disambiguation & errors', () => {
     expect(() => rewriteDefaultProps('export const x = 1;', {})).toThrow(/no <Composition>/);
   });
 });
+
+const COMPUTED_KEY = `import { Composition } from 'remotion';
+export const Root = () => (
+  <Composition id="A" component={A} defaultProps={{ [k]: 'x' }} fps={30} width={1} height={1} />
+);
+`;
+
+describe('evaluateLiteral safety', () => {
+  it('throws on a computed property key instead of using the raw "[k]" source text as a key', () => {
+    expect(() => readDefaultProps(COMPUTED_KEY)).toThrow(/computed property names are not supported/);
+  });
+
+  it('round-trips a literal own "__proto__" key as a plain enumerable data property, without touching the prototype', () => {
+    // Constructed via JSON.parse so `__proto__` is an OWN property of the input, not a prototype
+    // reassignment (a plain object literal `{ __proto__: 1 }` would instead set the prototype).
+    const withProto = JSON.parse('{"topic":"x","__proto__":1}') as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(withProto, '__proto__')).toBe(true);
+
+    const out = rewriteDefaultProps(ROOT, withProto);
+    const result = readDefaultProps(out) as Record<string, unknown>;
+
+    expect(Object.prototype.hasOwnProperty.call(result, '__proto__')).toBe(true);
+    expect(result.__proto__).toBe(1);
+    expect(result.topic).toBe('x');
+    // The result's actual prototype must remain Object.prototype — not reassigned to `1`.
+    expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+    expect(result).toEqual(withProto);
+  });
+});
