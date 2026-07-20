@@ -76,7 +76,7 @@ Resources created or updated by `python3 scripts/migrate_to_codex.py --force`:
 9. `~/.codex/skills/runpod/`
 10. `~/.codex/skills/brand/`
 11. `~/.codex/skills/contribute/`
-12. `~/.codex/skills/design/`
+12. `~/.codex/skills/slide-design/`
 13. `~/.codex/skills/generate-voiceover/`
 14. `~/.codex/skills/slide-review/`
 15. `~/.codex/skills/setup/`
