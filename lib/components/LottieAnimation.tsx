@@ -19,7 +19,7 @@
  */
 
 import { Lottie, LottieAnimationData } from '@remotion/lottie';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   cancelRender,
   continueRender,
@@ -86,7 +86,8 @@ export const recolorLottie = (
         (obj.ty === 'fl' || obj.ty === 'st') &&
         obj.c &&
         Array.isArray(obj.c.k) &&
-        obj.c.k.length >= 3
+        obj.c.k.length >= 3 &&
+        obj.c.k.slice(0, 3).every((n: unknown) => typeof n === 'number')
       ) {
         const current = rgbToHex(obj.c.k).toLowerCase();
         if (norm[current]) {
@@ -119,23 +120,38 @@ export const LottieAnimation: React.FC<LottieAnimationProps> = ({
     animationData ?? null,
   );
 
+  const continuedRef = useRef(false);
+  const finishLoading = useCallback(() => {
+    if (!continuedRef.current) {
+      continuedRef.current = true;
+      continueRender(handle);
+    }
+  }, [handle]);
+
   useEffect(() => {
     if (animationData) {
-      continueRender(handle);
+      setLoaded(animationData);
+      finishLoading();
       return;
     }
     if (!src) {
       cancelRender(new Error('LottieAnimation requires `src` or `animationData`'));
       return;
     }
+    let cancelled = false;
     fetch(staticFile(src))
       .then((res) => res.json())
       .then((json: LottieAnimationData) => {
-        setLoaded(json);
-        continueRender(handle);
+        if (!cancelled) {
+          setLoaded(json);
+          finishLoading();
+        }
       })
       .catch((err) => cancelRender(err));
-  }, [handle, src, animationData]);
+    return () => {
+      cancelled = true;
+    };
+  }, [src, animationData, finishLoading]);
 
   const finalData = useMemo(
     () => (loaded && recolor ? recolorLottie(loaded, recolor) : loaded),
