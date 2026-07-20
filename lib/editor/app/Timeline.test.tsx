@@ -35,7 +35,12 @@ describe('Timeline', () => {
         outroFrames={180}
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: 'broll · 2' }));
+    // Selection now fires from the track's pointerdown hit-test (see
+    // Timeline.tsx's startSeek), not from the block's onClick — a native
+    // click never reliably reaches the block in a real browser once
+    // setPointerCapture retargets it. A plain fireEvent.click wouldn't
+    // exercise that path, so drive the real gesture instead.
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'broll · 2' }));
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith('b');
   });
@@ -309,8 +314,37 @@ describe('Timeline', () => {
           outroFrames={180}
         />
       );
-      fireEvent.click(screen.getByRole('button', { name: 'broll · 2' }));
+      stubTrackRect();
+      const block = screen.getByRole('button', { name: 'broll · 2' });
+      fireEvent.pointerDown(block, { clientX: 200 });
       expect(onSelect).toHaveBeenCalledWith('b');
+      expect(onSeek).toHaveBeenCalledWith(200);
+      fireEvent.pointerUp(window, { clientX: 200 });
+    });
+
+    it('selects the block and seeks from a single real pointer gesture (pointerdown, no move, pointerup)', () => {
+      const onSeek = vi.fn();
+      const onSelect = vi.fn();
+      render(
+        <Timeline
+          segments={segments}
+          selectedId={null}
+          onSelect={onSelect}
+          onSeek={onSeek}
+          fps={30}
+          outroFrames={180}
+        />
+      );
+      stubTrackRect();
+      const block = screen.getByRole('button', { name: 'clip · 1' });
+
+      fireEvent.pointerDown(block, { clientX: 10 });
+      fireEvent.pointerUp(window, { clientX: 10 });
+
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      expect(onSelect).toHaveBeenCalledWith('a');
+      expect(onSeek).toHaveBeenCalledTimes(1);
+      expect(onSeek).toHaveBeenCalledWith(10);
     });
 
     it('works without onSeek (prop is optional)', () => {
@@ -327,14 +361,15 @@ describe('Timeline', () => {
       expect(() => fireEvent.pointerDown(track, { clientX: 180 })).not.toThrow();
     });
 
-    it('does not call onSeek when dragging a trim handle', () => {
+    it('does not call onSeek or onSelect when dragging a trim handle', () => {
       const onSeek = vi.fn();
+      const onSelect = vi.fn();
       const onTrim = vi.fn();
       render(
         <Timeline
           segments={segments}
           selectedId="b"
-          onSelect={vi.fn()}
+          onSelect={onSelect}
           onTrim={onTrim}
           onSeek={onSeek}
           fps={30}
@@ -363,6 +398,7 @@ describe('Timeline', () => {
 
       expect(onTrim).toHaveBeenCalledTimes(1);
       expect(onSeek).not.toHaveBeenCalled();
+      expect(onSelect).not.toHaveBeenCalled();
     });
   });
 
