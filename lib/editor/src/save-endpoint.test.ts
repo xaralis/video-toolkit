@@ -42,4 +42,11 @@ describe('createSaveHandler', () => {
     const handler = createSaveHandler(() => ({ filePath: '/nope' }));
     await expect(handler({ props: {} })).rejects.toThrow(/rootPath/);
   });
+
+  it('rejects a body missing props', async () => {
+    const handler = createSaveHandler(() => ({ filePath: '/nope' }));
+    await expect(handler({ rootPath: '/x' })).rejects.toThrow(
+      /body must be \{ rootPath: string, props: unknown \}/,
+    );
+  });
 });
