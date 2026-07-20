@@ -76,6 +76,93 @@ describe('rewriteDefaultProps disambiguation & errors', () => {
   });
 });
 
+const AS_CONST_ROOT = `import { Composition } from 'remotion';
+import { CampaignReel } from './CampaignReel';
+
+export const RemotionRoot = () => {
+  return (
+    <Composition
+      id="CampaignReel"
+      component={CampaignReel}
+      defaultProps={{
+        topic: 'Demo',
+        audioMode: 'silent' as const,
+        segments: [
+          { id: 's1', type: 'clip', trimIn: 0, trimOut: 3 },
+        ] as const,
+      }}
+      fps={30}
+      width={1080}
+      height={1920}
+    />
+  );
+};
+`;
+
+const AS_CONST_WHOLE_OBJECT_ROOT = `import { Composition } from 'remotion';
+import { CampaignReel } from './CampaignReel';
+
+export const RemotionRoot = () => {
+  return (
+    <Composition
+      id="CampaignReel"
+      component={CampaignReel}
+      defaultProps={{
+        topic: 'Demo',
+        audioMode: 'silent',
+      } as const}
+      fps={30}
+      width={1080}
+      height={1920}
+    />
+  );
+};
+`;
+
+const SATISFIES_ROOT = `import { Composition } from 'remotion';
+import { CampaignReel } from './CampaignReel';
+
+export const RemotionRoot = () => {
+  return (
+    <Composition
+      id="CampaignReel"
+      component={CampaignReel}
+      defaultProps={{
+        topic: 'Demo',
+        audioMode: 'silent',
+      } satisfies Record<string, unknown>}
+      fps={30}
+      width={1080}
+      height={1920}
+    />
+  );
+};
+`;
+
+describe('readDefaultProps with TypeScript type-assertion wrappers', () => {
+  it('unwraps a scalar "as const" (audioMode) and a "as const" array (segments)', () => {
+    expect(readDefaultProps(AS_CONST_ROOT, { compositionId: 'CampaignReel' })).toEqual({
+      topic: 'Demo',
+      audioMode: 'silent',
+      segments: [{ id: 's1', type: 'clip', trimIn: 0, trimOut: 3 }],
+    });
+  });
+
+  it('unwraps a whole-object "as const" wrapping the entire defaultProps literal', () => {
+    expect(readDefaultProps(AS_CONST_WHOLE_OBJECT_ROOT, { compositionId: 'CampaignReel' })).toEqual({
+      topic: 'Demo',
+      audioMode: 'silent',
+    });
+  });
+
+  it('unwraps a "satisfies" expression', () => {
+    expect(readDefaultProps(SATISFIES_ROOT, { compositionId: 'CampaignReel' })).toEqual({
+      topic: 'Demo',
+      audioMode: 'silent',
+    });
+  });
+});
+
 const COMPUTED_KEY = `import { Composition } from 'remotion';
 export const Root = () => (
   <Composition id="A" component={A} defaultProps={{ [k]: 'x' }} fps={30} width={1} height={1} />
