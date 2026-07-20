@@ -69,6 +69,13 @@
       "status": "beta",
       "created": "2026-03-25",
       "updated": "2026-04-08"
+    },
+    "lottie": {
+      "path": "skills/lottie/",
+      "description": "Toolkit Lottie motion-graphic patterns — LottieAnimation component, curated template library, brand-color patching, overlay placement",
+      "status": "beta",
+      "created": "2026-07-20",
+      "updated": "2026-07-20"
     }
   },
   "commands": {
@@ -204,6 +211,13 @@
       "status": "stable",
       "created": "2026-07-15",
       "updated": "2026-07-15"
+    },
+    "add-lottie-graphic": {
+      "path": "commands/add-lottie-graphic.md",
+      "description": "Produce a brand-colored Lottie motion graphic and place it on the reel timeline as a custom overlay",
+      "status": "beta",
+      "created": "2026-07-20",
+      "updated": "2026-07-20"
     }
   },
   "tools": {
@@ -662,6 +676,14 @@
       "category": "bootstrap",
       "created": "2026-07-18",
       "updated": "2026-07-18"
+    },
+    "lottie": {
+      "path": "video_toolkit/lottie.py",
+      "description": "Inspect, build (from curated templates), and recolor Lottie motion-graphic JSON",
+      "usage": "python3 -m video_toolkit.lottie build spinner --brand brands/<brand>/brand.json -o public/lottie/spinner.json",
+      "status": "beta",
+      "created": "2026-07-20",
+      "updated": "2026-07-20"
     }
   },
   "optionalComponents": {
@@ -1041,6 +1063,12 @@
       "description": "SVG noise overlay for cinematic film texture",
       "created": "2026-02-19",
       "updated": "2026-02-19"
+    },
+    "LottieAnimation": {
+      "path": "lib/components/LottieAnimation.tsx",
+      "description": "Frame-synced @remotion/lottie wrapper with runtime recolor and overlay placement",
+      "created": "2026-07-20",
+      "updated": "2026-07-20"
     }
   },
   "brands": {

@@ -152,6 +152,11 @@ Collaborator joining mid-project:
 
 The schema-driven template uses Zod (`src/config/schema.ts`) so Studio's sidebar renders a full editor for every segment, overlay, and transition. Brand rules at `brands/<brand>/BRAND-RULES.md` are loaded by `/toolkit:narrate` and `/toolkit:cut` to enforce accent emphasis-only, 3s minimums, L-cut audio inheritance, and other authoritative discipline. `/toolkit:sync` keeps raw footage + renders in Cloudflare R2 so heavy media never goes to git but is still shareable across the team.
 
+**The `add-*` command family:** `add-music`, `add-lottie-graphic` (and, planned,
+`add-video-from-text`) each *generate or source a discrete asset and place it on the timeline*.
+Animated components and transitions are code-level primitives composed via `/toolkit:cut` and
+`/toolkit:slide-design`, not part of this family.
+
 ## Brand Profiles
 
 Brand identity lives in `brands/<brand>/`. Each brand defines:
@@ -173,8 +178,12 @@ out of another brand's view. See `docs/creating-brands.md` for how to create one
 Reusable video components in `lib/components/`. See registry `components` section for the full list with descriptions. Import in templates via:
 
 ```tsx
-import { AnimatedBackground, SlideTransition, Label } from '@video-toolkit/lib/components';
+import { AnimatedBackground, SlideTransition, Label, LottieAnimation } from '@video-toolkit/lib/components';
 ```
+
+| Component | Purpose |
+|-----------|---------|
+| `LottieAnimation` | Frame-synced Lottie overlay (loaders, checks, confetti, progress) |
 
 ## Python Tools
 
@@ -188,7 +197,7 @@ Per-tool categories:
 
 | Type | Tools | When to Use |
 |------|-------|-------------|
-| **Project tools** | voiceover, music_gen, sfx, sync_timing | During video creation workflow |
+| **Project tools** | voiceover, music_gen, sfx, sync_timing, lottie | During video creation workflow |
 | **Utility tools** | addmusic, locate_watermark | Quick transformations on existing videos |
 | **Cloud GPU** | image_edit, upscale, dewatermark, qwen3_tts, music_gen, flux2 | AI processing via RunPod or Modal (`--cloud runpod\|modal`) |
 
