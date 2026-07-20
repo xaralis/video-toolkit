@@ -40,10 +40,10 @@ export function EditorShell({ preview, projectName, onSave, saving }: EditorShel
         <div className={styles.stage}>
           <div className={styles.stageFrame}>{preview}</div>
         </div>
-        <div className={styles.inspector}>Inspektor (příště)</div>
+        <div className={styles.inspector}>Inspector (coming soon)</div>
       </div>
 
-      <div className={styles.timeline}>Timeline (příště)</div>
+      <div className={styles.timeline}>Timeline (coming soon)</div>
     </div>
   );
 }
