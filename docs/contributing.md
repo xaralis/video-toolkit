@@ -75,7 +75,7 @@ git status
 git checkout -b improve/description
 
 # 3. Stage only toolkit files (projects/ is ignored automatically)
-git add .claude/ templates/ lib/ docs/ _internal/
+git add commands/ skills/ lib/ video_toolkit/ docs/ _internal/
 
 # 4. Commit
 git commit -m "Improve: description"
@@ -111,7 +111,6 @@ gh pr create
 |-----------|---------|----------|
 | `commands/` | Yes | Slash commands |
 | `skills/` | Yes | Skill documentation |
-| `templates/` | Yes | Video templates |
 | `lib/` | Yes | Shared components |
 | `docs/` | Yes | Documentation |
 | `video_toolkit/` | Yes | Python CLI tools |

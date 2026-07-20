@@ -10,8 +10,12 @@ structured metadata — descriptions, options, presets, env vars.
 
 ## Setup
 
+In a **brand repo**, `npx github:xaralis/video-toolkit init` already installed the tools into the
+repo's `.venv` (equivalent to `pip install -e toolkit`); use `.venv/bin/python -m video_toolkit.<tool>`.
+When working directly in the **core** repo, install it there:
+
 ```bash
-pip install -e .
+pip install -e .          # core repo;  in a brand repo:  pip install -e toolkit
 ```
 
 This installs `video_toolkit` as a package (pulling in
@@ -93,21 +97,25 @@ expressive) or `--temperature 0.4` (more consistent).
 
 ## Cloud GPU Providers
 
-All cloud GPU tools support two providers via `--cloud runpod|modal`.
-RunPod is the default. Modal was added as a reliability fallback after
-RunPod outages, and offers faster cold starts.
+All cloud GPU tools support two providers via `--cloud runpod|modal` (chosen per
+invocation; defaults vary per tool). **The recommended path is `/toolkit:setup`** —
+it deploys/registers whichever provider you pick and records the endpoints in your
+brand repo's `.env`, only setting up what the account is missing. The manual commands
+below do the same by hand.
 
 ```bash
-# --- RunPod setup (automated, one-time per tool) ---
+# --- RunPod setup (one-time per tool; uses prebuilt GHCR images, nothing builds locally) ---
 echo "RUNPOD_API_KEY=your_key_here" >> .env
-python3 -m video_toolkit.image_edit --setup
-python3 -m video_toolkit.upscale --setup
-python3 -m video_toolkit.qwen3_tts --setup
-python3 -m video_toolkit.music_gen --setup
+python3 -m video_toolkit.qwen3_tts   --setup --cloud runpod
+python3 -m video_toolkit.flux2       --setup --cloud runpod
+python3 -m video_toolkit.upscale     --setup --cloud runpod
+python3 -m video_toolkit.music_gen   --setup --cloud runpod
+python3 -m video_toolkit.dewatermark --setup --cloud runpod
+# (image editing / qwen-edit has a GHCR image but no --setup — register its endpoint manually)
 
-# --- Modal setup (deploy each app you need) ---
+# --- Modal setup (deploy each app you need; builds remotely in Modal, cached per account) ---
 pip install modal && python3 -m modal setup
-modal deploy docker/modal-upscale/app.py        # Then save URL to .env
+modal deploy docker/modal-upscale/app.py        # from a brand repo: toolkit/docker/modal-upscale/app.py
 modal deploy docker/modal-image-edit/app.py
 # See docs/modal-setup.md for full guide
 ```
@@ -190,7 +198,7 @@ python3 -m video_toolkit.locate_watermark --input video.mp4 --preset notebooklm 
 
 # Remove watermark (RunPod)
 python3 -m video_toolkit.dewatermark --input video.mp4 --region 1080,660,195,40 --output clean.mp4 --runpod
-python3 -m video_toolkit.dewatermark --setup  # One-time setup
+python3 -m video_toolkit.dewatermark --setup --cloud runpod  # One-time RunPod setup
 ```
 
 **Workflow:** grid overlay → note coordinates → verify with `--region` →

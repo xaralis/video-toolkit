@@ -31,9 +31,10 @@ The fastest way to set up RunPod:
 echo "RUNPOD_API_KEY=your_key_here" >> .env
 
 # 2. Run automated setup for each tool you need
-python3 -m video_toolkit.image_edit --setup    # AI image editing
-python3 -m video_toolkit.upscale --setup       # AI upscaling
-python3 -m video_toolkit.dewatermark --setup   # AI watermark removal
+python3 -m video_toolkit.upscale     --setup --cloud runpod   # AI upscaling
+python3 -m video_toolkit.dewatermark --setup --cloud runpod   # AI watermark removal
+# image editing (qwen-edit) has a pre-built GHCR image but no --setup automation —
+# register its endpoint manually (see Manual Setup below)
 
 # 3. Done! Now use them:
 python3 -m video_toolkit.image_edit --input photo.jpg --style cyberpunk

@@ -32,21 +32,21 @@ colors/fonts/voice and `/toolkit:video` to start your first video.
 ## Quick Start
 
 ```bash
-git clone https://github.com/xaralis/video-toolkit.git
-cd video-toolkit
-python3 -m venv .venv && .venv/bin/pip install -e .   # Python 3.13+ (3.14 preferred)
-claude plugin install toolkit@video-toolkit           # load the /toolkit:* slash commands
-claude                                                # Open Claude Code in the toolkit
+npx github:xaralis/video-toolkit init my-brand-videos   # scaffold a brand repo (Node 18+)
+cd my-brand-videos
+claude                                                  # open Claude Code in your brand repo
 ```
 
-Then in Claude Code:
+Then in Claude Code (inside the brand repo):
 
 ```
 /toolkit:setup            # Configure cloud GPU, storage, voice (~5 min, mostly free)
 /toolkit:video            # Create your first video
 ```
 
-**That's it.** `/toolkit:setup` walks you through everything interactively — cloud GPU provider, file transfer, voice config. `/toolkit:video` creates a project from a template and guides you through the whole workflow.
+**That's it.** `npx … init` sets up the whole brand repo — toolkit submodule, plugin wiring, and the Python tools in `.venv` — with no manual cloning (see [Create a new brand repo](#create-a-new-brand-repo)). `/toolkit:setup` and `/toolkit:video` run **inside your brand repo**; the core itself is the shared toolkit, so running those commands here just redirects you to create/enter a brand repo.
+
+> **Working on the core itself?** Clone this repo, run `python3 -m venv .venv && .venv/bin/pip install -e .` (Python 3.13+), and `claude plugin install toolkit@video-toolkit`. You can render the bundled `examples/`, but `/toolkit:setup` and `/toolkit:video` are meant to run in a brand repo.
 
 The commands ship as a **Claude Code plugin**: this repo is both the toolkit and the plugin (`commands/` + `skills/` at the root, declared by `.claude-plugin/`). `claude plugin install toolkit@video-toolkit` is what turns them into working slash commands — without it they report "Unknown command". A per-brand repo consumes the exact same plugin by vendoring this repo as a `toolkit/` submodule; the commands are identical, invoked as `/toolkit:<name>` everywhere. **`npx github:xaralis/video-toolkit init` sets all of this up for you** — see [Create a new brand repo](#create-a-new-brand-repo).
 

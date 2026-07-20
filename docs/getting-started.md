@@ -12,7 +12,7 @@ This guide will help you create your first video using the claude-code-video-too
 
 | Provider | Cost | Setup |
 |----------|------|-------|
-| Qwen3-TTS | Free (self-hosted) | RunPod account + `python3 -m video_toolkit.qwen3_tts --setup` |
+| Qwen3-TTS | Free (self-hosted) | Modal or RunPod — configured for you by `/toolkit:setup` (or manually: `python3 -m video_toolkit.qwen3_tts --setup --cloud runpod`) |
 | ElevenLabs | Pay-per-use | API key in `.env` |
 
 ### Optional: Full Toolkit
@@ -52,24 +52,20 @@ Claude Code, run `/toolkit:brand` then `/toolkit:video`.
 
 > This is optional — you can render videos with just Node.js installed.
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/digitalsamba/claude-code-video-toolkit.git
-   cd claude-code-video-toolkit
-   ```
+The AI tools are configured **inside your brand repo** (created with `npx … init` above), not by
+cloning the core. `init` already installed the Python toolkit into `.venv`; all that's left is the
+cloud config:
 
-2. **Install Python dependencies**
+1. **From your brand repo, launch Claude Code**
    ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   pip install -e .
-   ```
-
-3. **Start Claude Code and run the setup wizard**
-   ```bash
+   cd my-brand-videos
    claude
    ```
-   Then type `/toolkit:setup` — this walks you through configuring cloud GPU, file transfer, and voice in about 5 minutes. Most features are free:
+
+2. **Run the setup wizard**
+
+   Type `/toolkit:setup` — this walks you through configuring cloud GPU, file transfer, and voice
+   in about 5 minutes, writing everything to this brand repo's `.env`. Most features are free:
    - **Cloudflare R2**: Free (10GB storage, zero egress)
    - **Modal**: $30/month free compute on Starter plan
    - **Qwen3-TTS**: Free AI voiceovers (runs on your Modal compute)
