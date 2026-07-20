@@ -26,6 +26,10 @@ export type { LogoWatermarkProps } from './LogoWatermark';
 export { Label } from './Label';
 export type { LabelProps, LabelPosition, LabelSize } from './Label';
 
+// Motion graphics
+export { LottieAnimation, recolorLottie } from './LottieAnimation';
+export type { LottieAnimationProps } from './LottieAnimation';
+
 // Transitions
 export { SlideTransition } from './SlideTransition';
 export type { SlideTransitionProps, TransitionStyle } from './SlideTransition';

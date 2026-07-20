@@ -28,7 +28,7 @@ or from a background command.
 
 | Type | Tools | When to Use |
 |------|-------|-------------|
-| **Project tools** | voiceover, music_gen, sfx, sync_timing | During video creation workflow |
+| **Project tools** | voiceover, music_gen, sfx, sync_timing, lottie | During video creation workflow |
 | **Sync tools** | sync_template, sync_brand_assets, sync_project | Keep a project's vendored code / brand assets / heavy media up to date |
 | **Utility tools** | addmusic, locate_watermark | Quick transformations on existing videos |
 | **Cloud GPU** | image_edit, upscale, dewatermark, qwen3_tts, music_gen, flux2 | AI processing via RunPod or Modal (`--cloud runpod\|modal`) |
@@ -79,6 +79,23 @@ python3 -m video_toolkit.sync_timing --apply                  # Update config (1
 python3 -m video_toolkit.sync_timing --apply --padding 1.5    # Custom padding
 python3 -m video_toolkit.sync_timing --voiceover-json vo.json # Use voiceover.py output
 python3 -m video_toolkit.sync_timing --json                   # Machine-readable output
+```
+
+## Lottie Motion Graphics
+
+```bash
+# List curated templates and their color/value slots
+python3 -m video_toolkit.lottie list
+
+# Inspect a Lottie file (metadata + validate; --colors lists fill/stroke colors)
+python3 -m video_toolkit.lottie info animation.json --colors
+
+# Build a brand-colored Lottie from a template
+python3 -m video_toolkit.lottie build spinner --brand brands/<brand>/brand.json -o public/lottie/spinner.json
+python3 -m video_toolkit.lottie build progress --set value=60 --color accent=#1d4ed8 -o out.json
+
+# Recolor a sourced Lottie to brand (map old hex → new hex)
+python3 -m video_toolkit.lottie colorize sourced.json --map "#ff0000=#ea580c" -o branded.json
 ```
 
 ## Qwen3-TTS (Standalone)
