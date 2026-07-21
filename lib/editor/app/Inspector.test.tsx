@@ -2,6 +2,37 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { Inspector } from './Inspector';
 
+/** Selects a plain-text range inside an AccentEditor's contenteditable box. */
+function selectPlainRange(root: HTMLElement, start: number, end: number) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let acc = 0;
+  let startNode: Node | null = null;
+  let startOffset = 0;
+  let endNode: Node | null = null;
+  let endOffset = 0;
+  let n = walker.nextNode();
+  while (n) {
+    const len = (n.textContent ?? '').length;
+    if (!startNode && start <= acc + len) {
+      startNode = n;
+      startOffset = start - acc;
+    }
+    if (end <= acc + len) {
+      endNode = n;
+      endOffset = end - acc;
+      break;
+    }
+    acc += len;
+    n = walker.nextNode();
+  }
+  const sel = window.getSelection()!;
+  const range = document.createRange();
+  range.setStart(startNode!, startOffset);
+  range.setEnd(endNode!, endOffset);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
 const segments = [
   {
     id: 'a',
@@ -160,7 +191,11 @@ describe('Inspector', () => {
     expect(screen.getByText('no overlay text')).toBeInTheDocument();
   });
 
-  it('contains no Czech strings', () => {
+  it('contains no Czech strings in its own UI chrome (labels, buttons, headings)', () => {
+    // The AccentEditor now renders overlay *content* as real DOM text (that's
+    // the point of WYSIWYG) — and that content is legitimately Czech for this
+    // brand. Scope the check to chrome only by excluding the editor's own
+    // contenteditable box(es) from the text we inspect.
     const { container } = render(
       <Inspector
         segments={segments}
@@ -171,12 +206,14 @@ describe('Inspector', () => {
         onSegmentChange={vi.fn()}
       />
     );
-    const text = container.textContent ?? '';
+    const clone = container.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll('[role="textbox"]').forEach((box) => box.remove());
+    const text = clone.textContent ?? '';
     expect(text).not.toMatch(/[ěščřžýáíéúůňďťĚŠČŘŽÝÁÍÉÚŮŇĎŤ]/);
   });
 
-  describe('overlay text editing', () => {
-    it('shows the clip overlay text and emits an updated overlays array on edit', () => {
+  describe('overlay text editing via AccentEditor', () => {
+    it('renders the clip overlay text in an AccentEditor and emits an updated overlays array on change', () => {
       const onSegmentChange = vi.fn();
       render(
         <Inspector
@@ -188,15 +225,20 @@ describe('Inspector', () => {
           onSegmentChange={onSegmentChange}
         />
       );
-      const input = screen.getByDisplayValue('Na papíře to dobře.') as HTMLInputElement;
-      fireEvent.change(input, { target: { value: 'Updated text.' } });
+      const box = screen.getByRole('textbox');
+      expect(box.textContent).toBe('Na papíře to dobře.');
+
+      // Simulate the child AccentEditor emitting an edited value.
+      box.textContent = 'Updated text.';
+      fireEvent.input(box);
+
       expect(onSegmentChange).toHaveBeenCalledTimes(1);
       expect(onSegmentChange).toHaveBeenCalledWith('a', {
         overlays: [{ kind: 'quote-pull', text: 'Updated text.' }],
       });
     });
 
-    it('shows the broll overlay text and emits an updated overlay object on edit', () => {
+    it('renders the broll overlay text in an AccentEditor and emits an updated overlay object on change', () => {
       const brollSegments = [
         {
           id: 'b',
@@ -219,17 +261,19 @@ describe('Inspector', () => {
           onSegmentChange={onSegmentChange}
         />
       );
-      const input = screen.getByDisplayValue('Source: city archive') as HTMLInputElement;
-      fireEvent.change(input, { target: { value: 'Source: updated' } });
+      const box = screen.getByRole('textbox');
+      expect(box.textContent).toBe('Source: city archive');
+
+      box.textContent = 'Source: updated';
+      fireEvent.input(box);
+
       expect(onSegmentChange).toHaveBeenCalledTimes(1);
       expect(onSegmentChange).toHaveBeenCalledWith('b', {
         overlay: { kind: 'source-tag', text: 'Source: updated' },
       });
     });
-  });
 
-  describe('accent buttons', () => {
-    it('clicking Lime wraps the current selection in {lime:...} and emits the updated overlays', () => {
+    it('shows accented runs with no visible braces, and clicking Lime on a selection emits the encoded overlays with no braces exposed elsewhere', () => {
       const onSegmentChange = vi.fn();
       render(
         <Inspector
@@ -241,24 +285,36 @@ describe('Inspector', () => {
           onSegmentChange={onSegmentChange}
         />
       );
-      const input = screen.getByDisplayValue('Na papíře to dobře.') as HTMLInputElement;
-      const text = input.value;
-      const selStart = text.indexOf('papíře');
-      const selEnd = selStart + 'papíře'.length;
-      input.setSelectionRange(selStart, selEnd);
+      const box = screen.getByRole('textbox');
+      const plain = box.textContent ?? '';
+      expect(plain).not.toMatch(/[{}]/);
+      const selStart = plain.indexOf('papíře');
+      selectPlainRange(box, selStart, selStart + 'papíře'.length);
 
       fireEvent.click(screen.getByRole('button', { name: 'Lime' }));
 
       expect(onSegmentChange).toHaveBeenCalledTimes(1);
-      const [, patch] = onSegmentChange.mock.calls[0] as [string, { overlays: Array<{ text: string }> }];
+      const [id, patch] = onSegmentChange.mock.calls[0] as [string, { overlays: Array<{ text: string }> }];
+      expect(id).toBe('a');
       expect(patch.overlays[0].text).toBe('Na {lime:papíře} to dobře.');
     });
 
-    it('clicking Teal wraps the current selection in {teal:...}', () => {
+    it('applying Teal to an already-accented run replaces the accent instead of nesting it', () => {
+      const accentedSegments = [
+        {
+          id: 'a',
+          type: 'clip',
+          source: 'x.mp4',
+          trimIn: 2,
+          trimOut: 5,
+          audioMode: 'voice',
+          overlays: [{ kind: 'quote-pull', text: 'Na papíře to {lime:vypadá dobře}.' }],
+        },
+      ];
       const onSegmentChange = vi.fn();
       render(
         <Inspector
-          segments={segments}
+          segments={accentedSegments}
           selectedId="a"
           topic="Our story"
           chevron="HOUSING"
@@ -266,17 +322,17 @@ describe('Inspector', () => {
           onSegmentChange={onSegmentChange}
         />
       );
-      const input = screen.getByDisplayValue('Na papíře to dobře.') as HTMLInputElement;
-      const text = input.value;
-      const selStart = text.indexOf('dobře');
-      const selEnd = selStart + 'dobře'.length;
-      input.setSelectionRange(selStart, selEnd);
+      const box = screen.getByRole('textbox');
+      const plain = box.textContent ?? '';
+      expect(plain).toBe('Na papíře to vypadá dobře.');
+      selectPlainRange(box, 0, plain.length - 1); // exclude the trailing period
 
       fireEvent.click(screen.getByRole('button', { name: 'Teal' }));
 
       expect(onSegmentChange).toHaveBeenCalledTimes(1);
       const [, patch] = onSegmentChange.mock.calls[0] as [string, { overlays: Array<{ text: string }> }];
-      expect(patch.overlays[0].text).toBe('Na papíře to {teal:dobře}.');
+      expect(patch.overlays[0].text).toBe('{teal:Na papíře to vypadá dobře}.');
+      expect(patch.overlays[0].text).not.toContain('{lime:');
     });
   });
 
