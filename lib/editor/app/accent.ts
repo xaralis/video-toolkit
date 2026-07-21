@@ -1,4 +1,4 @@
-export type AccentColor = 'lime' | 'teal';
+export type AccentColor = string;
 
 export interface AccentSelection {
   text: string;
