@@ -148,24 +148,37 @@ export function Inspector({
     return (
       <div className={styles.inspector}>
         <h2 className={styles.heading}>Reel</h2>
-        <label className={styles.field}>
-          <span className={styles.label}>Topic</span>
-          <input
-            type="text"
-            className={styles.input}
-            value={topic}
-            onChange={(e) => onReelChange({ topic: e.target.value })}
-          />
-        </label>
-        <label className={styles.field}>
-          <span className={styles.label}>Chevron</span>
-          <input
-            type="text"
-            className={styles.input}
-            value={chevron}
-            onChange={(e) => onReelChange({ chevron: e.target.value })}
-          />
-        </label>
+        {/*
+          Chevron comes FIRST — it's the one that actually renders on screen
+          (the category badge), so it earns top billing. Topic follows,
+          clearly flagged as internal-only, to head off the audit finding
+          that the two were easily confused (Topic looks the same as
+          Chevron but never appears in the video).
+        */}
+        <div className={styles.field}>
+          <label className={styles.fieldLabel}>
+            <span className={styles.label}>Chevron</span>
+            <input
+              type="text"
+              className={styles.input}
+              value={chevron}
+              onChange={(e) => onReelChange({ chevron: e.target.value })}
+            />
+          </label>
+          <span className={styles.help}>Category badge shown on screen (once, at the start).</span>
+        </div>
+        <div className={styles.field}>
+          <label className={styles.fieldLabel}>
+            <span className={styles.label}>Topic</span>
+            <input
+              type="text"
+              className={styles.input}
+              value={topic}
+              onChange={(e) => onReelChange({ topic: e.target.value })}
+            />
+          </label>
+          <span className={styles.help}>Internal label — not shown in the video.</span>
+        </div>
       </div>
     );
   }

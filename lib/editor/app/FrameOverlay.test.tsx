@@ -109,4 +109,31 @@ describe('FrameOverlay', () => {
     render(<FrameOverlay focalX={0.5} focalY={0.5} onFocalChange={vi.fn()} />);
     expect(screen.getByText('focus')).toBeInTheDocument();
   });
+
+  it('sets a title tooltip on the dot explaining what dragging it does', () => {
+    render(<FrameOverlay focalX={0.5} focalY={0.5} onFocalChange={vi.fn()} />);
+    expect(screen.getByTestId('focus-dot')).toHaveAttribute(
+      'title',
+      'Drag to set which part of the shot stays in frame'
+    );
+  });
+
+  it('shows a live numeric readout reflecting the current focalX/focalY', () => {
+    render(<FrameOverlay focalX={0.85} focalY={0.5} onFocalChange={vi.fn()} />);
+    const readout = screen.getByTestId('focal-readout');
+    expect(readout.textContent).toContain('0.85');
+    expect(readout.textContent).toContain('0.50');
+  });
+
+  it('updates the readout as focalX/focalY props change', () => {
+    const { rerender } = render(
+      <FrameOverlay focalX={0.5} focalY={0.5} onFocalChange={vi.fn()} />
+    );
+    expect(screen.getByTestId('focal-readout').textContent).toContain('0.50');
+
+    rerender(<FrameOverlay focalX={0.12} focalY={0.98} onFocalChange={vi.fn()} />);
+    const readout = screen.getByTestId('focal-readout');
+    expect(readout.textContent).toContain('0.12');
+    expect(readout.textContent).toContain('0.98');
+  });
 });

@@ -23,6 +23,12 @@
   gap: 4px;
 }
 
+.fieldLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .label {
   font-size: 11px;
   font-weight: 600;
@@ -55,5 +61,10 @@
 .note {
   font-size: 12px;
   font-style: italic;
+  color: #6b6f78;
+}
+
+.help {
+  font-size: 11px;
   color: #6b6f78;
 }

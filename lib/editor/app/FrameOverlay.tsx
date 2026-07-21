@@ -125,11 +125,22 @@ export function FrameOverlay({
         data-testid="focus-dot"
         data-fx={fx}
         data-fy={fy}
+        title="Drag to set which part of the shot stays in frame"
         style={{ left: `${fx * 100}%`, top: `${fy * 100}%`, pointerEvents: 'auto' }}
         onPointerDown={startDrag}
       >
         <span className={styles.marker} />
         <span className={styles.label}>focus</span>
+        {/*
+          Live numeric readout of the current focal position — makes it clear
+          whether a drag registered (and by how much) without requiring the
+          user to eyeball the dot's position against the frame. Persistent
+          (not only while dragging) so it also confirms the value that was
+          loaded from the segment before any interaction happens.
+        */}
+        <span className={styles.readout} data-testid="focal-readout">
+          {`x ${fx.toFixed(2)} · y ${fy.toFixed(2)}`}
+        </span>
       </div>
     </div>
   );
