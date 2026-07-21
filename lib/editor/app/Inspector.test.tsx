@@ -101,7 +101,7 @@ describe('Inspector', () => {
     );
     expect(screen.getByText('Scene')).toBeInTheDocument();
     expect(screen.getByText('clip')).toBeInTheDocument();
-    expect(screen.getByText('x.mp4')).toBeInTheDocument();
+    expect((screen.getByLabelText('Source') as HTMLSelectElement).value).toBe('x.mp4');
     expect(screen.getByText((_, node) => node?.textContent === '2.0s → 5.0s · 3.0s')).toBeInTheDocument();
   });
 
@@ -349,6 +349,141 @@ describe('Inspector', () => {
         />
       );
       expect(screen.queryByLabelText('Audio')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('source picker', () => {
+    const availableSources = { recordings: ['a.mp4', 'b.mp4'], broll: ['c.mp4', 'd.mp4'] };
+
+    it('renders a Source select for a clip from the recordings list, selecting the current source', () => {
+      const clipSegments = [
+        { id: 'a', type: 'clip', source: 'a.mp4', trimIn: 0, trimOut: 3, audioMode: 'voice' },
+      ];
+      const onSegmentChange = vi.fn();
+      render(
+        <Inspector
+          segments={clipSegments}
+          selectedId="a"
+          topic="Our story"
+          chevron="HOUSING"
+          onReelChange={vi.fn()}
+          onSegmentChange={onSegmentChange}
+          sources={availableSources}
+        />
+      );
+      const select = screen.getByLabelText('Source') as HTMLSelectElement;
+      expect(Array.from(select.options).map((o) => o.value)).toEqual(['a.mp4', 'b.mp4']);
+      expect(select.value).toBe('a.mp4');
+
+      fireEvent.change(select, { target: { value: 'b.mp4' } });
+      expect(onSegmentChange).toHaveBeenCalledTimes(1);
+      expect(onSegmentChange).toHaveBeenCalledWith('a', { source: 'b.mp4' });
+    });
+
+    it('renders a Source select for a broll from the broll list, selecting the current source', () => {
+      const brollSegments = [
+        { id: 'b', type: 'broll', source: 'c.mp4', trimIn: 0, trimOut: 3, audioMode: 'silent' },
+      ];
+      const onSegmentChange = vi.fn();
+      render(
+        <Inspector
+          segments={brollSegments}
+          selectedId="b"
+          topic="Our story"
+          chevron="HOUSING"
+          onReelChange={vi.fn()}
+          onSegmentChange={onSegmentChange}
+          sources={availableSources}
+        />
+      );
+      const select = screen.getByLabelText('Source') as HTMLSelectElement;
+      expect(Array.from(select.options).map((o) => o.value)).toEqual(['c.mp4', 'd.mp4']);
+      expect(select.value).toBe('c.mp4');
+
+      fireEvent.change(select, { target: { value: 'd.mp4' } });
+      expect(onSegmentChange).toHaveBeenCalledTimes(1);
+      expect(onSegmentChange).toHaveBeenCalledWith('b', { source: 'd.mp4' });
+    });
+
+    it('keeps the current source as a selected option even when absent from the provided list', () => {
+      const clipSegments = [
+        { id: 'a', type: 'clip', source: 'missing.mp4', trimIn: 0, trimOut: 3, audioMode: 'voice' },
+      ];
+      render(
+        <Inspector
+          segments={clipSegments}
+          selectedId="a"
+          topic="Our story"
+          chevron="HOUSING"
+          onReelChange={vi.fn()}
+          onSegmentChange={vi.fn()}
+          sources={availableSources}
+        />
+      );
+      const select = screen.getByLabelText('Source') as HTMLSelectElement;
+      expect(Array.from(select.options).map((o) => o.value)).toEqual([
+        'a.mp4',
+        'b.mp4',
+        'missing.mp4',
+      ]);
+      expect(select.value).toBe('missing.mp4');
+    });
+
+    it('shows the current source as the only option when sources is not provided', () => {
+      render(
+        <Inspector
+          segments={segments}
+          selectedId="a"
+          topic="Our story"
+          chevron="HOUSING"
+          onReelChange={vi.fn()}
+          onSegmentChange={vi.fn()}
+        />
+      );
+      const select = screen.getByLabelText('Source') as HTMLSelectElement;
+      expect(Array.from(select.options).map((o) => o.value)).toEqual(['x.mp4']);
+      expect(select.value).toBe('x.mp4');
+    });
+
+    it('does not render a Source select for multi-clip, card, or outro segments', () => {
+      render(
+        <Inspector
+          segments={segments}
+          selectedId="c"
+          topic="Our story"
+          chevron="HOUSING"
+          onReelChange={vi.fn()}
+          onSegmentChange={vi.fn()}
+          sources={availableSources}
+        />
+      );
+      expect(screen.queryByLabelText('Source')).not.toBeInTheDocument();
+
+      const { rerender } = render(
+        <Inspector
+          segments={segments}
+          selectedId="d"
+          topic="Our story"
+          chevron="HOUSING"
+          onReelChange={vi.fn()}
+          onSegmentChange={vi.fn()}
+          sources={availableSources}
+        />
+      );
+      expect(screen.queryByLabelText('Source')).not.toBeInTheDocument();
+
+      rerender(
+        <Inspector
+          segments={segments}
+          selectedId="e"
+          topic="Our story"
+          chevron="HOUSING"
+          onReelChange={vi.fn()}
+          onSegmentChange={vi.fn()}
+          sources={availableSources}
+        />
+      );
+      expect(screen.queryByLabelText('Source')).not.toBeInTheDocument();
     });
   });
 });
