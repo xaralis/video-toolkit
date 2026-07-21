@@ -49,6 +49,61 @@ export const Root = () => (
   });
 });
 
+describe('saveDefaultPropsToFile — opts.format hook', () => {
+  it('applies a caller-supplied formatter to the surgically-updated source before writing', async () => {
+    const file = tmpRoot();
+    const next = { topic: 'formatted', segments: [] };
+    const seen: { source: string; filePath: string }[] = [];
+    await saveDefaultPropsToFile(file, next, {
+      format: (source, filePath) => {
+        seen.push({ source, filePath });
+        return source.replace(/"/g, "'");
+      },
+    });
+    const written = readFileSync(file, 'utf8');
+    expect(written).not.toContain('"');
+    expect(readDefaultProps(written)).toEqual(next);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].filePath).toBe(file);
+  });
+
+  it('supports an async formatter', async () => {
+    const file = tmpRoot();
+    const next = { topic: 'async-formatted', segments: [] };
+    await saveDefaultPropsToFile(file, next, {
+      format: async (source) => {
+        await Promise.resolve();
+        return source.replace(/"/g, "'");
+      },
+    });
+    const written = readFileSync(file, 'utf8');
+    expect(written).not.toContain('"');
+    expect(readDefaultProps(written)).toEqual(next);
+  });
+
+  it('behaves exactly as before when opts.format is absent', async () => {
+    const file = tmpRoot();
+    const next = { topic: 'no-format', segments: [] };
+    await saveDefaultPropsToFile(file, next);
+    const written = readFileSync(file, 'utf8');
+    expect(readDefaultProps(written)).toEqual(next);
+  });
+
+  it('does not overwrite the target file when the formatter throws', async () => {
+    const file = tmpRoot();
+    const before = readFileSync(file, 'utf8');
+    await expect(
+      saveDefaultPropsToFile(file, { topic: 'should-not-land', segments: [] }, {
+        format: () => {
+          throw new Error('formatter blew up');
+        },
+      }),
+    ).rejects.toThrow(/formatter blew up/);
+    const after = readFileSync(file, 'utf8');
+    expect(after).toBe(before);
+  });
+});
+
 describe('createSaveHandler', () => {
   it('resolves the target path and writes props', async () => {
     const file = tmpRoot();
