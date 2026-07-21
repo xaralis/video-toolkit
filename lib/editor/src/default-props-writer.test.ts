@@ -302,3 +302,111 @@ describe('updateDefaultPropsSurgically', () => {
     expect(readDefaultProps(out)).toEqual(next);
   });
 });
+
+const ADD_KEY_ROOT = `import { Composition } from 'remotion';
+import { CampaignReel } from './CampaignReel';
+
+export const RemotionRoot = () => {
+  return (
+    <Composition
+      id="CampaignReel"
+      component={CampaignReel}
+      defaultProps={{
+        topic: 'Klima' as const,
+        segments: [
+          // ── Úsek 1 ──
+          { id: 's1', type: 'clip' as const, trimIn: 0, trimOut: 3, focalX: 0.85, audioMode: 'voice' as const },
+          { id: 's2', type: 'broll' as const, trimIn: 0, trimOut: 4 },
+        ] as const,
+      }}
+      fps={30}
+      width={1080}
+      height={1920}
+    />
+  );
+};
+`;
+
+const NESTED_ADD_KEY_ROOT = `import { Composition } from 'remotion';
+import { CampaignReel } from './CampaignReel';
+
+export const RemotionRoot = () => {
+  return (
+    <Composition
+      id="CampaignReel"
+      component={CampaignReel}
+      defaultProps={{
+        topic: 'Klima' as const,
+        segments: [
+          // ── Úsek 1 ──
+          { id: 's1', type: 'clip' as const, trimIn: 0, trimOut: 3, crop: { x: 0.1 }, audioMode: 'voice' as const },
+        ] as const,
+      }}
+      fps={30}
+      width={1080}
+      height={1920}
+    />
+  );
+};
+`;
+
+describe('updateDefaultPropsSurgically — adding a new key (superset)', () => {
+  it('inserts a new key into an existing object literal, preserving siblings’ comments + as const', () => {
+    const current = readDefaultProps(ADD_KEY_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    next.segments[0].focalY = 0.3;
+
+    const out = updateDefaultPropsSurgically(ADD_KEY_ROOT, next, { compositionId: 'CampaignReel' });
+
+    expect(out).toContain('focalY: 0.3');
+    expect(out).toContain("type: 'clip' as const");
+    expect(out).toContain("audioMode: 'voice' as const");
+    expect(out).toContain('// ── Úsek 1 ──');
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+
+  it('applies a value change AND a new key in the same object in one call, both surgically', () => {
+    const current = readDefaultProps(ADD_KEY_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    next.segments[0].trimOut = 5;
+    next.segments[0].focalY = 0.3;
+
+    const out = updateDefaultPropsSurgically(ADD_KEY_ROOT, next, { compositionId: 'CampaignReel' });
+
+    expect(out).toContain('trimOut: 5');
+    expect(out).not.toContain('trimOut: 3');
+    expect(out).toContain('focalY: 0.3');
+    expect(out).toContain("type: 'clip' as const");
+    expect(out).toContain("audioMode: 'voice' as const");
+    expect(out).toContain('// ── Úsek 1 ──');
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+
+  it('inserts a new key into a nested object literal (crop.y), preserving outer as const/comments', () => {
+    const current = readDefaultProps(NESTED_ADD_KEY_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    next.segments[0].crop.y = 0.2;
+
+    const out = updateDefaultPropsSurgically(NESTED_ADD_KEY_ROOT, next, { compositionId: 'CampaignReel' });
+
+    expect(out).toContain('y: 0.2');
+    expect(out).toContain('x: 0.1');
+    expect(out).toContain("type: 'clip' as const");
+    expect(out).toContain("audioMode: 'voice' as const");
+    expect(out).toContain('// ── Úsek 1 ──');
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+
+  it('still falls back to whole-node replace when a key is removed (value-wise correct)', () => {
+    const current = readDefaultProps(ADD_KEY_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    delete next.segments[0].focalX;
+
+    const out = updateDefaultPropsSurgically(ADD_KEY_ROOT, next, { compositionId: 'CampaignReel' });
+
+    // Whole-node replace only touches s1; sibling top-level props/comments still survive.
+    expect(out).toContain("topic: 'Klima' as const");
+    expect(out).toContain('// ── Úsek 1 ──');
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+});

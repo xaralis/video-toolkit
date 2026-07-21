@@ -191,50 +191,68 @@ function deepEqual(a: unknown, b: unknown): boolean {
 }
 
 /**
- * Walks `oldVal`/`newVal` in parallel and collects the paths (object keys / array indices) of
- * every leaf that actually changed. A "leaf" here is either a genuine scalar difference, or a
- * whole object/array whose *shape* changed (a key was added/removed, or an array's length
- * changed) — those are intentionally NOT recursed into further, because there is no source AST
- * node to surgically edit for "a property that doesn't exist yet" or "the 3rd element of an
- * array that now has 2 elements". Callers replace the whole node at that path instead. This is
- * the "array length change ⇒ whole-array replace" limitation called out on
- * `updateDefaultPropsSurgically`, generalized to object shape changes too (segments/overlays
- * cannot yet be added or removed from the editor, so this path isn't expected to be exercised by
- * app-level Saves — it only guards against blowing up if it ever is).
+ * A single surgical edit to apply to the source AST:
+ *  - `replace`: the node at `path` changed value/shape in a way that can't be edited in place
+ *    (a genuine scalar difference, a key was REMOVED from an object, an array's length changed,
+ *    or a type change) — the whole node at that path is re-serialized from scratch. `path` may be
+ *    `[]`, meaning the entire top-level props object is replaced.
+ *  - `add`: `path`'s last segment is a NEW key that didn't exist on the object at the parent path
+ *    — every other existing key on that object (and its comments/`as const`) is left untouched;
+ *    only a new property is inserted into the existing object literal.
  */
-function diffLeafPaths(
-  oldVal: unknown,
-  newVal: unknown,
-  path: PathSegment[],
-  out: PathSegment[][],
-): void {
+type DiffOp = { kind: 'replace'; path: PathSegment[] } | { kind: 'add'; path: PathSegment[] };
+
+/**
+ * Walks `oldVal`/`newVal` in parallel and collects the surgical edits needed to turn the former
+ * into the latter (see `DiffOp`).
+ *
+ * Object handling distinguishes two cases by key set:
+ *  - **Superset** (every old key is still present, plus zero or more new keys): recurse into
+ *    every existing key as usual, and emit an `add` op for each new key. The existing object
+ *    literal AST node is never replaced wholesale, so its comments/`as const` survive.
+ *  - **Key removed** (regardless of whether keys were also added): there is no source AST node
+ *    to surgically delete a property from, so the whole object at this path is replaced instead.
+ *
+ * Arrays only recurse when the length is unchanged — inserting/removing array elements isn't
+ * surgically diffable (segments/overlays cannot yet be added or removed from the editor), so a
+ * length change replaces the whole array node instead. This is the "array length change ⇒
+ * whole-array replace" limitation documented on `updateDefaultPropsSurgically`.
+ */
+function diffOps(oldVal: unknown, newVal: unknown, path: PathSegment[], out: DiffOp[]): void {
   if (deepEqual(oldVal, newVal)) return;
 
   if (isPlainObject(oldVal) && isPlainObject(newVal)) {
     const keysA = Object.keys(oldVal);
     const keysB = Object.keys(newVal);
-    const sameShape =
-      keysA.length === keysB.length &&
-      keysA.every((k) => Object.prototype.hasOwnProperty.call(newVal, k));
-    if (!sameShape) {
-      out.push(path.slice());
+    const keysBSet = new Set(keysB);
+    const removedKeys = keysA.filter((k) => !keysBSet.has(k));
+
+    if (removedKeys.length > 0) {
+      out.push({ kind: 'replace', path: path.slice() });
       return;
     }
+
+    const keysASet = new Set(keysA);
     for (const k of keysA) {
-      diffLeafPaths(oldVal[k], newVal[k], [...path, k], out);
+      diffOps(oldVal[k], newVal[k], [...path, k], out);
+    }
+    for (const k of keysB) {
+      if (!keysASet.has(k)) {
+        out.push({ kind: 'add', path: [...path, k] });
+      }
     }
     return;
   }
 
   if (Array.isArray(oldVal) && Array.isArray(newVal) && oldVal.length === newVal.length) {
     for (let i = 0; i < oldVal.length; i++) {
-      diffLeafPaths(oldVal[i], newVal[i], [...path, i], out);
+      diffOps(oldVal[i], newVal[i], [...path, i], out);
     }
     return;
   }
 
   // Scalar difference, type change, or array length change: replace the whole node at this path.
-  out.push(path.slice());
+  out.push({ kind: 'replace', path: path.slice() });
 }
 
 function getAtPath(root: unknown, path: PathSegment[]): unknown {
@@ -276,18 +294,14 @@ function getObjectProperty(objLit: ObjectLiteralExpression, key: string): Proper
   return prop;
 }
 
-/** Applies a single changed-leaf path by navigating the AST from `topValueNode` and rewriting
- * only the final node's text — every sibling and every ancestor's comments/`as const` are left
- * byte-untouched. */
-function applyLeafChange(topValueNode: Node, path: PathSegment[], newLeafValue: unknown): void {
-  let containerNode: Node = topValueNode;
-  let valueNode: Node | undefined;
-
-  for (let i = 0; i < path.length; i++) {
-    const seg = path[i];
-    const isLast = i === path.length - 1;
-    const container = unwrapValue(containerNode);
-
+/** Navigates from `topValueNode` through `path` segments (object keys / array indices),
+ * unwrapping `as const`/`satisfies`/parens at each container, and returns the value node reached
+ * at the end of `path`. Throws if any intermediate container isn't the expected object/array
+ * literal kind, or an array index is out of bounds. An empty `path` returns `topValueNode` as-is. */
+function navigateToValueNode(topValueNode: Node, path: PathSegment[]): Node {
+  let node: Node = topValueNode;
+  for (const seg of path) {
+    const container = unwrapValue(node);
     if (typeof seg === 'string') {
       if (container.getKind() !== SyntaxKind.ObjectLiteralExpression) {
         throw new Error(
@@ -298,7 +312,7 @@ function applyLeafChange(topValueNode: Node, path: PathSegment[], newLeafValue: 
         container.asKindOrThrow(SyntaxKind.ObjectLiteralExpression),
         seg,
       );
-      valueNode = prop.getInitializerOrThrow();
+      node = prop.getInitializerOrThrow();
     } else {
       if (container.getKind() !== SyntaxKind.ArrayLiteralExpression) {
         throw new Error(
@@ -309,35 +323,107 @@ function applyLeafChange(topValueNode: Node, path: PathSegment[], newLeafValue: 
       if (seg < 0 || seg >= elements.length) {
         throw new Error(`updateDefaultPropsSurgically: array index ${seg} out of bounds.`);
       }
-      valueNode = elements[seg];
-    }
-
-    if (isLast) {
-      const wasAsConst =
-        valueNode.getKind() === SyntaxKind.AsExpression &&
-        valueNode.asKindOrThrow(SyntaxKind.AsExpression).getTypeNodeOrThrow().getText() === 'const';
-      const serialized = JSON.stringify(newLeafValue, null, 2);
-      valueNode.replaceWithText(wasAsConst ? `${serialized} as const` : serialized);
-    } else {
-      containerNode = valueNode;
+      node = elements[seg];
     }
   }
+  return node;
+}
+
+/** A key is emitted verbatim as an identifier property name when it looks like one; anything else
+ * (hyphens, leading digits, etc.) is emitted as a quoted string property name instead. */
+function propertyNameFor(key: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key) ? key : JSON.stringify(key);
+}
+
+/** Applies a single changed-leaf `replace` op by navigating the AST from `topValueNode` and
+ * rewriting only the final node's text — every sibling and every ancestor's comments/`as const`
+ * are left byte-untouched. */
+function applyLeafChange(topValueNode: Node, path: PathSegment[], newLeafValue: unknown): void {
+  const parentPath = path.slice(0, -1);
+  const lastSeg = path[path.length - 1];
+  const containerNode = unwrapValue(navigateToValueNode(topValueNode, parentPath));
+
+  let valueNode: Node;
+  if (typeof lastSeg === 'string') {
+    if (containerNode.getKind() !== SyntaxKind.ObjectLiteralExpression) {
+      throw new Error(
+        `updateDefaultPropsSurgically: expected an object literal at path segment "${lastSeg}".`,
+      );
+    }
+    valueNode = getObjectProperty(
+      containerNode.asKindOrThrow(SyntaxKind.ObjectLiteralExpression),
+      lastSeg,
+    ).getInitializerOrThrow();
+  } else {
+    if (containerNode.getKind() !== SyntaxKind.ArrayLiteralExpression) {
+      throw new Error(
+        `updateDefaultPropsSurgically: expected an array literal at path index ${lastSeg}.`,
+      );
+    }
+    const elements = (containerNode as ArrayLiteralExpression).getElements();
+    if (lastSeg < 0 || lastSeg >= elements.length) {
+      throw new Error(`updateDefaultPropsSurgically: array index ${lastSeg} out of bounds.`);
+    }
+    valueNode = elements[lastSeg];
+  }
+
+  const wasAsConst =
+    valueNode.getKind() === SyntaxKind.AsExpression &&
+    valueNode.asKindOrThrow(SyntaxKind.AsExpression).getTypeNodeOrThrow().getText() === 'const';
+  const serialized = JSON.stringify(newLeafValue, null, 2);
+  valueNode.replaceWithText(wasAsConst ? `${serialized} as const` : serialized);
+}
+
+/** Applies a single `add` op: `path`'s last segment is a brand-new object key that doesn't exist
+ * on the object at the parent path. Inserts a new property assignment into the existing object
+ * literal AST node in place — every existing property (and its comments/`as const`) is left
+ * byte-untouched, since nothing about them is read or rewritten. */
+function applyAddKey(topValueNode: Node, path: PathSegment[], newValue: unknown): void {
+  const parentPath = path.slice(0, -1);
+  const key = path[path.length - 1];
+  if (typeof key !== 'string') {
+    throw new Error(
+      'updateDefaultPropsSurgically: cannot surgically add an array element (only new object keys can be inserted in place).',
+    );
+  }
+
+  const containerNode = unwrapValue(navigateToValueNode(topValueNode, parentPath));
+  if (containerNode.getKind() !== SyntaxKind.ObjectLiteralExpression) {
+    throw new Error(
+      `updateDefaultPropsSurgically: expected an object literal at path segment "${key}".`,
+    );
+  }
+  const objLit = containerNode.asKindOrThrow(SyntaxKind.ObjectLiteralExpression);
+  const serialized = JSON.stringify(newValue, null, 2);
+  objLit.addPropertyAssignment({ name: propertyNameFor(key), initializer: serialized });
 }
 
 /**
  * Diff-based, surgical alternative to `rewriteDefaultProps`. Locates the `<Composition>`'s
  * `defaultProps={{…}}` literal, reads the CURRENT props out of it (via `evaluateLiteral`, so
  * `as const`/`satisfies` wrappers are already understood), deep-diffs against `newProps`, and
- * rewrites ONLY the AST nodes for leaves that actually changed. Every unchanged property,
- * comment, and `as const`/`satisfies` assertion is left byte-for-byte untouched — this is what
- * lets the reel editor's Save preserve a human author's structure instead of regenerating the
- * whole literal via `JSON.stringify` (which strips both comments and type assertions).
+ * rewrites ONLY the AST nodes affected by the diff. Every unchanged property, comment, and
+ * `as const`/`satisfies` assertion is left byte-for-byte untouched — this is what lets the reel
+ * editor's Save preserve a human author's structure instead of regenerating the whole literal via
+ * `JSON.stringify` (which strips both comments and type assertions).
  *
- * Limitation: this cannot add or remove object keys or array elements surgically (the editor
- * does not yet support adding/removing segments or overlays). When a diffed object's key set or
- * an array's length differs between current and new props, the whole node at that path is
- * replaced with a freshly serialized literal instead — comments/`as const` *inside* that
- * particular node are lost, but everything outside it is unaffected.
+ * Object diffs are classified by key set:
+ *  - **A key was ADDED** (the new object is a superset of the old, e.g. dragging the focus dot
+ *    adds `focalY` to a segment that only had `focalX`): handled surgically. Existing keys whose
+ *    values changed are replaced leaf-by-leaf as usual; each new key is inserted as a new
+ *    property assignment into the existing object literal AST node. Nothing about the object's
+ *    existing properties is read or rewritten, so their comments/`as const` survive untouched.
+ *    This is recursive, so a new key nested inside an existing nested object is inserted the same
+ *    way.
+ *  - **A key was REMOVED** (regardless of whether keys were also added): there's no source AST
+ *    node representing "a property that no longer exists" to surgically delete, so the whole
+ *    object at that path is replaced with a freshly serialized literal instead — comments/
+ *    `as const` *inside* that particular object are lost, but everything outside it (siblings,
+ *    ancestors) is unaffected.
+ *
+ * Arrays only recurse when the length is unchanged (existing elements may still change value);
+ * inserting/removing array elements surgically isn't supported (the editor does not yet support
+ * adding/removing segments or overlays), so a length change replaces the whole array node.
  */
 export function updateDefaultPropsSurgically(
   source: string,
@@ -353,22 +439,26 @@ export function updateDefaultPropsSurgically(
   }
 
   const currentProps = evaluateLiteral(jsxExpr);
-  const changedPaths: PathSegment[][] = [];
-  diffLeafPaths(currentProps, newProps, [], changedPaths);
+  const ops: DiffOp[] = [];
+  diffOps(currentProps, newProps, [], ops);
 
-  if (changedPaths.length === 0) {
+  if (ops.length === 0) {
     return source;
   }
 
-  for (const path of changedPaths) {
-    if (path.length === 0) {
-      // The top-level props object itself changed shape (e.g. a top-level key was added or
+  for (const op of ops) {
+    if (op.path.length === 0) {
+      // The top-level props object itself needs a whole-node replace (e.g. a top-level key was
       // removed) — nothing surgical to do at the root, replace the whole literal.
       const serialized = JSON.stringify(newProps, null, 2);
       jsxExpr.replaceWithText(serialized);
       continue;
     }
-    applyLeafChange(jsxExpr, path, getAtPath(newProps, path));
+    if (op.kind === 'add') {
+      applyAddKey(jsxExpr, op.path, getAtPath(newProps, op.path));
+    } else {
+      applyLeafChange(jsxExpr, op.path, getAtPath(newProps, op.path));
+    }
   }
 
   return attr.getSourceFile().getFullText();
