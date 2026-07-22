@@ -11,7 +11,8 @@ const OLD = {
       overlays: [{ kind: 'title', text: 'Ještě lepší {lime:náměstí Republiky}.', appearAt: 0, durationMs: 3000 }] },
     { id: 'seg-002', type: 'broll', source: 'b.mp4', trimIn: 0, trimOut: 4, audioMode: 'inherit-from-clip',
       audioSource: 'a.mp4', audioStartSec: 5.75, aiGenerated: true,
-      kenBurns: { fromX: 0.35, toX: 0.62 }, blendTo: 'b2.mp4', blend: { direction: 'tl-br', startPct: 10, endPct: 40 } },
+      kenBurns: { fromX: 0.35, toX: 0.62 }, blendTo: 'b2.mp4', blend: { direction: 'tl-br', startPct: 10, endPct: 40 },
+      transitionOut: { kind: 'dissolve', frames: 12 } },
     { id: 'seg-008', type: 'outro' },
   ],
 };
@@ -110,11 +111,22 @@ describe('deriveLayered', () => {
     expect(title).toMatchObject({ startMs: 0, endMs: 3000 });
     expect(title!.anchorVideoId).toBe('seg-001');
   });
-  it('emits chevron + full-span brand layers + music base', () => {
+  it('emits chevron + brand layers spanning content (not the full reel) + music base', () => {
     const r = deriveLayered(OLD, OPTS);
     expect(r.tracks.overlays.some((o) => o.content.kind === 'chevron')).toBe(true);
     expect(r.tracks.brand.map((b) => b.kind).sort()).toEqual(['disclaimer', 'watermark']);
-    expect(r.tracks.brand.every((b) => b.endMs === r.meta.totalDurationMs)).toBe(true);
     expect(r.tracks.music).toMatchObject({ source: 'audio/bg.mp3', baseVolumeDb: -6 });
+  });
+  it('brand layers end at content-end (last non-outro item end minus its transitionOut overlap), excluding the outro', () => {
+    const r = deriveLayered(OLD, OPTS);
+    // last non-outro item is seg-002 (broll), which carries transitionOut: { frames: 12 }
+    const seg002 = r.tracks.video.find((v) => v.id === 'seg-002')!;
+    const expectedEndMs = seg002.endMs - Math.round((12 / OPTS.fps) * 1000); // -400
+    expect(expectedEndMs).toBe(seg002.endMs - 400);
+    for (const b of r.tracks.brand) {
+      expect(b.startMs).toBe(0);
+      expect(b.endMs).toBe(expectedEndMs);
+      expect(b.endMs).toBeLessThan(r.meta.totalDurationMs); // outro excluded
+    }
   });
 });
