@@ -43,6 +43,30 @@ const NOSRC = {
   ],
 };
 
+// Covers the multi-clip derivation path (previously untested — the branch that
+// makes real client projects like pp-05 risky to flip). A split-screen segment
+// with per-source trim + zoom, a fixed durationMs, a silent audio mode, and a
+// single overlay. Mirrors pp-05's real seg-001 shape (incl. `zoom` on the
+// second source, which the target schema supports and must not be dropped).
+const MULTI = {
+  topic: 'Multi-clip test',
+  segments: [
+    {
+      id: 'seg-mc',
+      type: 'multi-clip',
+      layout: 'split-h',
+      sources: [
+        { source: 'a.MP4', trimIn: 3, trimOut: 7.5 },
+        { source: 'b.MP4', trimIn: 0, trimOut: 5.4, zoom: 3 },
+      ],
+      durationMs: 4100,
+      audioMode: 'silent',
+      overlay: { kind: 'title', text: 'Spojili jsme {lime:síly}.', appearAt: 1500, durationMs: 3000 },
+    },
+    { id: 'seg-z', type: 'outro' },
+  ],
+};
+
 describe('deriveLayered', () => {
   it('produces a schema-valid layered reel', () => {
     expect(() => LayeredReelSchema.parse(deriveLayered(OLD, OPTS))).not.toThrow();
@@ -141,5 +165,40 @@ describe('deriveLayered', () => {
       expect(b.endMs).toBe(expectedEndMs);
       expect(b.endMs).toBeLessThan(r.meta.totalDurationMs); // outro excluded
     }
+  });
+
+  describe('multi-clip segments', () => {
+    it('produces a schema-valid layered reel', () => {
+      expect(() => LayeredReelSchema.parse(deriveLayered(MULTI, OPTS))).not.toThrow();
+    });
+    it('derives a multi-clip video item: layout + duration-driven span', () => {
+      const r = deriveLayered(MULTI, OPTS);
+      const mc = r.tracks.video.find((v) => v.id === 'seg-mc')!;
+      expect(mc.kind).toBe('multi-clip');
+      expect(mc.layout).toBe('split-h');
+      expect(mc.startMs).toBe(0);
+      // durationMs 4100 → round(4100/1000*30)=123 frames → 123/30*1000 = 4100ms
+      expect(mc.endMs).toBe(4100);
+    });
+    it('maps every source (trim windows to ms) and carries per-source zoom', () => {
+      const r = deriveLayered(MULTI, OPTS);
+      const mc = r.tracks.video.find((v) => v.id === 'seg-mc')!;
+      expect(mc.sources).toHaveLength(2);
+      expect(mc.sources![0]).toMatchObject({ source: 'a.MP4', sourceInMs: 3000, sourceOutMs: 7500 });
+      // regression guard: pp-05's split-screen zoom on the 2nd source must survive derivation
+      expect(mc.sources![1]).toMatchObject({ source: 'b.MP4', sourceInMs: 0, sourceOutMs: 5400, zoom: 3 });
+    });
+    it('silent multi-clip fills the music gap (+6) and emits no audio item', () => {
+      const r = deriveLayered(MULTI, OPTS);
+      const mc = r.tracks.video.find((v) => v.id === 'seg-mc')!;
+      expect(mc.musicBoostDb).toBe(6); // silent → boost
+      expect(r.tracks.audio).toHaveLength(0); // multi-clip never emits an audio item
+    });
+    it('attaches the single overlay at clip start + appearAt', () => {
+      const r = deriveLayered(MULTI, OPTS);
+      const title = r.tracks.overlays.find((o) => o.content.kind === 'title');
+      expect(title).toMatchObject({ startMs: 1500, endMs: 4500 });
+      expect(title!.anchorVideoId).toBe('seg-mc');
+    });
   });
 });
