@@ -187,9 +187,9 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
         <SelectField
           lbl="Kind"
           value={kind}
-          options={['dissolve', 'fade-coal', 'glitch', 'whip-pan', 'wipe', 'zoom-through', 'cut']}
+          options={TRANSITION_KINDS.map((k) => k.kind)}
           optionLabel={(k) => TRANSITION_LABEL[k] ?? k}
-          onChange={(nextKind) => patchItem('video', id, { transitionOut: { ...t, kind: nextKind } })}
+          onChange={(nextKind) => patchItem('video', id, { transitionOut: defaultTransition(nextKind, { frames: t.frames }) })}
         />
         {(kind === 'whip-pan' || kind === 'wipe') && (
           <SelectField
@@ -199,11 +199,13 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
             onChange={(s) => patchItem('video', id, { transitionOut: { ...t, direction: s } })}
           />
         )}
-        <NumberField
-          lbl="Length (frames)"
-          value={t.frames}
-          onCommit={(n) => patchItem('video', id, { transitionOut: { ...t, frames: Math.max(1, Math.round(n)) } })}
-        />
+        {kindNeedsFrames(kind) && (
+          <NumberField
+            lbl="Length (frames)"
+            value={t.frames}
+            onCommit={(n) => patchItem('video', id, { transitionOut: { ...t, frames: Math.max(1, Math.round(n)) } })}
+          />
+        )}
       </div>
     );
   }
