@@ -9,10 +9,16 @@ export const LANES = ['overlays', 'video', 'transitions', 'audio', 'music', 'bra
 export type LaneId = (typeof LANES)[number];
 const MS = 1000;
 const TRANSITION_PREFIX = 'transition:';
+const TRANSITION_IN_PREFIX = 'transition-in:';
 
-export function parseActionId(actionId: string): { lane: LaneId; id: string } {
+export function parseActionId(actionId: string): { lane: LaneId; id: string; edge?: 'in' | 'out' } {
+  // Check transition-in: first — it's a distinct prefix (not a suffix
+  // extension of transition:), but ordering here keeps the intent explicit.
+  if (actionId.startsWith(TRANSITION_IN_PREFIX)) {
+    return { lane: 'transitions', id: actionId.slice(TRANSITION_IN_PREFIX.length), edge: 'in' };
+  }
   if (actionId.startsWith(TRANSITION_PREFIX)) {
-    return { lane: 'transitions', id: actionId.slice(TRANSITION_PREFIX.length) };
+    return { lane: 'transitions', id: actionId.slice(TRANSITION_PREFIX.length), edge: 'out' };
   }
   const i = actionId.indexOf(':');
   return { lane: actionId.slice(0, i) as LaneId, id: actionId.slice(i + 1) };
@@ -34,18 +40,29 @@ export function layeredToTimeline(reel: LayeredReel, fps: number): { editorData:
   // display-only here (locked in the timeline).
   const music: TLAction[] = [act('music', 'base', 0, reel.meta.totalDurationMs, 'music')];
   // Transitions are a derived "at-the-cut" view: clips stay butted on the
-  // video track, and each adjacent pair A→B where A carries a non-`cut`
-  // transitionOut gets one centered block on the cut (A.endMs === B.startMs).
+  // video track. Every item's non-`cut` transitionOut gets one centered block
+  // on its cut — including the LAST item, whose transitionOut is a closing
+  // fade to the coal background rather than into a following clip. The FIRST
+  // item's non-`cut` transitionIn gets one opening block anchored at time 0
+  // (a fade in from coal). Together this makes the lane a unified view of
+  // every transition edge in the reel, not just adjacent-pair cuts.
   const vids = reel.tracks.video;
   const transitions: TLAction[] = [];
-  for (let i = 0; i < vids.length - 1; i++) {
-    const A = vids[i];
-    const t = A.transitionOut as { kind?: string; frames?: number } | undefined;
+  for (let i = 0; i < vids.length; i++) {
+    const item = vids[i];
+    if (i === 0) {
+      const tin = item.transitionIn as { kind?: string; frames?: number } | undefined;
+      if (tin?.kind && tin.kind !== 'cut' && tin.frames) {
+        const halfMs = Math.round((tin.frames / 2 / fps) * 1000);
+        transitions.push({ id: `${TRANSITION_IN_PREFIX}${item.id}`, start: 0, end: (halfMs * 2) / MS, effectId: tin.kind });
+      }
+    }
+    const t = item.transitionOut as { kind?: string; frames?: number } | undefined;
     if (!t?.kind || t.kind === 'cut' || !t.frames) continue;
     // start/end are in SECONDS like every other lane (act() divides by MS).
-    const cut = A.endMs;
+    const cut = item.endMs;
     const halfMs = Math.round((t.frames / 2 / fps) * 1000);
-    transitions.push({ id: `${TRANSITION_PREFIX}${A.id}`, start: Math.max(0, cut - halfMs) / MS, end: (cut + halfMs) / MS, effectId: t.kind });
+    transitions.push({ id: `${TRANSITION_PREFIX}${item.id}`, start: Math.max(0, cut - halfMs) / MS, end: (cut + halfMs) / MS, effectId: t.kind });
   }
   return {
     editorData: [
