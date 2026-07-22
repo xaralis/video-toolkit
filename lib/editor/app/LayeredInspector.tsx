@@ -176,6 +176,22 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
     );
   }
 
+  if (lane === 'music') {
+    const m = reel.tracks.music;
+    const patchMusic = (patch: Record<string, unknown>) =>
+      onChange({ ...reel, tracks: { ...reel.tracks, music: { ...m, ...patch } } });
+    return (
+      <div style={{ padding: 14 }}>
+        <h3 style={heading}>Music</h3>
+        <TextField lbl="Source" value={m.source} onCommit={(s) => patchMusic({ source: s.trim() || undefined })} />
+        <NumberField lbl="Base volume (dB)" value={m.baseVolumeDb} onCommit={(n) => patchMusic({ baseVolumeDb: n })} />
+        <div style={{ fontSize: 11, color: '#5f626a', marginTop: 8 }}>
+          The effective envelope (base + each clip’s music boost) is drawn on the Music lane.
+        </div>
+      </div>
+    );
+  }
+
   // brand
   const b = reel.tracks.brand.find((x) => x.id === id);
   if (!b) return null;
