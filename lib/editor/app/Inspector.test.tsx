@@ -589,6 +589,168 @@ describe('Inspector', () => {
     });
   });
 
+  describe('multi-clip editing', () => {
+    const multiClipSegments = [
+      {
+        id: 'm',
+        type: 'multi-clip',
+        layout: 'split-h',
+        durationMs: 4100,
+        audioMode: 'silent',
+        sources: [
+          { source: 'recordings/seg01a.MP4', trimIn: 3, trimOut: 7.5 },
+          { source: 'recordings/seg01b.MP4', trimIn: 0, trimOut: 5.4, zoom: 3 },
+        ],
+      },
+      { id: 'z', type: 'outro' },
+    ];
+
+    it('shows the layout switcher with the current layout pressed', () => {
+      render(
+        <Inspector
+          segments={multiClipSegments}
+          selectedId="m"
+          topic="Our story"
+          chevron="HOUSING"
+          fps={30}
+          onReelChange={vi.fn()}
+          onSegmentChange={vi.fn()}
+        />
+      );
+      const splitH = screen.getByRole('button', { name: 'Split H' });
+      const splitV = screen.getByRole('button', { name: 'Split V' });
+      expect(screen.getByRole('button', { name: 'PiP' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Quad' })).toBeInTheDocument();
+      expect(splitH).toHaveAttribute('aria-pressed', 'true');
+      expect(splitV).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('fires onSegmentChange with the new layout when a layout button is clicked', () => {
+      const onSegmentChange = vi.fn();
+      render(
+        <Inspector
+          segments={multiClipSegments}
+          selectedId="m"
+          topic="Our story"
+          chevron="HOUSING"
+          fps={30}
+          onReelChange={vi.fn()}
+          onSegmentChange={onSegmentChange}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Split V' }));
+      expect(onSegmentChange).toHaveBeenCalledTimes(1);
+      expect(onSegmentChange).toHaveBeenCalledWith('m', { layout: 'split-v' });
+    });
+
+    it('offers the multi-clip audio options (first/mix/silent)', () => {
+      render(
+        <Inspector
+          segments={multiClipSegments}
+          selectedId="m"
+          topic="Our story"
+          chevron="HOUSING"
+          fps={30}
+          onReelChange={vi.fn()}
+          onSegmentChange={vi.fn()}
+        />
+      );
+      const select = screen.getByLabelText('Audio') as HTMLSelectElement;
+      expect(Array.from(select.options).map((o) => o.value)).toEqual(['first', 'mix', 'silent']);
+      expect(select.value).toBe('silent');
+    });
+
+    it('renders one sub-clip row per source with its source, trims, and label', () => {
+      render(
+        <Inspector
+          segments={multiClipSegments}
+          selectedId="m"
+          topic="Our story"
+          chevron="HOUSING"
+          fps={30}
+          onReelChange={vi.fn()}
+          onSegmentChange={vi.fn()}
+        />
+      );
+      const srcInputs = screen.getAllByLabelText(/^Source \d+$/) as HTMLInputElement[];
+      expect(srcInputs.map((i) => i.value)).toEqual([
+        'recordings/seg01a.MP4',
+        'recordings/seg01b.MP4',
+      ]);
+      const trimIns = screen.getAllByLabelText('Trim in') as HTMLInputElement[];
+      const trimOuts = screen.getAllByLabelText('Trim out') as HTMLInputElement[];
+      expect(trimIns).toHaveLength(2);
+      expect(trimOuts.map((i) => i.value)).toEqual(['7.5', '5.4']);
+    });
+
+    it('does not render the clip/broll Source select for multi-clip', () => {
+      render(
+        <Inspector
+          segments={multiClipSegments}
+          selectedId="m"
+          topic="Our story"
+          chevron="HOUSING"
+          fps={30}
+          onReelChange={vi.fn()}
+          onSegmentChange={vi.fn()}
+        />
+      );
+      expect(screen.queryByLabelText('Source')).not.toBeInTheDocument();
+    });
+
+    it('emits an updated sources array (preserving siblings + extra fields) when a sub-clip trimOut changes', () => {
+      const onSegmentChange = vi.fn();
+      render(
+        <Inspector
+          segments={multiClipSegments}
+          selectedId="m"
+          topic="Our story"
+          chevron="HOUSING"
+          fps={30}
+          onReelChange={vi.fn()}
+          onSegmentChange={onSegmentChange}
+        />
+      );
+      const trimOuts = screen.getAllByLabelText('Trim out') as HTMLInputElement[];
+      fireEvent.change(trimOuts[0], { target: { value: '9' } });
+      expect(onSegmentChange).toHaveBeenCalledTimes(1);
+      expect(onSegmentChange).toHaveBeenCalledWith('m', {
+        sources: [
+          { source: 'recordings/seg01a.MP4', trimIn: 3, trimOut: 9 },
+          { source: 'recordings/seg01b.MP4', trimIn: 0, trimOut: 5.4, zoom: 3 },
+        ],
+      });
+    });
+
+    it('edits the multi-clip single overlay text through the AccentEditor', () => {
+      const withOverlay = [
+        {
+          ...multiClipSegments[0],
+          overlay: { kind: 'title', text: 'Spojili jsme síly.' },
+        },
+      ];
+      const onSegmentChange = vi.fn();
+      render(
+        <Inspector
+          segments={withOverlay}
+          selectedId="m"
+          topic="Our story"
+          chevron="HOUSING"
+          fps={30}
+          onReelChange={vi.fn()}
+          onSegmentChange={onSegmentChange}
+        />
+      );
+      const box = screen.getByLabelText('Caption text');
+      expect(box.textContent).toBe('Spojili jsme síly.');
+      box.textContent = 'Updated title.';
+      fireEvent.input(box);
+      expect(onSegmentChange).toHaveBeenCalledWith('m', {
+        overlay: { kind: 'title', text: 'Updated title.' },
+      });
+    });
+  });
+
   describe('transition to next scene', () => {
     it('shows the transition section for a non-last segment', () => {
       render(

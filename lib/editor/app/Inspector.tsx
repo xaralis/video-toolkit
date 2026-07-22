@@ -15,6 +15,19 @@ export type Overlay = {
 };
 
 /**
+ * A single sub-clip inside a multi-clip segment. Deliberately loose (extra
+ * fields like `zoom` are preserved untouched) so this component stays
+ * decoupled from any one template's sub-clip shape.
+ */
+export type SubClip = {
+  source: string;
+  trimIn?: number;
+  trimOut?: number;
+  label?: string;
+  [key: string]: unknown;
+};
+
+/**
  * Structural segment shape — mirrors Timeline's `Segment`. Deliberately not
  * importing the full reel-config-base segment union so this component stays
  * decoupled from any one template's segment variants.
@@ -29,11 +42,23 @@ export type Segment = {
   audioMode?: string;
   /** clip segments: multiple overlays */
   overlays?: Overlay[];
-  /** broll segments: a single overlay */
+  /** broll & multi-clip segments: a single overlay */
   overlay?: Overlay;
+  /** multi-clip segments: the split/pip layout */
+  layout?: string;
+  /** multi-clip segments: the 2–4 sub-clips composited together */
+  sources?: SubClip[];
   /** Transition played into the NEXT scene. Absent reads as a hard cut. */
   transitionOut?: Transition;
 };
+
+/** Multi-clip layout values + their human labels — mirrors reel-config-base. */
+const MULTI_CLIP_LAYOUTS: { value: string; label: string }[] = [
+  { value: 'split-h', label: 'Split H' },
+  { value: 'split-v', label: 'Split V' },
+  { value: 'pip', label: 'PiP' },
+  { value: 'quad', label: 'Quad' },
+];
 
 export interface InspectorProps {
   segments: Segment[];
@@ -93,13 +118,13 @@ function overlayEntriesFor(seg: Segment): OverlayEntry[] {
         }),
       }));
   }
-  if (seg.type === 'broll' && seg.overlay) {
+  if ((seg.type === 'broll' || seg.type === 'multi-clip') && seg.overlay) {
     const overlay = seg.overlay;
     const text = overlay.text;
     if (typeof text === 'string') {
       return [
         {
-          key: 'broll-overlay',
+          key: `${seg.type}-overlay`,
           text,
           toPatch: (newText: string) => ({ overlay: { ...overlay, text: newText } }),
         },
@@ -232,6 +257,98 @@ export function Inspector({
           <span className={styles.label}>Timing</span>
           <span className={styles.value}>{timing}</span>
         </div>
+      )}
+
+      {selected.type === 'multi-clip' && (
+        <>
+          <div className={styles.field}>
+            <span className={styles.label}>Layout</span>
+            <div className={styles.segmented}>
+              {MULTI_CLIP_LAYOUTS.map((opt) => {
+                const active = (selected.layout ?? MULTI_CLIP_LAYOUTS[0].value) === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={active ? styles.segmentActive : styles.segment}
+                    aria-pressed={active}
+                    onClick={() => onSegmentChange(selected.id, { layout: opt.value })}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className={styles.field}>
+            <span className={styles.label}>Sub-clips</span>
+            {(selected.sources ?? []).map((sub, idx) => {
+              const patchSource = (patch: Partial<SubClip>) => {
+                const nextSources = (selected.sources ?? []).map((s, i) =>
+                  i === idx ? { ...s, ...patch } : s
+                );
+                onSegmentChange(selected.id, { sources: nextSources });
+              };
+              return (
+                <div className={styles.subClip} key={idx}>
+                  <label className={styles.fieldLabel}>
+                    <span className={styles.subLabel}>Source {idx + 1}</span>
+                    <input
+                      type="text"
+                      className={styles.input}
+                      value={sub.source ?? ''}
+                      onChange={(e) => patchSource({ source: e.target.value })}
+                    />
+                  </label>
+                  <div className={styles.subRow}>
+                    <label className={styles.fieldLabel}>
+                      <span className={styles.subLabel}>Trim in</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        className={styles.input}
+                        value={sub.trimIn ?? ''}
+                        onChange={(e) =>
+                          patchSource({
+                            trimIn: e.target.value === '' ? undefined : Number(e.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                    <label className={styles.fieldLabel}>
+                      <span className={styles.subLabel}>Trim out</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        className={styles.input}
+                        value={sub.trimOut ?? ''}
+                        onChange={(e) =>
+                          patchSource({
+                            trimOut: e.target.value === '' ? undefined : Number(e.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+                  <label className={styles.fieldLabel}>
+                    <span className={styles.subLabel}>Label</span>
+                    <input
+                      type="text"
+                      className={styles.input}
+                      value={sub.label ?? ''}
+                      onChange={(e) =>
+                        patchSource({
+                          label: e.target.value === '' ? undefined : e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
       {audioOptions && (
