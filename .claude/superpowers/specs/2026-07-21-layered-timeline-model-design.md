@@ -122,6 +122,14 @@ part of the timeline UI). Each gets its own spec → plan → implementation cyc
 - Migrating *all* projects up front — only the **pilot** (`pp-namesti-republiky`) is in scope for
   sub-spec 1; the rest are a mechanical rollout after the pilot passes.
 
+## Implementation note (branch latitude)
+
+This is a large refactor. **On the feature branch, temporary breakage is acceptable** — imports may
+be broken, intermediate states may not compile, and per-task green-gates may be relaxed while the
+model is reshaped. Correctness is validated at **sub-spec completion** (the pilot project round-trips
+through the new model + editor and renders acceptably) and by a **final integration pass that is
+green before any merge** — not at every commit. This does not apply to `main`.
+
 ## What is reused (not rebuilt)
 
 The editor UI pieces already built stay: `EditorShell`, `Inspector` (extended with per-item-type
