@@ -55,6 +55,21 @@
   cursor: default;
 }
 
+.discardButton {
+  background: transparent;
+  color: #b8bcc4;
+  border: 1px solid #3a3c44;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.discardButton:hover {
+  border-color: #55585f;
+  color: #e8e8ea;
+}
+
 .saveButton:disabled {
   background: #4c5442;
   color: #8a8f80;

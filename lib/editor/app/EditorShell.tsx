@@ -8,6 +8,8 @@ export interface EditorShellProps {
   projectName?: string;
   /** Called when the Save button is clicked. */
   onSave?: () => void;
+  /** Called when the Discard button is clicked — revert unsaved edits. */
+  onDiscard?: () => void;
   /** Disables the Save button while a save is in flight. */
   saving?: boolean;
   /** Whether there are unsaved edits. Shows an "unsaved" indicator and makes Save look actionable. */
@@ -31,6 +33,7 @@ export function EditorShell({
   preview,
   projectName,
   onSave,
+  onDiscard,
   saving,
   dirty,
   inspector,
@@ -42,6 +45,11 @@ export function EditorShell({
         <span className={styles.projectName}>{projectName}</span>
         <div className={styles.saveGroup}>
           {dirty && <span className={styles.unsavedIndicator}>● Unsaved changes</span>}
+          {dirty && onDiscard && (
+            <button type="button" className={styles.discardButton} onClick={onDiscard} disabled={saving}>
+              Discard
+            </button>
+          )}
           <button
             type="button"
             className={dirty ? styles.saveButton : `${styles.saveButton} ${styles.saveButtonClean}`}
