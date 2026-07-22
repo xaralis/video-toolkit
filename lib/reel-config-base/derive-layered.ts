@@ -8,7 +8,7 @@
 // playback overlaps adjacent segments during a transition, so this MVP
 // derivation is sequential-only ("close parity", not frame-exact) — good
 // enough to seed the layered editor, not a source of playback truth.
-import { segmentDurationFrames, totalDurationFrames } from './duration';
+import { segmentDurationFrames } from './duration';
 import type { LayeredReel, VideoItem, AudioItem, OverlayItem } from './layered-schema';
 
 // ---- Structural (non-Zod) input types -------------------------------------
@@ -240,7 +240,14 @@ export function deriveLayered(config: OldReelConfig, opts: DeriveLayeredOpts): L
     }
   }
 
-  const totalMs = Math.round((totalDurationFrames(config.segments, fps, outroFrames) / fps) * 1000);
+  // Single source of truth: the reel's total duration IS where its last
+  // timeline item ends. Deriving it independently (e.g. from a separate
+  // Math.round(totalDurationFrames(...)/fps*1000) over the frame SUM) diverges
+  // from the accumulated per-segment endMs by ±1ms due to independent
+  // rounding paths — this makes last.endMs === meta.totalDurationMs hold BY
+  // CONSTRUCTION, so brand full-span layers ([0, totalMs]) align exactly with
+  // the video track end.
+  const totalMs = cursorMs;
 
   if (config.chevron) {
     overlayItems.push({
