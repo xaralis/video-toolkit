@@ -149,7 +149,11 @@ function buildVideoItem(seg: OldSegment, startMs: number, endMs: number): VideoI
         kind: 'multi-clip',
         startMs,
         endMs,
-        layout: seg.layout as 'split-h' | 'split-v' | 'pip' | 'quad',
+        // `layout` is required on the multi-clip union member (unlike source/
+        // cardKind, which degrade to '' and still parse); a missing layout would
+        // throw at parse. The old schema makes it required, so this default is a
+        // safety net that keeps derivation total.
+        layout: (seg.layout ?? 'split-h') as 'split-h' | 'split-v' | 'pip' | 'quad',
         sources: (seg.sources ?? []).map((s) => ({
           source: s.source,
           sourceInMs: msFromSec(s.trimIn),

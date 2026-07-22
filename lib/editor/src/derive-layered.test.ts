@@ -189,6 +189,21 @@ describe('deriveLayered', () => {
     it('produces a schema-valid layered reel', () => {
       expect(() => LayeredReelSchema.parse(deriveLayered(MULTI, OPTS))).not.toThrow();
     });
+    it('defaults a missing layout to split-h so derivation stays schema-valid (layout is required on the union)', () => {
+      const noLayout = {
+        topic: 'no layout',
+        segments: [
+          { id: 'seg-nl', type: 'multi-clip', durationMs: 2000, audioMode: 'silent',
+            sources: [{ source: 'a.MP4', trimIn: 0, trimOut: 2 }] },
+          { id: 'seg-z', type: 'outro' },
+        ],
+      };
+      const r = deriveLayered(noLayout, OPTS);
+      const item = r.tracks.video.find((v) => v.id === 'seg-nl')!;
+      if (item.kind !== 'multi-clip') throw new Error('expected a multi-clip item');
+      expect(item.layout).toBe('split-h');
+      expect(() => LayeredReelSchema.parse(r)).not.toThrow();
+    });
     it('derives a multi-clip video item: layout + duration-driven span', () => {
       const r = deriveLayered(MULTI, OPTS);
       const mc = r.tracks.video.find((v) => v.id === 'seg-mc')!;
