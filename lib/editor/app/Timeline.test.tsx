@@ -554,4 +554,63 @@ describe('Timeline', () => {
       expect(screen.getByTestId('playhead').style.pointerEvents).toBe('none');
     });
   });
+
+  describe('transition junction indicators', () => {
+    const junctionSegments = [
+      { id: 'a', type: 'clip', trimIn: 0, trimOut: 3, transitionOut: { kind: 'dissolve', frames: 12 } },
+      { id: 'b', type: 'broll', trimIn: 0, trimOut: 3 },
+      { id: 'c', type: 'outro' },
+    ];
+
+    it('renders an effect badge (●) after a segment with a transition and a cut badge (◇) otherwise', () => {
+      render(
+        <Timeline
+          segments={junctionSegments}
+          selectedId={null}
+          onSelect={vi.fn()}
+          fps={30}
+          outroFrames={180}
+        />
+      );
+      // 'a' has a dissolve → effect dot.
+      expect(screen.getByTestId('junction-a').textContent).toBe('●');
+      // 'b' has no transitionOut → outline cut diamond.
+      expect(screen.getByTestId('junction-b').textContent).toBe('◇');
+      // No junction after the last segment.
+      expect(screen.queryByTestId('junction-c')).not.toBeInTheDocument();
+    });
+
+    it('gives the badge a title tooltip with the transition label', () => {
+      render(
+        <Timeline
+          segments={junctionSegments}
+          selectedId={null}
+          onSelect={vi.fn()}
+          fps={30}
+          outroFrames={180}
+        />
+      );
+      expect(screen.getByTestId('junction-a').title).toBe('Dissolve');
+      expect(screen.getByTestId('junction-b').title).toBe('Cut');
+    });
+
+    it('selects the LEFT segment on click without seeking', () => {
+      const onSelect = vi.fn();
+      const onSeek = vi.fn();
+      render(
+        <Timeline
+          segments={junctionSegments}
+          selectedId={null}
+          onSelect={onSelect}
+          onSeek={onSeek}
+          fps={30}
+          outroFrames={180}
+        />
+      );
+      fireEvent.pointerDown(screen.getByTestId('junction-a'), { clientX: 100 });
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      expect(onSelect).toHaveBeenCalledWith('a');
+      expect(onSeek).not.toHaveBeenCalled();
+    });
+  });
 });

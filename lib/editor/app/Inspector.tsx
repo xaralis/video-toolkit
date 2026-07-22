@@ -1,5 +1,7 @@
 import styles from './Inspector.module.css';
 import { AccentEditor } from './AccentEditor';
+import { TransitionPicker } from './TransitionPicker';
+import type { Transition } from './transitions';
 
 /**
  * A single overlay entry. Deliberately loose (not the full reel-config-base
@@ -29,6 +31,8 @@ export type Segment = {
   overlays?: Overlay[];
   /** broll segments: a single overlay */
   overlay?: Overlay;
+  /** Transition played into the NEXT scene. Absent reads as a hard cut. */
+  transitionOut?: Transition;
 };
 
 export interface InspectorProps {
@@ -38,6 +42,8 @@ export interface InspectorProps {
   chevron: string;
   onReelChange: (patch: { topic?: string; chevron?: string }) => void;
   onSegmentChange: (id: string, patch: Record<string, unknown>) => void;
+  /** Frames per second — needed by the transition picker to show durations in seconds. */
+  fps: number;
   /** Available footage filenames, supplied by the template from the project's public dirs. */
   sources?: { recordings: string[]; broll: string[] };
 }
@@ -130,8 +136,10 @@ function sourceOptionsFor(
  * selection, shows a Reel section with Topic/Chevron text inputs bound to
  * `topic`/`chevron`/`onReelChange`. With a selected segment, shows the
  * read-only Scene summary (type, timing) plus editable Source (clip/broll
- * only, via `sources`), audioMode, and overlay text (via a WYSIWYG
- * `AccentEditor`) via `onSegmentChange`.
+ * only, via `sources`), audioMode, overlay text (via a WYSIWYG
+ * `AccentEditor`), and — for any non-final, non-outro scene — a "Transition
+ * to next scene" section (via `TransitionPicker`) editing `transitionOut`,
+ * all through `onSegmentChange`.
  */
 export function Inspector({
   segments,
@@ -140,6 +148,7 @@ export function Inspector({
   chevron,
   onReelChange,
   onSegmentChange,
+  fps,
   sources,
 }: InspectorProps) {
   const selected = selectedId === null ? undefined : segments.find((s) => s.id === selectedId);
@@ -187,6 +196,13 @@ export function Inspector({
   const audioOptions = AUDIO_MODE_OPTIONS[selected.type];
   const overlayEntries = overlayEntriesFor(selected);
   const sourceOptions = sourceOptionsFor(selected, sources);
+
+  // The `transitionOut` plays INTO the next scene, so it only makes sense
+  // when there IS a next scene — never on the final segment (and never on an
+  // outro, which is always the tail).
+  const isLastSegment =
+    segments.length > 0 && segments[segments.length - 1].id === selected.id;
+  const showTransition = !isLastSegment && selected.type !== 'outro';
 
   return (
     <div className={styles.inspector}>
@@ -248,6 +264,17 @@ export function Inspector({
       ) : (
         <div className={styles.field}>
           <span className={styles.note}>no overlay text</span>
+        </div>
+      )}
+
+      {showTransition && (
+        <div className={styles.field}>
+          <span className={styles.label}>Transition to next scene</span>
+          <TransitionPicker
+            value={selected.transitionOut}
+            fps={fps}
+            onChange={(t) => onSegmentChange(selected.id, { transitionOut: t })}
+          />
         </div>
       )}
     </div>
