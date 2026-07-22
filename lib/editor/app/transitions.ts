@@ -1,11 +1,15 @@
 /**
- * Pure helpers for editing a segment's `transitionOut`. No React, no DOM —
- * mirrors (structurally, not by import) the discriminated union in
- * `lib/reel-config-base/transition-schema.ts`:
+ * Pure helpers for editing a segment's `transitionOut`/`transitionIn`. No
+ * React, no DOM — mirrors (structurally, not by import) the discriminated
+ * union in `lib/reel-config-base/transition-schema.ts`, extended here with
+ * the rest of the `@remotion/transitions` presentation set (the layered
+ * model's `transitionOut`/`transitionIn` fields are permissive
+ * `z.record(...)`, so this catalog is the source of truth for which kinds
+ * are valid until a later task tightens that schema):
  *
  *   { kind: 'cut' }
- *   { kind: 'dissolve' | 'fade-coal' | 'glitch', frames }
- *   { kind: 'whip-pan', frames, direction: 'left'|'right'|'up'|'down' }
+ *   { kind: 'dissolve' | 'fade' | 'fade-coal' | 'glitch' | 'clock-wipe' | 'iris', frames }
+ *   { kind: 'whip-pan' | 'slide' | 'flip', frames, direction: 'left'|'right'|'up'|'down' }
  *   { kind: 'zoom-through', frames, from: 'in'|'out' }
  *   { kind: 'wipe', frames, color: 'lime'|'teal'|'coal', direction: 'left'|'right' }
  *   { kind: 'gradient-wipe', frames, direction?: ..., softness?: 0..100 }
@@ -26,14 +30,19 @@ export interface Transition {
   [key: string]: unknown;
 }
 
-/** All 8 transition kinds with human-readable labels, in schema order. */
+/** All 13 transition kinds with human-readable labels, in schema order. */
 export const TRANSITION_KINDS: Array<{ kind: string; label: string }> = [
   { kind: 'cut', label: 'Cut' },
   { kind: 'dissolve', label: 'Dissolve' },
+  { kind: 'fade', label: 'Fade' },
   { kind: 'fade-coal', label: 'Fade to black' },
   { kind: 'glitch', label: 'Glitch' },
+  { kind: 'slide', label: 'Slide' },
+  { kind: 'flip', label: 'Flip' },
   { kind: 'whip-pan', label: 'Whip pan' },
   { kind: 'zoom-through', label: 'Zoom' },
+  { kind: 'clock-wipe', label: 'Clock wipe' },
+  { kind: 'iris', label: 'Iris' },
   { kind: 'wipe', label: 'Wipe' },
   { kind: 'gradient-wipe', label: 'Gradient wipe' },
 ];
@@ -109,6 +118,8 @@ const GRADIENT_DIRECTIONS: SubOptionChoice[] = [
 export function subOptionsFor(kind: string): SubOption[] {
   switch (kind) {
     case 'whip-pan':
+    case 'slide':
+    case 'flip':
       return [{ prop: 'direction', label: 'Direction', kind: 'enum', options: DIRECTION_4WAY }];
     case 'zoom-through':
       return [
@@ -151,6 +162,8 @@ export function defaultTransition(kind: string, opts?: { frames?: number }): Tra
 
   switch (kind) {
     case 'whip-pan':
+    case 'slide':
+    case 'flip':
       return { kind, frames, direction: 'left' };
     case 'zoom-through':
       return { kind, frames, from: 'in' };

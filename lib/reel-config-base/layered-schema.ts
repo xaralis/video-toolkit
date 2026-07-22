@@ -46,6 +46,7 @@ const VideoContainerBase = {
   effects: z.array(EffectSchema).optional(),
   musicBoostDb: z.number().optional(),
   transitionOut: z.record(z.string(), z.unknown()).optional(),
+  transitionIn: z.record(z.string(), z.unknown()).optional(),
 };
 
 export const VideoItemSchema = z.discriminatedUnion('kind', [

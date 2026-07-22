@@ -70,4 +70,19 @@ describe('VideoItemSchema — container contract', () => {
     const parsed = VideoItemSchema.parse({ ...base, kind: 'clip', source: 'a', sourceInMs: 0, sourceOutMs: 1, layout: 'split-h' } as never);
     expect('layout' in parsed).toBe(false);
   });
+  it('accepts an optional transitionIn (opening transition)', () => {
+    const parsed = VideoItemSchema.parse({
+      ...base,
+      kind: 'clip',
+      source: 'a.mp4',
+      sourceInMs: 0,
+      sourceOutMs: 1000,
+      transitionIn: { kind: 'fade', frames: 12 },
+    });
+    expect(parsed.transitionIn).toEqual({ kind: 'fade', frames: 12 });
+  });
+  it('parses a clip without transitionIn (field is optional)', () => {
+    const parsed = VideoItemSchema.parse({ ...base, kind: 'clip', source: 'a.mp4', sourceInMs: 0, sourceOutMs: 1000 });
+    expect(parsed.transitionIn).toBeUndefined();
+  });
 });
