@@ -5,16 +5,20 @@ export interface TLRow { id: string; actions: TLAction[]; }
 
 // Display order, top → bottom (NLE convention): overlays highest, then video
 // and its audio directly stacked, then the music bed, then brand marks.
-export const LANES = ['overlays', 'video', 'audio', 'music', 'brand'] as const;
+export const LANES = ['overlays', 'video', 'transitions', 'audio', 'music', 'brand'] as const;
 export type LaneId = (typeof LANES)[number];
 const MS = 1000;
+const TRANSITION_PREFIX = 'transition:';
 
 export function parseActionId(actionId: string): { lane: LaneId; id: string } {
+  if (actionId.startsWith(TRANSITION_PREFIX)) {
+    return { lane: 'transitions', id: actionId.slice(TRANSITION_PREFIX.length) };
+  }
   const i = actionId.indexOf(':');
   return { lane: actionId.slice(0, i) as LaneId, id: actionId.slice(i + 1) };
 }
 
-export function layeredToTimeline(reel: LayeredReel): { editorData: TLRow[] } {
+export function layeredToTimeline(reel: LayeredReel, fps: number): { editorData: TLRow[] } {
   const act = (lane: LaneId, id: string, startMs: number, endMs: number, effectId: string): TLAction => ({
     id: `${lane}:${id}`, start: startMs / MS, end: endMs / MS, effectId,
   });
@@ -29,10 +33,24 @@ export function layeredToTimeline(reel: LayeredReel): { editorData: TLRow[] } {
   // spanning the reel. Its derived envelope + editing is sub-spec 3, so it is
   // display-only here (locked in the timeline).
   const music: TLAction[] = [act('music', 'base', 0, reel.meta.totalDurationMs, 'music')];
+  // Transitions are a derived "at-the-cut" view: clips stay butted on the
+  // video track, and each adjacent pair A→B where A carries a non-`cut`
+  // transitionOut gets one centered block on the cut (A.endMs === B.startMs).
+  const vids = reel.tracks.video;
+  const transitions: TLAction[] = [];
+  for (let i = 0; i < vids.length - 1; i++) {
+    const A = vids[i];
+    const t = A.transitionOut as { kind?: string; frames?: number } | undefined;
+    if (!t?.kind || t.kind === 'cut' || !t.frames) continue;
+    const cut = A.endMs;
+    const halfMs = Math.round((t.frames / 2 / fps) * 1000);
+    transitions.push({ id: `${TRANSITION_PREFIX}${A.id}`, start: Math.max(0, cut - halfMs), end: cut + halfMs, effectId: t.kind });
+  }
   return {
     editorData: [
       { id: 'overlays', actions: overlays },
       { id: 'video', actions: video },
+      { id: 'transitions', actions: transitions },
       { id: 'audio', actions: audio },
       { id: 'music', actions: music },
       { id: 'brand', actions: brand },

@@ -27,6 +27,7 @@ const audioUrl = (source: string) => (source.includes('/') ? `/${source}` : `/re
 const LANE_LABELS: Record<LaneId, string> = {
   overlays: 'Overlays',
   video: 'Video',
+  transitions: 'Transitions',
   audio: 'Audio',
   music: 'Music',
   brand: 'Brand',
@@ -167,7 +168,7 @@ export function LayeredTimeline({
   const stateRef = useRef<TimelineState>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const editorData = useMemo(() => layeredToTimeline(reel).editorData, [reel]);
+  const editorData = useMemo(() => layeredToTimeline(reel, fps).editorData, [reel, fps]);
 
   // Decode waveform peaks for the audio beds + the music source.
   const audioUrls = useMemo(() => {
