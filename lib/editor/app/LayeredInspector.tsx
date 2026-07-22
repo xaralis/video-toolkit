@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import { AccentEditor } from './AccentEditor';
 import { TRANSITION_KINDS, defaultTransition, kindNeedsFrames, subOptionsFor, type Transition } from './transitions';
@@ -34,17 +34,31 @@ const section: React.CSSProperties = { fontSize: 10, color: '#5f626a', textTrans
 
 const Row = ({ children }: { children: ReactNode }) => <div style={{ display: 'flex', gap: 8 }}>{children}</div>;
 
+// Commits LIVE as you type (each valid value) so the preview reflects changes
+// immediately — not only on blur. Controlled local text state resyncs from the
+// external `value` only when it diverges (an edit from elsewhere / undo), so a
+// self-commit never fights the caret mid-type.
 function NumberField({ lbl, value, step = 1, onCommit }: { lbl: string; value: number | undefined; step?: number; onCommit: (n: number) => void }) {
+  const [text, setText] = useState<string>(value === undefined ? '' : String(value));
+  useEffect(() => {
+    if (value === undefined) {
+      if (text !== '') setText('');
+    } else if (Number(text) !== value) {
+      setText(String(value));
+    }
+    // resync only on external `value` change — intentionally not keyed on `text`
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
   return (
     <div style={field}>
       <label style={label}>{lbl}</label>
       <input
-        key={value}
         style={input}
         type="number"
         step={step}
-        defaultValue={value ?? ''}
-        onBlur={(e) => {
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
           const raw = e.target.value.trim();
           if (raw === '') return;
           const n = Number(raw);
