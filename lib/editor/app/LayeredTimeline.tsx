@@ -356,7 +356,19 @@ export function LayeredTimeline({
                     }}
                   />
                 )}
-                {action.id.startsWith('music:') && <MusicEnvelope points={envelope.points} totalFrames={totalFrames} />}
+                {action.id.startsWith('music:') && (
+                  <>
+                    <MusicEnvelope points={envelope.points} totalFrames={totalFrames} />
+                    {/* Draggable BASE level (lime); the derived envelope boosts ride above it. */}
+                    <VolumeLine
+                      volumeDb={reel.tracks.music.baseVolumeDb}
+                      color="rgba(182,255,90,0.9)"
+                      onChange={(db) =>
+                        onChange({ ...reel, tracks: { ...reel.tracks, music: { ...reel.tracks.music, baseVolumeDb: db } } })
+                      }
+                    />
+                  </>
+                )}
                 <span style={{ position: 'relative', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {timelineLabel(action, reel, fps)}
                 </span>
