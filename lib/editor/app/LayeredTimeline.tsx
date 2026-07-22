@@ -61,6 +61,11 @@ function actionLabel(action: TimelineAction, reel: LayeredReel): string {
   return id;
 }
 
+// xzdarcy's CSS forces `font-family: PingFang SC` (a CJK font) on the whole
+// timeline, which renders Czech diacritics with an inconsistent fallback.
+// Override with a system stack that covers Latin+diacritics properly.
+const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+
 // xzdarcy layout (from its CSS): the time-ruler area is 32px and the edit-area
 // (rows) has a 10px margin-top — so the first row starts 42px down. The lane
 // header column must offset by the same amount to line up.
@@ -128,7 +133,7 @@ export function LayeredTimeline({
   }, [playheadFrame, fps]);
 
   return (
-    <div style={{ display: 'flex', height: '100%', minHeight: 0, background: '#161719' }}>
+    <div style={{ display: 'flex', height: '100%', minHeight: 0, background: '#161719', fontFamily: FONT }}>
       {/* Fixed lane-header column. xzdarcy renders only the track area, so the
           labels live in a parallel scroll container kept in two-way sync with
           the timeline's vertical scroll (its official scroll-sync mechanism):
@@ -178,7 +183,7 @@ export function LayeredTimeline({
           onScroll={(param) => {
             if (listRef.current) listRef.current.scrollTop = param.scrollTop;
           }}
-          style={{ width: '100%', height: '100%', background: '#161719' }}
+          style={{ width: '100%', height: '100%', background: '#161719', fontFamily: FONT }}
           getActionRender={(action) => (
             <div
               style={{
@@ -189,6 +194,7 @@ export function LayeredTimeline({
                 borderRadius: 3,
                 background: colorFor(action.effectId),
                 color: '#f2f2f2',
+                fontFamily: FONT,
                 fontSize: 11,
                 overflow: 'hidden',
                 whiteSpace: 'nowrap',
