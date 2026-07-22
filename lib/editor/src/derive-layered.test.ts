@@ -67,6 +67,24 @@ const MULTI = {
   ],
 };
 
+// Covers Task 2: multi-clip audio isolated onto the audio track, like broll.
+const MULTI_FIRST = {
+  topic: 'Multi-clip first',
+  segments: [
+    { id: 'seg-mf', type: 'multi-clip', layout: 'split-h', durationMs: 3000, audioMode: 'first',
+      sources: [ { source: 'a.MP4', trimIn: 2, trimOut: 5 }, { source: 'b.MP4', trimIn: 0, trimOut: 3 } ] },
+    { id: 'seg-z', type: 'outro' },
+  ],
+};
+const MULTI_MIX = {
+  topic: 'Multi-clip mix',
+  segments: [
+    { id: 'seg-mm', type: 'multi-clip', layout: 'quad', durationMs: 3000, audioMode: 'mix',
+      sources: [ { source: 'a.MP4', trimIn: 1, trimOut: 4 }, { source: 'b.MP4', trimIn: 0, trimOut: 3 } ] },
+    { id: 'seg-z', type: 'outro' },
+  ],
+};
+
 describe('deriveLayered', () => {
   it('produces a schema-valid layered reel', () => {
     expect(() => LayeredReelSchema.parse(deriveLayered(OLD, OPTS))).not.toThrow();
@@ -194,13 +212,27 @@ describe('deriveLayered', () => {
       const r = deriveLayered(MULTI, OPTS);
       const mc = r.tracks.video.find((v) => v.id === 'seg-mc')!;
       expect(mc.musicBoostDb).toBe(6); // silent → boost
-      expect(r.tracks.audio).toHaveLength(0); // multi-clip never emits an audio item
+      expect(r.tracks.audio).toHaveLength(0); // a silent multi-clip emits no audio item (first/mix do — see below)
     });
     it('attaches the single overlay at clip start + appearAt', () => {
       const r = deriveLayered(MULTI, OPTS);
       const title = r.tracks.overlays.find((o) => o.content.kind === 'title');
       expect(title).toMatchObject({ startMs: 1500, endMs: 4500 });
       expect(title!.anchorVideoId).toBe('seg-mc');
+    });
+    it("multi-clip 'first' → one audio item bound to the clip (sources[0])", () => {
+      const r = deriveLayered(MULTI_FIRST, OPTS);
+      expect(r.tracks.audio).toHaveLength(1);
+      expect(r.tracks.audio[0]).toMatchObject({
+        id: 'seg-mf-audio', source: 'a.MP4', sourceInMs: 2000, startMs: 0, endMs: 3000, followsVideoId: 'seg-mf',
+      });
+    });
+    it("multi-clip 'mix' → one audio item per source, all bound to the clip", () => {
+      const r = deriveLayered(MULTI_MIX, OPTS);
+      expect(r.tracks.audio).toHaveLength(2);
+      expect(r.tracks.audio.map((a) => a.id)).toEqual(['seg-mm-audio-0', 'seg-mm-audio-1']);
+      expect(r.tracks.audio.every((a) => a.followsVideoId === 'seg-mm')).toBe(true);
+      expect(r.tracks.audio[1]).toMatchObject({ source: 'b.MP4', sourceInMs: 0 });
     });
   });
 });
