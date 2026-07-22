@@ -7,7 +7,7 @@ const REEL: LayeredReel = {
   version: 'layered-1',
   meta: { topic: 'Fixture', totalDurationMs: 5000 },
   tracks: {
-    video: [{ id: 'v1', kind: 'clip', startMs: 0, endMs: 3000, source: 'a.mp4' }],
+    video: [{ id: 'v1', kind: 'clip', startMs: 0, endMs: 3000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 3000 }],
     audio: [{ id: 'a1', startMs: 0, endMs: 3000, source: 'audio/a.mp3', sourceInMs: 0 }],
     music: { baseVolumeDb: -8 },
     overlays: [{ id: 'seg-1-ov', startMs: 0, endMs: 3000, content: { kind: 'title', text: 'Hello' } }],

@@ -52,3 +52,22 @@ describe('LayeredReelSchema', () => {
     expect(() => EffectSchema.parse({ fromX: 0.5 })).toThrow();
   });
 });
+
+describe('VideoItemSchema — container contract', () => {
+  const base = { id: 'x', startMs: 0, endMs: 1000 };
+  it('parses each kind', () => {
+    expect(() => VideoItemSchema.parse({ ...base, kind: 'clip', source: 'a.mp4', sourceInMs: 0, sourceOutMs: 1000 })).not.toThrow();
+    expect(() => VideoItemSchema.parse({ ...base, kind: 'broll', source: 'b.mp4', sourceInMs: 0, sourceOutMs: 1000, aiGenerated: true })).not.toThrow();
+    expect(() => VideoItemSchema.parse({ ...base, kind: 'multi-clip', layout: 'split-h', sources: [{ source: 'a', sourceInMs: 0, sourceOutMs: 100, zoom: 3 }] })).not.toThrow();
+    expect(() => VideoItemSchema.parse({ ...base, kind: 'card', cardKind: 'claim-plate' })).not.toThrow();
+    expect(() => VideoItemSchema.parse({ ...base, kind: 'outro' })).not.toThrow();
+  });
+  it('strips/rejects audioMode — it is not part of the contract', () => {
+    const parsed = VideoItemSchema.parse({ ...base, kind: 'clip', source: 'a', sourceInMs: 0, sourceOutMs: 1, audioMode: 'voice' });
+    expect('audioMode' in parsed).toBe(false); // unknown key stripped by zod
+  });
+  it('a clip cannot carry multi-clip-only fields (contract is per-kind)', () => {
+    const parsed = VideoItemSchema.parse({ ...base, kind: 'clip', source: 'a', sourceInMs: 0, sourceOutMs: 1, layout: 'split-h' } as never);
+    expect('layout' in parsed).toBe(false);
+  });
+});

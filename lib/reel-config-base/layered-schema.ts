@@ -25,39 +25,36 @@ const TimeSpan = { startMs: Ms, endMs: Ms };
 export const EffectSchema = z.object({ type: z.string() }).passthrough();
 export type Effect = z.infer<typeof EffectSchema>;
 
-export const VideoItemSchema = z.object({
+const SubSource = z.object({
+  source: z.string(),
+  sourceInMs: Ms,
+  sourceOutMs: Ms,
+  label: z.string().optional(),
+  zoom: z.number().optional(),
+});
+
+// Shared video-container contract — every video track item satisfies this.
+// NB: NO audio fields. Sound lives on the audio track (see AudioItemSchema);
+// the only link back to a clip is AudioItem.followsVideoId.
+const VideoContainerBase = {
   id: z.string(),
-  kind: z.enum(['clip', 'broll', 'multi-clip', 'card', 'outro']),
   ...TimeSpan,
-  source: z.string().optional(), // absent for outro; multi-clip uses sources[]
-  sources: z
-    .array(
-      z.object({
-        source: z.string(),
-        sourceInMs: Ms,
-        sourceOutMs: Ms,
-        label: z.string().optional(),
-        zoom: z.number().optional(),
-      }),
-    )
-    .optional(),
-  sourceInMs: Ms.optional(), // trim window into the source (clip/broll)
-  sourceOutMs: Ms.optional(),
-  layout: z.enum(['split-h', 'split-v', 'pip', 'quad']).optional(), // multi-clip
   focalX: z.number().min(0).max(1).optional(),
   focalY: z.number().min(0).max(1).optional(),
   crop: z.record(z.string(), z.unknown()).optional(),
   grade: z.record(z.string(), z.unknown()).optional(),
-  aiGenerated: z.boolean().optional(), // broll
-  cardKind: z.string().optional(), // card
-  cardProps: z.record(z.string(), z.unknown()).optional(),
-  pattern: z.string().optional(),
-  musicBoostDb: z.number().optional(), // this item's contribution to the music envelope while on screen
   effects: z.array(EffectSchema).optional(),
-  // per-clip audio setting (clip voice|silent · broll inherit-from-clip|extend-previous|silent · multi-clip first|mix|silent)
-  audioMode: z.string().optional(),
-  transitionOut: z.record(z.string(), z.unknown()).optional(), // the existing Transition union, stored permissively
-});
+  musicBoostDb: z.number().optional(),
+  transitionOut: z.record(z.string(), z.unknown()).optional(),
+};
+
+export const VideoItemSchema = z.discriminatedUnion('kind', [
+  z.object({ ...VideoContainerBase, kind: z.literal('clip'), source: z.string(), sourceInMs: Ms, sourceOutMs: Ms }),
+  z.object({ ...VideoContainerBase, kind: z.literal('broll'), source: z.string(), sourceInMs: Ms, sourceOutMs: Ms, aiGenerated: z.boolean().optional() }),
+  z.object({ ...VideoContainerBase, kind: z.literal('multi-clip'), layout: z.enum(['split-h', 'split-v', 'pip', 'quad']), sources: z.array(SubSource) }),
+  z.object({ ...VideoContainerBase, kind: z.literal('card'), cardKind: z.string(), cardProps: z.record(z.string(), z.unknown()).optional(), pattern: z.string().optional() }),
+  z.object({ ...VideoContainerBase, kind: z.literal('outro') }),
+]);
 
 export const AudioItemSchema = z.object({
   id: z.string(),

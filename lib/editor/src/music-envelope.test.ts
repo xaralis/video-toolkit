@@ -13,8 +13,8 @@ function buildReel(): LayeredReel {
     meta: { topic: 'Test', totalDurationMs: 9000 },
     tracks: {
       video: [
-        { id: 'v1', kind: 'clip', startMs: 0, endMs: 3000, source: 'clip.mp4', sourceInMs: 0, sourceOutMs: 3000, audioMode: 'voice' },
-        { id: 'v2', kind: 'broll', startMs: 3000, endMs: 6000, source: 'broll.mp4', sourceInMs: 0, sourceOutMs: 3000, audioMode: 'silent', musicBoostDb: 6 },
+        { id: 'v1', kind: 'clip', startMs: 0, endMs: 3000, source: 'clip.mp4', sourceInMs: 0, sourceOutMs: 3000 },
+        { id: 'v2', kind: 'broll', startMs: 3000, endMs: 6000, source: 'broll.mp4', sourceInMs: 0, sourceOutMs: 3000, musicBoostDb: 6 },
         { id: 'v3', kind: 'outro', startMs: 6000, endMs: 9000, musicBoostDb: 10 },
       ],
       audio: [],
