@@ -56,7 +56,8 @@ describe('layeredToTimeline — transitions lane', () => {
     const t = rows.find((r) => r.id === 'transitions')!.actions;
     expect(t).toHaveLength(1);
     const halfMs = Math.round((6 / 30) * 1000); // 200
-    expect(t[0]).toMatchObject({ id: 'transition:A', start: 5000 - halfMs, end: 5000 + halfMs, effectId: 'dissolve' });
+    // start/end are in SECONDS like every other lane (music end: 5, video end: 3)
+    expect(t[0]).toMatchObject({ id: 'transition:A', start: (5000 - halfMs) / 1000, end: (5000 + halfMs) / 1000, effectId: 'dissolve' });
   });
 
   it('no transition action for a cut / absent transitionOut', () => {
