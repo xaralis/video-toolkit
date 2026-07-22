@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import { AccentEditor } from './AccentEditor';
-import { TRANSITION_KINDS, defaultTransition, kindNeedsFrames, type Transition } from './transitions';
+import { TRANSITION_KINDS, defaultTransition, kindNeedsFrames, subOptionsFor, type Transition } from './transitions';
 import { parseActionId, type LaneId } from '../src/timeline/layered-adapter';
 
 // Routes the selected timeline item (by lane) to its editable properties,
@@ -94,6 +94,52 @@ function SelectField({
 }
 const TRANSITION_LABEL: Record<string, string> = Object.fromEntries(TRANSITION_KINDS.map((k) => [k.kind, k.label]));
 
+// Shared full-catalog transition editor — kind + whatever contextual
+// sub-options that kind needs (subOptionsFor) + a length field gated by
+// kindNeedsFrames. Used both by the video-lane "Transition out" section and
+// the transitions-lane route (which targets transitionIn or transitionOut
+// depending on `edge`), so the two never diverge again.
+function TransitionFields({ t, onChange }: { t: Transition; onChange: (next: Transition) => void }) {
+  const kind = t.kind ?? 'cut';
+  return (
+    <>
+      <SelectField
+        lbl="Kind"
+        value={kind}
+        options={TRANSITION_KINDS.map((k) => k.kind)}
+        optionLabel={(k) => TRANSITION_LABEL[k] ?? k}
+        onChange={(nextKind) => onChange(defaultTransition(nextKind, { frames: t.frames }))}
+      />
+      {subOptionsFor(kind).map((opt) =>
+        opt.kind === 'enum' ? (
+          <SelectField
+            key={opt.prop}
+            lbl={opt.label}
+            value={t[opt.prop] as string | undefined}
+            options={(opt.options ?? []).map((o) => o.value)}
+            optionLabel={(v) => opt.options?.find((o) => o.value === v)?.label ?? v}
+            onChange={(s) => onChange({ ...t, [opt.prop]: s })}
+          />
+        ) : (
+          <NumberField
+            key={opt.prop}
+            lbl={opt.label}
+            value={t[opt.prop] as number | undefined}
+            onCommit={(n) => onChange({ ...t, [opt.prop]: n })}
+          />
+        ),
+      )}
+      {kindNeedsFrames(kind) && (
+        <NumberField
+          lbl="Length (frames)"
+          value={t.frames}
+          onCommit={(n) => onChange({ ...t, frames: Math.max(1, Math.round(n)) })}
+        />
+      )}
+    </>
+  );
+}
+
 const BLEND_DIRECTIONS = ['tl-br', 'tr-bl', 'bl-tr', 'br-tl'];
 const OVERLAY_POSITIONS = [
   'upper-left', 'upper-center', 'upper-right',
@@ -170,42 +216,26 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
     );
   }
 
-  const { lane, id } = parseActionId(selectedId);
+  const { lane, id, edge } = parseActionId(selectedId);
 
   if (lane === 'transitions') {
-    // The `transitions` lane is a derived "at-the-cut" view (see
-    // layered-adapter.ts): the marker's itemId is the outgoing clip, and
-    // every write here mutates only that clip's `transitionOut` — no
-    // repositioning of clips or the marker itself.
+    // The `transitions` lane is a derived "at-the-cut"/"at-the-edge" view
+    // (see layered-adapter.ts): the marker's itemId is always a video item,
+    // and every write here mutates only that item's transitionOut (edge
+    // 'out', the common case — every non-cut transitionOut incl. the last
+    // item's closing fade) or transitionIn (edge 'in' — the first item's
+    // opening fade) — no repositioning of clips or the marker itself.
     const v = reel.tracks.video.find((x) => x.id === id);
     if (!v) return null;
-    const t = (v.transitionOut ?? {}) as { kind?: string; frames?: number; direction?: string };
+    const edgeField = edge === 'in' ? 'transitionIn' : 'transitionOut';
+    const t = (v[edgeField] ?? { kind: 'cut' }) as Transition;
     const kind = t.kind ?? 'cut';
     return (
       <div style={panel}>
-        <h3 style={heading}>Transition · {TRANSITION_LABEL[kind] ?? kind}</h3>
-        <SelectField
-          lbl="Kind"
-          value={kind}
-          options={TRANSITION_KINDS.map((k) => k.kind)}
-          optionLabel={(k) => TRANSITION_LABEL[k] ?? k}
-          onChange={(nextKind) => patchItem('video', id, { transitionOut: defaultTransition(nextKind, { frames: t.frames }) })}
-        />
-        {(kind === 'whip-pan' || kind === 'wipe') && (
-          <SelectField
-            lbl="Direction"
-            value={t.direction}
-            options={['left', 'right', 'up', 'down']}
-            onChange={(s) => patchItem('video', id, { transitionOut: { ...t, direction: s } })}
-          />
-        )}
-        {kindNeedsFrames(kind) && (
-          <NumberField
-            lbl="Length (frames)"
-            value={t.frames}
-            onCommit={(n) => patchItem('video', id, { transitionOut: { ...t, frames: Math.max(1, Math.round(n)) } })}
-          />
-        )}
+        <h3 style={heading}>
+          Transition {edge === 'in' ? 'in' : 'out'} · {TRANSITION_LABEL[kind] ?? kind}
+        </h3>
+        <TransitionFields t={t} onChange={(next) => patchItem('video', id, { [edgeField]: next })} />
       </div>
     );
   }
@@ -254,25 +284,12 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
             />
           ))}
         {(() => {
-          const t =
-            v.transitionOut && TRANSITION_KINDS.some((k) => k.kind === (v.transitionOut as { kind?: string }).kind)
-              ? (v.transitionOut as unknown as Transition)
-              : undefined;
-          const kind = t?.kind ?? 'cut';
-          const frames = typeof (t as { frames?: number } | undefined)?.frames === 'number' ? (t as { frames: number }).frames : undefined;
+          const raw = v.transitionOut as { kind?: string } | undefined;
+          const t: Transition = raw && TRANSITION_KINDS.some((k) => k.kind === raw.kind) ? (raw as Transition) : { kind: 'cut' };
           return (
             <>
               <div style={section}>Transition out</div>
-              <SelectField
-                lbl="Type"
-                value={kind}
-                options={TRANSITION_KINDS.map((k) => k.kind)}
-                optionLabel={(v2) => TRANSITION_LABEL[v2] ?? v2}
-                onChange={(nextKind) => patchItem('video', id, { transitionOut: defaultTransition(nextKind, { frames }) })}
-              />
-              {kindNeedsFrames(kind) && (
-                <NumberField lbl="Duration (frames)" value={frames} onCommit={(n) => patchItem('video', id, { transitionOut: { ...(t ?? { kind }), kind, frames: n } })} />
-              )}
+              <TransitionFields t={t} onChange={(next) => patchItem('video', id, { transitionOut: next })} />
             </>
           );
         })()}
