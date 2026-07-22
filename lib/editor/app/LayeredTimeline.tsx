@@ -13,6 +13,12 @@ import {
   type LaneId,
 } from '../src/timeline/layered-adapter';
 import { stripAccents } from './accent';
+import { useAudioPeaks } from './useAudioPeaks';
+import { Waveform } from './Waveform';
+
+// Audio sources: bare filenames are broll/clip beds under public/recordings;
+// a path (e.g. audio/bg.mp3, the music) is served from public as-is.
+const audioUrl = (source: string) => (source.includes('/') ? `/${source}` : `/recordings/${source}`);
 
 // Fixed, typed lanes (D4) — the structure comes from the reel, not free-form
 // adding. Order matches the adapter's row order.
@@ -61,6 +67,21 @@ function actionLabel(action: TimelineAction, reel: LayeredReel): string {
   return id;
 }
 
+// Waveform props for an audio/music block (else null). Span comes from the action.
+function waveformFor(action: TimelineAction, reel: LayeredReel, peaks: Map<string, Float32Array>) {
+  const { lane, id } = parseActionId(action.id);
+  const spanMs = (action.end - action.start) * 1000;
+  if (lane === 'audio') {
+    const a = reel.tracks.audio.find((x) => x.id === id);
+    if (!a) return null;
+    return { peaks: peaks.get(audioUrl(a.source)), sourceInMs: a.sourceInMs, spanMs };
+  }
+  if (lane === 'music' && reel.tracks.music.source) {
+    return { peaks: peaks.get(`/${reel.tracks.music.source}`), sourceInMs: 0, spanMs };
+  }
+  return null;
+}
+
 // xzdarcy's CSS forces `font-family: PingFang SC` (a CJK font) on the whole
 // timeline, which renders Czech diacritics with an inconsistent fallback.
 // Override with a system stack that covers Latin+diacritics properly.
@@ -103,6 +124,14 @@ export function LayeredTimeline({
   const listRef = useRef<HTMLDivElement>(null);
 
   const editorData = useMemo(() => layeredToTimeline(reel).editorData, [reel]);
+
+  // Decode waveform peaks for the audio beds + the music source.
+  const audioUrls = useMemo(() => {
+    const urls = reel.tracks.audio.map((a) => audioUrl(a.source));
+    if (reel.tracks.music.source) urls.push(`/${reel.tracks.music.source}`);
+    return urls;
+  }, [reel]);
+  const { peaks } = useAudioPeaks(audioUrls);
 
   // Mark the selected action so xzdarcy highlights it.
   const data: TimelineRow[] = useMemo(
@@ -184,28 +213,33 @@ export function LayeredTimeline({
             if (listRef.current) listRef.current.scrollTop = param.scrollTop;
           }}
           style={{ width: '100%', height: '100%', background: '#161719', fontFamily: FONT }}
-          getActionRender={(action) => (
-            <div
-              style={{
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                padding: '0 6px',
-                borderRadius: 3,
-                background: colorFor(action.effectId),
-                color: '#f2f2f2',
-                fontFamily: FONT,
-                fontSize: 11,
-                overflow: 'hidden',
-                whiteSpace: 'nowrap',
-                textOverflow: 'ellipsis',
-                boxShadow: action.selected ? 'inset 0 0 0 2px #e8e8ea' : undefined,
-              }}
-              title={action.id}
-            >
-              {actionLabel(action, reel)}
-            </div>
-          )}
+          getActionRender={(action) => {
+            const wf = waveformFor(action, reel, peaks);
+            return (
+              <div
+                style={{
+                  position: 'relative',
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '0 6px',
+                  borderRadius: 3,
+                  background: colorFor(action.effectId),
+                  color: '#f2f2f2',
+                  fontFamily: FONT,
+                  fontSize: 11,
+                  overflow: 'hidden',
+                  boxShadow: action.selected ? 'inset 0 0 0 2px #e8e8ea' : undefined,
+                }}
+                title={action.id}
+              >
+                {wf && <Waveform peaks={wf.peaks} sourceInMs={wf.sourceInMs} spanMs={wf.spanMs} />}
+                <span style={{ position: 'relative', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {actionLabel(action, reel)}
+                </span>
+              </div>
+            );
+          }}
           onChange={(d) => {
             onChange(applyTimelineChange(reel, d as TimelineRow[]));
             return false; // we drive rendering via the Remotion Player, skip xzdarcy's engine sync
