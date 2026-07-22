@@ -15,6 +15,8 @@ import {
 import { stripAccents } from './accent';
 import { useAudioPeaks } from './useAudioPeaks';
 import { Waveform } from './Waveform';
+import { MusicEnvelope } from './MusicEnvelope';
+import { computeMusicEnvelope } from '@video-toolkit/lib/reel-config-base/music-envelope';
 
 // Audio sources: bare filenames are broll/clip beds under public/recordings;
 // a path (e.g. audio/bg.mp3, the music) is served from public as-is.
@@ -133,6 +135,10 @@ export function LayeredTimeline({
   }, [reel]);
   const { peaks } = useAudioPeaks(audioUrls);
 
+  // Derived music-volume envelope (same shared fn the composition renders from).
+  const envelope = useMemo(() => computeMusicEnvelope(reel, { fps }), [reel, fps]);
+  const totalFrames = Math.round((reel.meta.totalDurationMs / 1000) * fps);
+
   // Mark the selected action so xzdarcy highlights it.
   const data: TimelineRow[] = useMemo(
     () =>
@@ -234,6 +240,7 @@ export function LayeredTimeline({
                 title={action.id}
               >
                 {wf && <Waveform peaks={wf.peaks} sourceInMs={wf.sourceInMs} spanMs={wf.spanMs} />}
+                {action.id.startsWith('music:') && <MusicEnvelope points={envelope.points} totalFrames={totalFrames} />}
                 <span style={{ position: 'relative', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {actionLabel(action, reel)}
                 </span>
