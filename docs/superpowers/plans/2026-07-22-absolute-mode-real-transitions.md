@@ -1,175 +1,114 @@
-# Real Transitions in Absolute Placement (model B — at-the-cut, handles) — Implementation Plan
+# Unified Transition System — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development. Steps use checkbox (`- [ ]`) syntax.
+> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development. Checkbox (`- [ ]`) steps.
 
-**Goal:** Real transitions render at the cut using handle frames (Premiere/FCP model) — clips stay butted, sequence length unchanged — plus a derived at-the-cut Transitions lane in the editor with kind/direction/length editing.
+**Goal:** A unified transition system — full `@remotion/transitions` catalog + toolkit customs, at-the-cut handle rendering, uniform across every boundary (clip↔clip, clip↔card/outro, edge fades from/to coal), with a derived Transitions lane.
 
-**Architecture:** No derivation change (clips butted; `transitionOut` already on the outgoing clip). The composition renders each transition by extending both clips' render Sequences by ~N/2 into their handle frames over a window centered on the cut, driving the kind's `@remotion/transitions` presentation (exiting/entering). The editor derives a Transitions lane (verified in xzdarcy) from `transitionOut`.
+**Architecture:** Core owns the catalog (`transitions.ts` metadata + `lib/transitions` custom presentations). A boundary transition is `transitionOut` on the item before it (any item, incl. last → coal) or `transitionIn` on the first item (opening). The composition renders every boundary the same way — both sides render into a window centered on the cut, blended by the kind's presentation; video sides use handle frames, card/outro/coal sides just render. No derivation change (transitions carried through).
 
-**Tech Stack:** TypeScript, Vitest, Remotion + `@remotion/transitions`.
+**Tech Stack:** TypeScript, Zod, Vitest, Remotion + `@remotion/transitions` 4.0.425.
 
 ## Global Constraints
 
-- Editor strings English; no `Co-Authored-By`; brand-repo commits use `-c commit.gpgsign=false` (user-authorized).
-- Transitions are DERIVED — no schema change. `transitionOut = { kind, frames, direction?, color? }` on the outgoing clip; clips stay butted (`B.startMs === A.endMs`); sequence length unchanged.
-- Alignment is center-at-cut. Window frames `[Tf − floor(N/2), Tf + ceil(N/2)]`, `Tf = msToFrames(cut)`, `cut = A.endMs`.
-- Kind→presentation: dissolve/fade-coal→`fade()`; glitch→`glitch()`; whip-pan→`whipPan({direction})`; wipe→`wipe({color,direction})`; zoom-through→`zoomThrough({direction})`; cut/none→no transition.
-- Handles: extend into source beyond trim; clamp per side to available handle frames, freeze if zero.
-- In scope: render + derived lane (kind/direction/length edit). Deferred: alignment selector, drag-block-edge, drag-to-create.
-- Core suite + `tsc` green at each task boundary. No `derive-layered.ts` change in this plan.
+- Editor strings English; no `Co-Authored-By`; brand-repo commits `-c commit.gpgsign=false`.
+- No derivation timing change; clips stay butted. Center-at-cut. Window `[Tf−floor(N/2), Tf+ceil(N/2)]`.
+- Catalog (kind → presentation): `cut`→none; `fade`/`dissolve`→`fade()`; `fade-coal`→coal-tinted `fade()`; `slide`→`slide({direction})`; `wipe`→`wipe({direction})`; `flip`→`flip({direction})`; `clock-wipe`→`clockWipe(...)`; `iris`→`iris(...)`; `glitch`/`whip-pan`/`zoom-through`/`gradient-wipe`→`lib/transitions` customs.
+- Timeline action start/end in SECONDS (like every lane — `act()` divides by MS).
+- In scope: full catalog, unified render (all neighbours + edge fades), lane + inspector edit. Deferred: alignment, drag-block-edge, drag-to-create.
+- Core suite + `tsc` green each task boundary.
 
 ---
 
-### Task 1: Adapter — derived at-the-cut Transitions lane
+### Task 1: Core catalog + `transitionIn` schema field
 
 **Files:**
-- Modify: `lib/editor/src/timeline/layered-adapter.ts`
-- Test: `lib/editor/src/timeline/layered-adapter.test.ts`
+- Modify: `lib/editor/app/transitions.ts`, `lib/reel-config-base/layered-schema.ts`
+- Test: `lib/editor/app/transitions.test.ts`, `lib/editor/src/layered-schema.test.ts`
 
-**Interfaces:**
-- Produces: `LANES` includes `'transitions'` (directly under `video`). `layeredToTimeline` emits, on that lane, one action per adjacent pair A→B where A has a non-`cut` `transitionOut`: `{ id: 'transition:'+A.id, start: cut − halfMs, end: cut + halfMs, effectId: kind }` where `cut = A.endMs`, `halfMs = round((frames/2)/fps*1000)` (needs `fps` — thread it through, or store frames and convert in the timeline; prefer passing `fps` into `layeredToTimeline`). `parseActionId('transition:X')` → `{ lane: 'transitions', itemId: 'X' }`.
+- [ ] **Step 1: Failing catalog tests.** Extend `transitions.test.ts`: `TRANSITION_KINDS` includes `fade`, `slide`, `flip`, `clock-wipe`, `iris` (alongside existing cut/dissolve/fade-coal/glitch/whip-pan/zoom-through/wipe/gradient-wipe); assert `defaultTransition('slide',{frames:12})` → `{kind:'slide',frames:12,direction:'left'}` (a sensible default direction); `subOptionsFor('slide')`/`'flip'` → a 4-way direction enum; `subOptionsFor('clock-wipe')`/`'iris'`/`'fade'` → `[]`.
 
-- [ ] **Step 1: Write failing tests** in `layered-adapter.test.ts` (use the file's existing `LayeredReel` fixture helpers; fps 30):
+- [ ] **Step 2: Run — fail.** `export PATH="/Users/xaralis/.nvm/versions/node/v20.18.1/bin:$PATH"; cd lib/editor && npx vitest run app/transitions.test.ts`
 
-```ts
-it('derives a centered at-cut transition action for a clip with transitionOut', () => {
-  // clip A [0,5000] transitionOut {kind:'dissolve',frames:12}; clip B [5000,9000]
-  const rows = layeredToTimeline(reel, 30);
-  const t = rows.find((r) => r.id === 'transitions')!.actions;
-  expect(t).toHaveLength(1);
-  const halfMs = Math.round((6 / 30) * 1000); // 200
-  expect(t[0]).toMatchObject({ id: 'transition:A', start: 5000 - halfMs, end: 5000 + halfMs, effectId: 'dissolve' });
-});
-it('no transition action for a cut / absent transitionOut', () => {
-  // clip A [0,5000] no transitionOut; clip B [5000,9000]
-  expect(layeredToTimeline(reel, 30).find((r) => r.id === 'transitions')!.actions).toHaveLength(0);
-});
-it('a dissolve into the outro still yields a transition action', () => {
-  // clip A [0,5000] transitionOut dissolve; outro [5000,8000]
-  expect(layeredToTimeline(reel, 30).find((r) => r.id === 'transitions')!.actions).toHaveLength(1);
-});
-```
+- [ ] **Step 3: Extend the catalog.** In `transitions.ts` add the new kinds to `TRANSITION_KINDS` (with labels: Slide/Flip/Clock wipe/Iris/Fade), wire `subOptionsFor` (slide/flip → `DIRECTION_4WAY`; clock-wipe/iris/fade → none) and `defaultTransition` (default direction `left` for the direction kinds). Keep existing kinds untouched.
 
-- [ ] **Step 2: Run — verify fail.** `export PATH="/Users/xaralis/.nvm/versions/node/v20.18.1/bin:$PATH"; cd lib/editor && npx vitest run src/timeline/layered-adapter.test.ts`
+- [ ] **Step 4: Failing schema test + field.** In `layered-schema.test.ts` assert a clip parses with `transitionIn: { kind: 'fade', frames: 12 }`. Add `transitionIn: z.record(z.string(), z.unknown()).optional()` to `VideoContainerBase` (mirror `transitionOut`).
 
-- [ ] **Step 3: Implement.** Add `'transitions'` to `LANES` (`['overlays','video','transitions','audio','music','brand']`). Thread `fps` into `layeredToTimeline` (add a param; update its one caller in `LayeredTimeline.tsx` to pass `fps`). Build transition actions:
+- [ ] **Step 5: Run all + tsc green.** `cd lib/editor && npx vitest run && npx tsc --noEmit`.
 
-```ts
-const vids = reel.tracks.video;
-const transitionActions = [];
-for (let i = 0; i < vids.length - 1; i++) {
-  const A = vids[i];
-  const t = A.transitionOut as { kind?: string; frames?: number } | undefined;
-  if (!t?.kind || t.kind === 'cut' || !t.frames) continue;
-  const cut = A.endMs;
-  const halfMs = Math.round((t.frames / 2 / fps) * 1000);
-  transitionActions.push({ id: `transition:${A.id}`, start: Math.max(0, cut - halfMs), end: cut + halfMs, effectId: t.kind });
-}
-```
-
-Mount on the `transitions` row; extend `parseActionId` for the `transition:` prefix.
-
-- [ ] **Step 4: Run tests + tsc green** (whole `lib/editor` suite).
-
-- [ ] **Step 5: Commit** `feat(layered-adapter): derived at-the-cut transitions lane`.
+- [ ] **Step 6: Commit** `feat(transitions): full Remotion+custom catalog; add transitionIn schema field`.
 
 ---
 
-### Task 2: Timeline render + inspector transition editor
+### Task 2: Adapter — unified Transitions lane
 
-**Files:**
-- Modify: `lib/editor/app/LayeredTimeline.tsx`, `lib/editor/app/LayeredInspector.tsx`
-- Test: adapter tests cover data; UI verified in Step 4.
+**Files:** Modify `lib/editor/src/timeline/layered-adapter.ts`; Test `lib/editor/src/timeline/layered-adapter.test.ts`.
 
-- [ ] **Step 1: Timeline lane.** In `LayeredTimeline.tsx`: pass `fps` to `layeredToTimeline`; add `'transitions'` to `LOCKED_LANES`; give the row a thinner `rowHeight`. In `getActionRender`, for a `transition:` action render a marker (a small centered pill) with label `"<kind> · <frames>f"`, where `frames = Math.round((action.end - action.start) / 1000 * fps)`. Lock: `flexible: false, movable: false` for transition actions; `onActionMoving`/`onActionResizing` return false.
+**Interfaces:** `LANES` includes `'transitions'` (already added). `layeredToTimeline(reel, fps)` emits, on that lane:
+- per item `i` with a non-`cut` `transitionOut.frames`: `{ id:'transition:'+item.id, start:(item.endMs−halfMs)/MS, end:(item.endMs+halfMs)/MS, effectId:kind }` — **including the last item** (closing → coal).
+- for the FIRST item with a non-`cut` `transitionIn.frames`: `{ id:'transition-in:'+item.id, start:0, end:(halfMs*2)/MS, effectId:kind }` (opening, anchored at 0).
+`parseActionId` handles `transition:` and `transition-in:` → `{ lane:'transitions', itemId, edge:'out'|'in' }`.
 
-- [ ] **Step 2: Inspector transition route.** In `LayeredInspector.tsx`, when the selected action's lane is `transitions`, find the outgoing clip by `itemId` and render:
-  - **kind**: `SelectField` `['dissolve','fade-coal','glitch','whip-pan','wipe','zoom-through','cut']` → writes `transitionOut.kind`.
-  - **direction**: only for `whip-pan`/`wipe`; `SelectField` `['left','right','up','down']` → writes `transitionOut.direction`.
-  - **length (frames)**: `NumberField` → writes `transitionOut.frames` (min 1). No reposition. (Handle clamping is enforced at render; the field is free-entry here.)
-  All writes mutate only that clip's `transitionOut`.
+- [ ] **Step 1: Failing tests.** transitionOut on the LAST item yields a transition action; a first-item `transitionIn` yields a `transition-in:` action at start 0; `parseActionId` returns the edge.
 
-- [ ] **Step 3: Run tests + tsc green.** `cd lib/editor && npx vitest run && npx tsc --noEmit`
+- [ ] **Step 2: Run — fail.**
 
-- [ ] **Step 4: Commit** `feat(editor): at-the-cut transitions lane render + inspector kind/direction/length editor`.
+- [ ] **Step 3: Implement.** Change the loop to iterate ALL items (not `length-1`) for `transitionOut`; add the first-item `transitionIn` action; extend `parseActionId`. Keep seconds (`/MS`).
 
-- [ ] **Step 5: Browser check (controller, after review).** Pilot editor: transitions lane shows the dissolve marker at the cut; clicking opens the transition inspector; changing kind + length persists.
+- [ ] **Step 4: Tests + tsc green.**
 
----
-
-### Task 3: Pilot composition — handle-based at-cut render
-
-**Files:**
-- Modify: `../video-toolkit/projects/pp-namesti-republiky/src/LayeredCampaignReel.tsx`
-- (No `Root.tsx` data change — clips already butted.)
-
-- [ ] **Step 1: Pure helpers (unit-testable, keep in the file or a sibling).**
-
-```tsx
-import { fade } from '@remotion/transitions/fade';
-// brand: glitch, whipPan, wipe as customWipe, zoomThrough — from the path pp-05's CampaignReel.tsx imports
-
-export function presentationFor(t?: { kind?: string; direction?: string; color?: string }) {
-  switch (t?.kind) {
-    case 'dissolve':
-    case 'fade-coal':    return fade();
-    case 'glitch':       return glitch();
-    case 'whip-pan':     return whipPan({ direction: t.direction as never });
-    case 'wipe':         return customWipe({ color: t.color as never, direction: t.direction as never });
-    case 'zoom-through': return zoomThrough({ direction: t.direction as never });
-    default:             return null;
-  }
-}
-```
-
-- [ ] **Step 2: Extend each clip's render into its transition handle windows.** In the video-node builder, for each item compute:
-  - **exiting** (this clip has a non-`cut` `transitionOut` and a following clip): `Nx = frames`, `halfX = ceil(Nx/2)`. Extend this Sequence's end by `halfX` frames; pass an extended `trimOut` (`+ halfX/fps` seconds) to the segment so it shows handle frames past `trimOut`. Over the window `[endFrame − floor(Nx/2), endFrame + halfX]` wrap the body in `presentationFor(transitionOut)`’s component with `presentationDirection="exiting"` and `presentationProgress = clamp((f − winStart)/Nx, 0,1)`.
-  - **entering** (the previous clip has a non-`cut` `transitionOut`): `Ne = prev.frames`, `halfE = floor(Ne/2)`. Start this Sequence `halfE` frames earlier; pass an extended `trimIn` (`− halfE/fps`, clamped ≥ 0) so it shows handle frames before `trimIn`. Over the window wrap the body `entering`.
-  A clip can be both (nest the two wrappers — disjoint windows). Use `useCurrentFrame()` (Sequence-relative) for progress. Drive the presentation component directly:
-
-```tsx
-const P = pres.component;
-<P presentationProgress={p} presentationDirection="exiting" passedProps={pres.props} presentationDurationInFrames={Nx}>
-  {body}
-</P>
-```
-
-  Remove `FadeIn` and the old `TransitionRecord` fade path.
-
-- [ ] **Step 3: Handle clamp.** Clamp the entering extension to `trimInFrames` (never seek before source start). For the exiting side, extending `trimOut` past source end lets Remotion hold the last frame — acceptable; do not seek negative. Keep it simple; the parity render validates.
-
-- [ ] **Step 4: Typecheck.** `cd ../video-toolkit/projects/pp-namesti-republiky && npx tsc --noEmit` — no NEW errors vs the known pre-existing baseline (remotion module-resolution noise + the pre-existing quote-pull `placement` issue).
-
-- [ ] **Step 5: Commit (unsigned).**
-
-```bash
-cd /Users/xaralis/Workspace/progpce/video-toolkit
-git add projects/pp-namesti-republiky/src/LayeredCampaignReel.tsx
-git -c commit.gpgsign=false commit -m "feat(pilot): render real at-the-cut transitions via handle frames + presentations"
-```
+- [ ] **Step 5: Commit** `feat(layered-adapter): unified transitions lane (transitionOut incl. last + first transitionIn)`.
 
 ---
 
-### Task 4: Pilot render-parity verification
+### Task 3: Timeline render + full-catalog inspector
 
-**Files:** none (verification). Produces go/no-go.
+**Files:** Modify `lib/editor/app/LayeredTimeline.tsx`, `lib/editor/app/LayeredInspector.tsx`.
 
-- [ ] **Step 1: Render** the window around the dissolve into the outro (~40s) at `--concurrency=1 --timeout=90000` (avoids the pre-existing font flake):
+- [ ] **Step 1: Timeline.** Render both `transition:` and `transition-in:` actions on the locked `transitions` lane; marker + `"<kind> · <frames>f"` label (`frames = round((end−start)*fps)`).
 
-```bash
-cd /Users/xaralis/Workspace/progpce/video-toolkit/projects/pp-namesti-republiky
-npx remotion render src/index.ts LayeredCampaignReel out/transition-check.mp4 --scale=0.5 --frames=1180-1250 --concurrency=1 --timeout=90000
-```
+- [ ] **Step 2: Inspector — one shared full-catalog editor.** Extract the transition-editing body into a small local component/helper used by BOTH the video-lane "Transition out" section and the new transitions-lane route (kill the divergence). It renders: kind `SelectField` over `TRANSITION_KINDS`; for each `subOptionsFor(kind)` entry a `SelectField` (enum) or `NumberField` (number); and a length `NumberField` gated by `kindNeedsFrames`. Writes via `defaultTransition` on kind-change and field-patches otherwise, targeting the outgoing clip's `transitionOut` (or the first clip's `transitionIn` when `edge==='in'`). No reposition.
 
-- [ ] **Step 2: Verify** a real cross-dissolve at the cut into the outro (both visible, blending via handle frames) — not a fade-from-coal, not a hard cut. Sample frames across the window.
+- [ ] **Step 3: Tests + tsc green.** `cd lib/editor && npx vitest run && npx tsc --noEmit`.
 
-- [ ] **Step 3: Confirm** total duration is **UNCHANGED** (`46301`ms — model B keeps length), audio across the cut intact, brand hides at content end. Record PASS/FAIL in `.superpowers/sdd/progress.md`; clean up `out/transition-check.mp4`.
+- [ ] **Step 4: Commit** `feat(editor): unified transitions lane render + full-catalog inspector (shared editor)`.
+
+- [ ] **Step 5: Browser check (controller, after review).** Pilot editor: transitions lane shows the dissolve marker; inspector lists the full catalog incl. slide/flip/clock-wipe/iris; changing kind + sub-option + length persists.
+
+---
+
+### Task 4: Pilot composition — unified at-cut render
+
+**Files:** Modify `../video-toolkit/projects/pp-namesti-republiky/src/LayeredCampaignReel.tsx`.
+
+- [ ] **Step 1: `presentationFor(t)`** covering the full catalog. Import Remotion presentations (`fade` from `@remotion/transitions/fade`; `slide`/`wipe`/`flip`/`clockWipe`/`iris` from their subpaths) + customs (`glitch`, `whipPan`, `zoomThrough`, `wipe as customWipe`, `gradient-wipe`) from `@video-toolkit/lib/transitions` (the path pp-05's `CampaignReel.tsx` uses). `fade-coal` = `fade()` (coal shows through the background). `cut`/none → null.
+
+- [ ] **Step 2: Unified at-cut render.** For each boundary (each item's `transitionOut`, incl. last → coal; first item's `transitionIn` → from coal), render the window centered on the boundary with both sides + the presentation (`exiting`/`entering`, progress from `useCurrentFrame()`):
+  - video side → extend its Sequence + trim into handle frames (exiting: `trimOut + ceil(N/2)/fps`, extend end; entering: `trimIn − floor(N/2)/fps` clamped ≥ 0, start earlier);
+  - card/outro side → render it shifted into the window (no source clamp);
+  - coal side (edge fade / missing neighbour) → nothing to mount; the presentation fades the single side against the coal `AbsoluteFill`.
+  Remove `FadeIn`, the old `TransitionRecord` fade path, AND the hardcoded opening/outro fade-out (now expressed as `transitionIn`/`transitionOut` data).
+
+- [ ] **Step 3: Pilot data for the edge check.** In `Root.tsx` (unsigned commit ok) optionally add a `transitionIn: { kind: 'fade', frames: 12 }` on the first video item and a `transitionOut: { kind: 'fade-coal', frames: 30 }` on the outro, so the parity render exercises opening + closing edge fades. Keep the existing `dissolve:12`.
+
+- [ ] **Step 4: Typecheck** the pilot (`npx tsc --noEmit`) — no NEW errors vs the known baseline.
+
+- [ ] **Step 5: Commit (unsigned)** the composition (+ Root.tsx if changed): `feat(pilot): unified at-the-cut transition render (full catalog, edge fades)`.
+
+---
+
+### Task 5: Pilot render-parity verification
+
+- [ ] **Step 1: Render** the dissolve-into-outro window AND the opening + closing windows at `--concurrency=1 --timeout=90000` (avoids the font flake). E.g. opening `--frames=0-40`, dissolve `--frames=1180-1250`, closing near the end.
+
+- [ ] **Step 2: Verify** a real dissolve into the outro (both visible), a fade-in from coal at the open, and a fade to coal at the close — all via the same mechanism. Total duration UNCHANGED (`46301`ms). Audio intact.
+
+- [ ] **Step 3: Record** PASS/FAIL in `.superpowers/sdd/progress.md`; clean up render artifacts.
 
 ---
 
 ## Self-Review
 
-- **Spec coverage:** derived at-cut lane (T1), lane render + inspector kind/direction/length (T2), handle-based at-cut composition render (T3), parity (T4). No derivation change (model B) — correct.
-- **Types:** `transitionOut` is a base field on the `VideoItem` union — no kind narrowing needed for the transition itself.
-- **No placeholders:** T1 carries real code; T2 references existing inspector/timeline patterns; T3 carries the presentation-driving + extension code; T4 is verification.
-- **Deferred:** alignment selector, drag-block-edge, drag-to-create.
+- **Spec coverage:** catalog + schema (T1), unified lane (T2), lane render + full-catalog inspector (T3), unified at-cut render incl. edge fades (T4), parity (T5).
+- **No derivation change** (model B). Only schema add: `transitionIn`.
+- **No placeholders:** T1–T3 carry concrete code/refs; T4 carries the render approach; T5 is verification.
+- **Deferred:** alignment, drag-block-edge, drag-to-create.
