@@ -1,17 +1,22 @@
-// deriveLayered — pure migration engine: reshapes a segment-centric reel
-// config (sequential segments with relative trim points) into the
-// track-native LayeredReel model (absolute-ms items across independent
-// tracks). See docs/plans/... layered-timeline spec for the full model.
+// deriveLayered — the /cut compiler (and migration engine): reshapes a
+// segment-centric reel config (the compact CUT AUTHORING format — sequential
+// segments with relative trim points that /cut produces from footage, and the
+// shape existing pre-layered projects were stored in) into the track-native
+// LayeredReel model (absolute-ms items across independent tracks). The
+// segment/cut format is a permanent authoring INPUT, not a legacy model:
+// LayeredReel is the source of truth it compiles to. See the layered-timeline
+// spec for the full model.
 //
 // NOTE on transitions: segments advance the cursor by their FULL derived
 // duration; we do NOT subtract transitionOut overlap frames here. Real
-// playback overlaps adjacent segments during a transition, so this MVP
+// playback overlaps adjacent segments during a transition, so this
 // derivation is sequential-only ("close parity", not frame-exact) — good
 // enough to seed the layered editor, not a source of playback truth.
 import { segmentDurationFrames } from './duration';
 import type { LayeredReel, VideoItem, AudioItem, OverlayItem, Effect } from './layered-schema';
 
-// ---- Structural (non-Zod) input types -------------------------------------
+// ---- Cut authoring format — structural (non-Zod) input types --------------
+// The compact segment model /cut authors and this compiler consumes.
 // Deliberately permissive / structural so this module doesn't couple to any
 // one template's Zod segment schemas (clip/broll/multi-clip/card/outro all
 // vary slightly per template, and callers commonly build config literals
@@ -19,7 +24,7 @@ import type { LayeredReel, VideoItem, AudioItem, OverlayItem, Effect } from './l
 // One flat interface covering the union of fields any segment type may
 // carry; only the fields the derivation rules actually read are declared.
 
-export interface OldOverlaySpec {
+export interface CutOverlaySpec {
   kind: string;
   appearAt: number; // ms offset from the segment's own start
   durationMs: number;
@@ -28,7 +33,7 @@ export interface OldOverlaySpec {
   [key: string]: unknown;
 }
 
-export interface OldSegment {
+export interface CutSegment {
   id: string;
   type: string; // 'clip' | 'broll' | 'multi-clip' | 'card' | 'outro'
   // clip / broll
@@ -42,7 +47,7 @@ export interface OldSegment {
   grade?: Record<string, unknown>;
   transitionOut?: Record<string, unknown>;
   // clip
-  overlays?: OldOverlaySpec[];
+  overlays?: CutOverlaySpec[];
   // broll
   audioSource?: string;
   audioStartSec?: number;
@@ -50,7 +55,7 @@ export interface OldSegment {
   kenBurns?: Record<string, unknown>;
   blendTo?: string;
   blend?: Record<string, unknown>;
-  overlay?: OldOverlaySpec; // broll / multi-clip
+  overlay?: CutOverlaySpec; // broll / multi-clip
   // multi-clip
   layout?: string;
   sources?: Array<{ source: string; trimIn: number; trimOut: number; label?: string; zoom?: number }>;
@@ -61,11 +66,11 @@ export interface OldSegment {
   pattern?: string;
 }
 
-export interface OldReelConfig {
+export interface CutConfig {
   topic: string;
   chevron?: string;
   audio?: { music?: string; musicVolumeDb?: number };
-  segments: OldSegment[];
+  segments: CutSegment[];
 }
 
 export interface DeriveLayeredOpts {
@@ -93,12 +98,12 @@ function musicBoostDbFor(type: string, audioMode: string | undefined): number {
   return 0;
 }
 
-function buildVideoItem(seg: OldSegment, startMs: number, endMs: number): VideoItem {
+function buildVideoItem(seg: CutSegment, startMs: number, endMs: number): VideoItem {
   const musicBoostDb = musicBoostDbFor(seg.type, seg.audioMode);
 
   // Generic clip-effects list: Ken Burns and blend are effect ENTRIES, not
   // named fields (real-NLE "clip carries a stack of effects" model — see
-  // EffectSchema). Only broll segments carry these in the old segment model.
+  // EffectSchema). Only broll segments carry these in the cut (segment) model.
   const effects: Effect[] = [];
   if (seg.type === 'broll') {
     // Spread caller params FIRST, then the discriminant/target — so a stray
@@ -151,7 +156,7 @@ function buildVideoItem(seg: OldSegment, startMs: number, endMs: number): VideoI
         endMs,
         // `layout` is required on the multi-clip union member (unlike source/
         // cardKind, which degrade to '' and still parse); a missing layout would
-        // throw at parse. The old schema makes it required, so this default is a
+        // throw at parse. The cut schema makes it required, so this default is a
         // safety net that keeps derivation total.
         layout: (seg.layout ?? 'split-h') as 'split-h' | 'split-v' | 'pip' | 'quad',
         sources: (seg.sources ?? []).map((s) => ({
@@ -193,7 +198,7 @@ function buildVideoItem(seg: OldSegment, startMs: number, endMs: number): VideoI
 // Emits overlay items for a segment's overlay spec(s), given the segment's
 // already-derived video item. `raw` is the segment's overlays for clip
 // (array) or single overlay for broll/multi-clip; card/outro carry none.
-function buildOverlayItems(segId: string, videoItem: VideoItem, raw: OldOverlaySpec[]): OverlayItem[] {
+function buildOverlayItems(segId: string, videoItem: VideoItem, raw: CutOverlaySpec[]): OverlayItem[] {
   return raw.map((overlay, i) => {
     const { kind, appearAt, durationMs, placement, position, ...rest } = overlay;
     const startMs = videoItem.startMs + appearAt;
@@ -208,7 +213,7 @@ function buildOverlayItems(segId: string, videoItem: VideoItem, raw: OldOverlayS
   });
 }
 
-export function deriveLayered(config: OldReelConfig, opts: DeriveLayeredOpts): LayeredReel {
+export function deriveLayered(config: CutConfig, opts: DeriveLayeredOpts): LayeredReel {
   const { fps, outroFrames } = opts;
 
   const videoItems: VideoItem[] = [];
