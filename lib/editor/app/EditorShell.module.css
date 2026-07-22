@@ -92,10 +92,7 @@
   flex-shrink: 0;
   background: #1e1f24;
   border-left: 1px solid #2b2c33;
-  padding: 20px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
+  overflow: hidden;
   color: #6b6f78;
   font-size: 13px;
 }
