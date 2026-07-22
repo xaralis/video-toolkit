@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import type { RefObject, CSSProperties } from 'react';
 import { Timeline, type TimelineState } from '@xzdarcy/react-timeline-editor';
 import type { TimelineRow, TimelineAction, TimelineEffect } from '@xzdarcy/timeline-engine';
@@ -160,18 +160,16 @@ export interface LayeredTimelineProps {
   onSelect: (actionId: string | null) => void;
   playerRef: RefObject<PlayerRef | null>;
   fps: number;
-  playheadFrame: number;
   scaleWidth?: number; // px per second (zoom)
 }
 
-export function LayeredTimeline({
+function LayeredTimelineImpl({
   reel,
   onChange,
   selectedId,
   onSelect,
   playerRef,
   fps,
-  playheadFrame,
   scaleWidth = 80,
 }: LayeredTimelineProps) {
   const stateRef = useRef<TimelineState>(null);
@@ -235,10 +233,20 @@ export function LayeredTimeline({
     return e;
   }, [editorData]);
 
-  // Player → timeline cursor: keep the timeline cursor at the player's frame.
+  // Player → timeline cursor, driven IMPERATIVELY off the player's frameupdate
+  // so playback doesn't re-render this component every frame (the parent's
+  // per-frame frame state no longer flows in as a prop; see the memo wrapper).
   useEffect(() => {
-    stateRef.current?.setTime(playheadFrame / fps);
-  }, [playheadFrame, fps]);
+    const player = playerRef.current;
+    if (!player) return;
+    const onFrame = (e: { detail: { frame: number } }) => stateRef.current?.setTime(e.detail.frame / fps);
+    player.addEventListener('frameupdate', onFrame);
+    player.addEventListener('seeked', onFrame);
+    return () => {
+      player.removeEventListener('frameupdate', onFrame);
+      player.removeEventListener('seeked', onFrame);
+    };
+  }, [playerRef, fps]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: '#161719', fontFamily: FONT }}>
@@ -457,3 +465,8 @@ export function LayeredTimeline({
     </div>
   );
 }
+
+// Memoized: during playback the parent re-renders every frame (timecode), but
+// the timeline's props are stable (reel changes only on edit), so it skips
+// those re-renders and updates its cursor imperatively instead.
+export const LayeredTimeline = memo(LayeredTimelineImpl);
