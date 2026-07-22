@@ -84,11 +84,20 @@ export function applyTimelineChange(reel: LayeredReel, rows: TLRow[]): LayeredRe
     if (!a) return item;
     return { ...item, startMs: Math.round(a.start * MS), endMs: Math.round(a.end * MS) };
   };
+  const video0 = reel.tracks.video.map((v) => patch('video', v));
+  // Butt adjacent video clips (model B: clips don't overlap). If a clip's start
+  // was dragged left over the previous clip, trim the PREVIOUS clip's end to
+  // this clip's start — so it really ends earlier instead of dangling at full
+  // length, and its transitionOut marker re-derives at the new cut.
+  const video = video0.map((v, i) => {
+    const next = video0[i + 1];
+    return next && next.startMs > v.startMs && next.startMs < v.endMs ? { ...v, endMs: next.startMs } : v;
+  });
   return {
     ...reel,
     tracks: {
       ...reel.tracks,
-      video: reel.tracks.video.map((v) => patch('video', v)),
+      video,
       overlays: reel.tracks.overlays.map((o) => patch('overlays', o)),
       audio: reel.tracks.audio.map((a) => patch('audio', a)),
       brand: reel.tracks.brand.map((b) => patch('brand', b)),

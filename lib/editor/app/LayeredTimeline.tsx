@@ -325,7 +325,19 @@ export function LayeredTimeline({
               >
                 {wf && <Waveform peaks={wf.peaks} sourceInMs={wf.sourceInMs} spanMs={wf.spanMs} />}
                 {action.id.startsWith('audio:') && (
-                  <VolumeLine volumeDb={reel.tracks.audio.find((a) => `audio:${a.id}` === action.id)?.volumeDb} />
+                  <VolumeLine
+                    volumeDb={reel.tracks.audio.find((a) => `audio:${a.id}` === action.id)?.volumeDb}
+                    onChange={(db) => {
+                      const audioId = action.id.slice('audio:'.length);
+                      onChange({
+                        ...reel,
+                        tracks: {
+                          ...reel.tracks,
+                          audio: reel.tracks.audio.map((a) => (a.id === audioId ? { ...a, volumeDb: db } : a)),
+                        },
+                      });
+                    }}
+                  />
                 )}
                 {action.id.startsWith('music:') && <MusicEnvelope points={envelope.points} totalFrames={totalFrames} />}
                 <span style={{ position: 'relative', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
