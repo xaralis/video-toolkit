@@ -76,13 +76,79 @@ export function layeredToTimeline(reel: LayeredReel, fps: number): { editorData:
   };
 }
 
-export function applyTimelineChange(reel: LayeredReel, rows: TLRow[]): LayeredReel {
+// Time-bearing tracks a ripple edit shifts (music is a single spanning layer;
+// transitions are derived from clip positions).
+const RIPPLE_LANES = ['video', 'overlays', 'audio', 'brand'] as const;
+
+type NewMs = (lane: LaneId, id: string) => { startMs: number; endMs: number } | null;
+
+// Ripple edit: resizing ONE clip's edge shifts every item beyond it (across all
+// time-bearing tracks) so the timeline stays butted — an END resize pushes
+// everything to the RIGHT, a START resize pushes everything to the LEFT.
+// Returns null when the change wasn't a single-edge resize (e.g. a move or a
+// no-op), so the caller falls back to the normal per-item mapping.
+function applyRipple(reel: LayeredReel, newMs: NewMs): LayeredReel | null {
+  let edit: { edge: 'start' | 'end'; anchor: number; delta: number; id: string } | null = null;
+  for (const lane of RIPPLE_LANES) {
+    for (const item of reel.tracks[lane]) {
+      const np = newMs(lane, item.id);
+      if (!np) continue;
+      const dStart = np.startMs - item.startMs;
+      const dEnd = np.endMs - item.endMs;
+      if (dStart === 0 && dEnd === 0) continue;
+      if (dStart === 0 && dEnd !== 0) edit = { edge: 'end', anchor: item.endMs, delta: dEnd, id: item.id };
+      else if (dEnd === 0 && dStart !== 0) edit = { edge: 'start', anchor: item.startMs, delta: dStart, id: item.id };
+      break; // a move (both edges changed) leaves edit null → normal fallback
+    }
+    if (edit) break;
+  }
+  if (!edit) return null;
+
+  const { edge, id } = edit;
+  let delta = edit.delta;
+  const affects = (item: { id: string; startMs: number; endMs: number }) =>
+    item.id !== id && (edge === 'end' ? item.startMs >= edit.anchor : item.endMs <= edit.anchor);
+
+  // A leftward start-ripple must not push any item's start below 0 — clamp it.
+  if (edge === 'start' && delta < 0) {
+    let minStart = Infinity;
+    for (const lane of RIPPLE_LANES) for (const item of reel.tracks[lane]) if (affects(item)) minStart = Math.min(minStart, item.startMs);
+    if (minStart !== Infinity) delta = Math.max(delta, -minStart);
+  }
+
+  const shift = <T extends { id: string; startMs: number; endMs: number }>(item: T): T => {
+    if (item.id === id)
+      return edge === 'end' ? { ...item, endMs: item.endMs + delta } : { ...item, startMs: item.startMs + delta };
+    return affects(item) ? { ...item, startMs: item.startMs + delta, endMs: item.endMs + delta } : item;
+  };
+
+  const tracks = {
+    ...reel.tracks,
+    video: reel.tracks.video.map(shift),
+    overlays: reel.tracks.overlays.map(shift),
+    audio: reel.tracks.audio.map(shift),
+    brand: reel.tracks.brand.map(shift),
+  };
+  const totalMs = Math.max(0, ...tracks.video.map((v) => v.endMs));
+  return { ...reel, meta: { ...reel.meta, totalDurationMs: totalMs }, tracks };
+}
+
+export function applyTimelineChange(reel: LayeredReel, rows: TLRow[], opts: { ripple?: boolean } = {}): LayeredReel {
   const byId = new Map<string, TLAction>();
   for (const r of rows) for (const a of r.actions) byId.set(a.id, a);
+  const newMs: NewMs = (lane, id) => {
+    const a = byId.get(`${lane}:${id}`);
+    return a ? { startMs: Math.round(a.start * MS), endMs: Math.round(a.end * MS) } : null;
+  };
+
+  if (opts.ripple) {
+    const rippled = applyRipple(reel, newMs);
+    if (rippled) return rippled;
+  }
+
   const patch = <T extends { id: string; startMs: number; endMs: number }>(lane: LaneId, item: T): T => {
-    const a = byId.get(`${lane}:${item.id}`);
-    if (!a) return item;
-    return { ...item, startMs: Math.round(a.start * MS), endMs: Math.round(a.end * MS) };
+    const np = newMs(lane, item.id);
+    return np ? { ...item, startMs: np.startMs, endMs: np.endMs } : item;
   };
   const video0 = reel.tracks.video.map((v) => patch('video', v));
   // Butt adjacent video clips (model B: clips don't overlap). If a clip's start

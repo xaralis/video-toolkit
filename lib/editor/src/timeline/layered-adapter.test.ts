@@ -183,6 +183,32 @@ describe('applyTimelineChange', () => {
     expect(REEL.tracks.video[0].endMs).toBe(3000);
   });
 
+  it('ripple: extending a clip END shifts everything after it to the right (butted)', () => {
+    const reel: LayeredReel = {
+      ...REEL,
+      meta: { topic: 'Fixture', totalDurationMs: 9000 },
+      tracks: {
+        ...REEL.tracks,
+        video: [
+          { id: 'A', kind: 'clip', startMs: 0, endMs: 5000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 5000 },
+          { id: 'B', kind: 'clip', startMs: 5000, endMs: 9000, source: 'b.mp4', sourceInMs: 0, sourceOutMs: 4000 },
+        ],
+      },
+    };
+    const { editorData } = layeredToTimeline(reel, 30);
+    // Extend A's end from 5s to 6s.
+    const changed = editorData.map((row) =>
+      row.id === 'video'
+        ? { ...row, actions: row.actions.map((a) => (a.id === 'video:A' ? { ...a, start: 0, end: 6 } : a)) }
+        : row,
+    );
+    const result = applyTimelineChange(reel, changed, { ripple: true });
+    expect(result.tracks.video.find((v) => v.id === 'A')!.endMs).toBe(6000);
+    // B shifted right by the +1000ms delta.
+    expect(result.tracks.video.find((v) => v.id === 'B')).toMatchObject({ startMs: 6000, endMs: 10000 });
+    expect(result.meta.totalDurationMs).toBe(10000);
+  });
+
   it('trims the previous clip when the next clip is dragged left over it (no dangling overlap)', () => {
     const reel: LayeredReel = {
       ...REEL,

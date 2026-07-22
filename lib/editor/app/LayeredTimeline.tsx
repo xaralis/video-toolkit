@@ -160,6 +160,8 @@ export interface LayeredTimelineProps {
   onSelect: (actionId: string | null) => void;
   playerRef: RefObject<PlayerRef | null>;
   fps: number;
+  /** Ripple mode: a resize shifts everything beyond the clip to stay butted. */
+  ripple?: boolean;
   scaleWidth?: number; // px per second (zoom)
 }
 
@@ -170,27 +172,11 @@ function LayeredTimelineImpl({
   onSelect,
   playerRef,
   fps,
+  ripple = false,
   scaleWidth = 80,
 }: LayeredTimelineProps) {
   const stateRef = useRef<TimelineState>(null);
   const listRef = useRef<HTMLDivElement>(null);
-
-  // SHIFT+drag on a video clip is a SLIP edit: the clip stays put, its source
-  // window (sourceInMs/sourceOutMs) shifts by the drag delta. We track Shift and
-  // the clip's original position/trim at move-start, let the clip move for
-  // feedback, then reinterpret the drop as a slip in the onChange handler.
-  const shiftHeldRef = useRef(false);
-  const slipRef = useRef<{ id: string; origStartMs: number; origInMs: number; origOutMs: number } | null>(null);
-  useEffect(() => {
-    const kd = (e: KeyboardEvent) => e.key === 'Shift' && (shiftHeldRef.current = true);
-    const ku = (e: KeyboardEvent) => e.key === 'Shift' && (shiftHeldRef.current = false);
-    window.addEventListener('keydown', kd);
-    window.addEventListener('keyup', ku);
-    return () => {
-      window.removeEventListener('keydown', kd);
-      window.removeEventListener('keyup', ku);
-    };
-  }, []);
 
   const editorData = useMemo(() => layeredToTimeline(reel, fps).editorData, [reel, fps]);
 
@@ -385,42 +371,10 @@ function LayeredTimelineImpl({
               </div>
             );
           }}
-          onActionMoveStart={({ action }) => {
-            const { lane, id } = parseActionId(action.id);
-            slipRef.current = null;
-            if (shiftHeldRef.current && lane === 'video') {
-              const v = reel.tracks.video.find((x) => x.id === id);
-              // Slip only applies to single-source clips (clip/broll) — multi-clip
-              // sources / card / outro have no single trim window.
-              if (v && (v.kind === 'clip' || v.kind === 'broll')) {
-                slipRef.current = { id, origStartMs: v.startMs, origInMs: v.sourceInMs, origOutMs: v.sourceOutMs };
-              }
-            }
-          }}
           onChange={(d) => {
-            const slip = slipRef.current;
-            if (slip) {
-              slipRef.current = null;
-              const act = (d as TimelineRow[]).flatMap((r) => r.actions).find((a) => a.id === `video:${slip.id}`);
-              if (act) {
-                // SLIP: keep the clip's position, shift its source window by the
-                // dragged delta so it shows a different part of the source.
-                const deltaMs = Math.round(act.start * 1000) - slip.origStartMs;
-                const newIn = Math.max(0, slip.origInMs + deltaMs);
-                const newOut = newIn + (slip.origOutMs - slip.origInMs); // preserve duration
-                onChange({
-                  ...reel,
-                  tracks: {
-                    ...reel.tracks,
-                    video: reel.tracks.video.map((v) =>
-                      v.id === slip.id && (v.kind === 'clip' || v.kind === 'broll') ? { ...v, sourceInMs: newIn, sourceOutMs: newOut } : v,
-                    ),
-                  },
-                });
-              }
-              return false;
-            }
-            onChange(applyTimelineChange(reel, d as TimelineRow[]));
+            // Ripple mode: a resize shifts everything beyond the clip so the
+            // timeline stays butted (end → right, start → left). Off: plain move.
+            onChange(applyTimelineChange(reel, d as TimelineRow[], { ripple }));
             return false; // we drive rendering via the Remotion Player, skip xzdarcy's engine sync
           }}
           // Block drag/resize on locked lanes (returning false cancels it) while
@@ -453,7 +407,7 @@ function LayeredTimelineImpl({
         }}
       >
         <span>
-          <span style={{ color: '#9a9a95' }}>Shift-drag a clip</span> — slip its source
+          <span style={{ color: ripple ? '#b6ff5a' : '#9a9a95' }}>Ripple {ripple ? 'on' : 'off'}</span> — resize shifts the rest
         </span>
         <span>
           <span style={{ color: '#9a9a95' }}>Drag the volume line</span> — set level
