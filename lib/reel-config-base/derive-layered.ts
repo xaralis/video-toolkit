@@ -78,14 +78,23 @@ export interface DeriveLayeredOpts {
 
 const msFromSec = (sec: number | undefined): number => Math.round((sec ?? 0) * 1000);
 
-function musicBoostDbFor(type: string): number {
-  if (type === 'broll') return 6;
+// Per-item music-envelope contribution (dB), matching the old composition's
+// per-frame `classifyFrame` rule (brand rule #30): the +6 dB "broll-silent"
+// boost only applies when NO narration plays under the segment — i.e. a broll
+// whose audio does NOT continue the previous clip's voice. An
+// `inherit-from-clip` broll (narration still playing) gets NO boost (voice).
+// Silent clips / silent multi-clips also fill the gap and get +6. Outro +10.
+function musicBoostDbFor(type: string, audioMode: string | undefined): number {
   if (type === 'outro') return 10;
+  // broll boosts unless it inherits the previous clip's narration (then voice → 0)
+  if (type === 'broll') return audioMode === 'inherit-from-clip' ? 0 : 6;
+  // clip / multi-clip boost only when explicitly silent (no narration)
+  if (type === 'clip' || type === 'multi-clip') return audioMode === 'silent' ? 6 : 0;
   return 0;
 }
 
 function buildVideoItem(seg: OldSegment, startMs: number, endMs: number): VideoItem {
-  const musicBoostDb = musicBoostDbFor(seg.type);
+  const musicBoostDb = musicBoostDbFor(seg.type, seg.audioMode);
 
   // Generic clip-effects list: Ken Burns and blend are effect ENTRIES, not
   // named fields (real-NLE "clip carries a stack of effects" model — see

@@ -54,8 +54,21 @@ describe('deriveLayered', () => {
     expect(v1).toMatchObject({ id: 'seg-001', kind: 'clip', startMs: 0, sourceInMs: 400, sourceOutMs: 5750 });
     expect(v1.endMs).toBe(5367);
     expect(v2.startMs).toBe(5367);            // broll starts where clip ended
-    expect(v2.musicBoostDb).toBe(6);          // broll boost
+    expect(v2.musicBoostDb).toBe(0);          // inherit-from-clip broll: narration continues → no boost
     expect(outro.musicBoostDb).toBe(10);      // outro boost
+  });
+  it('musicBoostDb is audioMode-aware — boost only when no narration under the segment (matches old classifyFrame)', () => {
+    const r = deriveLayered(OLD, OPTS);
+    const [clip, broll, outro] = r.tracks.video;
+    expect(clip.musicBoostDb).toBe(0); // voice clip
+    expect(broll.musicBoostDb).toBe(0); // inherit-from-clip broll → voice, no boost
+    expect(outro.musicBoostDb).toBe(10);
+    const e = deriveLayered(EXT, OPTS);
+    const [silentClip, extBroll1, voiceClip, extBroll2] = e.tracks.video;
+    expect(silentClip.musicBoostDb).toBe(6); // silent clip fills the gap → +6
+    expect(voiceClip.musicBoostDb).toBe(0); // voice clip → no boost
+    expect(extBroll1.musicBoostDb).toBe(6); // extend-previous broll (not inherit) → +6, matches old
+    expect(extBroll2.musicBoostDb).toBe(6);
   });
   it('derives audio items: voice→own audio item with followsVideoId', () => {
     const r = deriveLayered(OLD, OPTS);
