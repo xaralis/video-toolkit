@@ -41,7 +41,7 @@ describe('deriveLayered', () => {
     const r = deriveLayered(OLD, OPTS);
     const title = r.tracks.overlays.find((o) => o.content.kind === 'title');
     expect(title).toMatchObject({ startMs: 0, endMs: 3000 });
-    expect(title.anchorVideoId).toBe('seg-001');
+    expect(title!.anchorVideoId).toBe('seg-001');
   });
   it('emits chevron + full-span brand layers + music base', () => {
     const r = deriveLayered(OLD, OPTS);
