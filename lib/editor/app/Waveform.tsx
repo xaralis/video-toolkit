@@ -36,3 +36,17 @@ export function Waveform({ peaks, sourceInMs = 0, spanMs, color = 'rgba(255,255,
     </svg>
   );
 }
+
+// A horizontal volume level line over an audio block (its constant volumeDb).
+// dB mapped -24…+6 → bottom…top, clamped.
+export function VolumeLine({ volumeDb = 0, color = 'rgba(232,232,234,0.85)' }: { volumeDb?: number; color?: string }) {
+  const MIN = -24;
+  const MAX = 6;
+  const frac = Math.max(0, Math.min(1, (volumeDb - MIN) / (MAX - MIN)));
+  const y = 100 - frac * 96 - 2;
+  return (
+    <svg viewBox="0 0 1000 100" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+      <line x1={0} y1={y} x2={1000} y2={y} stroke={color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
