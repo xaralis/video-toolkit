@@ -202,26 +202,33 @@ export function deriveLayered(config: OldReelConfig, opts: DeriveLayeredOpts): L
     // audio (clip / broll only — see derivation rules)
     if (seg.type === 'clip') {
       const audioMode = seg.audioMode ?? 'voice';
-      if (audioMode === 'voice') {
+      if (audioMode === 'voice' && seg.source) {
         audioItems.push({
           id: `${seg.id}-audio`,
           startMs,
           endMs,
-          source: seg.source ?? '',
+          source: seg.source,
           sourceInMs: msFromSec(seg.trimIn),
           volumeDb: 0,
+          followsVideoId: seg.id,
         });
       }
-      // 'silent' → no audio item
+      // 'silent' → no audio item; 'voice' with no/empty source → no item either
+      // (avoid emitting a phantom item with source: '')
     } else if (seg.type === 'broll') {
       if (seg.audioMode === 'inherit-from-clip') {
-        audioItems.push({
-          id: `${seg.id}-audio`,
-          startMs,
-          endMs,
-          source: seg.audioSource ?? '',
-          sourceInMs: msFromSec(seg.audioStartSec),
-        });
+        if (seg.audioSource) {
+          audioItems.push({
+            id: `${seg.id}-audio`,
+            startMs,
+            endMs,
+            source: seg.audioSource,
+            sourceInMs: msFromSec(seg.audioStartSec),
+            volumeDb: 0,
+            followsVideoId: seg.id,
+          });
+        }
+        // no/empty audioSource → no item (avoid phantom source: '')
       } else if (seg.audioMode === 'extend-previous') {
         const prev = audioItems[audioItems.length - 1];
         if (prev) {
