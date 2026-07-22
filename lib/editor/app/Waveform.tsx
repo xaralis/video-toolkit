@@ -49,10 +49,13 @@ export function VolumeLine({
   volumeDb = 0,
   color = 'rgba(232,232,234,0.85)',
   onChange,
+  resetDb = 0,
 }: {
   volumeDb?: number;
   color?: string;
   onChange?: (db: number) => void;
+  /** Double-click the line to reset to this level. */
+  resetDb?: number;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const frac = Math.max(0, Math.min(1, (volumeDb - V_MIN) / (V_MAX - V_MIN)));
@@ -83,6 +86,10 @@ export function VolumeLine({
           vectorEffect="non-scaling-stroke"
           style={{ pointerEvents: 'stroke', cursor: 'ns-resize' }}
           onMouseDown={stop}
+          onDoubleClick={(e) => {
+            stop(e);
+            onChange(resetDb);
+          }}
           onPointerDown={(e) => {
             stop(e);
             e.preventDefault();
