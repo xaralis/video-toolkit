@@ -56,6 +56,9 @@ export function useAudioPeaks(urls: string[]): { peaks: Map<string, Float32Array
         try {
           cache.set(u, await computePeaks(u));
         } catch (err) {
+          // Cache an empty result so a persistently-broken source (404/corrupt)
+          // is treated as settled and not re-fetched every time the URL set changes.
+          cache.set(u, new Float32Array(0));
           // eslint-disable-next-line no-console
           console.warn('[useAudioPeaks] failed to decode', u, err);
         }

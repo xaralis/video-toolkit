@@ -79,7 +79,7 @@ function waveformFor(action: TimelineAction, reel: LayeredReel, peaks: Map<strin
     return { peaks: peaks.get(audioUrl(a.source)), sourceInMs: a.sourceInMs, spanMs };
   }
   if (lane === 'music' && reel.tracks.music.source) {
-    return { peaks: peaks.get(`/${reel.tracks.music.source}`), sourceInMs: 0, spanMs };
+    return { peaks: peaks.get(audioUrl(reel.tracks.music.source)), sourceInMs: 0, spanMs };
   }
   return null;
 }
@@ -130,7 +130,7 @@ export function LayeredTimeline({
   // Decode waveform peaks for the audio beds + the music source.
   const audioUrls = useMemo(() => {
     const urls = reel.tracks.audio.map((a) => audioUrl(a.source));
-    if (reel.tracks.music.source) urls.push(`/${reel.tracks.music.source}`);
+    if (reel.tracks.music.source) urls.push(audioUrl(reel.tracks.music.source));
     return urls;
   }, [reel]);
   const { peaks } = useAudioPeaks(audioUrls);
@@ -147,9 +147,15 @@ export function LayeredTimeline({
         rowHeight: ROW_H,
         // Keep every action movable so it stays clickable/selectable — xzdarcy
         // suppresses onClickAction on movable:false actions. Locked lanes (brand
-        // = content-end-derived span; music = single base layer) instead have
-        // their drag/resize blocked in onActionMoving/onActionResizing below.
-        actions: r.actions.map((a) => ({ ...a, selected: a.id === selectedId, flexible: true, movable: true })),
+        // = content-end-derived span; music = single base layer) get flexible:false
+        // to hide the resize handles, and their move is also blocked in
+        // onActionMoving below (movable:true is only for the click affordance).
+        actions: r.actions.map((a) => ({
+          ...a,
+          selected: a.id === selectedId,
+          flexible: !LOCKED_LANES.has(r.id),
+          movable: true,
+        })),
       })),
     [editorData, selectedId],
   );
