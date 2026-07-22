@@ -148,4 +148,13 @@ describe('deriveLayered — pilot smoke (pp-namesti-republiky)', () => {
       expect(ov.endMs).toBeLessThanOrEqual(layered.meta.totalDurationMs); // stays within the reel
     }
   });
+
+  it('preserves motion as generic clip effects: broll ken-burns + broll-to-broll blend', () => {
+    const layered = deriveLayered(PP_NAMESTI_DEFAULT_PROPS, { fps: 30, outroFrames: 180 });
+    const seg002 = layered.tracks.video.find((v) => v.id === 'seg-002')!;
+    expect(seg002.effects?.some((e) => e.type === 'ken-burns')).toBe(true);
+    const seg004 = layered.tracks.video.find((v) => v.id === 'seg-004')!;
+    const blend = seg004.effects?.find((e) => e.type === 'blend');
+    expect(blend).toMatchObject({ to: 'br_vizualizace_zelen_vic.mp4' });
+  });
 });

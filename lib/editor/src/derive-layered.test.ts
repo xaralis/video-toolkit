@@ -10,7 +10,8 @@ const OLD = {
     { id: 'seg-001', type: 'clip', source: 'a.mp4', trimIn: 0.4, trimOut: 5.75, audioMode: 'voice',
       overlays: [{ kind: 'title', text: 'Ještě lepší {lime:náměstí Republiky}.', appearAt: 0, durationMs: 3000 }] },
     { id: 'seg-002', type: 'broll', source: 'b.mp4', trimIn: 0, trimOut: 4, audioMode: 'inherit-from-clip',
-      audioSource: 'a.mp4', audioStartSec: 5.75, aiGenerated: true },
+      audioSource: 'a.mp4', audioStartSec: 5.75, aiGenerated: true,
+      kenBurns: { fromX: 0.35, toX: 0.62 }, blendTo: 'b2.mp4', blend: { direction: 'tl-br', startPct: 10, endPct: 40 } },
     { id: 'seg-008', type: 'outro' },
   ],
 };
@@ -93,6 +94,15 @@ describe('deriveLayered', () => {
   it('empty/absent audio source (voice with no source, inherit with no audioSource) emits no phantom audio item', () => {
     const r = deriveLayered(NOSRC, OPTS);
     expect(r.tracks.audio).toHaveLength(0);
+  });
+  it('carries kenBurns/blend as generic effects entries + audioMode passthrough', () => {
+    const r = deriveLayered(OLD, OPTS);
+    const v2 = r.tracks.video.find((v) => v.id === 'seg-002')!;
+    const kenBurns = v2.effects?.find((e) => e.type === 'ken-burns');
+    expect(kenBurns).toMatchObject({ fromX: 0.35 });
+    const blend = v2.effects?.find((e) => e.type === 'blend');
+    expect(blend).toMatchObject({ to: 'b2.mp4', direction: 'tl-br' });
+    expect(v2.audioMode).toBe('inherit-from-clip');
   });
   it('places overlays at absolute time = clip start + appearAt', () => {
     const r = deriveLayered(OLD, OPTS);

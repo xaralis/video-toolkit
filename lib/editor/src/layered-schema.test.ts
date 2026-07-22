@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LayeredReelSchema, MusicLayerSchema, VideoItemSchema, AudioItemSchema } from '@video-toolkit/lib/reel-config-base/layered-schema';
+import { LayeredReelSchema, MusicLayerSchema, VideoItemSchema, AudioItemSchema, EffectSchema } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
 describe('LayeredReelSchema', () => {
   it('accepts a minimal valid layered reel', () => {
@@ -7,7 +7,14 @@ describe('LayeredReelSchema', () => {
       version: 'layered-1',
       meta: { topic: 'X', totalDurationMs: 5000 },
       tracks: {
-        video: [{ id: 'v1', kind: 'clip', startMs: 0, endMs: 3000, source: 'a.mp4', sourceInMs: 400, sourceOutMs: 3400 }],
+        video: [{
+          id: 'v1', kind: 'clip', startMs: 0, endMs: 3000, source: 'a.mp4', sourceInMs: 400, sourceOutMs: 3400,
+          effects: [
+            { type: 'ken-burns', fromX: 0.35, toX: 0.62, fromScale: 1.05, toScale: 1.12 },
+            { type: 'blend', to: 'b2.mp4', direction: 'tl-br', startPct: 14, endPct: 38, softness: 45 },
+          ],
+          audioMode: 'inherit-from-clip',
+        }],
         audio: [{ id: 'a1', startMs: 0, endMs: 3000, source: 'a.mp4', sourceInMs: 400 }],
         music: { source: 'audio/bg.mp3', baseVolumeDb: -6 },
         overlays: [{ id: 'o1', startMs: 0, endMs: 3000, content: { kind: 'title', text: 'Hi' } }],
@@ -39,5 +46,9 @@ describe('LayeredReelSchema', () => {
     expect(() =>
       AudioItemSchema.parse({ id: 'a', startMs: 0, endMs: 1, sourceInMs: 0 }),
     ).toThrow();
+  });
+
+  it('rejects an effect without a type', () => {
+    expect(() => EffectSchema.parse({ fromX: 0.5 })).toThrow();
   });
 });
