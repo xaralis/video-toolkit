@@ -101,7 +101,7 @@
 }
 
 .timeline {
-  height: 180px;
+  height: 300px;
   flex-shrink: 0;
   background: #1e1f24;
   border-top: 1px solid #2b2c33;
