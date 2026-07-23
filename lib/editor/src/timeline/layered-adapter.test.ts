@@ -265,11 +265,13 @@ describe('clipFootageCapMs — clip vs broll policy', () => {
   it('caps a clip at its decoded footage duration', () => {
     expect(clipFootageCapMs(item('clip'), 8042)).toBe(8042);
   });
-  it('never caps a broll — it is a container that holds its last frame', () => {
-    expect(clipFootageCapMs(item('broll'), 8042)).toBeUndefined();
+  it('caps a video-backed broll at its decoded footage too (finite, like a clip)', () => {
+    expect(clipFootageCapMs(item('broll'), 8042)).toBe(8042);
   });
   it('returns undefined when the footage duration is unknown (0 / undefined)', () => {
+    // A still-image / generated broll decodes to 0 → naturally uncapped.
     expect(clipFootageCapMs(item('clip'), 0)).toBeUndefined();
+    expect(clipFootageCapMs(item('broll'), 0)).toBeUndefined();
     expect(clipFootageCapMs(item('clip'), undefined)).toBeUndefined();
   });
   it('never caps a multi-clip (no single trim source)', () => {
@@ -337,30 +339,38 @@ describe('applyTimelineChange — trim edges (clip footage cap, broll free)', ()
     expect(A.endMs).toBe(5367 + 10042); // snapped to real footage end
   });
 
-  // ---- Right edge: broll is NEVER capped (container holds last frame) ------
-  it('does NOT cap a BROLL right-edge extend — a container extends freely', () => {
-    // The component omits broll from footageMsById; the broll holds its last
-    // frame, so extending past the source is legitimate (AI viz / hold).
+  // ---- Right edge: a video-backed broll is capped just like a clip ---------
+  it('clamps a BROLL right-edge extend to its footage (finite, like a clip)', () => {
+    // A video-backed broll has a finite file; extending past it into dead space
+    // is not allowed. Only a still/generated broll (0 duration) stays uncapped.
     const reel = videoReel('broll', { sourceOutMs: 6000, endMs: 11367 });
-    const changed = dragEdge(reel, 5.367, 20); // extend to 20s
-    const A = applyTimelineChange(reel, changed, { footageMsById: {} }).tracks.video[0];
-    expect(A.kind === 'broll' && A.sourceOutMs).toBe(20000 - 5367); // no clamp
-    expect(A.endMs).toBe(20000);
+    const changed = dragEdge(reel, 5.367, 20); // yank right; only 8042ms exists
+    const A = applyTimelineChange(reel, changed, { footageMsById: { A: 8042 } }).tracks.video[0];
+    expect(A.kind === 'broll' && A.sourceOutMs).toBe(8042);
+    expect(A.endMs).toBe(5367 + 8042);
   });
 
-  it('lets a BROLL restore to its original length after a right-edge trim', () => {
-    // Regression for "trim right, can't return to original": shorten then extend
-    // back to the starting endMs must land exactly there (no footage cap eating it).
-    const reel = videoReel('broll'); // endMs 15667, sourceOutMs 10300
-    const shortened = applyTimelineChange(reel, dragEdge(reel, 5.367, 13), { footageMsById: {} }).tracks.video[0];
+  it('honestly caps a BROLL whose config sourceOutMs overshoots the real file', () => {
+    // The seg-002 drift: config claims 10300ms but the file is 10042ms. Trimming
+    // then extending back cannot restore footage that does not exist — it caps at
+    // the real file end (self-healing the 258ms of phantom the config authored).
+    const reel = videoReel('broll'); // endMs 15667, sourceOutMs 10300, file 10042
+    const shortened = applyTimelineChange(reel, dragEdge(reel, 5.367, 13), { footageMsById: { A: 10042 } }).tracks.video[0];
     expect(shortened.endMs).toBe(13000);
     const restored = applyTimelineChange(
       { ...reel, tracks: { ...reel.tracks, video: [shortened] } },
-      dragEdge(reel, 5.367, 15.667),
-      { footageMsById: {} },
+      dragEdge(reel, 5.367, 15.667), // try to pull back to the authored length
+      { footageMsById: { A: 10042 } },
     ).tracks.video[0];
-    expect(restored.endMs).toBe(15667); // back to the original — nothing lost
-    expect(restored.kind === 'broll' && restored.sourceOutMs).toBe(10300);
+    expect(restored.endMs).toBe(5367 + 10042); // capped at the real file end (15409), not 15667
+    expect(restored.kind === 'broll' && restored.sourceOutMs).toBe(10042);
+  });
+
+  it('leaves a still/generated BROLL (unknown duration) uncapped', () => {
+    const reel = videoReel('broll', { sourceOutMs: 6000, endMs: 11367 });
+    const changed = dragEdge(reel, 5.367, 20);
+    const A = applyTimelineChange(reel, changed, { footageMsById: {} }).tracks.video[0]; // no cap known
+    expect(A.kind === 'broll' && A.sourceOutMs).toBe(20000 - 5367); // extends freely
   });
 
   // ---- Left edge: trim-in works; extend-left clamped at the source start ----

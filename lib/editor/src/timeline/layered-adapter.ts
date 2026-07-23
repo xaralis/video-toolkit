@@ -81,13 +81,14 @@ export function layeredToTimeline(reel: LayeredReel, fps: number): { editorData:
 }
 
 // The footage cap for a video item's RIGHT trim edge, or undefined for "no cap".
-// A clip is recorded footage — its out-point can't pass the end of the file, so
-// its decoded duration is the cap. A broll is a CONTAINER (AI viz / hold) that
-// legitimately holds its last frame, so it is never capped and extends freely;
-// multi-clip / card / outro have no single trim source. `decodedMs` is the
-// intrinsic media duration (0 / undefined = unknown → no cap).
+// A single-source video (clip OR broll) can't be trimmed past the end of its
+// file — its decoded duration is the cap. A video-backed broll is finite just
+// like a clip; only sources with no intrinsic duration (a still image /
+// generated content) decode to 0 and are naturally uncapped (held arbitrarily).
+// multi-clip / card / outro have no single trim source → no cap. `decodedMs` is
+// the intrinsic media duration (0 / undefined = unknown → no cap).
 export function clipFootageCapMs(item: VideoItem, decodedMs: number | undefined): number | undefined {
-  if (item.kind !== 'clip') return undefined;
+  if (item.kind !== 'clip' && item.kind !== 'broll') return undefined;
   return decodedMs && decodedMs > 0 ? decodedMs : undefined;
 }
 
