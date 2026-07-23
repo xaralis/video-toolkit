@@ -4,11 +4,12 @@ import { Timeline, type TimelineState } from '@xzdarcy/react-timeline-editor';
 import type { TimelineRow, TimelineAction, TimelineEffect } from '@xzdarcy/timeline-engine';
 import '@xzdarcy/react-timeline-editor/dist/react-timeline-editor.css';
 import type { PlayerRef } from '@remotion/player';
-import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
+import type { LayeredReel, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import {
   layeredToTimeline,
   applyTimelineChange,
   parseActionId,
+  clipFootageCapMs,
   LANES,
   type LaneId,
 } from '../src/timeline/layered-adapter';
@@ -87,6 +88,34 @@ const VIDEO_KIND_LABEL: Record<string, string> = {
   card: 'Card',
   outro: 'Outro',
 };
+
+// Trim-grip affordance for a clip/broll edge. An edge is "muted" when it CAN'T
+// extend outward: the left in-point is already at the source start
+// (sourceInMs<=0, nothing earlier to reveal); the right out-point has hit the
+// clip's footage cap (a broll never caps — it holds its last frame, so its
+// right edge is never muted). Returns null for kinds without a single trim.
+function gripState(
+  item: VideoItem | undefined,
+  footageCapMs: number | undefined,
+): { left: boolean; right: boolean } | null {
+  if (!item || (item.kind !== 'clip' && item.kind !== 'broll')) return null;
+  return {
+    left: item.sourceInMs <= 0,
+    right: footageCapMs !== undefined && item.sourceOutMs >= footageCapMs - 1,
+  };
+}
+
+// The trim handles are xzdarcy's own invisible stretch zones; these grips are a
+// visual layer on top (pointer-events:none so the real handles still drag).
+// Default: faint. Hover the block: its grips brighten (shows WHICH clip's handle
+// you'll grab at a butted seam). Muted: hatched + dim (this edge can't extend).
+const GRIP_CSS = `
+.vt-grip { position: absolute; top: 4px; bottom: 4px; width: 5px; border-radius: 2px; pointer-events: none; background: rgba(255,255,255,0.30); transition: background 0.12s ease, box-shadow 0.12s ease; }
+.vt-grip-left { left: 2px; }
+.vt-grip-right { right: 2px; }
+.timeline-editor-action:hover .vt-grip { background: rgba(255,255,255,0.92); box-shadow: 0 0 0 1px rgba(0,0,0,0.35); }
+.vt-grip-muted, .timeline-editor-action:hover .vt-grip-muted { background: repeating-linear-gradient(45deg, rgba(255,255,255,0.16) 0 2px, rgba(255,255,255,0) 2px 4px); box-shadow: none; }
+`;
 
 function timelineLabel(action: TimelineAction, reel: LayeredReel, fps: number): string {
   const { lane, id } = parseActionId(action.id);
@@ -204,18 +233,18 @@ function LayeredTimelineImpl({
     [reel],
   );
   const sourceDurations = useSourceDurations(videoUrls);
-  // Real footage duration (ms) per clip/broll id. Fed into applyTimelineChange
-  // so a right-edge resize CLAMPS the out-point at the media end instead of the
-  // timeline UI vetoing the gesture. A veto (absolute maxEnd on the action)
-  // misfires whenever the block's endMs has drifted past its footage — e.g. a
-  // config sourceOutMs that overshoots the real file — freezing the whole clip.
+  // Right-edge trim cap (ms) per video id. Fed into applyTimelineChange so a
+  // right-edge resize CLAMPS the out-point at the media end instead of the
+  // timeline UI vetoing the gesture (a veto misfires when the block's endMs has
+  // drifted past its footage — e.g. a config sourceOutMs that overshoots the
+  // real file — and freezes the whole clip). Only CLIPS are capped; a broll is
+  // a container that holds its last frame, so it extends freely (clipFootageCapMs).
   const footageMsById = useMemo(() => {
     const m: Record<string, number> = {};
     for (const v of reel.tracks.video) {
-      if (v.kind !== 'clip' && v.kind !== 'broll') continue;
       const url = videoUrl(v);
-      const durMs = url ? sourceDurations[url] : undefined;
-      if (durMs && durMs > 0) m[v.id] = durMs;
+      const cap = clipFootageCapMs(v, url ? sourceDurations[url] : undefined);
+      if (cap !== undefined) m[v.id] = cap;
     }
     return m;
   }, [reel, sourceDurations]);
@@ -279,6 +308,7 @@ function LayeredTimelineImpl({
         WebkitUserSelect: 'none',
       }}
     >
+      <style>{GRIP_CSS}</style>
       <div style={{ display: 'flex', flex: '1 1 auto', minHeight: 0 }}>
       {/* Fixed lane-header column. xzdarcy renders only the track area, so the
           labels live in a parallel scroll container kept in two-way sync with
@@ -378,6 +408,24 @@ function LayeredTimelineImpl({
                 }}
                 title={action.id}
               >
+                {(() => {
+                  // Trim grips for clip/broll blocks: visible handles that
+                  // brighten on hover (which edge is active at a butted seam)
+                  // and go muted when that edge can't extend outward.
+                  const { lane, id } = parseActionId(action.id);
+                  if (lane !== 'video') return null;
+                  const grips = gripState(
+                    reel.tracks.video.find((v) => v.id === id),
+                    footageMsById[id],
+                  );
+                  if (!grips) return null;
+                  return (
+                    <>
+                      <div className={`vt-grip vt-grip-left${grips.left ? ' vt-grip-muted' : ''}`} />
+                      <div className={`vt-grip vt-grip-right${grips.right ? ' vt-grip-muted' : ''}`} />
+                    </>
+                  );
+                })()}
                 {wf && <Waveform peaks={wf.peaks} sourceInMs={wf.sourceInMs} spanMs={wf.spanMs} />}
                 {action.id.startsWith('audio:') && (
                   <VolumeLine
