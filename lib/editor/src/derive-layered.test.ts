@@ -250,4 +250,35 @@ describe('deriveLayered', () => {
       expect(r.tracks.audio[1]).toMatchObject({ source: 'b.MP4', sourceInMs: 0 });
     });
   });
+
+  // A party-logos overlay carries its timing PER LOGO (each logo has its own
+  // appearAt inside `logos[]`); the overlay container itself has no top-level
+  // appearAt. It must default to segment start (offset 0), not derive NaN.
+  const PARTY = {
+    topic: 'Party logos',
+    segments: [
+      {
+        id: 'seg-p',
+        type: 'broll',
+        source: 'br.mp4',
+        trimIn: 0,
+        trimOut: 5,
+        audioMode: 'silent',
+        overlay: {
+          kind: 'party-logos',
+          logos: [{ src: 'a.svg', appearAt: 0 }, { src: 'b.svg', appearAt: 1400 }],
+          durationMs: 4800,
+        },
+      },
+      { id: 'seg-z', type: 'outro' },
+    ],
+  };
+  it('an overlay with no top-level appearAt defaults to segment start (no NaN)', () => {
+    const r = deriveLayered(PARTY, OPTS);
+    const logos = r.tracks.overlays.find((o) => o.content.kind === 'party-logos')!;
+    expect(logos.startMs).toBe(0);
+    expect(logos.endMs).toBe(4800);
+    expect(Number.isNaN(logos.startMs)).toBe(false);
+    expect(logos.anchorVideoId).toBe('seg-p');
+  });
 });
