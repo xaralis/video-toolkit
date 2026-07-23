@@ -450,7 +450,16 @@ function LayeredTimelineImpl({
           <div
             ref={guidesRef}
             aria-hidden
-            style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5, willChange: 'transform' }}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              pointerEvents: 'none',
+              zIndex: 5,
+              willChange: 'transform',
+              // Prominent when snapping to beats, faint (still a manual-alignment
+              // aid) when it's off.
+              opacity: snapToBeats ? 1 : 0.35,
+            }}
           >
             {guidesMs.map((ms, i) => (
               <div
