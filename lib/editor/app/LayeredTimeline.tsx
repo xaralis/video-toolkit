@@ -11,7 +11,7 @@ import {
   parseActionId,
   clipFootageCapMs,
   resizeBoundsMs,
-  LANES,
+  laneOfRow,
   type LaneId,
 } from '../src/timeline/layered-adapter';
 import { stripAccents } from './accent';
@@ -300,7 +300,7 @@ function LayeredTimelineImpl({
         actions: r.actions.map((a) => ({
           ...a,
           selected: a.id === selectedId,
-          flexible: !LOCKED_LANES.has(r.id),
+          flexible: !LOCKED_LANES.has(laneOfRow(r.id)),
           movable: true,
           // Live resize clamp for the action under the handle (this gesture only).
           ...(resizeBound && resizeBound.id === a.id
@@ -362,23 +362,30 @@ function LayeredTimelineImpl({
             { flex: '1 1 auto', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', msOverflowStyle: 'none' } as CSSProperties
           }
         >
-          {LANES.map((lane) => (
-            <div
-              key={lane}
-              style={{
-                height: lane === 'transitions' ? TRANSITIONS_ROW_H : ROW_H,
-                display: 'flex',
-                alignItems: 'center',
-                paddingLeft: 10,
-                fontSize: 11,
-                color: '#9a9da5',
-                borderBottom: '1px solid #202227',
-                boxSizing: 'border-box',
-              }}
-            >
-              {LANE_LABELS[lane]}
-            </div>
-          ))}
+          {/* One header per timeline ROW (lanes can span several sub-rows when
+              their items overlap). The lane name shows on its first sub-row; the
+              extra rows get a subtle ‘↳’ so the stack reads as one lane. */}
+          {data.map((row) => {
+            const lane = laneOfRow(row.id);
+            const isFirst = !row.id.includes('#');
+            return (
+              <div
+                key={row.id}
+                style={{
+                  height: row.rowHeight ?? ROW_H,
+                  display: 'flex',
+                  alignItems: 'center',
+                  paddingLeft: 10,
+                  fontSize: 11,
+                  color: isFirst ? '#9a9da5' : '#61646c',
+                  borderBottom: '1px solid #202227',
+                  boxSizing: 'border-box',
+                }}
+              >
+                {isFirst ? LANE_LABELS[lane] : '↳'}
+              </div>
+            );
+          })}
         </div>
       </div>
 

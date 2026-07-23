@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { LayeredReel, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
-import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem, duplicateItem, clipFootageCapMs, resizeBoundsMs } from './layered-adapter';
+import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem, duplicateItem, clipFootageCapMs, resizeBoundsMs, laneOfRow } from './layered-adapter';
 
 // Small schema-valid LayeredReel fixture: one item per track.
 const REEL: LayeredReel = {
@@ -34,6 +34,38 @@ describe('layeredToTimeline', () => {
       end: 3,
       effectId: 'video-clip',
     });
+  });
+
+  it('packs overlapping overlays / audio into sub-rows so nothing hides', () => {
+    const reel: LayeredReel = {
+      ...REEL,
+      meta: { topic: 'x', totalDurationMs: 10000 },
+      tracks: {
+        ...REEL.tracks,
+        overlays: [
+          { id: 'o1', startMs: 0, endMs: 4000, content: { kind: 'title', text: 'A' } },
+          { id: 'o2', startMs: 2000, endMs: 6000, content: { kind: 'chevron', text: 'B' } }, // overlaps o1
+          { id: 'o3', startMs: 6000, endMs: 8000, content: { kind: 'title', text: 'C' } }, // fits back on row 0
+        ],
+        audio: [
+          { id: 'a1', startMs: 0, endMs: 5000, source: 'x.mp3', sourceInMs: 0 },
+          { id: 'a2', startMs: 3000, endMs: 8000, source: 'y.mp3', sourceInMs: 0 }, // overlaps a1
+        ],
+      },
+    };
+    const { editorData } = layeredToTimeline(reel, 30);
+    const ids = editorData.map((r) => r.id);
+    expect(ids).toEqual(['overlays', 'overlays#1', 'video', 'transitions', 'audio', 'audio#1', 'music', 'brand']);
+    // o1 and o3 (non-overlapping) share row 0; o2 goes to the sub-row.
+    expect(editorData.find((r) => r.id === 'overlays')!.actions.map((a) => a.id)).toEqual(['overlays:o1', 'overlays:o3']);
+    expect(editorData.find((r) => r.id === 'overlays#1')!.actions.map((a) => a.id)).toEqual(['overlays:o2']);
+    expect(editorData.find((r) => r.id === 'audio#1')!.actions.map((a) => a.id)).toEqual(['audio:a2']);
+  });
+
+  it('laneOfRow strips the sub-row suffix', () => {
+    expect(laneOfRow('overlays')).toBe('overlays');
+    expect(laneOfRow('overlays#2')).toBe('overlays');
+    expect(laneOfRow('audio#1')).toBe('audio');
   });
 });
 
