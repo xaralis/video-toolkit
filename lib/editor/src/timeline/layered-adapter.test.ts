@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
-import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem } from './layered-adapter';
+import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem, duplicateItem } from './layered-adapter';
 
 // Small schema-valid LayeredReel fixture: one item per track.
 const REEL: LayeredReel = {
@@ -315,6 +315,30 @@ describe('splitItem', () => {
   });
   it('is a no-op when the playhead is outside the clip', () => {
     expect(splitItem(reel, 'video:A', 300, 30).tracks.video).toHaveLength(1); // frame 300 = 10s, past the clip
+  });
+});
+
+describe('duplicateItem', () => {
+  const reel: LayeredReel = {
+    ...REEL,
+    meta: { topic: 'x', totalDurationMs: 9000 },
+    tracks: {
+      ...REEL.tracks,
+      video: [
+        { id: 'A', kind: 'clip', startMs: 0, endMs: 5000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 5000 },
+        { id: 'B', kind: 'clip', startMs: 5000, endMs: 9000, source: 'b.mp4', sourceInMs: 0, sourceOutMs: 4000 },
+      ],
+      audio: [{ id: 'A-audio', startMs: 0, endMs: 5000, source: 'a.mp4', sourceInMs: 0, followsVideoId: 'A' }],
+    },
+  };
+  it('inserts a copy after the clip (+ bound audio), shifting the rest right', () => {
+    const r = duplicateItem(reel, 'video:A');
+    expect(r.tracks.video.map((v) => v.id)).toEqual(['A', 'A-copy', 'B']);
+    expect(r.tracks.video[1]).toMatchObject({ startMs: 5000, endMs: 10000 });
+    expect(r.tracks.video[2]).toMatchObject({ id: 'B', startMs: 10000, endMs: 14000 }); // shifted right
+    expect(r.tracks.audio.map((a) => a.id)).toEqual(['A-audio', 'A-audio-copy']);
+    expect(r.tracks.audio[1]).toMatchObject({ startMs: 5000, followsVideoId: 'A-copy' });
+    expect(r.meta.totalDurationMs).toBe(14000);
   });
 });
 

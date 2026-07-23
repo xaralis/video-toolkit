@@ -276,3 +276,30 @@ export function splitItem(reel: LayeredReel, selectedId: string, atFrame: number
 
   return { ...reel, tracks: { ...reel.tracks, video, audio } };
 }
+
+// Duplicate the selected video clip: insert a copy right after it (with its
+// bound audio), shifting everything after right by the clip's duration to make
+// room. No-op for non-video selections.
+export function duplicateItem(reel: LayeredReel, selectedId: string): LayeredReel {
+  const { lane, id } = parseActionId(selectedId);
+  if (lane !== 'video') return reel;
+  const src = reel.tracks.video.find((v) => v.id === id);
+  if (!src) return reel;
+  const dur = src.endMs - src.startMs;
+  const at = src.endMs;
+  const shift = <T extends { startMs: number; endMs: number }>(arr: T[]): T[] =>
+    arr.map((x) => (x.startMs >= at ? { ...x, startMs: x.startMs + dur, endMs: x.endMs + dur } : x));
+
+  const shiftedVideo = shift(reel.tracks.video);
+  const srcIdx = shiftedVideo.findIndex((v) => v.id === id);
+  const copy: VideoItem = { ...src, id: `${id}-copy`, startMs: at, endMs: at + dur };
+  const video = [...shiftedVideo.slice(0, srcIdx + 1), copy, ...shiftedVideo.slice(srcIdx + 1)];
+
+  const boundAudio = reel.tracks.audio.find((a) => a.followsVideoId === id);
+  const audio = shift(reel.tracks.audio);
+  if (boundAudio) {
+    audio.push({ ...boundAudio, id: `${boundAudio.id}-copy`, startMs: at, endMs: at + (boundAudio.endMs - boundAudio.startMs), followsVideoId: `${id}-copy` });
+  }
+  const totalMs = Math.max(0, ...video.map((v) => v.endMs));
+  return { ...reel, meta: { ...reel.meta, totalDurationMs: totalMs }, tracks: { ...reel.tracks, video, audio } };
+}
