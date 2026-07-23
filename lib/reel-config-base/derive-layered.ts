@@ -35,9 +35,11 @@ export interface CutOverlaySpec {
 
 export interface CutSegment {
   id: string;
-  type: string; // 'clip' | 'broll' | 'multi-clip' | 'card' | 'outro'
+  type: string; // 'clip' | 'broll' | 'multi-clip' | 'card' | 'photo' | 'outro'
   // clip / broll
   source?: string;
+  // photo uses `src` (not `source`) — a still image or an AI i2v clip
+  src?: string;
   trimIn?: number;
   trimOut?: number;
   audioMode?: string; // clip: 'voice'|'silent'; broll: 'silent'|'extend-previous'|'inherit-from-clip'
@@ -91,6 +93,8 @@ const msFromSec = (sec: number | undefined): number => Math.round((sec ?? 0) * 1
 // Silent clips / silent multi-clips also fill the gap and get +6. Outro +10.
 function musicBoostDbFor(type: string, audioMode: string | undefined): number {
   if (type === 'outro') return 10;
+  // photo is always silent (a still / muted AI clip, no narration) → fill the gap.
+  if (type === 'photo') return 6;
   // broll boosts unless it inherits the previous clip's narration (then voice → 0)
   if (type === 'broll') return audioMode === 'inherit-from-clip' ? 0 : 6;
   // clip / multi-clip boost only when explicitly silent (no narration)
@@ -105,10 +109,12 @@ function buildVideoItem(seg: CutSegment, startMs: number, endMs: number): VideoI
   // named fields (real-NLE "clip carries a stack of effects" model — see
   // EffectSchema). Only broll segments carry these in the cut (segment) model.
   const effects: Effect[] = [];
-  if (seg.type === 'broll') {
+  if (seg.type === 'broll' || seg.type === 'photo') {
     // Spread caller params FIRST, then the discriminant/target — so a stray
     // `type`/`to` key in brand-preset params can never clobber the effect kind.
     if (seg.kenBurns) effects.push({ ...seg.kenBurns, type: 'ken-burns' });
+  }
+  if (seg.type === 'broll') {
     if (seg.blendTo) effects.push({ ...(seg.blend ?? {}), to: seg.blendTo, type: 'blend' });
   }
 
@@ -178,6 +184,23 @@ function buildVideoItem(seg: CutSegment, startMs: number, endMs: number): VideoI
         cardKind: seg.cardKind ?? '',
         ...(seg.cardProps !== undefined ? { cardProps: seg.cardProps } : {}),
         ...(seg.pattern !== undefined ? { pattern: seg.pattern } : {}),
+        ...(seg.transitionOut !== undefined ? { transitionOut: seg.transitionOut } : {}),
+        musicBoostDb,
+      };
+    case 'photo':
+      return {
+        id: seg.id,
+        kind: 'photo',
+        startMs,
+        endMs,
+        // photo authors `src` (image or AI i2v clip), not `source`.
+        source: seg.src ?? seg.source ?? '',
+        ...(seg.focalX !== undefined ? { focalX: seg.focalX } : {}),
+        ...(seg.focalY !== undefined ? { focalY: seg.focalY } : {}),
+        ...(seg.crop !== undefined ? { crop: seg.crop } : {}),
+        ...(seg.grade !== undefined ? { grade: seg.grade } : {}),
+        ...(seg.aiGenerated !== undefined ? { aiGenerated: seg.aiGenerated } : {}),
+        ...(effects.length ? { effects } : {}),
         ...(seg.transitionOut !== undefined ? { transitionOut: seg.transitionOut } : {}),
         musicBoostDb,
       };
@@ -293,8 +316,8 @@ export function deriveLayered(config: CutConfig, opts: DeriveLayeredOpts): Layer
       }
     }
 
-    // overlays (clip's overlays[] array; broll/multi-clip's single overlay)
-    if (seg.type === 'clip' && seg.overlays && seg.overlays.length > 0) {
+    // overlays (clip's / photo's overlays[] array; broll/multi-clip's single overlay)
+    if ((seg.type === 'clip' || seg.type === 'photo') && seg.overlays && seg.overlays.length > 0) {
       overlayItems.push(...buildOverlayItems(seg.id, videoItem, seg.overlays));
     } else if ((seg.type === 'broll' || seg.type === 'multi-clip') && seg.overlay) {
       overlayItems.push(...buildOverlayItems(seg.id, videoItem, [seg.overlay]));
