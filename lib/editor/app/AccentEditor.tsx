@@ -18,6 +18,8 @@ export interface AccentEditorProps {
    * supply its own palette later; defaults to Lime + Teal.
    */
   colors?: AccentEditorColor[];
+  /** Allow newlines (textarea-style). Default false = single-line caption. */
+  multiline?: boolean;
 }
 
 const DEFAULT_COLORS: AccentEditorColor[] = [
@@ -50,7 +52,11 @@ function readRunsFromDom(root: HTMLElement): Run[] {
     if (node.nodeType === Node.TEXT_NODE) {
       runs.push({ text: node.textContent ?? '', color: null });
     } else if (node instanceof HTMLElement) {
-      if (node.nodeName === 'BR') return;
+      // A <br> (from a browser's own Enter handling) is a newline.
+      if (node.nodeName === 'BR') {
+        runs.push({ text: '\n', color: null });
+        return;
+      }
       const accent = node.getAttribute('data-accent');
       const color: AccentColor | null = accent ?? null;
       runs.push({ text: node.textContent ?? '', color });
@@ -124,7 +130,7 @@ function setPlainSelection(root: HTMLElement, start: number, end: number): void 
  * differs from it, so React never re-renders the node mid-keystroke and the
  * caret never jumps.
  */
-export function AccentEditor({ value, onChange, colors = DEFAULT_COLORS }: AccentEditorProps) {
+export function AccentEditor({ value, onChange, colors = DEFAULT_COLORS, multiline = false }: AccentEditorProps) {
   const ref = useRef<HTMLDivElement>(null);
   const lastValue = useRef<string | null>(null);
 
@@ -159,8 +165,12 @@ export function AccentEditor({ value, onChange, colors = DEFAULT_COLORS }: Accen
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    // Single-line caption: Enter must not insert a newline.
-    if (e.key === 'Enter') e.preventDefault();
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    // Single-line caption: swallow Enter. Multi-line quote-pull: insert a real
+    // '\n' (rendered via white-space:pre-wrap) instead of the browser's own
+    // <div>/<br> so the value round-trips cleanly.
+    if (multiline) document.execCommand('insertText', false, '\n');
   };
 
   return (
@@ -196,7 +206,10 @@ export function AccentEditor({ value, onChange, colors = DEFAULT_COLORS }: Accen
         suppressContentEditableWarning
         role="textbox"
         aria-label="Caption text"
+        aria-multiline={multiline}
         spellCheck={false}
+        // Multi-line: render embedded '\n' as line breaks and give it room.
+        style={multiline ? { whiteSpace: 'pre-wrap', minHeight: 64 } : undefined}
         onInput={handleInput}
         onKeyDown={handleKeyDown}
       />

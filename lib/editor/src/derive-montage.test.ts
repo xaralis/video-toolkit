@@ -40,9 +40,9 @@ describe('deriveMontageLayered', () => {
     expect(b.effects?.some((e) => e.type === 'vintage')).toBe(true);
     expect(reel.tracks.audio).toHaveLength(0);
 
-    // teaser overlay
-    const teaser = reel.tracks.overlays.find((o) => o.content.kind === 'teaser')!;
-    expect(teaser.content).toMatchObject({ kind: 'teaser', lines: ['A', 'B'], reveal: 'line', fontSize: 96 });
+    // teaser is derived as a QUOTE-PULL overlay (multi-line text = lines joined by '\n')
+    const teaser = reel.tracks.overlays.find((o) => o.content.kind === 'quote-pull')!;
+    expect(teaser.content).toMatchObject({ kind: 'quote-pull', text: 'A\nB', reveal: 'line', fontSize: 96 });
 
     // outro item + props; reel length = last item end
     const outro = reel.tracks.video.find((v) => v.kind === 'outro')!;
