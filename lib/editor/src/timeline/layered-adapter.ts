@@ -1,4 +1,4 @@
-import type { LayeredReel, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
+import type { LayeredReel, VideoItem, AudioItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
 export interface TLAction { id: string; start: number; end: number; effectId: string; movable?: boolean; flexible?: boolean; minStart?: number; }
 export interface TLRow { id: string; actions: TLAction[]; }
@@ -80,15 +80,16 @@ export function layeredToTimeline(reel: LayeredReel, fps: number): { editorData:
   };
 }
 
-// The footage cap for a video item's RIGHT trim edge, or undefined for "no cap".
-// A single-source video (clip OR broll) can't be trimmed past the end of its
-// file — its decoded duration is the cap. A video-backed broll is finite just
-// like a clip; only sources with no intrinsic duration (a still image /
-// generated content) decode to 0 and are naturally uncapped (held arbitrarily).
-// multi-clip / card / outro have no single trim source → no cap. `decodedMs` is
-// the intrinsic media duration (0 / undefined = unknown → no cap).
+// The COMMIT-time footage cap for a video item's RIGHT trim edge, or undefined
+// for "no cap". Only a CLIP is capped here: recorded footage can't be trimmed
+// past the end of its file, so a right-edge trim clamps to its decoded duration.
+// A BROLL is a container that holds its last frame — it is bounded at DRAG time
+// by the next clip (resizeBoundsMs), not footage, so it must NOT be clamped to
+// footage on commit (that would stop it restoring back to the neighbour when its
+// file is a touch shorter than authored — the seg-002 drift). multi-clip / card
+// / outro have no single trim source. `decodedMs` 0/undefined = unknown → no cap.
 export function clipFootageCapMs(item: VideoItem, decodedMs: number | undefined): number | undefined {
-  if (item.kind !== 'clip' && item.kind !== 'broll') return undefined;
+  if (item.kind !== 'clip') return undefined;
   return decodedMs && decodedMs > 0 ? decodedMs : undefined;
 }
 
@@ -160,6 +161,25 @@ function resizeVideoItem(item: VideoItem, np: { startMs: number; endMs: number }
   return { ...item, endMs: item.startMs + (sourceOutMs - item.sourceInMs), sourceOutMs };
 }
 
+// An audio edge resize is trim-linked exactly like a clip: the left edge moves
+// the in-point (clamped >= 0, so you can't reveal audio before the source
+// start), the right edge moves the out-point. `sourceOutMs` is optional in the
+// schema (legacy beds have only an in-point) — fall back to sourceInMs + span.
+// A move (both edges change) slides the whole bed, leaving the trim untouched.
+function resizeAudioItem(item: AudioItem, np: { startMs: number; endMs: number }): AudioItem {
+  const dStart = np.startMs - item.startMs;
+  const dEnd = np.endMs - item.endMs;
+  if (dStart === 0 && dEnd === 0) return item;
+  if (dStart !== 0 && dEnd !== 0) return { ...item, startMs: np.startMs, endMs: np.endMs };
+  if (dStart !== 0) {
+    const applied = Math.min(Math.max(dStart, -item.sourceInMs), item.endMs - item.startMs - 100);
+    return { ...item, startMs: item.startMs + applied, sourceInMs: item.sourceInMs + applied };
+  }
+  const curOut = item.sourceOutMs ?? item.sourceInMs + (item.endMs - item.startMs);
+  const sourceOutMs = Math.max(item.sourceInMs + 100, curOut + dEnd);
+  return { ...item, endMs: item.startMs + (sourceOutMs - item.sourceInMs), sourceOutMs };
+}
+
 // Ripple edit: resizing ONE clip's edge shifts every item beyond it (across all
 // time-bearing tracks) so the timeline stays butted — END → right, START →
 // left. `resolvedVideo` carries the trim-adjusted video; other tracks use their
@@ -205,7 +225,11 @@ function applyRipple(reel: LayeredReel, resolvedVideo: VideoItem[], newMs: NewMs
     ...reel.tracks,
     video: reel.tracks.video.map((v) => (v.id === id ? resolvedById.get(v.id) ?? v : shift(v))),
     overlays: reel.tracks.overlays.map((o) => (o.id === id ? spanApplied(o, newMs('overlays', o.id)) : shift(o))),
-    audio: reel.tracks.audio.map((a) => (a.id === id ? spanApplied(a, newMs('audio', a.id)) : shift(a))),
+    audio: reel.tracks.audio.map((a) => {
+      if (a.id !== id) return shift(a);
+      const np = newMs('audio', a.id);
+      return np ? resizeAudioItem(a, np) : a;
+    }),
     brand: reel.tracks.brand.map((b) => (b.id === id ? spanApplied(b, newMs('brand', b.id)) : shift(b))),
   };
   const totalMs = Math.max(0, ...tracks.video.map((v) => v.endMs));
@@ -251,7 +275,11 @@ export function applyTimelineChange(
       ...reel.tracks,
       video,
       overlays: reel.tracks.overlays.map((o) => spanApplied(o, newMs('overlays', o.id))),
-      audio: reel.tracks.audio.map((a) => spanApplied(a, newMs('audio', a.id))),
+      // Audio is trim-linked like a clip (in/out-point move with the edges).
+      audio: reel.tracks.audio.map((a) => {
+        const np = newMs('audio', a.id);
+        return np ? resizeAudioItem(a, np) : a;
+      }),
       brand: reel.tracks.brand.map((b) => spanApplied(b, newMs('brand', b.id))),
     },
   };

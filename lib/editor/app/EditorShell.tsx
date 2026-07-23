@@ -89,7 +89,11 @@ export function EditorShell({
               <span className={styles.divider} />
             </>
           )}
-          {dirty && <span className={styles.unsavedIndicator}>● Unsaved</span>}
+          {/* Always occupies its space (visibility, not conditional render) so
+              toggling dirty never shifts the Save/Discard buttons. */}
+          <span className={styles.unsavedIndicator} style={{ visibility: dirty ? 'visible' : 'hidden' }}>
+            ● Unsaved
+          </span>
           {/* Save + Discard are always present; both disable when there's nothing to save. */}
           <button type="button" className={styles.discardButton} onClick={onDiscard} disabled={!dirty || saving}>
             Discard
