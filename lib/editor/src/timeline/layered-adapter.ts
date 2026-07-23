@@ -28,13 +28,11 @@ export function layeredToTimeline(reel: LayeredReel, fps: number): { editorData:
   const act = (lane: LaneId, id: string, startMs: number, endMs: number, effectId: string): TLAction => ({
     id: `${lane}:${id}`, start: startMs / MS, end: endMs / MS, effectId,
   });
-  const video = reel.tracks.video.map((v) => {
-    const a = act('video', v.id, v.startMs, v.endMs, `video-${v.kind}`);
-    // A clip/broll left handle can't extend before its source start — the
-    // earliest start is where sourceInMs would reach 0 (no footage before it).
-    if (v.kind === 'clip' || v.kind === 'broll') a.minStart = Math.max(0, v.startMs - v.sourceInMs) / MS;
-    return a;
-  });
+  // NB: source in/out bounds are NOT applied here as action.minStart/maxEnd —
+  // those constrain MOVES too (a broll with sourceInMs 0 couldn't move left at
+  // all). They're enforced only during RESIZE, via onActionResizing in
+  // LayeredTimeline; moving a clip is always free.
+  const video = reel.tracks.video.map((v) => act('video', v.id, v.startMs, v.endMs, `video-${v.kind}`));
   const overlays = reel.tracks.overlays.map((o) => {
     const kind = (o.content as { kind?: string }).kind ?? 'overlay';
     return act('overlays', o.id, o.startMs, o.endMs, `overlay-${kind}`);
