@@ -297,8 +297,8 @@ describe('clipFootageCapMs — clip vs broll policy', () => {
   it('caps a clip at its decoded footage duration', () => {
     expect(clipFootageCapMs(item('clip'), 8042)).toBe(8042);
   });
-  it('does NOT commit-cap a broll at footage (it is bounded by the next clip, holds last frame)', () => {
-    expect(clipFootageCapMs(item('broll'), 8042)).toBeUndefined();
+  it('caps a broll at its decoded footage too (a video-backed broll is finite, like a clip)', () => {
+    expect(clipFootageCapMs(item('broll'), 8042)).toBe(8042);
   });
   it('returns undefined when the footage duration is unknown (0 / undefined)', () => {
     // A still-image / generated broll decodes to 0 → naturally uncapped.
@@ -339,16 +339,20 @@ describe('resizeBoundsMs — real-time drag bounds', () => {
     sourceInMs: over.sourceInMs ?? 0, sourceOutMs: 10300,
   });
 
-  it('a BROLL extends up to the next clip even past its footage (holds last frame)', () => {
-    // seg-002 drift: real file 10042 (footage end 15409) but next clip at 15667.
-    // The broll holds its last frame, so it can restore back to butt the neighbour.
+  it('a BROLL is footage-bounded like a clip (its real file end, even when a next clip is farther)', () => {
+    // seg-002 drift: config sourceOutMs 10300 but the real file is 10042 (ffprobe).
+    // The max is the real footage end (15409), NOT the drifted config or the next clip.
     const b = resizeBoundsMs(broll(), 10042, 15667);
-    expect(b!.maxEndMs).toBe(15667); // next clip, NOT the shorter footage end (15409)
+    expect(b!.maxEndMs).toBe(15409); // 5367 + 10042 — the real file end
   });
 
   it('the LAST broll (no next clip) is bounded by its own footage end', () => {
     const b = resizeBoundsMs(broll(), 10042, undefined);
-    expect(b!.maxEndMs).toBe(15409); // 5367 + 10042 — nothing to hold up to
+    expect(b!.maxEndMs).toBe(15409); // 5367 + 10042
+  });
+
+  it('a still/generated broll (no decoded duration) is limited only by the next clip', () => {
+    expect(resizeBoundsMs(broll(), undefined, 15667)!.maxEndMs).toBe(15667);
   });
 
   it('has no right bound when footage is unknown and there is no next clip', () => {
@@ -422,32 +426,36 @@ describe('applyTimelineChange — trim edges (clip footage cap, broll free)', ()
     expect(A.endMs).toBe(5367 + 10042); // snapped to real footage end
   });
 
-  // ---- Right edge: a video-backed broll is capped just like a clip ---------
-  it('does NOT commit-cap a BROLL at footage — it extends per the drag (holds last frame)', () => {
-    // The component never puts a broll in footageMsById; the neighbour bound
-    // (resizeBoundsMs) is what limits it at drag time, so the commit keeps the
-    // dragged extent even past the file end (a hold).
-    const reel = videoReel('broll', { sourceOutMs: 6000, endMs: 11367 });
-    const changed = dragEdge(reel, 5.367, 20);
-    const A = applyTimelineChange(reel, changed, { footageMsById: {} }).tracks.video[0];
-    expect(A.kind === 'broll' && A.sourceOutMs).toBe(20000 - 5367); // no footage clamp
-    expect(A.endMs).toBe(20000);
+  // ---- Right edge: a video-backed broll is capped at footage, like a clip ---
+  it('clamps a BROLL right-edge extend to its real footage (config sourceOutMs drift is ignored)', () => {
+    // seg-002: config 10300ms but the file is 10042ms (ffprobe). The component
+    // puts the broll in footageMsById at its decoded duration, so the commit caps
+    // it there — the phantom 258ms is not reachable, on trim OR extend.
+    const reel = videoReel('broll'); // endMs 15667, sourceOutMs 10300
+    const changed = dragEdge(reel, 5.367, 20); // yank right far
+    const A = applyTimelineChange(reel, changed, { footageMsById: { A: 10042 } }).tracks.video[0];
+    expect(A.kind === 'broll' && A.sourceOutMs).toBe(10042); // capped at the real file end
+    expect(A.endMs).toBe(5367 + 10042); // 15409
   });
 
-  it('lets a BROLL restore to its authored length after a right-edge trim (drift-safe)', () => {
-    // The seg-002 case: config sourceOutMs 10300 (endMs 15667) with a shorter real
-    // file (10042). Shorten, then extend back — it must reach 10300 again, not get
-    // stuck at the footage end. Broll is NOT in footageMsById, so nothing clamps it.
-    const reel = videoReel('broll'); // endMs 15667, sourceOutMs 10300
-    const shortened = applyTimelineChange(reel, dragEdge(reel, 5.367, 13), { footageMsById: {} }).tracks.video[0];
+  it('self-heals a drifted BROLL on the first trim and cannot be pulled back past footage', () => {
+    const reel = videoReel('broll'); // endMs 15667, sourceOutMs 10300, file 10042
+    const shortened = applyTimelineChange(reel, dragEdge(reel, 5.367, 13), { footageMsById: { A: 10042 } }).tracks.video[0];
     expect(shortened.endMs).toBe(13000);
     const restored = applyTimelineChange(
       { ...reel, tracks: { ...reel.tracks, video: [shortened] } },
-      dragEdge(reel, 5.367, 15.667), // pull back to the authored length
-      { footageMsById: {} },
+      dragEdge(reel, 5.367, 15.667), // try to pull back to the drifted authored length
+      { footageMsById: { A: 10042 } },
     ).tracks.video[0];
-    expect(restored.endMs).toBe(15667); // restored — nothing lost
-    expect(restored.kind === 'broll' && restored.sourceOutMs).toBe(10300);
+    expect(restored.endMs).toBe(5367 + 10042); // capped at the real footage end (15409), not 15667
+    expect(restored.kind === 'broll' && restored.sourceOutMs).toBe(10042);
+  });
+
+  it('leaves a still/generated BROLL (no decoded duration) uncapped on commit', () => {
+    const reel = videoReel('broll', { sourceOutMs: 6000, endMs: 11367 });
+    const changed = dragEdge(reel, 5.367, 20);
+    const A = applyTimelineChange(reel, changed, { footageMsById: {} }).tracks.video[0]; // no cap known
+    expect(A.kind === 'broll' && A.sourceOutMs).toBe(20000 - 5367); // extends freely (a still)
   });
 
   // ---- Left edge: trim-in works; extend-left clamped at the source start ----

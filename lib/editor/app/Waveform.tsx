@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { PEAKS_PER_SEC } from './useAudioPeaks';
 
 export interface WaveformProps {
@@ -58,6 +58,17 @@ export function VolumeLine({
   resetDb?: number;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
+  // Only change the volume for moves that belong to THIS line's own drag. A clip
+  // resize is an interactjs drag on the trim handle: as its pointer sweeps across
+  // the block it passes over the volume line, and React would fire this line's
+  // onPointerMove (buttons===1) mid-resize — dragging the volume by accident.
+  // Gating on our own pointerdown stops that.
+  const dragging = useRef(false);
+  useEffect(() => {
+    const up = () => (dragging.current = false);
+    window.addEventListener('pointerup', up);
+    return () => window.removeEventListener('pointerup', up);
+  }, []);
   const frac = Math.max(0, Math.min(1, (volumeDb - V_MIN) / (V_MAX - V_MIN)));
   const y = 100 - frac * 96 - 2;
   const dbFromClientY = (clientY: number): number => {
@@ -68,10 +79,10 @@ export function VolumeLine({
     return Math.round((V_MAX - fy * (V_MAX - V_MIN)) * 10) / 10;
   };
   const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
-  // Inset from the block edges by the resize-handle width so the draggable
-  // volume line never overlaps the trim handles — otherwise grabbing a handle
-  // near the volume level would drag the volume instead of resizing.
-  const HANDLE_INSET = 11;
+  // Inset from the block edges by a bit more than the resize-handle width so the
+  // hit-line never sits under the trim handles (belt-and-suspenders with the
+  // dragging gate above: this keeps the INITIAL click off the handles).
+  const HANDLE_INSET = 12;
   return (
     <svg
       ref={svgRef}
@@ -86,7 +97,7 @@ export function VolumeLine({
           x2={1000}
           y2={y}
           stroke="transparent"
-          strokeWidth={16}
+          strokeWidth={14}
           vectorEffect="non-scaling-stroke"
           style={{ pointerEvents: 'stroke', cursor: 'ns-resize' }}
           onMouseDown={stop}
@@ -97,14 +108,16 @@ export function VolumeLine({
           onPointerDown={(e) => {
             stop(e);
             e.preventDefault();
+            dragging.current = true;
             (e.target as Element).setPointerCapture?.(e.pointerId);
             onChange(dbFromClientY(e.clientY));
           }}
           onPointerMove={(e) => {
-            if (e.buttons !== 1) return;
+            if (!dragging.current) return; // only OUR drag moves the volume
             stop(e);
             onChange(dbFromClientY(e.clientY));
           }}
+          onPointerUp={() => (dragging.current = false)}
         />
       )}
       <line x1={0} y1={y} x2={1000} y2={y} stroke={color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" style={{ pointerEvents: 'none' }} />
