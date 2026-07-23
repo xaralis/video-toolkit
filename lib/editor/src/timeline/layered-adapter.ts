@@ -92,9 +92,15 @@ function spanApplied<T extends { startMs: number; endMs: number }>(item: T, np: 
 
 // A clip/broll edge resize moves the SOURCE trim with it (linked 1:1) so you
 // reveal new footage instead of a freeze; the in-point stays >= 0 — you can't
-// extend a clip left past its source start (nothing new there). Multi-clip /
-// card / outro have no single trim, and a move (both edges) is span-only.
-function resizeVideoItem(item: VideoItem, np: { startMs: number; endMs: number }): VideoItem {
+// extend a clip left past its source start (nothing new there). The out-point
+// stays <= the real footage duration (`footageMs`, when known) — you can't pull
+// the right edge past the end of the media. Both are CLAMPS, not vetoes: the
+// resize always proceeds, the edge just stops at the media boundary. (An
+// absolute min/max veto in the timeline UI misfires whenever the block's
+// endMs drifts past its footage — e.g. a config sourceOutMs that overshoots the
+// real file — locking the whole clip.) Multi-clip / card / outro have no single
+// trim, and a move (both edges) is span-only.
+function resizeVideoItem(item: VideoItem, np: { startMs: number; endMs: number }, footageMs?: number): VideoItem {
   const dStart = np.startMs - item.startMs;
   const dEnd = np.endMs - item.endMs;
   if (dStart === 0 && dEnd === 0) return item;
@@ -105,7 +111,8 @@ function resizeVideoItem(item: VideoItem, np: { startMs: number; endMs: number }
     const applied = Math.min(Math.max(dStart, -item.sourceInMs), item.endMs - item.startMs - 100); // clamp in>=0 and keep >0 duration
     return { ...item, startMs: item.startMs + applied, sourceInMs: item.sourceInMs + applied };
   }
-  const sourceOutMs = Math.max(item.sourceInMs + 100, item.sourceOutMs + dEnd);
+  const rawOut = Math.max(item.sourceInMs + 100, item.sourceOutMs + dEnd);
+  const sourceOutMs = footageMs && footageMs > 0 ? Math.min(footageMs, rawOut) : rawOut; // can't pass the footage end
   return { ...item, endMs: item.startMs + (sourceOutMs - item.sourceInMs), sourceOutMs };
 }
 
@@ -161,7 +168,11 @@ function applyRipple(reel: LayeredReel, resolvedVideo: VideoItem[], newMs: NewMs
   return { ...reel, meta: { ...reel.meta, totalDurationMs: totalMs }, tracks };
 }
 
-export function applyTimelineChange(reel: LayeredReel, rows: TLRow[], opts: { ripple?: boolean } = {}): LayeredReel {
+export function applyTimelineChange(
+  reel: LayeredReel,
+  rows: TLRow[],
+  opts: { ripple?: boolean; footageMsById?: Record<string, number> } = {},
+): LayeredReel {
   const byId = new Map<string, TLAction>();
   for (const r of rows) for (const a of r.actions) byId.set(a.id, a);
   const newMs: NewMs = (lane, id) => {
@@ -170,10 +181,11 @@ export function applyTimelineChange(reel: LayeredReel, rows: TLRow[], opts: { ri
   };
 
   // Trim-linked resize: a clip's left edge reveals earlier footage (clamped at
-  // the source start), the right edge extends its out-point.
+  // the source start), the right edge extends its out-point (clamped at the
+  // real footage end, when its duration is known).
   const resolvedVideo = reel.tracks.video.map((v) => {
     const np = newMs('video', v.id);
-    return np ? resizeVideoItem(v, np) : v;
+    return np ? resizeVideoItem(v, np, opts.footageMsById?.[v.id]) : v;
   });
 
   if (opts.ripple) {
