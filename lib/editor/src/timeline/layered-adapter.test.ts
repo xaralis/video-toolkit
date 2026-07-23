@@ -542,6 +542,72 @@ describe('applyTimelineChange — audio trim (in/out-point, like a clip)', () =>
   });
 });
 
+describe('applyTimelineChange — linked audio (bed follows its video)', () => {
+  // Two clips, each with a bound audio bed at the same span.
+  const linkedReel = (): LayeredReel => ({
+    ...REEL,
+    meta: { topic: 'Fixture', totalDurationMs: 20000 },
+    tracks: {
+      ...REEL.tracks,
+      overlays: [],
+      brand: [],
+      video: [
+        { id: 'A', kind: 'clip', startMs: 0, endMs: 5000, source: 'a.mp4', sourceInMs: 1000, sourceOutMs: 6000 },
+        { id: 'B', kind: 'clip', startMs: 5000, endMs: 10000, source: 'b.mp4', sourceInMs: 0, sourceOutMs: 5000 },
+      ],
+      audio: [
+        { id: 'a-A', startMs: 0, endMs: 5000, source: 'a.mp3', sourceInMs: 400, followsVideoId: 'A' },
+        { id: 'a-B', startMs: 5000, endMs: 10000, source: 'b.mp3', sourceInMs: 0, followsVideoId: 'B' },
+      ],
+    },
+  });
+  const dragVideo = (reel: LayeredReel, id: string, startSec: number, endSec: number, opts = {}) => {
+    const { editorData } = layeredToTimeline(reel, 30);
+    const changed = editorData.map((row) =>
+      row.id === 'video' ? { ...row, actions: row.actions.map((a) => (a.id === `video:${id}` ? { ...a, start: startSec, end: endSec } : a)) } : row,
+    );
+    return applyTimelineChange(reel, changed, opts);
+  };
+
+  it('trimming a clip’s right edge trims its bound audio bed the same way', () => {
+    const r = dragVideo(linkedReel(), 'A', 0, 3); // shorten A to 3s
+    const vA = r.tracks.video.find((v) => v.id === 'A')!;
+    const aA = r.tracks.audio.find((a) => a.id === 'a-A')!;
+    expect(vA.endMs).toBe(3000);
+    expect(aA.endMs).toBe(3000); // bed followed the trim
+    expect(aA.sourceOutMs).toBe(400 + 3000); // out-point rode along (was span 5000 → now 3000)
+  });
+
+  it('moving a clip shifts its bound audio bed by the same delta', () => {
+    const r = dragVideo(linkedReel(), 'B', 7, 12); // move B +2s (both edges)
+    const vB = r.tracks.video.find((v) => v.id === 'B')!;
+    const aB = r.tracks.audio.find((a) => a.id === 'a-B')!;
+    expect(vB.startMs).toBe(7000);
+    expect(aB.startMs).toBe(7000); // bed moved with the clip
+    expect(aB.endMs).toBe(12000);
+    expect(aB.sourceInMs).toBe(0); // a move leaves the trim untouched
+  });
+
+  it('in ripple mode, trimming a clip trims its bed AND shifts the following beds with their clips', () => {
+    const r = dragVideo(linkedReel(), 'A', 0, 3, { ripple: true }); // shorten A by 2s, ripple
+    const aA = r.tracks.audio.find((a) => a.id === 'a-A')!;
+    const aB = r.tracks.audio.find((a) => a.id === 'a-B')!;
+    const vB = r.tracks.video.find((v) => v.id === 'B')!;
+    expect(aA.endMs).toBe(3000); // A's bed trimmed with A
+    expect(vB.startMs).toBe(3000); // B rippled left by 2s
+    expect(aB.startMs).toBe(3000); // B's bed rippled with B
+    expect(aB.endMs).toBe(8000);
+  });
+
+  it('an UNBOUND bed (followsVideoId cleared) is not moved by its former clip', () => {
+    const reel = linkedReel();
+    reel.tracks.audio[0] = { ...reel.tracks.audio[0], followsVideoId: undefined }; // unlink a-A
+    const r = dragVideo(reel, 'A', 0, 3);
+    const aA = r.tracks.audio.find((a) => a.id === 'a-A')!;
+    expect(aA.endMs).toBe(5000); // stayed put — independent
+  });
+});
+
 describe('deleteItem', () => {
   const reel: LayeredReel = {
     ...REEL,
