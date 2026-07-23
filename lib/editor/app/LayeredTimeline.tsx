@@ -52,7 +52,8 @@ const EFFECT_COLOR: Record<string, string> = {
   'video-card': '#8a6d1f',
   'video-outro': '#4a4c54',
   'overlay-title': '#a5432f',
-  'overlay-quote-pull': '#9a7d1f',
+  'overlay-text': '#9a7d1f',
+  'overlay-quote-pull': '#9a7d1f', // legacy
   'overlay-stat-callout': '#2f7f9a',
   'overlay-update-badge': '#9a2f63',
   'overlay-source-tag': '#5a5c64',
@@ -86,7 +87,8 @@ const snippet = (s: string, n = 22) => {
   return plain.length > n ? `${plain.slice(0, n).trimEnd()}…` : plain;
 };
 const OVERLAY_KIND_LABEL: Record<string, string> = {
-  'quote-pull': 'QuotePull',
+  text: 'Text',
+  'quote-pull': 'Text', // legacy alias
   chevron: 'Chevron',
   title: 'Title',
   'stat-callout': 'Stat',
