@@ -134,7 +134,7 @@ export function deriveMontageLayered(cfg: MontageConfig, opts: MontageOpts = {})
   // guides: kick onsets (precise seconds→ms, no frame quantization) or uniform beat grid.
   const guidesMs = kickSeconds.length
     ? kickSeconds.map((s) => Math.round(s * 1000))
-    : Array.from({ length: Math.ceil(totalF / fpb) + 1 }, (_, k) => framesToMs(k * fpb));
+    : Array.from({ length: Math.floor(totalF / fpb) + 1 }, (_, k) => framesToMs(k * fpb));
 
   return {
     version: 'layered-1',
