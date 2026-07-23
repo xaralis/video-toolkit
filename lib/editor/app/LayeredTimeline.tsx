@@ -64,6 +64,18 @@ const EFFECT_COLOR: Record<string, string> = {
 };
 const colorFor = (effectId: string) => EFFECT_COLOR[effectId] ?? '#5a5c64';
 
+// A block's fill. A LINKED audio bed (followsVideoId) takes its clip's colour so
+// the pair reads as one unit; everything else uses its own effect colour.
+function blockColor(action: TimelineAction, reel: LayeredReel): string {
+  const { lane, id } = parseActionId(action.id);
+  if (lane === 'audio') {
+    const a = reel.tracks.audio.find((x) => x.id === id);
+    const v = a?.followsVideoId ? reel.tracks.video.find((x) => x.id === a.followsVideoId) : undefined;
+    if (v) return colorFor(`video-${v.kind}`);
+  }
+  return colorFor(action.effectId);
+}
+
 // ---- Per-type timeline label ----------------------------------------------
 // Each lane/item type generates its own readable label (source filename, or the
 // start of an overlay's text) instead of an opaque id.
@@ -98,7 +110,11 @@ function gripState(
   item: VideoItem | undefined,
   footageCapMs: number | undefined,
 ): { left: boolean; right: boolean } | null {
-  if (!item || (item.kind !== 'clip' && item.kind !== 'broll')) return null;
+  if (!item) return null;
+  // Outro / card / multi-clip have no single trim source, but they still resize
+  // (span) — give them plain grips (never muted) so every video block looks the
+  // same. Only clip/broll can hit a footage limit and go muted.
+  if (item.kind !== 'clip' && item.kind !== 'broll') return { left: false, right: false };
   return {
     left: item.sourceInMs <= 0,
     right: footageCapMs !== undefined && item.sourceOutMs >= footageCapMs - 1,
@@ -456,7 +472,7 @@ function LayeredTimelineImpl({
                   alignItems: 'center',
                   padding: '0 6px',
                   borderRadius: 3,
-                  background: colorFor(action.effectId),
+                  background: blockColor(action, reel),
                   color: '#f2f2f2',
                   fontFamily: FONT,
                   fontSize: 11,
@@ -477,7 +493,7 @@ function LayeredTimelineImpl({
                   let grips = { left: false, right: false };
                   if (lane === 'video') {
                     const gs = gripState(reel.tracks.video.find((v) => v.id === id), capMsById[id]);
-                    if (!gs) return null; // multi-clip / card / outro: no single-source trim
+                    if (!gs) return null; // item not found
                     grips = gs;
                   }
                   return (

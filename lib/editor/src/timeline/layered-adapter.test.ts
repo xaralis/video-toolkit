@@ -16,9 +16,9 @@ const REEL: LayeredReel = {
 };
 
 describe('layeredToTimeline', () => {
-  it('maps tracks to rows in NLE order overlays/video/transitions/audio/music/brand, music as one block', () => {
+  it('maps tracks to rows in NLE order overlays/transitions/video/audio/music/brand, music as one block', () => {
     const { editorData } = layeredToTimeline(REEL, 30);
-    expect(editorData.map((r) => r.id)).toEqual(['overlays', 'video', 'transitions', 'audio', 'music', 'brand']);
+    expect(editorData.map((r) => r.id)).toEqual(['overlays', 'transitions', 'video', 'audio', 'music', 'brand']);
     const musicRow = editorData.find((r) => r.id === 'music')!;
     expect(musicRow.actions).toHaveLength(1);
     expect(musicRow.actions[0]).toMatchObject({ id: 'music:base', start: 0, end: 5, effectId: 'music' });
@@ -55,7 +55,7 @@ describe('layeredToTimeline', () => {
     };
     const { editorData } = layeredToTimeline(reel, 30);
     const ids = editorData.map((r) => r.id);
-    expect(ids).toEqual(['overlays', 'overlays#1', 'video', 'transitions', 'audio', 'audio#1', 'music', 'brand']);
+    expect(ids).toEqual(['overlays', 'overlays#1', 'transitions', 'video', 'audio', 'audio#1', 'music', 'brand']);
     // o1 and o3 (non-overlapping) share row 0; o2 goes to the sub-row.
     expect(editorData.find((r) => r.id === 'overlays')!.actions.map((a) => a.id)).toEqual(['overlays:o1', 'overlays:o3']);
     expect(editorData.find((r) => r.id === 'overlays#1')!.actions.map((a) => a.id)).toEqual(['overlays:o2']);
