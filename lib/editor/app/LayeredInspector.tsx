@@ -184,14 +184,24 @@ const OVERLAY_POSITIONS = [
   'lower-left', 'lower-center', 'lower-right',
 ];
 
-// Editable params per effect type (Ken Burns motion, blend crossfade).
-function EffectEditor({ eff, onPatch }: { eff: Record<string, unknown>; onPatch: (patch: Record<string, unknown>) => void }) {
+// Editable params per effect type (Ken Burns motion, blend crossfade, vintage
+// film/vhs grade). `onRemove` renders a remove button in the shared header.
+function EffectEditor({ eff, onPatch, onRemove }: { eff: Record<string, unknown>; onPatch: (patch: Record<string, unknown>) => void; onRemove?: () => void }) {
   const type = eff.type as string;
   const num = (k: string) => (typeof eff[k] === 'number' ? (eff[k] as number) : undefined);
+  const header = (
+    <div style={{ ...section, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <span>Effect · {type}</span>
+      {onRemove && (
+        <button type="button" aria-label={`remove effect ${type}`} onClick={onRemove}
+          style={{ background: 'none', border: 'none', color: '#9a9da5', cursor: 'pointer', fontSize: 13 }}>✕</button>
+      )}
+    </div>
+  );
   if (type === 'ken-burns') {
     return (
       <>
-        <div style={section}>Effect · ken-burns</div>
+        {header}
         <Row>
           <NumberField lbl="From X" step={0.01} value={num('fromX')} onCommit={(n) => onPatch({ fromX: n })} />
           <NumberField lbl="To X" step={0.01} value={num('toX')} onCommit={(n) => onPatch({ toX: n })} />
@@ -206,7 +216,7 @@ function EffectEditor({ eff, onPatch }: { eff: Record<string, unknown>; onPatch:
   if (type === 'blend') {
     return (
       <>
-        <div style={section}>Effect · blend</div>
+        {header}
         <TextField lbl="To source" value={eff.to as string | undefined} onCommit={(s) => onPatch({ to: s || undefined })} />
         <SelectField lbl="Direction" value={eff.direction as string | undefined} options={BLEND_DIRECTIONS} onChange={(s) => onPatch({ direction: s })} />
         <Row>
@@ -216,12 +226,42 @@ function EffectEditor({ eff, onPatch }: { eff: Record<string, unknown>; onPatch:
       </>
     );
   }
-  return <div style={section}>Effect · {type}</div>;
+  if (type === 'vintage') {
+    return (
+      <>
+        {header}
+        <SelectField lbl="Mode" value={eff.mode as string | undefined}
+          options={['film', 'vhs']}
+          onChange={(s) => onPatch({ mode: s })} />
+      </>
+    );
+  }
+  return header;
 }
 
 const seekBtn: React.CSSProperties = { ...input, cursor: 'pointer', marginBottom: 10, width: 'auto', padding: '4px 10px' };
 const linkBtn: React.CSSProperties = { ...input, cursor: 'pointer', marginTop: 4, width: '100%', padding: '6px 10px', textAlign: 'left', fontSize: 12 };
 const readonlyValue: React.CSSProperties = { fontSize: 13, color: '#c8cbd2', padding: '3px 0' };
+
+const EFFECT_DEFAULTS: Record<string, Record<string, unknown>> = {
+  vintage: { type: 'vintage', mode: 'film' },
+  'ken-burns': { type: 'ken-burns', fromScale: 1, toScale: 1.08, fromX: 0.5, toX: 0.5 },
+};
+
+function AddEffectControl({ onAdd }: { onAdd: (kind: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button type="button" onClick={() => setOpen((o) => !o)}
+        style={{ ...seekBtn, marginBottom: 4 }}>+ Add effect</button>
+      {open &&
+        Object.keys(EFFECT_DEFAULTS).map((k) => (
+          <button key={k} type="button" onClick={() => { onAdd(k); setOpen(false); }}
+            style={{ ...linkBtn }}>{k}</button>
+        ))}
+    </div>
+  );
+}
 
 export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: LayeredInspectorProps) {
   const patchItem = (lane: LaneId, id: string, patch: Record<string, unknown>) => {
@@ -323,8 +363,12 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
               onPatch={(patch) =>
                 patchItem('video', id, { effects: v.effects!.map((e, j) => (j === i ? { ...(e as Record<string, unknown>), ...patch } : e)) })
               }
+              onRemove={() => patchItem('video', id, { effects: v.effects!.filter((_, j) => j !== i) })}
             />
           ))}
+        <AddEffectControl
+          onAdd={(kind) => patchItem('video', id, { effects: [...(v.effects ?? []), EFFECT_DEFAULTS[kind]] })}
+        />
         {(() => {
           const raw = v.transitionOut as { kind?: string } | undefined;
           const t: Transition = raw && TRANSITION_KINDS.some((k) => k.kind === raw.kind) ? (raw as Transition) : { kind: 'cut' };
