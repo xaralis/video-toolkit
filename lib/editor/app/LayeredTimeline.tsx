@@ -321,6 +321,13 @@ function LayeredTimelineImpl({
   // duration of a resize gesture (set on resize-start, cleared on resize-end);
   // at rest every action is unbounded and moves freely.
   const [resizeBound, setResizeBound] = useState<{ id: string; minStart: number; maxEnd?: number } | null>(null);
+  // Which handle is being dragged RIGHT NOW (null at rest). A waveform anchors to
+  // the FIXED edge so its samples hold in place during a trim: dragging the LEFT
+  // handle fixes the right edge (anchor right), the RIGHT handle fixes the left
+  // (anchor left). Only affects the block actually being resized (others keep
+  // block-width == waveform-width, so the anchor is a no-op for them).
+  const [resizeDir, setResizeDir] = useState<'left' | 'right' | null>(null);
+  const waveAnchor: 'left' | 'right' = resizeDir === 'left' ? 'right' : 'left';
 
   // A LINKED audio bed follows its clip 1:1, so it can't be trimmed or moved on
   // its own — its handles are disabled (like the greyed Trim in/out fields) until
@@ -554,7 +561,15 @@ function LayeredTimelineImpl({
                     🔒
                   </span>
                 )}
-                {wf && <Waveform peaks={wf.peaks} sourceInMs={wf.sourceInMs} spanMs={wf.spanMs} />}
+                {wf && (
+                  <Waveform
+                    peaks={wf.peaks}
+                    sourceInMs={wf.sourceInMs}
+                    spanMs={wf.spanMs}
+                    pxPerSec={scaleWidth}
+                    anchor={waveAnchor}
+                  />
+                )}
                 {action.id.startsWith('audio:') && (
                   <VolumeLine
                     vMin={-24}
@@ -616,7 +631,8 @@ function LayeredTimelineImpl({
           // On resize START, arm the live drag clamp for this clip/broll so its
           // handle hard-stops at the footage window / next clip. Cleared on END.
           // (No onActionResizing veto — the bounds do the stopping in real time.)
-          onActionResizeStart={({ action }) => {
+          onActionResizeStart={({ action, dir }) => {
+            setResizeDir(dir); // anchor the waveform to the fixed (opposite) edge
             const { lane, id } = parseActionId(action.id);
             if (lane !== 'video') return setResizeBound(null);
             const idx = reel.tracks.video.findIndex((v) => v.id === id);
@@ -626,7 +642,10 @@ function LayeredTimelineImpl({
             const b = item ? resizeBoundsMs(item, capMsById[id], reel.tracks.video[idx + 1]?.startMs) : null;
             setResizeBound(b ? { id: action.id, minStart: b.minStartMs / 1000, maxEnd: b.maxEndMs !== undefined ? b.maxEndMs / 1000 : undefined } : null);
           }}
-          onActionResizeEnd={() => setResizeBound(null)}
+          onActionResizeEnd={() => {
+            setResizeBound(null);
+            setResizeDir(null);
+          }}
           onClickAction={(_e, { action }) => onSelect(action.id)}
           onClickTimeArea={(time) => {
             playerRef.current?.seekTo(Math.round(time * fps));
