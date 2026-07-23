@@ -47,6 +47,9 @@ const VideoContainerBase = {
   musicBoostDb: z.number().optional(),
   transitionOut: z.record(z.string(), z.unknown()).optional(),
   transitionIn: z.record(z.string(), z.unknown()).optional(),
+  // Per-item brand render-hint bag (e.g. roost displayMode; outro style/variant).
+  // Generic escape hatch — mirrors BrandLayerItemSchema.props.
+  props: z.record(z.string(), z.unknown()).optional(),
 };
 
 export const VideoItemSchema = z.discriminatedUnion('kind', [
@@ -93,7 +96,7 @@ export const MusicLayerSchema = z.object({
 
 export const LayeredReelSchema = z.object({
   version: z.literal('layered-1'),
-  meta: z.object({ topic: z.string(), totalDurationMs: Ms }),
+  meta: z.object({ topic: z.string(), totalDurationMs: Ms, guidesMs: z.array(Ms).optional() }),
   tracks: z.object({
     video: z.array(VideoItemSchema),
     audio: z.array(AudioItemSchema),
