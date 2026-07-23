@@ -11,13 +11,34 @@ describe('EditorShell', () => {
     expect(screen.getByText(/Timeline/i)).toBeInTheDocument();
   });
 
-  it('calls onSave when Save is clicked, and disables while saving', () => {
+  it('calls onSave when Save is clicked (dirty), and disables while saving or clean', () => {
     const onSave = vi.fn();
-    const { rerender } = render(<EditorShell preview={null} onSave={onSave} />);
+    const { rerender } = render(<EditorShell preview={null} onSave={onSave} dirty />);
     fireEvent.click(screen.getByRole('button', { name: /Save/i }));
     expect(onSave).toHaveBeenCalledOnce();
-    rerender(<EditorShell preview={null} onSave={onSave} saving />);
+    rerender(<EditorShell preview={null} onSave={onSave} dirty saving />);
     expect(screen.getByRole('button', { name: /Save/i })).toBeDisabled();
+    rerender(<EditorShell preview={null} onSave={onSave} />); // clean
+    expect(screen.getByRole('button', { name: /Save/i })).toBeDisabled();
+  });
+
+  it('always shows Save and Discard; both disabled when there are no changes', () => {
+    const onSave = vi.fn();
+    const onDiscard = vi.fn();
+    render(<EditorShell preview={null} onSave={onSave} onDiscard={onDiscard} />); // clean
+    expect(screen.getByRole('button', { name: /Save/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Discard/i })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /Discard/i }));
+    expect(onDiscard).not.toHaveBeenCalled(); // disabled → no-op
+  });
+
+  it('enables Save and Discard when dirty', () => {
+    const onDiscard = vi.fn();
+    render(<EditorShell preview={null} onSave={vi.fn()} onDiscard={onDiscard} dirty />);
+    const discard = screen.getByRole('button', { name: /Discard/i });
+    expect(discard).not.toBeDisabled();
+    fireEvent.click(discard);
+    expect(onDiscard).toHaveBeenCalledOnce();
   });
 
   it('renders inspector and timeline slots when provided', () => {

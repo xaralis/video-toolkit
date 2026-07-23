@@ -71,9 +71,46 @@
 }
 
 .saveButton:disabled {
-  background: #4c5442;
-  color: #8a8f80;
+  background: #26282f;
+  color: #6b6f78;
   cursor: default;
+}
+
+.discardButton:disabled {
+  opacity: 0.45;
+  cursor: default;
+  color: #6b6f78;
+  border-color: #2f3138;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: #b8bcc4;
+  border: 1px solid #3a3c44;
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.iconButton:hover:not(:disabled) {
+  border-color: #55585f;
+  color: #e8e8ea;
+}
+
+.iconButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.divider {
+  width: 1px;
+  height: 22px;
+  background: #33353d;
+  margin: 0 2px;
 }
 
 .main {

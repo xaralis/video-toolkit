@@ -295,25 +295,32 @@ describe('resizeBoundsMs — real-time drag bounds', () => {
     expect(b!.maxEndMs).toBe(13000); // 5000 + (8000 - 0)
   });
 
-  it('right bound is the NEARER of footage end and the next clip start', () => {
+  it('a CLIP right bound is the NEARER of footage end and the next clip start', () => {
     const nearNext = resizeBoundsMs(clip({ startMs: 5000, sourceInMs: 0 }), 8000, 11000);
     expect(nearNext!.maxEndMs).toBe(11000); // next clip wall is closer than footage end (13000)
     const nearFootage = resizeBoundsMs(clip({ startMs: 5000, sourceInMs: 0 }), 8000, 20000);
     expect(nearFootage!.maxEndMs).toBe(13000); // footage end is closer than the far next clip
   });
 
-  it('a drift clip (sourceOut past the real file) gets a right bound below its current end', () => {
-    // seg-002: startMs 5367, sourceIn 0, real footage 10042 → maxEnd 15409 < end 15667.
-    const b = resizeBoundsMs(
-      { id: 'A', kind: 'broll', startMs: 5367, endMs: 15667, source: 'br.mp4', sourceInMs: 0, sourceOutMs: 10300 },
-      10042,
-      undefined,
-    );
-    expect(b!.maxEndMs).toBe(15409); // handle snaps here on first touch → can't extend into phantom
+  const broll = (over: Partial<{ startMs: number; sourceInMs: number }> = {}): VideoItem => ({
+    id: 'A', kind: 'broll', startMs: over.startMs ?? 5367, endMs: 15667, source: 'br.mp4',
+    sourceInMs: over.sourceInMs ?? 0, sourceOutMs: 10300,
+  });
+
+  it('a BROLL extends up to the next clip even past its footage (holds last frame)', () => {
+    // seg-002 drift: real file 10042 (footage end 15409) but next clip at 15667.
+    // The broll holds its last frame, so it can restore back to butt the neighbour.
+    const b = resizeBoundsMs(broll(), 10042, 15667);
+    expect(b!.maxEndMs).toBe(15667); // next clip, NOT the shorter footage end (15409)
+  });
+
+  it('the LAST broll (no next clip) is bounded by its own footage end', () => {
+    const b = resizeBoundsMs(broll(), 10042, undefined);
+    expect(b!.maxEndMs).toBe(15409); // 5367 + 10042 — nothing to hold up to
   });
 
   it('has no right bound when footage is unknown and there is no next clip', () => {
-    const b = resizeBoundsMs(clip({ startMs: 5000 }), undefined, undefined);
+    const b = resizeBoundsMs(broll(), undefined, undefined);
     expect(b!.maxEndMs).toBeUndefined(); // still/generated broll extends freely
   });
 

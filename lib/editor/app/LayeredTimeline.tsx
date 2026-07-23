@@ -202,6 +202,10 @@ export interface LayeredTimelineProps {
   /** Ripple mode: a resize shifts everything beyond the clip to stay butted. */
   ripple?: boolean;
   scaleWidth?: number; // px per second (zoom)
+  /** Snap edges/moves to the grid. Default true. */
+  snapping?: boolean;
+  /** ⌘/Ctrl + wheel (or pinch) over the timeline. `dir` is +1 to zoom in, -1 out. */
+  onZoom?: (dir: number) => void;
 }
 
 function LayeredTimelineImpl({
@@ -213,9 +217,29 @@ function LayeredTimelineImpl({
   fps,
   ripple = false,
   scaleWidth = 80,
+  snapping = true,
+  onZoom,
 }: LayeredTimelineProps) {
   const stateRef = useRef<TimelineState>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // ⌘/Ctrl + wheel (and trackpad pinch, which macOS delivers as ctrl+wheel) zooms
+  // the timeline. Attached non-passive so preventDefault stops the browser's own
+  // page zoom. Reads onZoom via a ref so the listener attaches once.
+  const onZoomRef = useRef(onZoom);
+  onZoomRef.current = onZoom;
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      e.preventDefault();
+      if (e.deltaY !== 0) onZoomRef.current?.(e.deltaY < 0 ? 1 : -1);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   const editorData = useMemo(() => layeredToTimeline(reel, fps).editorData, [reel, fps]);
 
@@ -310,6 +334,7 @@ function LayeredTimelineImpl({
 
   return (
     <div
+      ref={rootRef}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -363,7 +388,7 @@ function LayeredTimelineImpl({
           editorData={data}
           effects={effects}
           autoReRender
-          gridSnap
+          gridSnap={snapping}
           dragLine
           rowHeight={ROW_H}
           scale={1}
@@ -497,7 +522,9 @@ function LayeredTimelineImpl({
             if (lane !== 'video') return setResizeBound(null);
             const idx = reel.tracks.video.findIndex((v) => v.id === id);
             const item = reel.tracks.video[idx];
-            const b = item ? resizeBoundsMs(item, footageMsById[id], reel.tracks.video[idx + 1]?.startMs) : null;
+            const url = item ? videoUrl(item) : null;
+            const decodedMs = url ? sourceDurations[url] : undefined;
+            const b = item ? resizeBoundsMs(item, decodedMs, reel.tracks.video[idx + 1]?.startMs) : null;
             setResizeBound(b ? { id: action.id, minStart: b.minStartMs / 1000, maxEnd: b.maxEndMs !== undefined ? b.maxEndMs / 1000 : undefined } : null);
           }}
           onActionResizeEnd={() => setResizeBound(null)}
@@ -530,13 +557,13 @@ function LayeredTimelineImpl({
           <span style={{ color: ripple ? '#b6ff5a' : '#9a9a95' }}>Ripple {ripple ? 'on' : 'off'}</span> — resize shifts the rest
         </span>
         <span>
-          <span style={{ color: '#9a9a95' }}>Drag the volume line</span> — set level
+          <span style={{ color: '#9a9a95' }}>Drag the volume line</span> — set level (double-click to reset)
         </span>
         <span>
-          <span style={{ color: '#9a9a95' }}>Double-click it</span> — reset
+          <span style={{ color: '#9a9a95' }}>⌘/Ctrl + scroll</span> — zoom the timeline
         </span>
         <span>
-          <span style={{ color: '#9a9a95' }}>S</span> split · <span style={{ color: '#9a9a95' }}>⌘D</span> duplicate · <span style={{ color: '#9a9a95' }}>⌫</span> delete · <span style={{ color: '#9a9a95' }}>⌘Z</span> undo
+          <span style={{ color: '#9a9a95' }}>⌫</span> delete · <span style={{ color: '#9a9a95' }}>⌘Z</span> undo
         </span>
       </div>
     </div>
