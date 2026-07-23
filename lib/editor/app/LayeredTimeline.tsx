@@ -243,6 +243,7 @@ function LayeredTimelineImpl({
 }: LayeredTimelineProps) {
   const stateRef = useRef<TimelineState>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const guidesRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // ⌘/Ctrl + wheel (and trackpad pinch, which macOS delivers as ctrl+wheel) zooms
@@ -429,7 +430,16 @@ function LayeredTimelineImpl({
 
       <div style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', position: 'relative' }}>
         {guidesMs && guidesMs.length > 0 && (
-          <div aria-hidden style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5 }}>
+          // Ticks are positioned in UNSCROLLED content coordinates (left = 12 +
+          // ms·scaleWidth); the whole layer is translated by the timeline's
+          // horizontal scroll (see the Timeline onScroll below) so they track
+          // the ruler/clips when zoomed in. Imperative transform (not state) so
+          // scrolling doesn't re-render the timeline. willChange hints the GPU.
+          <div
+            ref={guidesRef}
+            aria-hidden
+            style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5, willChange: 'transform' }}
+          >
             {guidesMs.map((ms, i) => (
               <div
                 key={i}
@@ -456,6 +466,8 @@ function LayeredTimelineImpl({
           startLeft={12}
           onScroll={(param) => {
             if (listRef.current) listRef.current.scrollTop = param.scrollTop;
+            // Keep the beat-guide layer aligned with horizontally-scrolled content.
+            if (guidesRef.current) guidesRef.current.style.transform = `translateX(${-param.scrollLeft}px)`;
           }}
           style={{ width: '100%', height: '100%', background: '#161719', fontFamily: FONT }}
           getActionRender={(action) => {
