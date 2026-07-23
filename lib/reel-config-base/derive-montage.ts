@@ -137,10 +137,13 @@ export function deriveMontageLayered(cfg: MontageConfig, opts: MontageOpts = {})
     props: { asset: cfg.watermark.asset, corner: cfg.watermark.corner, variant: cfg.watermark.variant ?? 'black' },
   }];
 
-  // guides: kick onsets (precise seconds→ms, no frame quantization) or uniform beat grid.
-  const guidesMs = kickSeconds.length
-    ? kickSeconds.map((s) => Math.round(s * 1000))
-    : Array.from({ length: Math.floor(totalF / fpb) + 1 }, (_, k) => framesToMs(k * fpb));
+  // Ruler guides = the BEAT GRID (every beat = fpb frames), NOT the kick onsets.
+  // The montage cuts clips on the beat grid (a segment's beatStart is in beats →
+  // beatStart·fpb frames), so the guides must be that same grid for the bars to
+  // land where the clips actually cut — a cutting/alignment aid. Kick onsets are
+  // irregular drum hits that generally do NOT fall on the beat grid; they live on
+  // the outro item's props.kickFrames (the heartbeat pulse), not here.
+  const guidesMs = Array.from({ length: Math.floor(totalF / fpb) + 1 }, (_, k) => framesToMs(k * fpb));
 
   return {
     version: 'layered-1',
