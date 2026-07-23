@@ -100,16 +100,18 @@ export function deriveMontageLayered(cfg: MontageConfig, opts: MontageOpts = {})
   const transitionStartMs = framesToMs(transitionStartF);
   const totalMs = framesToMs(totalF);
 
-  // kicks (seconds) → reel-global frames (audio plays from 0) for the heartbeat outro.
-  const kickFrames = (cfg.kicks ?? '')
-    .split(',').map((s) => parseFloat(s.trim())).filter((n) => Number.isFinite(n))
-    .map((s) => s * fps);
+  // Parse kicks once to seconds; derive two separate paths:
+  // - outroKickFrames: integer reel-global frames for per-frame heartbeat animation
+  // - guidesMs: precise ruler positions (no frame quantization)
+  const kickSeconds = (cfg.kicks ?? '')
+    .split(',').map((s) => parseFloat(s.trim())).filter((n) => Number.isFinite(n));
+  const outroKickFrames = kickSeconds.map((s) => Math.round(s * fps));
 
   video.push({
     id: 'outro', kind: 'outro', startMs: transitionStartMs, endMs: totalMs,
     props: {
       style: cfg.outro.style, variant: cfg.outro.variant, transition: cfg.outro.transition,
-      logoDelaySec: cfg.outro.logoDelaySec ?? 0.5, framesPerBeat: fpb, kickFrames,
+      logoDelaySec: cfg.outro.logoDelaySec ?? 0.5, framesPerBeat: fpb, kickFrames: outroKickFrames,
     },
     musicBoostDb: 0,
   });
@@ -129,9 +131,9 @@ export function deriveMontageLayered(cfg: MontageConfig, opts: MontageOpts = {})
     props: { asset: cfg.watermark.asset, corner: cfg.watermark.corner, variant: cfg.watermark.variant ?? 'black' },
   }];
 
-  // guides: kick onsets if present, else the uniform beat grid up to the reel end.
-  const guidesMs = kickFrames.length
-    ? kickFrames.map((f) => framesToMs(f))
+  // guides: kick onsets (precise seconds→ms, no frame quantization) or uniform beat grid.
+  const guidesMs = kickSeconds.length
+    ? kickSeconds.map((s) => Math.round(s * 1000))
     : Array.from({ length: Math.ceil(totalF / fpb) + 1 }, (_, k) => framesToMs(k * fpb));
 
   return {
