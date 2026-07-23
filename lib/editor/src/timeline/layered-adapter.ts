@@ -92,6 +92,27 @@ export function clipFootageCapMs(item: VideoItem, decodedMs: number | undefined)
   return decodedMs && decodedMs > 0 ? decodedMs : undefined;
 }
 
+// Real-time resize bounds (ms) for a clip/broll edge, fed to the timeline as the
+// action's minStart/maxEnd so the handle HARD-STOPS at the boundary during the
+// drag (instead of overshooting and snapping back on release). Left bound: the
+// source head (startMs - sourceInMs) — you can't reveal footage before frame 0.
+// Right bound: the nearer of the footage end (startMs + cap - sourceInMs) and the
+// next clip's start (clips can't overlap in model B). A broll with no decoded
+// duration (cap undefined) and no next clip has no right bound → extends freely.
+// Returns null for kinds without a single trim source. These bounds are applied
+// ONLY during a resize gesture, never at rest, so they don't constrain moves.
+export function resizeBoundsMs(
+  item: VideoItem,
+  footageCapMs: number | undefined,
+  nextStartMs: number | undefined,
+): { minStartMs: number; maxEndMs?: number } | null {
+  if (item.kind !== 'clip' && item.kind !== 'broll') return null;
+  const rights: number[] = [];
+  if (footageCapMs !== undefined && footageCapMs > 0) rights.push(item.startMs + (footageCapMs - item.sourceInMs));
+  if (nextStartMs !== undefined) rights.push(nextStartMs);
+  return { minStartMs: item.startMs - item.sourceInMs, maxEndMs: rights.length ? Math.min(...rights) : undefined };
+}
+
 // Time-bearing tracks a ripple edit shifts (music is a single spanning layer;
 // transitions are derived from clip positions).
 const RIPPLE_LANES = ['video', 'overlays', 'audio', 'brand'] as const;

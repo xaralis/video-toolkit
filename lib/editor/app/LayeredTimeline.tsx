@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject, CSSProperties } from 'react';
 import { Timeline, type TimelineState } from '@xzdarcy/react-timeline-editor';
 import type { TimelineRow, TimelineAction, TimelineEffect } from '@xzdarcy/timeline-engine';
@@ -10,6 +10,7 @@ import {
   applyTimelineChange,
   parseActionId,
   clipFootageCapMs,
+  resizeBoundsMs,
   LANES,
   type LaneId,
 } from '../src/timeline/layered-adapter';
@@ -253,6 +254,14 @@ function LayeredTimelineImpl({
   const envelope = useMemo(() => computeMusicEnvelope(reel, { fps }), [reel, fps]);
   const totalFrames = Math.round((reel.meta.totalDurationMs / 1000) * fps);
 
+  // Real-time resize bounds (seconds) for the action being resized RIGHT NOW.
+  // xzdarcy applies an action's minStart/maxEnd as a live drag clamp — the
+  // handle physically stops at the boundary instead of overshooting and snapping
+  // back. But those bounds also constrain MOVES, so we inject them only for the
+  // duration of a resize gesture (set on resize-start, cleared on resize-end);
+  // at rest every action is unbounded and moves freely.
+  const [resizeBound, setResizeBound] = useState<{ id: string; minStart: number; maxEnd?: number } | null>(null);
+
   // Mark the selected action so xzdarcy highlights it.
   const data: TimelineRow[] = useMemo(
     () =>
@@ -269,9 +278,13 @@ function LayeredTimelineImpl({
           selected: a.id === selectedId,
           flexible: !LOCKED_LANES.has(r.id),
           movable: true,
+          // Live resize clamp for the action under the handle (this gesture only).
+          ...(resizeBound && resizeBound.id === a.id
+            ? { minStart: resizeBound.minStart, maxEnd: resizeBound.maxEnd }
+            : {}),
         })),
       })),
-    [editorData, selectedId],
+    [editorData, selectedId, resizeBound],
   );
 
   const effects: Record<string, TimelineEffect> = useMemo(() => {
@@ -476,29 +489,18 @@ function LayeredTimelineImpl({
           // Block drag/resize on locked lanes (returning false cancels it) while
           // keeping the action clickable/selectable.
           onActionMoving={({ action }) => (LOCKED_LANES.has(parseActionId(action.id).lane) ? false : undefined)}
-          onActionResizing={({ action, start, end }) => {
+          // On resize START, arm the live drag clamp for this clip/broll so its
+          // handle hard-stops at the footage window / next clip. Cleared on END.
+          // (No onActionResizing veto — the bounds do the stopping in real time.)
+          onActionResizeStart={({ action }) => {
             const { lane, id } = parseActionId(action.id);
-            if (LOCKED_LANES.has(lane)) return false; // display-only lanes
-            if (lane !== 'video') return undefined; // overlays/audio resize freely
-            const item = reel.tracks.video.find((v) => v.id === id);
-            if (!item || (item.kind !== 'clip' && item.kind !== 'broll')) return undefined;
-            // Drift-safe hard stop: block ONLY the EXTEND direction past the
-            // footage window, so a clip at max length can't be pulled further
-            // from either edge — the handle stops dead at the media boundary
-            // instead of overshooting the cursor and snapping back. Shortening is
-            // never blocked (that's what made the old absolute-maxEnd veto
-            // misfire and freeze drifted clips).
-            const startMs = Math.round(start * 1000);
-            const endMs = Math.round(end * 1000);
-            if (startMs < item.startMs - 1 && item.sourceInMs + (startMs - item.startMs) < 0) {
-              return false; // left edge can't reveal footage before the source start
-            }
-            const cap = footageMsById[id];
-            if (cap !== undefined && endMs > item.endMs + 1 && item.sourceOutMs + (endMs - item.endMs) > cap) {
-              return false; // right edge can't pass the end of the footage
-            }
-            return undefined;
+            if (lane !== 'video') return setResizeBound(null);
+            const idx = reel.tracks.video.findIndex((v) => v.id === id);
+            const item = reel.tracks.video[idx];
+            const b = item ? resizeBoundsMs(item, footageMsById[id], reel.tracks.video[idx + 1]?.startMs) : null;
+            setResizeBound(b ? { id: action.id, minStart: b.minStartMs / 1000, maxEnd: b.maxEndMs !== undefined ? b.maxEndMs / 1000 : undefined } : null);
           }}
+          onActionResizeEnd={() => setResizeBound(null)}
           onClickAction={(_e, { action }) => onSelect(action.id)}
           onClickTimeArea={(time) => {
             playerRef.current?.seekTo(Math.round(time * fps));
