@@ -9,7 +9,6 @@ import {
   layeredToTimeline,
   applyTimelineChange,
   parseActionId,
-  clipFootageCapMs,
   resizeBoundsMs,
   laneOfRow,
   type LaneId,
@@ -206,6 +205,9 @@ export interface LayeredTimelineProps {
   snapping?: boolean;
   /** ⌘/Ctrl + wheel (or pinch) over the timeline. `dir` is +1 to zoom in, -1 out. */
   onZoom?: (dir: number) => void;
+  /** The last-saved reel — supplies each clip's AUTHORED length so a trim can be
+   * restored to it (even when the file is a touch shorter, i.e. it holds a frame). */
+  savedReel?: LayeredReel | null;
 }
 
 function LayeredTimelineImpl({
@@ -219,6 +221,7 @@ function LayeredTimelineImpl({
   scaleWidth = 80,
   snapping = true,
   onZoom,
+  savedReel,
 }: LayeredTimelineProps) {
   const stateRef = useRef<TimelineState>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -258,21 +261,30 @@ function LayeredTimelineImpl({
     [reel],
   );
   const sourceDurations = useSourceDurations(videoUrls);
-  // Right-edge trim cap (ms) per video id. Fed into applyTimelineChange so a
-  // right-edge resize CLAMPS the out-point at the media end instead of the
-  // timeline UI vetoing the gesture (a veto misfires when the block's endMs has
-  // drifted past its footage — e.g. a config sourceOutMs that overshoots the
-  // real file — and freezes the whole clip). Only CLIPS are capped; a broll is
-  // a container that holds its last frame, so it extends freely (clipFootageCapMs).
-  const footageMsById = useMemo(() => {
+  // Right-edge trim cap (ms) per video id — the clip's "total length": the LARGER
+  // of the real decoded file duration and the AUTHORED out-point (from the saved
+  // reel). A clip whose cut holds its last frame past the file end (an authored
+  // sourceOutMs > the file, e.g. seg-002: file 10.042s, authored 10.3s) can be
+  // trimmed and restored back to that authored length; a normally-trimmed clip
+  // can be extended out to reveal its full real footage. Never past either.
+  const capMsById = useMemo(() => {
+    const savedOut = (id: string): number => {
+      const s = savedReel?.tracks.video.find((v) => v.id === id);
+      return s && (s.kind === 'clip' || s.kind === 'broll') ? s.sourceOutMs : 0;
+    };
     const m: Record<string, number> = {};
     for (const v of reel.tracks.video) {
+      if (v.kind !== 'clip' && v.kind !== 'broll') continue;
       const url = videoUrl(v);
-      const cap = clipFootageCapMs(v, url ? sourceDurations[url] : undefined);
-      if (cap !== undefined) m[v.id] = cap;
+      const decoded = (url ? sourceDurations[url] : 0) || 0;
+      // Fall back to the item's own sourceOutMs for a clip added this session
+      // (not in the saved reel yet).
+      const authored = savedOut(v.id) || v.sourceOutMs || 0;
+      const cap = Math.max(decoded, authored);
+      if (cap > 0) m[v.id] = cap;
     }
     return m;
-  }, [reel, sourceDurations]);
+  }, [reel, sourceDurations, savedReel]);
 
   // Derived music-volume envelope (same shared fn the composition renders from).
   const envelope = useMemo(() => computeMusicEnvelope(reel, { fps }), [reel, fps]);
@@ -464,7 +476,7 @@ function LayeredTimelineImpl({
                   if (LOCKED_LANES.has(lane)) return null;
                   let grips = { left: false, right: false };
                   if (lane === 'video') {
-                    const gs = gripState(reel.tracks.video.find((v) => v.id === id), footageMsById[id]);
+                    const gs = gripState(reel.tracks.video.find((v) => v.id === id), capMsById[id]);
                     if (!gs) return null; // multi-clip / card / outro: no single-source trim
                     grips = gs;
                   }
@@ -478,6 +490,8 @@ function LayeredTimelineImpl({
                 {wf && <Waveform peaks={wf.peaks} sourceInMs={wf.sourceInMs} spanMs={wf.spanMs} />}
                 {action.id.startsWith('audio:') && (
                   <VolumeLine
+                    vMin={-24}
+                    vMax={24}
                     volumeDb={reel.tracks.audio.find((a) => `audio:${a.id}` === action.id)?.volumeDb}
                     onChange={(db) => {
                       const audioId = action.id.slice('audio:'.length);
@@ -514,8 +528,8 @@ function LayeredTimelineImpl({
           onChange={(d) => {
             // Ripple mode: a resize shifts everything beyond the clip so the
             // timeline stays butted (end → right, start → left). Off: plain move.
-            // footageMsById clamps a right-edge trim at the real media end.
-            onChange(applyTimelineChange(reel, d as TimelineRow[], { ripple, footageMsById }));
+            // capMsById clamps a right-edge trim at the clip's total length.
+            onChange(applyTimelineChange(reel, d as TimelineRow[], { ripple, footageMsById: capMsById }));
             return false; // we drive rendering via the Remotion Player, skip xzdarcy's engine sync
           }}
           // Block drag/resize on locked lanes (returning false cancels it) while
@@ -529,9 +543,9 @@ function LayeredTimelineImpl({
             if (lane !== 'video') return setResizeBound(null);
             const idx = reel.tracks.video.findIndex((v) => v.id === id);
             const item = reel.tracks.video[idx];
-            const url = item ? videoUrl(item) : null;
-            const decodedMs = url ? sourceDurations[url] : undefined;
-            const b = item ? resizeBoundsMs(item, decodedMs, reel.tracks.video[idx + 1]?.startMs) : null;
+            // The real-time bound uses the SAME cap as the commit clamp: the
+            // clip's total length (max of the decoded file and its authored out).
+            const b = item ? resizeBoundsMs(item, capMsById[id], reel.tracks.video[idx + 1]?.startMs) : null;
             setResizeBound(b ? { id: action.id, minStart: b.minStartMs / 1000, maxEnd: b.maxEndMs !== undefined ? b.maxEndMs / 1000 : undefined } : null);
           }}
           onActionResizeEnd={() => setResizeBound(null)}
