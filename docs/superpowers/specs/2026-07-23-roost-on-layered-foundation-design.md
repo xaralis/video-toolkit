@@ -80,13 +80,21 @@ already permissive — `teaser` overlays, direction-based ken-burns, **and the
 (photo / broll) carries its own `effects:[{type:'vintage', mode:'film'|'vhs'}]`,
 so it is individually adjustable in the editor's effects inspector — the same
 generic-clip-effect model as ken-burns (simplification lives in brand
-defaults/rules, never special-case fields). The roost cut command applies the
-brand's vintage to **all** footage items by default; the user overrides
-per-clip. The migration derivation stands in for that default: it stamps the
-config-level `cfg.vintage` onto every footage item's `effects`. Outro and teaser
-keep their own look (matching roost's current `film` scoping; the brief `vhs`
-scanline nuance over teaser/outro is dropped as an acceptable close-parity
-simplification). This removes the reel-wide `meta.treatment` field entirely.
+defaults/rules, never special-case fields). Outro and teaser keep their own look
+(matching roost's current `film` scoping; the brief `vhs` scanline nuance over
+teaser/outro is dropped as an acceptable close-parity simplification). This
+removes the reel-wide `meta.treatment` field entirely.
+
+**Applying vintage to all footage by default is a BRAND INSTRUCTION, not a
+core-command change.** The core `/cut` command (`commands/cut.md`) is **not**
+modified — it already reads `brands/<brand>/BRAND-RULES.md`. The "stamp the
+brand's vintage effect on every footage item unless the user says otherwise"
+rule is added to roost's brand rules (`brands/roost/BRAND-RULES.md` in the roost
+repo, created/extended), which core `/cut` consumes for free. So the
+authoring-time default lives in Claude's brand instructions; the one-time
+migration derivation (`deriveMontageLayered`) applies the same default to the
+existing `roost-reel-01` config by stamping `cfg.vintage` onto every footage
+item's `effects`.
 
 ### 2. Core montage derivation
 
@@ -154,6 +162,15 @@ Plus the roost `.editor/` host (clone of campaign's, pointing at
 wiring, and the migration of `roost-reel-01`. Roost's `toolkit/` submodule
 (pinned old at `5c1ce84`) is bumped to current core first.
 
+### 6. Roost brand rules — vintage-by-default (brand repo, not core)
+
+`brands/roost/BRAND-RULES.md` (in the roost repo) gains the agreed instruction:
+when cutting a roost reel, apply the brand's `vintage` effect (`film` or `vhs`
+per the brand) to **every** footage item unless the user says otherwise. Core
+`/cut` already loads brand rules, so this needs **no core-command change**. This
+is the ongoing authoring default; the migration derivation encodes the same
+default once for `roost-reel-01`.
+
 ## Data flow
 
 ```
@@ -199,6 +216,9 @@ Three phases, buildable and verifiable in order (a plan may split them):
 
 ## Non-goals
 
+- **No change to the core `/cut` command** (or any core command). Roost's
+  vintage-by-default authoring behavior is a brand-rules instruction
+  (`brands/roost/BRAND-RULES.md`) that core `/cut` already consumes.
 - No new transition kinds, overlay kinds, or effects beyond what roost already
   uses (`cut`/`fade`, `teaser`, direction ken-burns, `vintage`).
 - No change to campaign-reels behavior — the schema additions are optional and
