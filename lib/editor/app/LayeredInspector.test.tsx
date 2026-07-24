@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, screen } from '@testing-library/react';
 import { LayeredInspector } from './LayeredInspector';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
@@ -31,5 +31,30 @@ describe('LayeredInspector effect add/remove', () => {
     fireEvent.click(getByLabelText('remove effect vintage'));
     const next = onChange.mock.calls.at(-1)![0] as LayeredReel;
     expect(next.tracks.video[0].effects ?? []).toHaveLength(0);
+  });
+});
+
+const overlayReel: LayeredReel = {
+  version: 'layered-1', meta: { topic: 't', totalDurationMs: 2000 },
+  tracks: {
+    video: [], audio: [], music: { baseVolumeDb: -8 }, brand: [],
+    overlays: [{ id: 'ov1', startMs: 0, endMs: 2000, content: { kind: 'text', text: 'Hi' } }],
+  },
+};
+
+describe('LayeredInspector accentSlots', () => {
+  it('passes the brand slots to the AccentEditor toolbar', () => {
+    render(
+      <LayeredInspector
+        reel={overlayReel}
+        selectedId="overlays:ov1"
+        onChange={() => {}}
+        onSeek={() => {}}
+        fps={30}
+        accentSlots={[{ key: 'gold', label: 'Gold', color: '#f6aa1c' }]}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /Gold/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Lime/ })).toBeNull();
   });
 });
