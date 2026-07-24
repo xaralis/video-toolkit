@@ -47,15 +47,35 @@ describe('deriveMontageLayered', () => {
     // outro item + props; reel length = last item end
     const outro = reel.tracks.video.find((v) => v.kind === 'outro')!;
     expect((outro as { props?: { style?: string } }).props?.style).toBe('organic');
-    // enter-transition length preserved for the renderer (montage ends at the
-    // outro beat, not at the very front → the real TRANSITION_FRAMES, not 0).
-    expect((outro as { props?: { transitionFrames?: number } }).props?.transitionFrames).toBe(15);
+    // The outro no longer carries its own enter-transition: the boundary is
+    // now the PREVIOUS clip's transitionOut, rendered at the cut by the
+    // shared at-cut engine. `transition`/`transitionFrames` are gone from
+    // the outro's props.
+    expect((outro as { props?: { transition?: string } }).props?.transition).toBeUndefined();
+    expect((outro as { props?: { transitionFrames?: number } }).props?.transitionFrames).toBeUndefined();
+    // outro starts exactly at the cut boundary (the last content clip's end),
+    // not shifted earlier by the transition length.
+    expect(outro.startMs).toBe(beatMs(6));
     expect(outro.endMs).toBe(reel.meta.totalDurationMs);
 
-    // watermark hides before the outro
+    // the last content clip (the broll, beatStart=3..6) carries the real
+    // at-cut transitionOut into the outro — the burn/dissolve now renders as
+    // a normal cross-clip transition, not an outro-internal enter effect.
+    expect((b as { transitionOut?: { kind?: string; frames?: number } }).transitionOut).toEqual({
+      kind: 'dissolve', frames: 15,
+    });
+
+    // reel length = outroEnter (last clip's end, beatMs(6) = 144 frames)
+    // + logoDelay(15) + reveal(48) + hold(60) = 267 frames → 8900ms
+    const expectedTotalF = 6 * fpb + Math.round(0.5 * 30) + 48 + 60;
+    expect(reel.meta.totalDurationMs).toBe(Math.round((expectedTotalF * 1000) / 30));
+
+    // watermark hides before the transition into the outro starts (the last
+    // clip's transitionOut window), not at the outro's (now later) startMs.
     const wm = reel.tracks.brand.find((x) => x.kind === 'watermark')!;
     expect(wm.startMs).toBe(0);
-    expect(wm.endMs).toBe(outro.startMs);
+    expect(wm.endMs).toBe(beatMs(6) - 15 * (1000 / 30));
+    expect(wm.endMs).toBeLessThan(outro.startMs);
 
     // outro heartbeat animation needs integer frames
     const kf = (outro as { props?: { kickFrames?: number[] } }).props?.kickFrames!;
@@ -64,8 +84,10 @@ describe('deriveMontageLayered', () => {
 
     // guides = the BEAT GRID (every fpb=24 frames → 800ms), matching where the
     // montage cuts clips — NOT the irregular kick onsets. fpb = round(30·60/76.015)
-    // = 24; totalF = 252 → k·24 frames for k=0..10 → k·800 ms.
-    expect(reel.meta.guidesMs).toEqual([0, 800, 1600, 2400, 3200, 4000, 4800, 5600, 6400, 7200, 8000]);
+    // = 24; totalF = 267 (outro now starts at the cut boundary + logo delay +
+    // reveal + hold, not shifted earlier by the transition) → k·24 frames for
+    // k=0..11 → k·800 ms.
+    expect(reel.meta.guidesMs).toEqual([0, 800, 1600, 2400, 3200, 4000, 4800, 5600, 6400, 7200, 8000, 8800]);
     // kick onsets are NOT the guides; they drive the outro heartbeat instead.
     expect((outro as { props?: { kickFrames?: number[] } }).props?.kickFrames).toEqual([14, 42, 59]);
   });

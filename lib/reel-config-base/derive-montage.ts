@@ -90,15 +90,38 @@ export function deriveMontageLayered(cfg: MontageConfig, opts: MontageOpts = {})
   const lastSeg = cfg.segments[cfg.segments.length - 1];
   const contentEndF = lastSeg ? (lastSeg.beatStart + lastSeg.beatCount) * fpb : 0;
   const outroFromF = cfg.outro.beatStart * fpb;
+  // outroEnterF is now the CUT BOUNDARY between the last content clip and the
+  // outro: the outro starts here, and (when transF > 0) the last clip's
+  // transitionOut renders the burn/dissolve INTO it via the shared at-cut
+  // engine (handle-borrow, centered on the cut) — not the outro's own
+  // bespoke enter-transition.
   const outroEnterF = Math.min(contentEndF, outroFromF);
   const atStart = outroEnterF <= 0;
   const transF = atStart ? 0 : transitionFrames;
+  // Still needed to hide the watermark before the transition into the outro
+  // starts playing (on the last clip's tail), independent of where the outro
+  // item itself now starts.
   const transitionStartF = Math.max(0, outroEnterF - transF);
   const logoDelayF = Math.round((cfg.outro.logoDelaySec ?? 0.5) * fps);
-  const totalF = transitionStartF + logoDelayF + logoRevealFrames + logoHoldFrames;
+  // The outro's full on-screen span (logo delay + reveal + hold) now runs
+  // ENTIRELY AFTER the cut boundary — the transF overlap with the last clip
+  // is handled by the at-cut engine's handle-borrow, not by starting the
+  // outro item early.
+  const totalF = outroEnterF + logoDelayF + logoRevealFrames + logoHoldFrames;
 
   const transitionStartMs = framesToMs(transitionStartF);
+  const outroEnterMs = framesToMs(outroEnterF);
   const totalMs = framesToMs(totalF);
+
+  // The last content clip transitions OUT into the outro at the cut boundary
+  // (real at-cut transition via the shared engine); no transitionOut when the
+  // outro sits at the very front (nothing to transition from).
+  if (video.length && transF > 0) {
+    video[video.length - 1] = {
+      ...video[video.length - 1],
+      transitionOut: { kind: cfg.outro.transition, frames: transF },
+    } as VideoItem;
+  }
 
   // Parse kicks once to seconds; derive two separate paths:
   // - outroKickFrames: integer reel-global frames for per-frame heartbeat animation
@@ -108,16 +131,10 @@ export function deriveMontageLayered(cfg: MontageConfig, opts: MontageOpts = {})
   const outroKickFrames = kickSeconds.map((s) => Math.round(s * fps));
 
   video.push({
-    id: 'outro', kind: 'outro', startMs: transitionStartMs, endMs: totalMs,
+    id: 'outro', kind: 'outro', startMs: outroEnterMs, endMs: totalMs,
     props: {
-      style: cfg.outro.style, variant: cfg.outro.variant, transition: cfg.outro.transition,
+      style: cfg.outro.style, variant: cfg.outro.variant,
       logoDelaySec: cfg.outro.logoDelaySec ?? 0.5, framesPerBeat: fpb, kickFrames: outroKickFrames,
-      // The real enter-transition length: preserved here because the renderer
-      // can't recover it from startMs alone — when the montage ends within
-      // TRANSITION_FRAMES of the outro, transitionStart clamps to 0 but the
-      // outro STILL animates in over transitionFrames (see RoostReel's
-      // atStart-vs-clamp split). 0 only when the outro sits at the very front.
-      transitionFrames: transF,
     },
     musicBoostDb: 0,
   });
