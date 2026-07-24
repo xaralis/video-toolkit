@@ -45,13 +45,3 @@
   outline: none;
   border-color: #b6ff5a;
 }
-
-.lime {
-  color: var(--color-lime, #b6ff5a);
-  font-weight: 600;
-}
-
-.teal {
-  color: var(--color-teal, #4fd1c5);
-  font-weight: 600;
-}
