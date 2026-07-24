@@ -364,12 +364,41 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
             </Row>
           </>
         )}
+        {/* Per-clip colour grade (brightness/contrast/saturation are native CSS
+            filters; temperature/tint drive an SVG white-balance matrix). Applies
+            to the SegmentMedia-rendered footage kinds. Neutral = 1 (b/c/s) / 0
+            (temp/tint); neutral values are dropped so `grade` stays minimal. */}
+        {(v.kind === 'clip' || v.kind === 'broll' || v.kind === 'photo') && (() => {
+          const g = (v.grade ?? {}) as { brightness?: number; contrast?: number; saturation?: number; temperature?: number; tint?: number };
+          const patchGrade = (patch: Record<string, number>) => {
+            const merged = { ...g, ...patch } as Record<string, number>;
+            const cleaned = Object.fromEntries(
+              Object.entries(merged).filter(([k, val]) => typeof val === 'number' && val !== (k === 'temperature' || k === 'tint' ? 0 : 1)),
+            );
+            patchItem('video', id, { grade: Object.keys(cleaned).length ? cleaned : undefined });
+          };
+          return (
+            <>
+              <div style={section}>Color</div>
+              <Row>
+                <NumberField lbl="Brightness" step={0.05} value={g.brightness ?? 1} onCommit={(n) => patchGrade({ brightness: n })} />
+                <NumberField lbl="Contrast" step={0.05} value={g.contrast ?? 1} onCommit={(n) => patchGrade({ contrast: n })} />
+              </Row>
+              <Row>
+                <NumberField lbl="Saturation" step={0.05} value={g.saturation ?? 1} onCommit={(n) => patchGrade({ saturation: n })} />
+                <NumberField lbl="Temperature" step={0.05} value={g.temperature ?? 0} onCommit={(n) => patchGrade({ temperature: n })} />
+              </Row>
+              <NumberField lbl="Tint" step={0.05} value={g.tint ?? 0} onCommit={(n) => patchGrade({ tint: n })} />
+            </>
+          );
+        })()}
         {v.kind === 'outro' && v.props && (
           <>
             <div style={section}>Outro</div>
             <SelectField lbl="Style" value={(v.props as Record<string, unknown>).style as string | undefined} options={OUTRO_STYLES} onChange={(s) => patchItem('video', id, { props: { ...(v.props as object), style: s } })} />
             <SelectField lbl="Variant" value={(v.props as Record<string, unknown>).variant as string | undefined} options={OUTRO_VARIANTS} onChange={(s) => patchItem('video', id, { props: { ...(v.props as object), variant: s } })} />
-            <SelectField lbl="Enter transition" value={(v.props as Record<string, unknown>).transition as string | undefined} options={['dissolve', 'burn']} onChange={(s) => patchItem('video', id, { props: { ...(v.props as object), transition: s } })} />
+            {/* The into-outro transition now lives on the PREVIOUS clip's
+                transitionOut (at-cut) — edit it via that clip's transition, not here. */}
             <NumberField lbl="Logo delay (s)" step={0.1} value={(v.props as Record<string, unknown>).logoDelaySec as number | undefined} onCommit={(n) => patchItem('video', id, { props: { ...(v.props as object), logoDelaySec: n } })} />
           </>
         )}
