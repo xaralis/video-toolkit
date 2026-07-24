@@ -195,6 +195,21 @@ function EffectEditor({ eff, onPatch }: { eff: Record<string, unknown>; onPatch:
   const type = eff.type as string;
   const num = (k: string) => (typeof eff[k] === 'number' ? (eff[k] as number) : undefined);
   if (type === 'ken-burns') {
+    // Ken Burns has TWO shapes (both render, see SegmentMedia): the `direction`
+    // shorthand (roost — in/left/up) and explicit from/to pan+zoom (campaign).
+    // Show the control that matches what's actually set — a direction-based
+    // effect edited with the from/to fields looked like an empty/phantom effect.
+    const hasFromTo = ['fromX', 'toX', 'fromScale', 'toScale'].some((k) => typeof eff[k] === 'number');
+    if (typeof eff.direction === 'string' || !hasFromTo) {
+      return (
+        <SelectField
+          lbl="Direction"
+          value={(eff.direction as string | undefined) ?? 'in'}
+          options={['in', 'left', 'up']}
+          onChange={(s) => onPatch({ direction: s })}
+        />
+      );
+    }
     return (
       <>
         <Row>
@@ -359,6 +374,10 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           </>
         )}
         <NumberField lbl="Music boost (dB)" value={v.musicBoostDb} onCommit={(n) => patchItem('video', id, { musicBoostDb: n })} />
+        {/* Effects only apply to footage renderers (SegmentMedia + brand wrappers).
+            outro/card render bespoke and ignore item.effects, so don't offer them. */}
+        {(v.kind === 'clip' || v.kind === 'broll' || v.kind === 'photo' || v.kind === 'multi-clip') && (
+          <>
         {v.effects &&
           v.effects.map((eff, i) => {
             const type = (eff as { type?: string }).type ?? 'effect';
@@ -389,6 +408,8 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
         <AddEffectControl
           onAdd={(kind) => patchItem('video', id, { effects: [...(v.effects ?? []), EFFECT_DEFAULTS[kind]] })}
         />
+          </>
+        )}
         {(() => {
           const raw = v.transitionOut as { kind?: string } | undefined;
           const t: Transition = raw && TRANSITION_KINDS.some((k) => k.kind === raw.kind) ? (raw as Transition) : { kind: 'cut' };
