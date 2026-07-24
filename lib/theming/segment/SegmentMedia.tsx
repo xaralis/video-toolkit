@@ -92,6 +92,9 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({ item, handles }) => {
   // edge for cross-item transitions (0 when the item has no neighbor overlap).
   const durationInFrames = Math.round(((item.endMs - item.startMs) / 1000) * fps) + handles.inHalf + handles.outHalf;
 
+  // `crop`/`grade` are permissive `z.record` fields on the schema (like the
+  // transition records), so they are asserted to their shapes here; malformed
+  // values are tolerated downstream by cropCoverStyle/gradeFilter.
   const cropStyle = cropCoverStyle(item.crop as Crop | undefined, item.focalX, item.focalY);
   let transform = cropStyle.transform;
   let objectPosition = cropStyle.objectPosition;

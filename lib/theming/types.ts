@@ -1,3 +1,4 @@
+import type React from 'react';
 import type { AccentSlot } from './palette';
 import type { Placement } from './placement';
 import type { VideoItem } from '../reel-config-base/layered-schema';
