@@ -20,6 +20,9 @@ export function segmentDurationFrames(
       return Math.round((seg.trimOut ?? 0) * fps) - Math.round((seg.trimIn ?? 0) * fps);
     case 'multi-clip':
     case 'card':
+    case 'photo':
+      // photo holds for its authored durationMs (a still or an AI i2v clip,
+      // no trims) — same duration rule as multi-clip / card.
       return Math.round(((seg.durationMs ?? 0) / 1000) * fps);
     case 'outro':
       return outroFrames;

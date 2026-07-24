@@ -1,0 +1,126 @@
+.inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  color: #e8e8ea;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.heading {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b6f78;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fieldLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #6b6f78;
+}
+
+.value {
+  font-size: 13px;
+  color: #e8e8ea;
+  word-break: break-word;
+}
+
+.input {
+  background: #26282f;
+  border: 1px solid #34363e;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #e8e8ea;
+  font-family: inherit;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #b6ff5a;
+}
+
+.note {
+  font-size: 12px;
+  font-style: italic;
+  color: #6b6f78;
+}
+
+.help {
+  font-size: 11px;
+  color: #6b6f78;
+}
+
+.segmented {
+  display: flex;
+  gap: 4px;
+}
+
+.segment,
+.segmentActive {
+  flex: 1;
+  background: #26282f;
+  border: 1px solid #34363e;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #e8e8ea;
+  cursor: pointer;
+}
+
+.segment:hover {
+  border-color: #4a4d56;
+}
+
+.segmentActive {
+  background: #2f3a1c;
+  border-color: #b6ff5a;
+  color: #b6ff5a;
+  font-weight: 600;
+}
+
+.subClip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #34363e;
+  border-radius: 4px;
+  background: #1f2127;
+}
+
+.subRow {
+  display: flex;
+  gap: 8px;
+}
+
+.subRow .fieldLabel {
+  flex: 1;
+}
+
+.subLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #6b6f78;
+}
