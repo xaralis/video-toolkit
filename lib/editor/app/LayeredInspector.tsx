@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
+import { withTotalDuration } from '@video-toolkit/lib/reel-config-base/total-duration';
 import { AccentEditor } from './AccentEditor';
 import { Collapsible } from './Collapsible';
 import { TRANSITION_KINDS, defaultTransition, kindNeedsFrames, subOptionsFor, type Transition } from './transitions';
@@ -557,13 +558,25 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
 
   if (lane === 'music') {
     const m = reel.tracks.music;
-    const patchMusic = (patch: Record<string, unknown>) => onChange({ ...reel, tracks: { ...reel.tracks, music: { ...m, ...patch } } });
+    // Music edits can change the reel's total length (its end counts like any
+    // other track end), so recompute it on every patch.
+    const patchMusic = (patch: Record<string, unknown>) =>
+      onChange(withTotalDuration({ ...reel, tracks: { ...reel.tracks, music: { ...m, ...patch } } }));
     return (
       <div style={panel}>
         <h3 style={heading}>Music</h3>
         <TextField lbl="Source" value={m.source} onCommit={(s) => patchMusic({ source: s.trim() || undefined })} />
         <NumberField lbl="Base volume (dB)" value={m.baseVolumeDb} onCommit={(n) => patchMusic({ baseVolumeDb: n })} />
-        <div style={{ fontSize: 11, color: '#5f626a', marginTop: 8 }}>The effective envelope (base + each clip’s music boost) is drawn on the Music lane.</div>
+        <NumberField
+          lbl="End (s)"
+          step={0.05}
+          value={(m.endMs ?? reel.meta.totalDurationMs) / 1000}
+          onCommit={(n) => patchMusic({ endMs: n > 0 ? Math.round(n * 1000) : undefined })}
+        />
+        <div style={{ fontSize: 11, color: '#5f626a', marginTop: 8 }}>
+          The effective envelope (base + each clip’s music boost) is drawn on the Music lane. Set End to 0 to follow the
+          content end again. The reel is always as long as its furthest-reaching track.
+        </div>
       </div>
     );
   }

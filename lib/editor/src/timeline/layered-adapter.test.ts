@@ -208,11 +208,15 @@ describe('applyTimelineChange', () => {
     expect(result.tracks.video[0]).toMatchObject({ startMs: 1000, endMs: 4000 });
     expect(result.tracks.audio).toEqual(REEL.tracks.audio);
     expect(result.tracks.overlays).toEqual(REEL.tracks.overlays);
-    expect(result.tracks.brand).toEqual(REEL.tracks.brand);
+    // The total is DERIVED from the furthest track end (4000 now), and the
+    // full-span watermark follows it.
+    expect(result.meta.totalDurationMs).toBe(4000);
+    expect(result.tracks.brand[0]).toMatchObject({ startMs: 0, endMs: 4000 });
 
     // Original reel is unmutated.
     expect(REEL.tracks.video[0].startMs).toBe(0);
     expect(REEL.tracks.video[0].endMs).toBe(3000);
+    expect(REEL.tracks.brand[0].endMs).toBe(5000);
   });
 
   it('ripple: extending a clip END shifts everything after it to the right (butted)', () => {
@@ -285,6 +289,72 @@ describe('applyTimelineChange', () => {
     expect(result.tracks.video.find((v) => v.id === 'B')!.startMs).toBe(4000);
     // A is trimmed to butt against B — it really ends earlier, no overlap.
     expect(result.tracks.video.find((v) => v.id === 'A')!.endMs).toBe(4000);
+  });
+});
+
+describe('music end-trim + derived total duration', () => {
+  const MREEL: LayeredReel = {
+    ...REEL,
+    tracks: { ...REEL.tracks, music: { source: 'audio/bg.mp3', baseVolumeDb: -8 } },
+  };
+
+  it('layeredToTimeline spans the music block to its explicit endMs when set', () => {
+    const reel: LayeredReel = { ...MREEL, tracks: { ...MREEL.tracks, music: { ...MREEL.tracks.music, endMs: 2000 } } };
+    const { editorData } = layeredToTimeline(reel, 30);
+    expect(editorData.find((r) => r.id === 'music')!.actions[0]).toMatchObject({ start: 0, end: 2 });
+  });
+
+  it('maps a music end-trim to tracks.music.endMs and recomputes the total', () => {
+    const { editorData } = layeredToTimeline(MREEL, 30);
+    const changed = editorData.map((row) =>
+      row.id === 'music' ? { ...row, actions: row.actions.map((a) => ({ ...a, end: 4 })) } : row,
+    );
+    const result = applyTimelineChange(MREEL, changed);
+    expect(result.tracks.music.endMs).toBe(4000);
+    // content ends at 3000; the music bed now reaches furthest → total 4000,
+    // and the full-span watermark follows the new end.
+    expect(result.meta.totalDurationMs).toBe(4000);
+    expect(result.tracks.brand[0].endMs).toBe(4000);
+  });
+
+  it('caps the music end-trim at the decoded source duration', () => {
+    const { editorData } = layeredToTimeline(MREEL, 30);
+    const changed = editorData.map((row) =>
+      row.id === 'music' ? { ...row, actions: row.actions.map((a) => ({ ...a, end: 20 })) } : row,
+    );
+    const result = applyTimelineChange(MREEL, changed, { musicMaxMs: 8000 });
+    expect(result.tracks.music.endMs).toBe(8000);
+    expect(result.meta.totalDurationMs).toBe(8000);
+  });
+
+  it('a music bed trimmed shorter than the content does not shrink the total below the content end', () => {
+    const { editorData } = layeredToTimeline(MREEL, 30);
+    const changed = editorData.map((row) =>
+      row.id === 'music' ? { ...row, actions: row.actions.map((a) => ({ ...a, end: 1 })) } : row,
+    );
+    const result = applyTimelineChange(MREEL, changed);
+    expect(result.tracks.music.endMs).toBe(1000);
+    expect(result.meta.totalDurationMs).toBe(3000); // video/audio/overlays end
+  });
+
+  it('ignores a music left-edge drag (the bed is pinned at 0)', () => {
+    const { editorData } = layeredToTimeline(MREEL, 30);
+    const changed = editorData.map((row) =>
+      row.id === 'music' ? { ...row, actions: row.actions.map((a) => ({ ...a, start: 1 })) } : row,
+    );
+    const result = applyTimelineChange(MREEL, changed);
+    expect(result.tracks.music.endMs).toBeUndefined();
+  });
+
+  it('shortening the content recomputes the total downward (max reached by any track)', () => {
+    // v1 end trimmed from 3s to 2s; audio/overlays still end at 3s → total 3000.
+    const { editorData } = layeredToTimeline(MREEL, 30);
+    const changed = editorData.map((row) =>
+      row.id === 'video' ? { ...row, actions: row.actions.map((a) => ({ ...a, end: 2 })) } : row,
+    );
+    const result = applyTimelineChange(MREEL, changed);
+    expect(result.meta.totalDurationMs).toBe(3000);
+    expect(result.tracks.brand[0].endMs).toBe(3000);
   });
 });
 

@@ -14,7 +14,7 @@ import {
   type LaneId,
 } from '../src/timeline/layered-adapter';
 import { stripAccents } from './accent';
-import { useAudioPeaks } from './useAudioPeaks';
+import { useAudioPeaks, PEAKS_PER_SEC } from './useAudioPeaks';
 import { useSourceDurations } from './useSourceDurations';
 import { Waveform, VolumeLine } from './Waveform';
 import { MusicEnvelope } from './MusicEnvelope';
@@ -208,9 +208,11 @@ const TRANSITIONS_ROW_H = 18;
 const TRANSITION_MARKER_COLOR = '#c9a227';
 
 // Lanes whose items are display-only (their span is derived / not an item
-// array): brand span is content-end-derived, music is a single base layer,
-// transitions are derived from adjacent clips' `transitionOut`.
-const LOCKED_LANES = new Set(['brand', 'music', 'transitions']);
+// array): brand span is content-end-derived, transitions are derived from
+// adjacent clips' `transitionOut`. Music is NOT fully locked: the single bed
+// is pinned at 0 (no move, no left trim) but its END is trimmable — see the
+// music-specific guards below.
+const LOCKED_LANES = new Set(['brand', 'transitions']);
 
 export interface LayeredTimelineProps {
   reel: LayeredReel;
@@ -315,7 +317,16 @@ function LayeredTimelineImpl({
 
   // Derived music-volume envelope (same shared fn the composition renders from).
   const envelope = useMemo(() => computeMusicEnvelope(reel, { fps }), [reel, fps]);
-  const totalFrames = Math.round((reel.meta.totalDurationMs / 1000) * fps);
+  // The music BLOCK's span in frames (its explicit out-point when trimmed, else
+  // the content end) — the envelope must be x-scaled to the block, not the reel.
+  const musicFrames = Math.round(((reel.tracks.music.endMs ?? reel.meta.totalDurationMs) / 1000) * fps);
+  // Decoded duration of the music source (via its peaks buffer) — caps the
+  // music bed's end-trim at the real end of the audio file.
+  const musicMaxMs = useMemo(() => {
+    const src = reel.tracks.music.source;
+    const p = src ? peaks.get(audioUrl(src)) : undefined;
+    return p && p.length > 0 ? (p.length / PEAKS_PER_SEC) * 1000 : undefined;
+  }, [reel, peaks]);
 
   // Real-time resize bounds (seconds) for the action being resized RIGHT NOW.
   // xzdarcy applies an action's minStart/maxEnd as a live drag clamp — the
@@ -552,6 +563,8 @@ function LayeredTimelineImpl({
                   const { lane, id } = parseActionId(action.id);
                   if (LOCKED_LANES.has(lane)) return null;
                   if (linkedAudioIds.has(action.id)) return null; // linked bed: no trim grips
+                  // Music: pinned at 0 — only the end is trimmable, so only a right grip.
+                  if (lane === 'music') return <div className="vt-grip vt-grip-right" />;
                   let grips = { left: false, right: false };
                   if (lane === 'video') {
                     const gs = gripState(reel.tracks.video.find((v) => v.id === id), capMsById[id]);
@@ -601,7 +614,7 @@ function LayeredTimelineImpl({
                 )}
                 {action.id.startsWith('music:') && (
                   <>
-                    <MusicEnvelope points={envelope.points} totalFrames={totalFrames} />
+                    <MusicEnvelope points={envelope.points} totalFrames={musicFrames} />
                     {/* Draggable BASE level (lime); the derived envelope boosts ride above it. */}
                     <VolumeLine
                       volumeDb={reel.tracks.music.baseVolumeDb}
@@ -631,21 +644,29 @@ function LayeredTimelineImpl({
                 footageMsById: capMsById,
                 snapMs: snapToBeats ? reel.meta.guidesMs : undefined,
                 snapThresholdMs: (SNAP_PX / scaleWidth) * 1000,
+                musicMaxMs,
               }),
             );
             return false; // we drive rendering via the Remotion Player, skip xzdarcy's engine sync
           }}
           // Block drag/resize on locked lanes (returning false cancels it) while
           // keeping the action clickable/selectable.
-          onActionMoving={({ action }) =>
-            LOCKED_LANES.has(parseActionId(action.id).lane) || linkedAudioIds.has(action.id) ? false : undefined
-          }
+          onActionMoving={({ action }) => {
+            const lane = parseActionId(action.id).lane;
+            // Music can be end-trimmed but never moved (it's pinned at 0).
+            return LOCKED_LANES.has(lane) || lane === 'music' || linkedAudioIds.has(action.id) ? false : undefined;
+          }}
           // On resize START, arm the live drag clamp for this clip/broll so its
           // handle hard-stops at the footage window / next clip. Cleared on END.
           // (No onActionResizing veto — the bounds do the stopping in real time.)
           onActionResizeStart={({ action, dir }) => {
             setResizeDir(dir); // anchor the waveform to the fixed (opposite) edge
             const { lane, id } = parseActionId(action.id);
+            if (lane === 'music') {
+              // Right-edge cap = real end of the audio file (when decoded);
+              // minStart 0 keeps a (springing-back) left drag inside the reel.
+              return setResizeBound({ id: action.id, minStart: 0, maxEnd: musicMaxMs !== undefined ? musicMaxMs / 1000 : undefined });
+            }
             if (lane !== 'video') return setResizeBound(null);
             const idx = reel.tracks.video.findIndex((v) => v.id === id);
             const item = reel.tracks.video[idx];

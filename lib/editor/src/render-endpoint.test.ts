@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { spawn } from 'child_process';
 import { createRenderHandler, type MinimalReq, type MinimalRes } from './render-endpoint';
@@ -8,7 +8,15 @@ vi.mock('child_process', () => {
   return { spawn: spawnFn, default: { spawn: spawnFn } };
 });
 
+vi.mock('fs', () => {
+  const existsSync = vi.fn(() => true);
+  return { existsSync, default: { existsSync } };
+});
+
+import fs from 'fs';
+
 const spawnMock = vi.mocked(spawn);
+const existsMock = vi.mocked(fs.existsSync);
 
 /** A fake ChildProcess: an EventEmitter (for close/error) with stdout/stderr sub-emitters. */
 function makeFakeChild() {
@@ -61,6 +69,8 @@ function makeRes(): MinimalRes & { body: string; headers: Record<string, string>
 
 beforeEach(() => {
   spawnMock.mockReset();
+  existsMock.mockReset();
+  existsMock.mockReturnValue(true);
 });
 
 describe('createRenderHandler — POST', () => {
@@ -224,6 +234,63 @@ describe('createRenderHandler — GET', () => {
     const state = JSON.parse(res.body);
     expect(state.running).toBe(false);
     expect(state.error).toBe('Render failed (exit 1)');
+  });
+});
+
+describe('createRenderHandler — reveal', () => {
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+  beforeEach(() => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+  });
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', platform);
+  });
+
+  it('404s when nothing has been rendered yet', () => {
+    const handler = createRenderHandler({ projectRoot: '/proj', compositionId: 'LayeredCampaignReel' });
+    const res = makeRes();
+    handler(makeReq('POST', { action: 'reveal' }), res);
+    expect(res.statusCode).toBe(404);
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it('reveals the finished render via the OS file manager (macOS: open -R)', () => {
+    const fakeChild = makeFakeChild();
+    spawnMock.mockReturnValue(fakeChild as never);
+    const handler = createRenderHandler({ projectRoot: '/proj', compositionId: 'LayeredCampaignReel' });
+    handler(makeReq('POST', { mode: 'full' }), makeRes());
+    fakeChild.emit('close', 0);
+
+    const res = makeRes();
+    handler(makeReq('POST', { action: 'reveal' }), res);
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({ revealed: true, outPath: 'out/LayeredCampaignReel.mp4' });
+    expect(spawnMock).toHaveBeenLastCalledWith('open', ['-R', '/proj/out/LayeredCampaignReel.mp4']);
+  });
+
+  it('404s when the output file no longer exists on disk', () => {
+    const fakeChild = makeFakeChild();
+    spawnMock.mockReturnValue(fakeChild as never);
+    const handler = createRenderHandler({ projectRoot: '/proj', compositionId: 'LayeredCampaignReel' });
+    handler(makeReq('POST', { mode: 'full' }), makeRes());
+    fakeChild.emit('close', 0);
+
+    existsMock.mockReturnValue(false);
+    const res = makeRes();
+    handler(makeReq('POST', { action: 'reveal' }), res);
+    expect(res.statusCode).toBe(404);
+    expect(spawnMock).toHaveBeenCalledTimes(1); // only the render spawn
+  });
+
+  it('does not 409 while a render is running', () => {
+    const fakeChild = makeFakeChild();
+    spawnMock.mockReturnValue(fakeChild as never);
+    const handler = createRenderHandler({ projectRoot: '/proj', compositionId: 'LayeredCampaignReel' });
+    handler(makeReq('POST', { mode: 'full' }), makeRes());
+
+    const res = makeRes();
+    handler(makeReq('POST', { action: 'reveal' }), res);
+    expect(res.statusCode).toBe(200);
   });
 });
 

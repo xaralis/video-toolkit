@@ -92,6 +92,11 @@ export const BrandLayerItemSchema = z.object({
 export const MusicLayerSchema = z.object({
   source: z.string().optional(),
   baseVolumeDb: z.number().default(-8),
+  // Explicit music out-point (absolute ms; music always starts at 0). Absent =
+  // the bed follows the content end (meta.totalDurationMs). Once set, the reel's
+  // total duration counts it like any other track end — the reel is always as
+  // long as the furthest-reaching track (see computeTotalDurationMs).
+  endMs: Ms.optional(),
 });
 
 export const LayeredReelSchema = z.object({
