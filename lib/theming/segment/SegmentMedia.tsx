@@ -132,6 +132,14 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({ item, handles }) => {
   // IS the on-screen span), so it plays from its own start with no borrow.
   const startFrom =
     item.kind === 'photo' ? undefined : Math.max(0, Math.round((item.sourceInMs / 1000) * fps) - handles.inHalf);
+  // Bound playback to the source out-point (+ the borrowed out-handle), so a
+  // clip/broll never plays past what its trim covers — needed by callers
+  // that don't wrap this in a Sequence sized to exactly that span (e.g. a
+  // multi-clip sub-clip sharing its parent segment's Sequence). For the
+  // existing single-media callers this is a no-op: their Sequence already
+  // stops at this exact frame whenever on-screen span == source-trim span
+  // (the 1× playback case), so nothing visible changes.
+  const endAt = item.kind === 'photo' ? undefined : Math.round((item.sourceOutMs / 1000) * fps) + handles.outHalf;
 
-  return <OffthreadVideo src={src} muted startFrom={startFrom} style={style} />;
+  return <OffthreadVideo src={src} muted startFrom={startFrom} endAt={endAt} style={style} />;
 };
