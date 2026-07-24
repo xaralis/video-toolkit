@@ -14,3 +14,4 @@ export type {
 export { resolveOverlayRenderer, overlayConfig, resolveVideoRenderer, videoConfig } from './brand-theme';
 export { SegmentMedia } from './segment/SegmentMedia';
 export { GenericTextOverlay } from './generic/GenericTextOverlay';
+export { GenericWatermark, type WatermarkProps } from './generic/GenericWatermark';
