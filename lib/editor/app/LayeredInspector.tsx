@@ -443,12 +443,15 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
             <AccentEditor value={content.text ?? ''} onChange={(next) => patchContent({ text: next })} colors={accentSlots} multiline />
           </div>
         )}
-        {/* Roost quote-pulls (the stacked teaser look) carry reveal + font size. */}
-        {(content.reveal !== undefined || content.fontSize !== undefined) && (
-          <Row>
-            <SelectField lbl="Reveal" value={content.reveal ?? 'line'} options={['line', 'all']} onChange={(s) => patchContent({ reveal: s })} />
+        {/* Roost quote-pulls (the stacked teaser look) carry reveal/hide + font size. */}
+        {(content.reveal !== undefined || content.hide !== undefined || content.fontSize !== undefined) && (
+          <>
+            <Row>
+              <SelectField lbl="Reveal" value={content.reveal ?? 'line'} options={['line', 'all', 'none']} onChange={(s) => patchContent({ reveal: s })} />
+              <SelectField lbl="Hide" value={content.hide ?? 'fade'} options={['fade', 'none']} onChange={(s) => patchContent({ hide: s })} />
+            </Row>
             <NumberField lbl="Font size" step={4} value={content.fontSize} onCommit={(n) => patchContent({ fontSize: Math.round(n) })} />
-          </Row>
+          </>
         )}
         {o.position !== undefined && (
           <SelectField lbl="Position" value={o.position} options={OVERLAY_POSITIONS} onChange={(s) => patchItem('overlays', id, { position: s })} />
