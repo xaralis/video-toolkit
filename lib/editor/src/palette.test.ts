@@ -1,4 +1,5 @@
-// lib/theming/palette.test.ts
+// lib/editor/src/palette.test.ts — tests @video-toolkit/lib/theming/palette
+// (co-located under lib/editor/src so Vitest, rooted here, discovers it).
 import { describe, it, expect } from 'vitest';
 import { paletteMap, resolveAccentColor, type AccentSlot } from '@video-toolkit/lib/theming/palette';
 
