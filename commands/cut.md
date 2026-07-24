@@ -182,11 +182,36 @@ Segments:        11 (10 mapped, 1 outro)
 Total duration:  ~46.2s
 Warnings:        0
 
-Next: /toolkit:cut-tune to iterate in Studio.
+Next: open the reel editor to iterate on timing + overlay text.
 ```
 
 If there are warnings (3s violations, unused source files, missing transcripts),
 list them.
+
+### Step 8b: Offer to launch the editor
+
+After the summary, offer to open the visual editor right away — don't just
+mention it, ask and launch it if the user says yes (phrase the offer in the
+user's language):
+
+> Chceš teď otevřít editor a doladit střih? [ano / ne]
+
+If **yes**, start the editor in the background from the project dir and report
+the URL:
+
+```bash
+cd projects/<name>
+nohup npm run editor > /tmp/<name>-editor.log 2>&1 & disown
+sleep 4
+grep -iE "localhost|ready|:3100" /tmp/<name>-editor.log | head
+```
+
+The editor binds port **3100** by default (Vite picks the next free port if
+taken — read the log for the actual URL). It saves back to `src/Root.tsx`, so
+`/toolkit:cut` stays safe to re-run afterwards (Step 9 diffs and merges).
+
+If **no**, remind the user they can launch it later with `npm run editor` from
+the project dir, or `/toolkit:cut-tune` for the Remotion Studio sidebar instead.
 
 ### Step 9: Re-run semantics
 
