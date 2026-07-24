@@ -16,6 +16,16 @@ export const TransitionSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('dissolve'), frames: TransitionFrames }),
   z.object({ kind: z.literal('fade-coal'), frames: TransitionFrames }),
   z.object({ kind: z.literal('glitch'), frames: TransitionFrames }),
+  z.object({
+    kind: z.literal('burn'),
+    frames: TransitionFrames,
+    // Optional brand-supplied look: cloud mask image, hot-edge glow colour, and
+    // burn-edge shaping. Absent mask → plain opacity reveal.
+    mask: z.string().optional().describe('Cloud-texture mask image (staticFile path).'),
+    glowColor: z.string().optional().describe('Hot burn-edge glow colour (hex).'),
+    edgeContrast: z.number().optional().describe('Burn-edge hardness. Default 14.'),
+    glowBand: z.number().optional().describe('Glow lead distance in luma. Default 0.1.'),
+  }),
   z.object({ kind: z.literal('clock-wipe'), frames: TransitionFrames }),
   z.object({ kind: z.literal('iris'), frames: TransitionFrames }),
   z.object({ kind: z.literal('slide'), frames: TransitionFrames, direction: Direction4 }),

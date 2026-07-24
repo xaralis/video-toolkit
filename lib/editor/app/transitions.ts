@@ -37,6 +37,7 @@ export const TRANSITION_KINDS: Array<{ kind: string; label: string }> = [
   { kind: 'fade', label: 'Fade' },
   { kind: 'fade-coal', label: 'Fade to black' },
   { kind: 'glitch', label: 'Glitch' },
+  { kind: 'burn', label: 'Burn' },
   { kind: 'slide', label: 'Slide' },
   { kind: 'flip', label: 'Flip' },
   { kind: 'whip-pan', label: 'Whip pan' },
