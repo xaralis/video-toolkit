@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import { parseAccents } from '@video-toolkit/lib/transcripts/accent-parser';
 import { runsToString, applyAccentToRange, type Run, type AccentColor } from './accent-runs';
-import type { AccentSlot } from '../../theming/palette';
+import { paletteMap, type AccentSlot } from '../../theming/palette';
 import styles from './AccentEditor.module.css';
 
 /** The editor's accent palette entry IS a brand accent slot. */
@@ -134,7 +134,7 @@ function setPlainSelection(root: HTMLElement, start: number, end: number): void 
 export function AccentEditor({ value, onChange, colors = DEFAULT_COLORS, multiline = false }: AccentEditorProps) {
   const ref = useRef<HTMLDivElement>(null);
   const lastValue = useRef<string | null>(null);
-  const colorMap = useMemo(() => Object.fromEntries(colors.map((c) => [c.key, c.color])), [colors]);
+  const colorMap = useMemo(() => paletteMap(colors), [colors]);
 
   useLayoutEffect(() => {
     const el = ref.current;

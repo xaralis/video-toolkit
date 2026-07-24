@@ -58,8 +58,8 @@ describe('AccentEditor', () => {
         value="plain"
         onChange={vi.fn()}
         colors={[
-          { key: 'lime', label: 'Green' },
-          { key: 'teal', label: 'Blue' },
+          { key: 'lime', label: 'Green', color: '#00c853' },
+          { key: 'teal', label: 'Blue', color: '#2962ff' },
         ]}
       />
     );
