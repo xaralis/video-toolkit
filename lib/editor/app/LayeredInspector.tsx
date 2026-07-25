@@ -4,6 +4,7 @@ import { AccentEditor } from './AccentEditor';
 import { Collapsible } from './Collapsible';
 import { TRANSITION_KINDS, defaultTransition, kindNeedsFrames, subOptionsFor, type Transition } from './transitions';
 import { parseActionId, type LaneId } from '../src/timeline/layered-adapter';
+import type { AccentSlot } from '../../theming/palette';
 
 // Routes the selected timeline item (by lane) to its editable properties,
 // reusing the existing content editors. Edits produce a new LayeredReel via
@@ -15,6 +16,8 @@ export interface LayeredInspectorProps {
   onChange: (next: LayeredReel) => void;
   onSeek: (frame: number) => void;
   fps: number;
+  /** Brand accent palette for the text AccentEditor. */
+  accentSlots?: AccentSlot[];
 }
 
 const label: React.CSSProperties = { fontSize: 11, color: '#7a7d85', display: 'block', marginBottom: 2 };
@@ -255,7 +258,7 @@ function AddEffectControl({ onAdd }: { onAdd: (kind: string) => void }) {
   );
 }
 
-export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: LayeredInspectorProps) {
+export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, accentSlots }: LayeredInspectorProps) {
   const patchItem = (lane: LaneId, id: string, patch: Record<string, unknown>) => {
     const key = lane as keyof LayeredReel['tracks'];
     const arr = reel.tracks[key] as Array<{ id: string }>;
@@ -416,7 +419,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
             <label style={label}>Text</label>
             {/* Multi-line WYSIWYG accent editor — a quote-pull can span several
                 lines (the roost teaser is a multi-line quote-pull). */}
-            <AccentEditor value={content.text ?? ''} onChange={(next) => patchContent({ text: next })} multiline />
+            <AccentEditor value={content.text ?? ''} onChange={(next) => patchContent({ text: next })} colors={accentSlots} multiline />
           </div>
         )}
         {/* Roost quote-pulls (the stacked teaser look) carry reveal + font size. */}
