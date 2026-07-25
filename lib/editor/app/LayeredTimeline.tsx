@@ -145,13 +145,11 @@ export function LayeredTimeline({
       editorData.map((r) => ({
         ...r,
         rowHeight: ROW_H,
-        // Locked lanes (brand span is content-end-derived; music is a single
-        // base layer) can't be dragged — a drag would silently break the
-        // invariant. The other lanes are freely editable.
-        actions: r.actions.map((a) => {
-          const editable = !LOCKED_LANES.has(r.id);
-          return { ...a, selected: a.id === selectedId, flexible: editable, movable: editable };
-        }),
+        // Keep every action movable so it stays clickable/selectable — xzdarcy
+        // suppresses onClickAction on movable:false actions. Locked lanes (brand
+        // = content-end-derived span; music = single base layer) instead have
+        // their drag/resize blocked in onActionMoving/onActionResizing below.
+        actions: r.actions.map((a) => ({ ...a, selected: a.id === selectedId, flexible: true, movable: true })),
       })),
     [editorData, selectedId],
   );
@@ -251,6 +249,10 @@ export function LayeredTimeline({
             onChange(applyTimelineChange(reel, d as TimelineRow[]));
             return false; // we drive rendering via the Remotion Player, skip xzdarcy's engine sync
           }}
+          // Block drag/resize on locked lanes (returning false cancels it) while
+          // keeping the action clickable/selectable.
+          onActionMoving={({ action }) => (LOCKED_LANES.has(parseActionId(action.id).lane) ? false : undefined)}
+          onActionResizing={({ action }) => (LOCKED_LANES.has(parseActionId(action.id).lane) ? false : undefined)}
           onClickAction={(_e, { action }) => onSelect(action.id)}
           onClickTimeArea={(time) => {
             playerRef.current?.seekTo(Math.round(time * fps));
