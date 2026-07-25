@@ -61,7 +61,8 @@ export const AudioItemSchema = z.object({
   id: z.string(),
   ...TimeSpan,
   source: z.string(), // the audio source file
-  sourceInMs: Ms, // in-point into the audio source (slippable)
+  sourceInMs: Ms, // in-point into the audio source (trim head)
+  sourceOutMs: Ms.optional(), // out-point into the audio source (trim tail); absent = sourceInMs + span
   volumeDb: z.number().optional(),
   mute: z.boolean().optional(),
   followsVideoId: z.string().optional(), // the video item this bed was derived from (for alignment; editing may detach)

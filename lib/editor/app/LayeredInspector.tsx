@@ -368,7 +368,15 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
         <h3 style={heading}>Audio</h3>
         <TextField lbl="Source" value={a.source} onCommit={(s) => s.trim() && patchItem('audio', id, { source: s })} />
         <Row>
-          <NumberField lbl="In-point (s)" step={0.05} value={a.sourceInMs / 1000} onCommit={(n) => patchItem('audio', id, { sourceInMs: Math.round(n * 1000) })} />
+          <NumberField lbl="Trim in (s)" step={0.05} value={a.sourceInMs / 1000} onCommit={(n) => patchItem('audio', id, { sourceInMs: Math.round(n * 1000) })} />
+          <NumberField
+            lbl="Trim out (s)"
+            step={0.05}
+            value={(a.sourceOutMs ?? a.sourceInMs + (a.endMs - a.startMs)) / 1000}
+            onCommit={(n) => patchItem('audio', id, { sourceOutMs: Math.round(n * 1000) })}
+          />
+        </Row>
+        <Row>
           <NumberField lbl="Volume (dB)" value={a.volumeDb} onCommit={(n) => patchItem('audio', id, { volumeDb: n })} />
         </Row>
       </div>

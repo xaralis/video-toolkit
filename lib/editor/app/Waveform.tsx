@@ -68,12 +68,16 @@ export function VolumeLine({
     return Math.round((V_MAX - fy * (V_MAX - V_MIN)) * 10) / 10;
   };
   const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
+  // Inset from the block edges by the resize-handle width so the draggable
+  // volume line never overlaps the trim handles — otherwise grabbing a handle
+  // near the volume level would drag the volume instead of resizing.
+  const HANDLE_INSET = 11;
   return (
     <svg
       ref={svgRef}
       viewBox="0 0 1000 100"
       preserveAspectRatio="none"
-      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+      style={{ position: 'absolute', top: 0, bottom: 0, left: HANDLE_INSET, right: HANDLE_INSET, pointerEvents: 'none' }}
     >
       {onChange && (
         <line
