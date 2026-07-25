@@ -12,6 +12,7 @@ import { clockWipe } from '@remotion/transitions/clock-wipe';
 import { iris } from '@remotion/transitions/iris';
 import {
   glitch, whipPan, zoomThrough, wipe as customWipe, gradientWipe, burn,
+  rgbSplit, scanlineGlitch, lightLeak, zoomBlur, pixelate, checkerboard,
 } from '../transitions';
 import { useCurrentFrame } from 'remotion';
 import { getTransitionRecord, type TransitionRecord } from './transition-record';
@@ -61,6 +62,27 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   'iris': (_t, dims) => iris({ width: dims.width, height: dims.height }) as AnyPresentation,
   'wipe': (t) => customWipe({ color: t.color, direction: t.direction }) as AnyPresentation,
   'gradient-wipe': (t) => gradientWipe({ direction: t.direction, softness: t.softness }) as AnyPresentation,
+  // Every param below is optional on both sides: the schema member makes it
+  // optional, and the presentation destructures it with its own default — so
+  // passing an explicit `undefined` through is exactly "use your default", the
+  // same contract `burn` and `gradient-wipe` above already rely on.
+  'rgb-split': (t) => rgbSplit({ direction: t.direction, displacement: t.displacement }) as AnyPresentation,
+  'scanline-glitch': (t) => scanlineGlitch({ rgbShiftPx: t.rgbShiftPx }) as AnyPresentation,
+  'light-leak': (t) => lightLeak({
+    temperature: t.temperature, direction: t.direction, intensity: t.intensity, flareArtifacts: t.flareArtifacts,
+  }) as AnyPresentation,
+  'zoom-blur': (t) => zoomBlur({
+    direction: t.direction, blurAmount: t.blurAmount, scaleAmount: t.scaleAmount, origin: t.origin,
+  }) as AnyPresentation,
+  'pixelate': (t) => pixelate({
+    maxBlockSize: t.maxBlockSize, gridSize: t.gridSize,
+    scanlines: t.scanlines, glitchArtifacts: t.glitchArtifacts, randomness: t.randomness,
+  }) as AnyPresentation,
+  // `easing` is not forwarded — it has no schema field (a function can't live
+  // in a config), so the presentation's own Easing.out(Easing.cubic) applies.
+  'checkerboard': (t) => checkerboard({
+    gridSize: t.gridSize, pattern: t.pattern, stagger: t.stagger, squareAnimation: t.squareAnimation,
+  }) as AnyPresentation,
 };
 
 // `cut`/absent/unrecognised → null (hard cut, no wrap). "Unrecognised" can still

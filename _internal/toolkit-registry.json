@@ -866,19 +866,29 @@
   },
   "templates": {},
   "transitions": {
+    "_note": "`kind` is the transition's name in the ONE catalog (lib/reel-config-base/transition-schema.ts) — what a config writes and what the editor's Kind dropdown offers. Every entry must have one: an entry without a kind is a presentation nothing can reach, which is exactly the state the six below were fixed out of. `options` lists the params the editor exposes as sub-options, which is the kind's schema shape minus kind/frames.",
     "glitch": {
       "path": "lib/transitions/presentations/glitch.tsx",
+      "kind": "glitch",
       "description": "Digital distortion with RGB shift and scan lines",
-      "options": [
-        "intensity",
-        "slices",
-        "rgbShift"
-      ],
+      "options": [],
       "bestFor": "Tech demos, edgy reveals, cyberpunk aesthetic",
+      "status": "stable"
+    },
+    "burn": {
+      "path": "lib/transitions/presentations/burn.tsx",
+      "kind": "burn",
+      "description": "Cloud-masked burn-through with a hot glowing edge; brand supplies the mask and glow colour",
+      "options": [
+        "edgeContrast",
+        "glowBand"
+      ],
+      "bestFor": "Organic reveals, warm brand moments, film-like cuts",
       "status": "stable"
     },
     "rgbSplit": {
       "path": "lib/transitions/presentations/rgb-split.tsx",
+      "kind": "rgb-split",
       "description": "Chromatic aberration / color separation effect",
       "options": [
         "direction",
@@ -889,26 +899,33 @@
     },
     "zoomBlur": {
       "path": "lib/transitions/presentations/zoom-blur.tsx",
+      "kind": "zoom-blur",
       "description": "Radial motion blur with scale",
       "options": [
         "direction",
-        "blurAmount"
+        "blurAmount",
+        "scaleAmount",
+        "origin"
       ],
       "bestFor": "CTAs, high-energy moments, impact",
       "status": "stable"
     },
     "lightLeak": {
       "path": "lib/transitions/presentations/light-leak.tsx",
+      "kind": "light-leak",
       "description": "Cinematic lens flare and overexposure",
       "options": [
         "temperature",
-        "direction"
+        "direction",
+        "intensity",
+        "flareArtifacts"
       ],
       "bestFor": "Celebrations, film aesthetic, warm moments",
       "status": "stable"
     },
     "pixelate": {
       "path": "lib/transitions/presentations/pixelate.tsx",
+      "kind": "pixelate",
       "description": "Digital mosaic dissolution with glitch artifacts",
       "options": [
         "maxBlockSize",
@@ -922,6 +939,7 @@
     },
     "checkerboard": {
       "path": "lib/transitions/presentations/checkerboard.tsx",
+      "kind": "checkerboard",
       "description": "Grid-based reveal with multiple patterns",
       "options": [
         "gridSize",
@@ -945,11 +963,10 @@
     },
     "whipPan": {
       "path": "lib/transitions/presentations/whip-pan.tsx",
+      "kind": "whip-pan",
       "description": "Directional motion blur — fast camera move feel",
       "options": [
-        "direction",
-        "intensity",
-        "speed"
+        "direction"
       ],
       "bestFor": "Energetic cuts, camera movement, fast-paced reels",
       "status": "beta",
@@ -957,11 +974,10 @@
     },
     "zoomThrough": {
       "path": "lib/transitions/presentations/zoom-through.tsx",
+      "kind": "zoom-through",
       "description": "Zoom out of outgoing, zoom into incoming — high energy",
       "options": [
-        "depth",
-        "easing",
-        "rotationAmount"
+        "from"
       ],
       "bestFor": "Dynamic transitions, product reveals, fast-cut edits",
       "status": "beta",
@@ -969,23 +985,33 @@
     },
     "wipe": {
       "path": "lib/transitions/presentations/wipe.tsx",
+      "kind": "wipe",
       "description": "Directional sweep in a brand color (lime/teal/coal)",
       "options": [
-        "direction",
         "color",
-        "angle"
+        "direction"
       ],
       "bestFor": "Brand-consistent wipes, political reels, directional reveals",
       "status": "beta",
       "created": "2026-05-19"
     },
+    "gradientWipe": {
+      "path": "lib/transitions/presentations/gradient-wipe.tsx",
+      "kind": "gradient-wipe",
+      "description": "Feathered diagonal blend band sweeping corner to corner",
+      "options": [
+        "direction",
+        "softness"
+      ],
+      "bestFor": "Soft corner-to-corner reveals, calm brand moments",
+      "status": "beta"
+    },
     "scanlineGlitch": {
       "path": "lib/transitions/presentations/scanline-glitch.tsx",
+      "kind": "scanline-glitch",
       "description": "Compressed CRT scanline + RGB shift — rhymes with outro stinger",
       "options": [
-        "scanlineHeight",
-        "rgbShift",
-        "glitchIntensity"
+        "rgbShiftPx"
       ],
       "bestFor": "Digital/tech aesthetic, modern edgy reels, retro-futurism",
       "status": "beta",

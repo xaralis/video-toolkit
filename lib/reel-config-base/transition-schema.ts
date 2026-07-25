@@ -77,6 +77,43 @@ const CATALOG = catalog(
   { schema: z.object({ kind: z.literal('fade-coal'), frames: TransitionFrames }), label: 'Fade to black' },
   { schema: z.object({ kind: z.literal('glitch'), frames: TransitionFrames }), label: 'Glitch' },
   {
+    // Chromatic aberration: two hue-rotated ghosts of the frame pull apart and
+    // snap back. Both params are optional — `presentations/rgb-split.tsx`
+    // destructures them with its own defaults, so `{kind, frames}` alone
+    // already looks right.
+    schema: z.object({
+      kind: z.literal('rgb-split'),
+      frames: TransitionFrames,
+      direction: z
+        .enum(['horizontal', 'vertical', 'diagonal'])
+        .optional()
+        .describe('Axis the colour ghosts separate along. Default horizontal.'),
+      displacement: z
+        .number()
+        .min(0)
+        .max(200)
+        .optional()
+        .describe('Peak ghost offset in px, at the midpoint of the transition. Default 50.'),
+    }),
+    label: 'RGB split',
+  },
+  {
+    // CRT scanlines + a fixed two-ghost RGB shift. Deliberately one knob: the
+    // presentation reads exactly one prop (`rgbShiftPx`); the scanline pitch
+    // and the per-frame jitter are baked in.
+    schema: z.object({
+      kind: z.literal('scanline-glitch'),
+      frames: TransitionFrames,
+      rgbShiftPx: z
+        .number()
+        .min(0)
+        .max(64)
+        .optional()
+        .describe('Peak horizontal separation of the two colour ghosts, in px. Default 16.'),
+    }),
+    label: 'Scanline glitch',
+  },
+  {
     schema: z.object({
       kind: z.literal('burn'),
       frames: TransitionFrames,
@@ -91,12 +128,61 @@ const CATALOG = catalog(
     }),
     label: 'Burn',
   },
+  {
+    // Film light leak: a coloured gradient sweeps across while the frame
+    // over-exposes, with optional lens-flare artifacts on top.
+    schema: z.object({
+      kind: z.literal('light-leak'),
+      frames: TransitionFrames,
+      temperature: z
+        .enum(['warm', 'cool', 'rainbow'])
+        .optional()
+        .describe('Colour cast of the leak. Default warm.'),
+      direction: z
+        .enum(['left', 'right', 'top', 'bottom', 'center'])
+        .optional()
+        .describe('Edge the light enters from (`center` blooms outward). Default right.'),
+      intensity: z
+        .number()
+        .min(0)
+        .max(1)
+        .optional()
+        .describe('Strength of the over-exposure and the flares. Default 0.8.'),
+      flareArtifacts: z.boolean().optional().describe('Add lens-flare blobs and an anamorphic streak. Default on.'),
+    }),
+    label: 'Light leak',
+    // See defaultTransition's note: only booleans get seeded, because a
+    // checkbox has no "unset" state to be honest with.
+    defaults: { flareArtifacts: true },
+  },
   { schema: z.object({ kind: z.literal('slide'), frames: TransitionFrames, direction: Direction4 }), label: 'Slide' },
   { schema: z.object({ kind: z.literal('flip'), frames: TransitionFrames, direction: Direction4 }), label: 'Flip' },
   { schema: z.object({ kind: z.literal('whip-pan'), frames: TransitionFrames, direction: Direction4 }), label: 'Whip pan' },
   {
     schema: z.object({ kind: z.literal('zoom-through'), frames: TransitionFrames, from: z.enum(['in', 'out']) }),
     label: 'Zoom',
+  },
+  {
+    // Radial-blur punch. Distinct from `zoom-through`: that one pushes the
+    // outgoing clip away and pulls the incoming one in; this one blurs and
+    // over-scales a SINGLE frame around a chosen origin.
+    schema: z.object({
+      kind: z.literal('zoom-blur'),
+      frames: TransitionFrames,
+      direction: z.enum(['in', 'out']).optional().describe('`in` zooms toward the viewer, `out` away. Default in.'),
+      blurAmount: z.number().min(0).max(100).optional().describe('Peak blur radius in px. Default 20.'),
+      scaleAmount: z
+        .number()
+        .min(1)
+        .max(3)
+        .optional()
+        .describe('Peak scale multiplier (its reciprocal is the other end of the move). Default 1.15.'),
+      origin: z
+        .enum(['center', 'top', 'bottom', 'left', 'right'])
+        .optional()
+        .describe('Point the zoom and the light streak radiate from. Default center.'),
+    }),
+    label: 'Zoom blur',
   },
   { schema: z.object({ kind: z.literal('clock-wipe'), frames: TransitionFrames }), label: 'Clock wipe' },
   { schema: z.object({ kind: z.literal('iris'), frames: TransitionFrames }), label: 'Iris' },
@@ -131,6 +217,57 @@ const CATALOG = catalog(
     // Both fields are optional in the schema (their renderer has its own
     // fallbacks) but the editor seeds them so the controls aren't blank.
     defaults: { direction: 'tl-br', softness: 40 },
+  },
+  {
+    // Mosaic dissolve: the frame blurs into blocks over a randomised grid,
+    // with optional CRT scanlines and glitch slices.
+    schema: z.object({
+      kind: z.literal('pixelate'),
+      frames: TransitionFrames,
+      maxBlockSize: z.number().min(8).max(200).optional().describe('Block size in px at peak pixelation. Default 60.'),
+      // gridSize² divs are rendered, so the ceiling is a real performance
+      // guard rather than taste: 32 is already 1024 elements per frame.
+      gridSize: z.number().min(2).max(32).optional().describe('Overlay grid is gridSize × gridSize cells. Default 12.'),
+      scanlines: z.boolean().optional().describe('Overlay CRT scanlines at peak. Default on.'),
+      glitchArtifacts: z.boolean().optional().describe('Add displaced slices and an RGB split. Default on.'),
+      randomness: z
+        .number()
+        .min(0)
+        .max(1)
+        .optional()
+        .describe('0 = cells reveal in a clean diagonal sweep, 1 = fully scrambled. Default 0.8.'),
+    }),
+    label: 'Pixelate',
+    defaults: { scanlines: true, glitchArtifacts: true },
+  },
+  {
+    // Grid reveal — the incoming clip appears cell by cell in one of nine
+    // orders. (`CheckerboardProps.easing` is deliberately absent: it is a
+    // FUNCTION, so it can be neither stored in a config nor picked in the
+    // inspector. The presentation's own Easing.out(Easing.cubic) stands.)
+    schema: z.object({
+      kind: z.literal('checkerboard'),
+      frames: TransitionFrames,
+      gridSize: z.number().min(2).max(24).optional().describe('Reveal grid is gridSize × gridSize cells. Default 8.'),
+      pattern: z
+        .enum([
+          'sequential', 'random', 'diagonal', 'alternating', 'spiral',
+          'rows', 'columns', 'center-out', 'corners-in',
+        ])
+        .optional()
+        .describe('Order the cells reveal in. Default diagonal.'),
+      stagger: z
+        .number()
+        .min(0)
+        .max(1)
+        .optional()
+        .describe('0 = every cell animates at once, 1 = strictly one after another. Default 0.6.'),
+      squareAnimation: z
+        .enum(['fade', 'scale', 'flip'])
+        .optional()
+        .describe('How an individual cell appears. Default fade.'),
+    }),
+    label: 'Checkerboard',
   },
 );
 
@@ -217,6 +354,15 @@ function humanize(s: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
+// Field NAMES whose humanized form would be unreadable — the sibling of
+// VALUE_LABELS below, and used the same way: an override, not a second naming
+// scheme. Keep it as short as it is; a field that needs an entry here is
+// usually a field that could just have a better name.
+const PROP_LABELS: Record<string, string> = {
+  // humanize() would give 'Rgb shift px'.
+  rgbShiftPx: 'RGB shift (px)',
+};
+
 // Enum VALUES whose humanized form would be unreadable. Keyed by the raw value;
 // the corner codes are unique across the vocabulary so a flat map is safe.
 const VALUE_LABELS: Record<string, string> = {
@@ -241,17 +387,18 @@ const VALUE_LABELS: Record<string, string> = {
  */
 export function subOptionForField(prop: string, field: z.ZodTypeAny): SubOption | null {
   const t = innerType(field);
+  const label = PROP_LABELS[prop] ?? humanize(prop);
   if (t instanceof z.ZodEnum) {
     const values = (t as z.ZodEnum<[string, ...string[]]>).options;
     return {
       prop,
-      label: humanize(prop),
+      label,
       kind: 'enum',
       options: values.map((value) => ({ value, label: VALUE_LABELS[value] ?? humanize(value) })),
     };
   }
-  if (t instanceof z.ZodNumber) return { prop, label: humanize(prop), kind: 'number' };
-  if (t instanceof z.ZodBoolean) return { prop, label: humanize(prop), kind: 'boolean' };
+  if (t instanceof z.ZodNumber) return { prop, label, kind: 'number' };
+  if (t instanceof z.ZodBoolean) return { prop, label, kind: 'boolean' };
   return null;
 }
 
@@ -314,6 +461,14 @@ export function defaultValueForField(field: z.ZodTypeAny): unknown {
  *
  * An unknown kind still yields `{ kind, frames }` rather than throwing, so a
  * legacy persisted value round-trips through the picker instead of vanishing.
+ *
+ * WHICH OPTIONAL FIELDS A CATALOG ENTRY SHOULD NAME IN `defaults`: only those
+ * whose CONTROL cannot represent "unset" honestly. A blank number field and a
+ * dropdown showing "—" both read correctly as "the presentation's own default
+ * applies". A checkbox has no such state — unchecked means `false` — so an
+ * optional boolean that the presentation defaults to `true` (pixelate's
+ * `scanlines`, light-leak's `flareArtifacts`) MUST be seeded `true`, or the
+ * inspector shows "off" for something that is plainly on in the frame.
  */
 export function defaultTransition(kind: string, opts?: { frames?: number }): DraftTransition {
   const e = entryFor(kind);

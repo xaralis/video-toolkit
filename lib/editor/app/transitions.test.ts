@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import {
   TRANSITION_KINDS,
@@ -92,8 +95,8 @@ describe('catalog is derived from TransitionSchema', () => {
 });
 
 describe('TRANSITION_KINDS', () => {
-  it('lists all 14 kinds with human-readable labels', () => {
-    expect(TRANSITION_KINDS).toHaveLength(14);
+  it('lists all 20 kinds with human-readable labels', () => {
+    expect(TRANSITION_KINDS).toHaveLength(20);
     const byKind = Object.fromEntries(TRANSITION_KINDS.map((k) => [k.kind, k.label]));
     expect(byKind['cut']).toBe('Cut');
     expect(byKind['dissolve']).toBe('Dissolve');
@@ -108,6 +111,65 @@ describe('TRANSITION_KINDS', () => {
     expect(byKind['flip']).toBe('Flip');
     expect(byKind['clock-wipe']).toBe('Clock wipe');
     expect(byKind['iris']).toBe('Iris');
+    // The six that used to exist only as presentation files.
+    expect(byKind['rgb-split']).toBe('RGB split');
+    expect(byKind['scanline-glitch']).toBe('Scanline glitch');
+    expect(byKind['light-leak']).toBe('Light leak');
+    expect(byKind['zoom-blur']).toBe('Zoom blur');
+    expect(byKind['pixelate']).toBe('Pixelate');
+    expect(byKind['checkerboard']).toBe('Checkerboard');
+  });
+});
+
+// The condition this task fixed: six presentations shipped in lib/transitions,
+// were exported from the barrel and were documented in the registry, yet no
+// transition KIND named them — so nothing in the editor or in any config could
+// ever reach them. The registry is the toolkit's catalogue-of-record, so it is
+// also the right place to pin the invariant: a documented transition that no
+// kind names is, by definition, unreachable.
+describe('no transition in the registry is unreachable', () => {
+  // Resolved via dirname(fileURLToPath(...)) rather than `new URL(…,
+  // import.meta.url)` — Vite rewrites that exact pattern into an http asset URL.
+  const registryPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../_internal/toolkit-registry.json');
+  const registry = JSON.parse(readFileSync(registryPath, 'utf8')) as {
+    transitions: Record<string, { kind?: string }>;
+  };
+  const KINDS = new Set(TRANSITION_KINDS.map((k) => k.kind));
+
+  it('gives every registry transition a `kind` that the catalog offers', () => {
+    for (const [name, entry] of Object.entries(registry.transitions)) {
+      if (name.startsWith('_')) continue; // `_note` — prose for a human reader, not an entry
+      expect(entry.kind, `registry.transitions.${name} has no kind`).toBeTruthy();
+      expect([...KINDS], `registry.transitions.${name}.kind`).toContain(entry.kind);
+    }
+  });
+
+  it('documents the six formerly-orphan presentations against their new kinds', () => {
+    const byName = registry.transitions;
+    expect(byName.rgbSplit.kind).toBe('rgb-split');
+    expect(byName.zoomBlur.kind).toBe('zoom-blur');
+    expect(byName.lightLeak.kind).toBe('light-leak');
+    expect(byName.pixelate.kind).toBe('pixelate');
+    expect(byName.checkerboard.kind).toBe('checkerboard');
+    expect(byName.scanlineGlitch.kind).toBe('scanline-glitch');
+  });
+
+  // The registry's option lists are what a person reads before reaching for a
+  // transition; three of them named props their presentation never accepted
+  // (scanlineGlitch's `scanlineHeight`/`glitchIntensity` among them). Pin them
+  // to the schema, which is now derived from the presentations' real signatures.
+  it('lists exactly the tunable options each new kind’s schema declares', () => {
+    for (const [name, kind] of [
+      ['rgbSplit', 'rgb-split'],
+      ['zoomBlur', 'zoom-blur'],
+      ['lightLeak', 'light-leak'],
+      ['pixelate', 'pixelate'],
+      ['checkerboard', 'checkerboard'],
+      ['scanlineGlitch', 'scanline-glitch'],
+    ] as const) {
+      const entry = registry.transitions[name] as { options?: string[] };
+      expect(entry.options, name).toEqual(subOptionsFor(kind).map((o) => o.prop));
+    }
   });
 });
 
@@ -255,6 +317,62 @@ describe('subOptionsFor', () => {
     expect(subOptionsFor('burn').map((o) => o.prop)).toEqual(['edgeContrast', 'glowBand']);
     expect(subOptionsFor('burn').map((o) => o.kind)).toEqual(['number', 'number']);
   });
+
+  // The six wired in by Task 4. Each list is exactly the params its
+  // presentation destructures — pinned so a param can't be invented here nor
+  // quietly dropped from the presentation.
+  it('returns direction enum + displacement number for rgb-split', () => {
+    const byProp = Object.fromEntries(subOptionsFor('rgb-split').map((o) => [o.prop, o]));
+    expect(Object.keys(byProp)).toEqual(['direction', 'displacement']);
+    expect(byProp.direction.options?.map((o) => o.value)).toEqual(['horizontal', 'vertical', 'diagonal']);
+    expect(byProp.displacement.kind).toBe('number');
+  });
+
+  it('returns direction/blurAmount/scaleAmount/origin for zoom-blur', () => {
+    const opts = subOptionsFor('zoom-blur');
+    expect(opts.map((o) => o.prop)).toEqual(['direction', 'blurAmount', 'scaleAmount', 'origin']);
+    expect(opts.map((o) => o.kind)).toEqual(['enum', 'number', 'number', 'enum']);
+    const byProp = Object.fromEntries(opts.map((o) => [o.prop, o]));
+    expect(byProp.direction.options?.map((o) => o.value)).toEqual(['in', 'out']);
+    expect(byProp.origin.options?.map((o) => o.value)).toEqual(['center', 'top', 'bottom', 'left', 'right']);
+  });
+
+  it('returns temperature/direction/intensity and a BOOLEAN flareArtifacts for light-leak', () => {
+    const opts = subOptionsFor('light-leak');
+    expect(opts.map((o) => o.prop)).toEqual(['temperature', 'direction', 'intensity', 'flareArtifacts']);
+    expect(opts.map((o) => o.kind)).toEqual(['enum', 'enum', 'number', 'boolean']);
+    const byProp = Object.fromEntries(opts.map((o) => [o.prop, o]));
+    expect(byProp.temperature.options?.map((o) => o.value)).toEqual(['warm', 'cool', 'rainbow']);
+    expect(byProp.flareArtifacts.options).toBeUndefined();
+  });
+
+  it('returns two booleans among pixelate’s five knobs', () => {
+    const opts = subOptionsFor('pixelate');
+    expect(opts.map((o) => o.prop)).toEqual([
+      'maxBlockSize', 'gridSize', 'scanlines', 'glitchArtifacts', 'randomness',
+    ]);
+    expect(opts.map((o) => o.kind)).toEqual(['number', 'number', 'boolean', 'boolean', 'number']);
+  });
+
+  it('returns checkerboard’s nine reveal patterns and its square animation', () => {
+    const opts = subOptionsFor('checkerboard');
+    expect(opts.map((o) => o.prop)).toEqual(['gridSize', 'pattern', 'stagger', 'squareAnimation']);
+    const byProp = Object.fromEntries(opts.map((o) => [o.prop, o]));
+    expect(byProp.pattern.options?.map((o) => o.value)).toEqual([
+      'sequential', 'random', 'diagonal', 'alternating', 'spiral',
+      'rows', 'columns', 'center-out', 'corners-in',
+    ]);
+    expect(byProp.squareAnimation.options?.map((o) => o.value)).toEqual(['fade', 'scale', 'flip']);
+  });
+
+  it('returns scanline-glitch’s single shift knob under a readable label', () => {
+    const opts = subOptionsFor('scanline-glitch');
+    expect(opts).toHaveLength(1);
+    expect(opts[0].prop).toBe('rgbShiftPx');
+    expect(opts[0].kind).toBe('number');
+    // humanize() alone would render this 'Rgb shift px'.
+    expect(opts[0].label).toBe('RGB shift (px)');
+  });
 });
 
 // The per-field readers behind subOptionsFor/defaultTransition. Tested directly
@@ -386,5 +504,33 @@ describe('defaultTransition', () => {
     expect(defaultTransition('fade', { frames: 12 })).toEqual({ kind: 'fade', frames: 12 });
     expect(defaultTransition('clock-wipe', { frames: 12 })).toEqual({ kind: 'clock-wipe', frames: 12 });
     expect(defaultTransition('iris', { frames: 12 })).toEqual({ kind: 'iris', frames: 12 });
+  });
+
+  // DECISION, pinned deliberately. Every param of the six new kinds is OPTIONAL
+  // — `{kind:'pixelate', frames:12}` alone must render something good, because
+  // the presentation carries its own defaults. So the catalog seeds NOTHING
+  // that the control can already represent honestly: an unset number field is
+  // blank and an unset dropdown shows "—", both of which correctly read as
+  // "the renderer's own default".
+  //
+  // Booleans are the one exception, and the reason is the control: a checkbox
+  // has no blank state, so an unset `scanlines` renders UNCHECKED while the
+  // presentation actually defaults it ON. That is the inspector lying about
+  // the frame the user is looking at. Every boolean whose presentation default
+  // is `true` is therefore seeded `true`.
+  it('seeds a frames-only default for the new kinds that have no boolean knob', () => {
+    expect(defaultTransition('rgb-split', { frames: 12 })).toEqual({ kind: 'rgb-split', frames: 12 });
+    expect(defaultTransition('zoom-blur', { frames: 12 })).toEqual({ kind: 'zoom-blur', frames: 12 });
+    expect(defaultTransition('checkerboard', { frames: 12 })).toEqual({ kind: 'checkerboard', frames: 12 });
+    expect(defaultTransition('scanline-glitch', { frames: 12 })).toEqual({ kind: 'scanline-glitch', frames: 12 });
+  });
+
+  it('seeds the ON-by-default booleans so the checkbox matches what renders', () => {
+    expect(defaultTransition('pixelate', { frames: 12 })).toEqual({
+      kind: 'pixelate', frames: 12, scanlines: true, glitchArtifacts: true,
+    });
+    expect(defaultTransition('light-leak', { frames: 12 })).toEqual({
+      kind: 'light-leak', frames: 12, flareArtifacts: true,
+    });
   });
 });

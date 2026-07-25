@@ -42,6 +42,46 @@ const overlayReel: LayeredReel = {
   },
 };
 
+// The gap Task 3 left behind: `SubOption.kind === 'boolean'` and its
+// CheckboxField branch were written for the kinds that landed in Task 4, so
+// until `pixelate` existed nothing asserted that a boolean sub-option actually
+// REACHES the DOM as a checkbox. A control that is only reachable through a
+// kind is only verified through a kind — so this drives it through the real
+// transitions-lane route rather than rendering CheckboxField in isolation.
+const pixelateReel: LayeredReel = {
+  version: 'layered-1', meta: { topic: 't', totalDurationMs: 4000 },
+  tracks: {
+    video: [{
+      id: 'v1', kind: 'photo', startMs: 0, endMs: 2000, source: 'a.jpg', musicBoostDb: 0,
+      transitionOut: { kind: 'pixelate', frames: 12, scanlines: true, glitchArtifacts: false },
+    }],
+    audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [],
+  },
+};
+
+describe('LayeredInspector boolean transition sub-options', () => {
+  it('renders a checked checkbox for a boolean sub-option that is on', () => {
+    render(
+      <LayeredInspector reel={pixelateReel} selectedId="transition:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    const scanlines = screen.getByLabelText('Scanlines') as HTMLInputElement;
+    expect(scanlines.type).toBe('checkbox');
+    expect(scanlines.checked).toBe(true);
+    // ...and unchecked for the one that is off — not a dropdown, not a number.
+    expect((screen.getByLabelText('Glitch artifacts') as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('commits the toggled boolean back onto the transition', () => {
+    const onChange = vi.fn();
+    render(
+      <LayeredInspector reel={pixelateReel} selectedId="transition:v1" onChange={onChange} onSeek={() => {}} fps={30} />);
+    fireEvent.click(screen.getByLabelText('Scanlines'));
+    const next = onChange.mock.calls.at(-1)![0] as LayeredReel;
+    expect(next.tracks.video[0].transitionOut).toEqual({
+      kind: 'pixelate', frames: 12, scanlines: false, glitchArtifacts: false,
+    });
+  });
+});
+
 describe('LayeredInspector accentSlots', () => {
   it('passes the brand slots to the AccentEditor toolbar', () => {
     render(
