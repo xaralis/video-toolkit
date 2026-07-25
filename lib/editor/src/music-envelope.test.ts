@@ -65,6 +65,18 @@ describe('computeMusicEnvelope', () => {
     expect(volumeAt(300)).toBe(0);
   });
 
+  it('is silent from an explicit music endMs onward (trimmed bed)', () => {
+    const reel = buildReel();
+    reel.tracks.music.endMs = 4000; // trims the bed mid-broll (frame 120)
+    const { volumeAt, points } = computeMusicEnvelope(reel, { fps: FPS });
+    expect(volumeAt(119)).toBeCloseTo(baseGain * Math.pow(10, 6 / 20), 10);
+    expect(volumeAt(120)).toBe(0);
+    expect(volumeAt(200)).toBe(0);
+    // The polyline carries the drop-to-zero vertex at the trim point.
+    const endPoint = points.find((p) => p.frame === 120);
+    expect(endPoint?.gain).toBe(0);
+  });
+
   it('produces a sorted points polyline starting at frame 0 and including the outro end at gain 0', () => {
     const { points } = computeMusicEnvelope(buildReel(), { fps: FPS });
     expect(points.length).toBeGreaterThan(0);

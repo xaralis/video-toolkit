@@ -1,4 +1,6 @@
 import { spawn } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 
 /**
  * Render preview/full endpoint backing the editor's "Render" toolbar button.
@@ -28,6 +30,18 @@ export interface CreateRenderHandlerOpts {
   compositionId: string;
   /** Extra CLI args appended to the render command (e.g. `['--gl=angle']`). Config-time, never client-supplied. */
   extraArgs?: string[];
+}
+
+/** Opens the OS file manager with `absPath` selected (Finder/Explorer; a
+ * directory open on Linux). Fire-and-forget — reveal failures are non-fatal. */
+function revealInFileManager(absPath: string): void {
+  if (process.platform === 'darwin') {
+    spawn('open', ['-R', absPath]).on('error', () => {});
+  } else if (process.platform === 'win32') {
+    spawn('explorer', [`/select,${absPath}`]).on('error', () => {});
+  } else {
+    spawn('xdg-open', [path.dirname(absPath)]).on('error', () => {});
+  }
 }
 
 /** Matches Remotion's progress line, e.g. "Rendered 45/90". Only the last match in a chunk is used. */
@@ -146,31 +160,53 @@ export function createRenderHandler(
     }
 
     if (req.method === 'POST') {
-      if (job.running) {
-        res.statusCode = 409;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ error: 'A render is already in progress' }));
-        return;
-      }
-
       let body = '';
       req.on('data', (chunk) => {
         body += chunk;
       });
       req.on('end', () => {
-        let mode: RenderMode = 'full';
+        let parsed: { action?: unknown; mode?: unknown } = {};
         try {
-          const parsed = body ? JSON.parse(body) : {};
-          if (parsed && (parsed.mode === 'preview' || parsed.mode === 'full')) {
-            mode = parsed.mode;
-          } else if (parsed && parsed.mode !== undefined) {
-            res.statusCode = 400;
+          parsed = body ? JSON.parse(body) : {};
+        } catch {
+          // Malformed JSON body — treat as an empty body (the 'full' default below).
+          parsed = {};
+        }
+
+        // `{ action: 'reveal' }` opens the last render's output in the OS file
+        // manager. The revealed path is always projectRoot + the handler's own
+        // outPath — never client-supplied. Allowed even while a render runs
+        // (it doesn't touch the job).
+        if (parsed && parsed.action === 'reveal') {
+          const abs = job.outPath ? path.resolve(projectRoot, job.outPath) : undefined;
+          if (!abs || !fs.existsSync(abs)) {
+            res.statusCode = 404;
             res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ error: "mode must be 'preview' or 'full'" }));
+            res.end(JSON.stringify({ error: 'No render output to reveal' }));
             return;
           }
-        } catch {
-          // Malformed JSON body — fall back to the 'full' default rather than fail the request.
+          revealInFileManager(abs);
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ revealed: true, outPath: job.outPath }));
+          return;
+        }
+
+        if (job.running) {
+          res.statusCode = 409;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'A render is already in progress' }));
+          return;
+        }
+
+        let mode: RenderMode = 'full';
+        if (parsed && (parsed.mode === 'preview' || parsed.mode === 'full')) {
+          mode = parsed.mode;
+        } else if (parsed && parsed.mode !== undefined) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: "mode must be 'preview' or 'full'" }));
+          return;
         }
 
         startRender(mode);

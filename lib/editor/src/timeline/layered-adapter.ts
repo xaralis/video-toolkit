@@ -1,4 +1,5 @@
 import type { LayeredReel, VideoItem, AudioItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
+import { withTotalDuration } from '@video-toolkit/lib/reel-config-base/total-duration';
 
 export interface TLAction { id: string; start: number; end: number; effectId: string; movable?: boolean; flexible?: boolean; minStart?: number; }
 export interface TLRow { id: string; actions: TLAction[]; }
@@ -42,9 +43,10 @@ export function layeredToTimeline(reel: LayeredReel, fps: number): { editorData:
   const audio = reel.tracks.audio.map((a) => act('audio', a.id, a.startMs, a.endMs, 'audio'));
   const brand = reel.tracks.brand.map((b) => act('brand', b.id, b.startMs, b.endMs, `brand-${b.kind}`));
   // Music is a single base layer (not an item array) — show it as one block
-  // spanning the reel. Its derived envelope + editing is sub-spec 3, so it is
-  // display-only here (locked in the timeline).
-  const music: TLAction[] = [act('music', 'base', 0, reel.meta.totalDurationMs, 'music')];
+  // anchored at 0. Its right edge is its explicit out-point when set (a trimmed
+  // bed), else it follows the content end. The block is end-trimmable in the
+  // timeline; its move + left edge stay locked (music always starts at 0).
+  const music: TLAction[] = [act('music', 'base', 0, reel.tracks.music.endMs ?? reel.meta.totalDurationMs, 'music')];
   // Transitions are a derived "at-the-cut" view: clips stay butted on the
   // video track. Every item's non-`cut` transitionOut gets one centered block
   // on its cut — including the LAST item, whose transitionOut is a closing
@@ -246,8 +248,7 @@ function applyRipple(reel: LayeredReel, resolvedVideo: VideoItem[], newMs: NewMs
     }),
     brand: reel.tracks.brand.map((b) => (b.id === id ? spanApplied(b, newMs('brand', b.id)) : shift(b))),
   };
-  const totalMs = Math.max(0, ...tracks.video.map((v) => v.endMs));
-  return { ...reel, meta: { ...reel.meta, totalDurationMs: totalMs }, tracks };
+  return withTotalDuration({ ...reel, tracks });
 }
 
 // Ripple reorder (a drag in ripple mode): drop the moved clip into the sequence
@@ -329,7 +330,14 @@ export function snapEdgesToBeats(
 export function applyTimelineChange(
   reel: LayeredReel,
   rows: TLRow[],
-  opts: { ripple?: boolean; footageMsById?: Record<string, number>; snapMs?: number[]; snapThresholdMs?: number } = {},
+  opts: {
+    ripple?: boolean;
+    footageMsById?: Record<string, number>;
+    snapMs?: number[];
+    snapThresholdMs?: number;
+    /** Decoded duration of the music source (ms) — caps the music end-trim. */
+    musicMaxMs?: number;
+  } = {},
 ): LayeredReel {
   const byId = new Map<string, TLAction>();
   for (const r of rows) for (const a of r.actions) byId.set(a.id, a);
@@ -340,6 +348,7 @@ export function applyTimelineChange(
   for (const a of reel.tracks.audio) origById.set(`audio:${a.id}`, { startMs: a.startMs, endMs: a.endMs });
   for (const o of reel.tracks.overlays) origById.set(`overlays:${o.id}`, { startMs: o.startMs, endMs: o.endMs });
   for (const b of reel.tracks.brand) origById.set(`brand:${b.id}`, { startMs: b.startMs, endMs: b.endMs });
+  origById.set('music:base', { startMs: 0, endMs: reel.tracks.music.endMs ?? reel.meta.totalDurationMs });
   const snap = opts.snapMs && opts.snapMs.length > 0 && (opts.snapThresholdMs ?? 0) > 0;
   const newMs: NewMs = (lane, id) => {
     const a = byId.get(`${lane}:${id}`);
@@ -350,10 +359,26 @@ export function applyTimelineChange(
     return orig ? snapEdgesToBeats(orig, raw, opts.snapMs!, opts.snapThresholdMs!) : raw;
   };
 
+  // Music bed end-trim: the bed is pinned at 0, so only a right-edge change is
+  // honored (a left-handle drag or move springs back on commit). The new
+  // out-point is clamped to a minimum length and, when the source's decoded
+  // duration is known, to the real end of the audio file.
+  const music = (() => {
+    const m = reel.tracks.music;
+    const np = newMs('music', 'base');
+    if (!np) return m;
+    const curEnd = m.endMs ?? reel.meta.totalDurationMs;
+    if (np.endMs === curEnd) return m;
+    let endMs = Math.max(100, np.endMs);
+    if (opts.musicMaxMs && opts.musicMaxMs > 0) endMs = Math.min(endMs, opts.musicMaxMs);
+    return { ...m, endMs };
+  })();
+  const reelM = music === reel.tracks.music ? reel : { ...reel, tracks: { ...reel.tracks, music } };
+
   // Trim-linked resize: a clip's left edge reveals earlier footage (clamped at
   // the source start), the right edge extends its out-point (clamped at the
   // real footage end, when its duration is known).
-  const resolvedVideo = reel.tracks.video.map((v) => {
+  const resolvedVideo = reelM.tracks.video.map((v) => {
     const np = newMs('video', v.id);
     return np ? resizeVideoItem(v, np, opts.footageMsById?.[v.id]) : v;
   });
@@ -362,16 +387,16 @@ export function applyTimelineChange(
     // Ripple MOVE (drag): a video clip whose BOTH edges shifted is a move, not a
     // trim — reorder it into the sequence and re-butt (standard ripple/insert
     // edit), so no gaps open. Trims fall through to applyRipple below.
-    const moved = reel.tracks.video.find((v) => {
+    const moved = reelM.tracks.video.find((v) => {
       const np = newMs('video', v.id);
       return np && np.startMs !== v.startMs && np.endMs !== v.endMs;
     });
     if (moved) {
       const np = newMs('video', moved.id)!;
-      return relinkAudio(reel, rippleReorder(reel, moved.id, np.startMs));
+      return withTotalDuration(relinkAudio(reelM, rippleReorder(reelM, moved.id, np.startMs)));
     }
-    const rippled = applyRipple(reel, resolvedVideo, newMs);
-    if (rippled) return relinkAudio(reel, rippled);
+    const rippled = applyRipple(reelM, resolvedVideo, newMs);
+    if (rippled) return withTotalDuration(relinkAudio(reelM, rippled));
   }
 
   // Butt adjacent video clips (model B: clips don't overlap). If a clip's start
@@ -383,20 +408,20 @@ export function applyTimelineChange(
     return next && next.startMs > v.startMs && next.startMs < v.endMs ? { ...v, endMs: next.startMs } : v;
   });
   const result: LayeredReel = {
-    ...reel,
+    ...reelM,
     tracks: {
-      ...reel.tracks,
+      ...reelM.tracks,
       video,
-      overlays: reel.tracks.overlays.map((o) => spanApplied(o, newMs('overlays', o.id))),
+      overlays: reelM.tracks.overlays.map((o) => spanApplied(o, newMs('overlays', o.id))),
       // Audio is trim-linked like a clip (in/out-point move with the edges).
-      audio: reel.tracks.audio.map((a) => {
+      audio: reelM.tracks.audio.map((a) => {
         const np = newMs('audio', a.id);
         return np ? resizeAudioItem(a, np) : a;
       }),
-      brand: reel.tracks.brand.map((b) => spanApplied(b, newMs('brand', b.id))),
+      brand: reelM.tracks.brand.map((b) => spanApplied(b, newMs('brand', b.id))),
     },
   };
-  return relinkAudio(reel, result);
+  return withTotalDuration(relinkAudio(reelM, result));
 }
 
 // Keep every BOUND audio bed (followsVideoId set) locked to its video: NLE-style
@@ -459,8 +484,7 @@ export function deleteItem(reel: LayeredReel, selectedId: string, opts: { ripple
     audio: prune(reel.tracks.audio),
     brand: prune(reel.tracks.brand),
   };
-  const totalMs = Math.max(0, ...tracks.video.map((v) => v.endMs));
-  return { ...reel, meta: { ...reel.meta, totalDurationMs: totalMs }, tracks };
+  return withTotalDuration({ ...reel, tracks });
 }
 
 // Split (razor) a clip/broll at the playhead into two butted pieces, each with
@@ -520,6 +544,5 @@ export function duplicateItem(reel: LayeredReel, selectedId: string): LayeredRee
   if (boundAudio) {
     audio.push({ ...boundAudio, id: `${boundAudio.id}-copy`, startMs: at, endMs: at + (boundAudio.endMs - boundAudio.startMs), followsVideoId: `${id}-copy` });
   }
-  const totalMs = Math.max(0, ...video.map((v) => v.endMs));
-  return { ...reel, meta: { ...reel.meta, totalDurationMs: totalMs }, tracks: { ...reel.tracks, video, audio } };
+  return withTotalDuration({ ...reel, tracks: { ...reel.tracks, video, audio } });
 }

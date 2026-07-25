@@ -18,6 +18,9 @@ export function computeMusicEnvelope(reel: LayeredReel, opts: { fps: number }): 
   const OUTRO_FADE_OUT_FRAMES = fps; // last 1 second
   const outroFadeOutStart = outroEndFrame !== null ? outroEndFrame - OUTRO_FADE_OUT_FRAMES : null;
   const baseVolume = Math.pow(10, (reel.tracks.music.baseVolumeDb ?? -8) / 20);
+  // Explicit music out-point (trimmed bed): silence from there on. Absent =
+  // the bed follows the content end and only the outro rule silences it.
+  const musicEndFrame = reel.tracks.music.endMs !== undefined ? msToFrames(reel.tracks.music.endMs) : null;
 
   const findPrimaryVideoItemAt = (f: number): VideoItem | null => {
     let primary: VideoItem | null = null;
@@ -32,6 +35,7 @@ export function computeMusicEnvelope(reel: LayeredReel, opts: { fps: number }): 
   };
 
   const volumeAt = (f: number): number => {
+    if (musicEndFrame !== null && f >= musicEndFrame) return 0;
     if (outroEndFrame !== null && f >= outroEndFrame) return 0;
     const item = findPrimaryVideoItemAt(f);
     const boostDb = item?.musicBoostDb ?? 0;
@@ -50,6 +54,7 @@ export function computeMusicEnvelope(reel: LayeredReel, opts: { fps: number }): 
   for (const v of reel.tracks.video) verts.add(msToFrames(v.startMs));
   if (outroFadeOutStart !== null) verts.add(outroFadeOutStart);
   if (outroEndFrame !== null) { verts.add(outroEndFrame); verts.add(Math.max(0, outroEndFrame - 1)); }
+  if (musicEndFrame !== null) { verts.add(musicEndFrame); verts.add(Math.max(0, musicEndFrame - 1)); }
   const points = [...verts]
     .filter((f) => f >= 0 && f <= totalFrames)
     .sort((a, b) => a - b)
