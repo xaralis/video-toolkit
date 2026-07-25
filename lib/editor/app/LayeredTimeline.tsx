@@ -19,6 +19,7 @@ import { useSourceDurations } from './useSourceDurations';
 import { Waveform, VolumeLine } from './Waveform';
 import { MusicEnvelope } from './MusicEnvelope';
 import { computeMusicEnvelope } from '@video-toolkit/lib/reel-config-base/music-envelope';
+import { humanizeKey, stableColor, type EditorMeta } from './editor-meta';
 
 // Audio sources: bare filenames are broll/clip beds under public/recordings;
 // a path (e.g. audio/bg.mp3, the music) is served from public as-is.
@@ -45,36 +46,38 @@ const LANE_LABELS: Record<LaneId, string> = {
 
 // Colour per item type (effectId). Used both for the block fill and — via the
 // effects map xzdarcy requires — as the action's effect metadata.
-const EFFECT_COLOR: Record<string, string> = {
+//
+// Core colours only the kinds ITS OWN SCHEMA defines: the video-item union, the
+// audio/music tracks and the brand-layer enum (see layered-schema.ts). Overlay
+// content kinds are deliberately open there ("core knows modes, not names"), so
+// core never enumerates them — an overlay (or any unlisted kind) gets a
+// deterministic colour derived from its effectId, and a host that wants a
+// specific one declares it in `meta.laneColors`.
+const CORE_LANE_COLOR: Record<string, string> = {
   'video-clip': '#3b6ea5',
   'video-broll': '#2f7d4f',
+  'video-photo': '#3f6a7d',
   'video-multi-clip': '#6a4fa5',
   'video-card': '#8a6d1f',
   'video-outro': '#4a4c54',
-  'overlay-title': '#a5432f',
-  'overlay-text': '#9a7d1f',
-  'overlay-quote-pull': '#9a7d1f', // legacy
-  'overlay-stat-callout': '#2f7f9a',
-  'overlay-update-badge': '#9a2f63',
-  'overlay-source-tag': '#5a5c64',
-  'overlay-chevron': '#7a8f1f',
   audio: '#2a8f8f',
   music: '#7a5cae',
   'brand-watermark': '#4a4c54',
   'brand-disclaimer': '#4a4c54',
 };
-const colorFor = (effectId: string) => EFFECT_COLOR[effectId] ?? '#5a5c64';
+export const colorFor = (effectId: string, meta?: EditorMeta) =>
+  meta?.laneColors?.[effectId] ?? CORE_LANE_COLOR[effectId] ?? stableColor(effectId);
 
 // A block's fill. A LINKED audio bed (followsVideoId) takes its clip's colour so
 // the pair reads as one unit; everything else uses its own effect colour.
-function blockColor(action: TimelineAction, reel: LayeredReel): string {
+function blockColor(action: TimelineAction, reel: LayeredReel, meta?: EditorMeta): string {
   const { lane, id } = parseActionId(action.id);
   if (lane === 'audio') {
     const a = reel.tracks.audio.find((x) => x.id === id);
     const v = a?.followsVideoId ? reel.tracks.video.find((x) => x.id === a.followsVideoId) : undefined;
-    if (v) return colorFor(`video-${v.kind}`);
+    if (v) return colorFor(`video-${v.kind}`, meta);
   }
-  return colorFor(action.effectId);
+  return colorFor(action.effectId, meta);
 }
 
 // ---- Per-type timeline label ----------------------------------------------
@@ -82,20 +85,14 @@ function blockColor(action: TimelineAction, reel: LayeredReel): string {
 // start of an overlay's text) instead of an opaque id.
 const basename = (s: string | undefined) => (s ? s.split('/').pop() ?? s : '');
 const snippet = (s: string, n = 22) => {
-  // Collapse newlines/whitespace so a multi-line quote-pull reads on one line.
+  // Collapse newlines/whitespace so a multi-line overlay reads on one line.
   const plain = stripAccents(s).replace(/\s+/g, ' ').trim();
   return plain.length > n ? `${plain.slice(0, n).trimEnd()}…` : plain;
 };
-const OVERLAY_KIND_LABEL: Record<string, string> = {
-  text: 'Text',
-  'quote-pull': 'Text', // legacy alias
-  chevron: 'Chevron',
-  title: 'Title',
-  'stat-callout': 'Stat',
-  'update-badge': 'Badge',
-  'source-tag': 'Source',
-  'party-logos': 'Logos',
-};
+// Overlay content kinds are open (the layered schema keeps content permissive),
+// so core does NOT enumerate them: an overlay's block label is its kind
+// humanized (`my-kind` → `My kind`), and a host that wants a shorter
+// or different one declares it in `meta.overlayLabels`.
 const VIDEO_KIND_LABEL: Record<string, string> = {
   clip: 'Clip',
   broll: 'Broll',
@@ -136,7 +133,7 @@ const GRIP_CSS = `
 .vt-grip-muted, .timeline-editor-action:hover .vt-grip-muted { background: repeating-linear-gradient(45deg, rgba(255,255,255,0.16) 0 2px, rgba(255,255,255,0) 2px 4px); box-shadow: none; }
 `;
 
-function timelineLabel(action: TimelineAction, reel: LayeredReel, fps: number): string {
+export function timelineLabel(action: TimelineAction, reel: LayeredReel, fps: number, meta?: EditorMeta): string {
   const { lane, id } = parseActionId(action.id);
   if (lane === 'transitions') {
     const frames = Math.round((action.end - action.start) * fps);
@@ -145,7 +142,8 @@ function timelineLabel(action: TimelineAction, reel: LayeredReel, fps: number): 
   if (lane === 'overlays') {
     const o = reel.tracks.overlays.find((x) => x.id === id);
     const c = o?.content as { kind?: string; text?: string } | undefined;
-    const kind = OVERLAY_KIND_LABEL[c?.kind ?? ''] ?? (c?.kind ?? 'Overlay');
+    const rawKind = c?.kind ?? '';
+    const kind = meta?.overlayLabels?.[rawKind] ?? (rawKind ? humanizeKey(rawKind) : 'Overlay');
     const text = c?.text?.trim();
     return text ? `${kind}: ${snippet(text)}` : kind;
   }
@@ -231,9 +229,12 @@ export interface LayeredTimelineProps {
   /** The last-saved reel — supplies each clip's AUTHORED length so a trim can be
    * restored to it (even when the file is a touch shorter, i.e. it holds a frame). */
   savedReel?: LayeredReel | null;
-  guidesMs?: number[]; // vertical ruler guide markers (e.g. roost beat onsets)
+  guidesMs?: number[]; // vertical ruler guide markers (e.g. musical beat onsets)
   /** Snap a dragged/resized edge to the nearest `guidesMs` beat (snap-on-release). */
   snapToBeats?: boolean;
+  /** Brand-supplied editor vocabulary (lane colours + overlay labels). Optional —
+   *  core's defaults are brand-neutral (see editor-meta.ts). */
+  meta?: EditorMeta;
 }
 
 function LayeredTimelineImpl({
@@ -250,6 +251,7 @@ function LayeredTimelineImpl({
   savedReel,
   guidesMs,
   snapToBeats = false,
+  meta,
 }: LayeredTimelineProps) {
   const stateRef = useRef<TimelineState>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -529,7 +531,7 @@ function LayeredTimelineImpl({
                   title={action.id}
                 >
                   <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {timelineLabel(action, reel, fps)}
+                    {timelineLabel(action, reel, fps, meta)}
                   </span>
                 </div>
               );
@@ -544,7 +546,7 @@ function LayeredTimelineImpl({
                   alignItems: 'center',
                   padding: '0 6px',
                   borderRadius: 3,
-                  background: blockColor(action, reel),
+                  background: blockColor(action, reel, meta),
                   color: '#f2f2f2',
                   fontFamily: FONT,
                   fontSize: 11,
@@ -615,7 +617,7 @@ function LayeredTimelineImpl({
                 {action.id.startsWith('music:') && (
                   <>
                     <MusicEnvelope points={envelope.points} totalFrames={musicFrames} />
-                    {/* Draggable BASE level (lime); the derived envelope boosts ride above it. */}
+                    {/* Draggable BASE level; the derived envelope boosts ride above it. */}
                     <VolumeLine
                       volumeDb={reel.tracks.music.baseVolumeDb}
                       color="rgba(182,255,90,0.9)"
@@ -627,7 +629,7 @@ function LayeredTimelineImpl({
                   </>
                 )}
                 <span style={{ position: 'relative', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {timelineLabel(action, reel, fps)}
+                  {timelineLabel(action, reel, fps, meta)}
                 </span>
               </div>
             );

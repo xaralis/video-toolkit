@@ -8,23 +8,23 @@ import styles from './AccentEditor.module.css';
 export type AccentEditorColor = AccentSlot;
 
 export interface AccentEditorProps {
-  /** Encoded caption string, e.g. `Řízená {lime:péče}.` */
+  /** Encoded caption string, e.g. `Řízená {accent:péče}.` (any brand slot key). */
   value: string;
   /** Called with the new encoded string whenever the caption changes. */
   onChange: (next: string) => void;
   /**
-   * Accent palette driving the toolbar buttons. Data-driven so a brand can
-   * supply its own palette later; defaults to Lime + Teal.
+   * Accent palette driving the toolbar buttons — the BRAND's accent slots (see
+   * lib/theming/palette.ts). Core declares no accent values of its own, so the
+   * default is an EMPTY palette: with none supplied the toolbar offers only
+   * Clear (which still strips accents from existing text), exactly like the
+   * transition editor's accent sub-option drops its dropdown with no palette.
    */
   colors?: readonly AccentEditorColor[];
   /** Allow newlines (textarea-style). Default false = single-line caption. */
   multiline?: boolean;
 }
 
-const DEFAULT_COLORS: AccentEditorColor[] = [
-  { key: 'lime', label: 'Lime', color: '#c6f432' },
-  { key: 'teal', label: 'Teal', color: '#2ad4c5' },
-];
+const NO_COLORS: readonly AccentEditorColor[] = [];
 
 /** Renders `value` into `root` as text nodes + accent spans (colored inline). */
 function renderInto(root: HTMLElement, value: string, colorMap: Record<string, string>): void {
@@ -131,7 +131,7 @@ function setPlainSelection(root: HTMLElement, start: number, end: number): void 
  * differs from it, so React never re-renders the node mid-keystroke and the
  * caret never jumps.
  */
-export function AccentEditor({ value, onChange, colors = DEFAULT_COLORS, multiline = false }: AccentEditorProps) {
+export function AccentEditor({ value, onChange, colors = NO_COLORS, multiline = false }: AccentEditorProps) {
   const ref = useRef<HTMLDivElement>(null);
   const lastValue = useRef<string | null>(null);
   const colorMap = useMemo(() => paletteMap(colors), [colors]);
@@ -169,7 +169,7 @@ export function AccentEditor({ value, onChange, colors = DEFAULT_COLORS, multili
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    // Single-line caption: swallow Enter. Multi-line quote-pull: insert a real
+    // Single-line caption: swallow Enter. Multi-line overlay text: insert a real
     // '\n' (rendered via white-space:pre-wrap) instead of the browser's own
     // <div>/<br> so the value round-trips cleanly.
     if (multiline) document.execCommand('insertText', false, '\n');

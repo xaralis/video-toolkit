@@ -7,6 +7,7 @@ import { TRANSITION_KINDS, defaultTransition, kindNeedsFrames, subOptionsFor, ty
 import { parseActionId, type LaneId } from '../src/timeline/layered-adapter';
 import type { AccentSlot } from '../../theming/palette';
 import { PLACEMENTS } from '../../theming/placement';
+import { effectCatalog, effectDefinition, humanizeKey, type EditorMeta, type ParamField } from './editor-meta';
 
 // Routes the selected timeline item (by lane) to its editable properties,
 // reusing the existing content editors. Edits produce a new LayeredReel via
@@ -20,6 +21,9 @@ export interface LayeredInspectorProps {
   fps: number;
   /** Brand accent palette for the text AccentEditor. */
   accentSlots?: readonly AccentSlot[];
+  /** Brand-supplied editor vocabulary (effect catalog, per-kind `props` fields,
+   *  lane labels/colours). Optional — core defaults are brand-neutral. */
+  meta?: EditorMeta;
 }
 
 const label: React.CSSProperties = { fontSize: 11, color: '#7a7d85', display: 'block', marginBottom: 2 };
@@ -68,6 +72,7 @@ function NumberField({ lbl, value, step = 1, onCommit, disabled, title }: { lbl:
     <div style={field} title={title}>
       <label style={label}>{lbl}</label>
       <input
+        aria-label={lbl}
         style={disabled ? { ...input, opacity: 0.45, cursor: 'not-allowed' } : input}
         type="number"
         step={step}
@@ -93,6 +98,7 @@ function TextField({ lbl, value, onCommit }: { lbl: string; value: string | unde
     <div style={field}>
       <label style={label}>{lbl}</label>
       <input
+        aria-label={lbl}
         style={input}
         type="text"
         value={f.text}
@@ -124,7 +130,7 @@ function SelectField({
   return (
     <div style={field}>
       <label style={label}>{lbl}</label>
-      <select style={input} value={value ?? ''} onChange={(e) => onChange(e.target.value)}>
+      <select aria-label={lbl} style={input} value={value ?? ''} onChange={(e) => onChange(e.target.value)}>
         {value === undefined && <option value="">—</option>}
         {opts.map((o) => (
           <option key={o} value={o}>
@@ -147,6 +153,63 @@ function CheckboxField({ lbl, value, onChange }: { lbl: string; value: boolean |
       </label>
     </div>
   );
+}
+
+// ---- Generic bag editor ----------------------------------------------------
+// The schema keeps a video item's `props` and an effect's params as opaque
+// records on purpose (core knows the mechanism, the brand owns the vocabulary).
+// This renders such a bag WITHOUT knowing any brand's field names:
+//   • a field the brand DECLARED (EditorMeta) renders in declared order, as a
+//     dropdown when it declares `options`, and shows even when the item does
+//     not carry the key yet (so a brand's outro Style is offerable from empty);
+//   • every remaining key renders typed by the value it currently holds.
+// Result: a host that supplies no metadata still reaches every value.
+function ParamFields({
+  values,
+  fields,
+  onPatch,
+}: {
+  values: Record<string, unknown>;
+  fields?: readonly ParamField[];
+  onPatch: (patch: Record<string, unknown>) => void;
+}) {
+  const declared = fields ?? [];
+  const declaredProps = new Set(declared.map((f) => f.prop));
+  const rest = Object.keys(values).filter((k) => !declaredProps.has(k));
+
+  const renderOne = (prop: string, field?: ParamField) => {
+    const lbl = field?.label ?? humanizeKey(prop);
+    const val = values[prop];
+    if (field?.options) {
+      return (
+        <SelectField
+          key={prop}
+          lbl={lbl}
+          value={typeof val === 'string' ? val : undefined}
+          options={[...field.options]}
+          onChange={(s) => onPatch({ [prop]: s })}
+        />
+      );
+    }
+    if (typeof val === 'number')
+      return <NumberField key={prop} lbl={lbl} step={0.1} value={val} onCommit={(n) => onPatch({ [prop]: n })} />;
+    if (typeof val === 'boolean')
+      return <CheckboxField key={prop} lbl={lbl} value={val} onChange={(b) => onPatch({ [prop]: b })} />;
+    if (typeof val === 'string' || val === undefined || val === null)
+      return (
+        <TextField
+          key={prop}
+          lbl={lbl}
+          value={typeof val === 'string' ? val : ''}
+          onCommit={(s) => onPatch({ [prop]: s })}
+        />
+      );
+    return null; // nested object/array — not editable as a single field
+  };
+
+  const nodes = [...declared.map((f) => renderOne(f.prop, f)), ...rest.map((p) => renderOne(p))].filter(Boolean);
+  if (!nodes.length) return <div style={{ fontSize: 11, color: '#7a7d85', padding: '3px 0' }}>No editable params.</div>;
+  return <>{nodes}</>;
 }
 
 const TRANSITION_LABEL: Record<string, string> = Object.fromEntries(TRANSITION_KINDS.map((k) => [k.kind, k.label]));
@@ -255,14 +318,25 @@ const BLEND_DIRECTIONS = ['tl-br', 'tr-bl', 'bl-tr', 'br-tl'];
 const OVERLAY_POSITIONS: string[] = [...PLACEMENTS];
 
 // Editable params (BODY only — the collapsible header + remove ✕ are supplied by
-// the caller's <Collapsible>) per effect type: Ken Burns motion, blend crossfade,
-// vintage film/vhs grade.
-function EffectEditor({ eff, onPatch }: { eff: Record<string, unknown>; onPatch: (patch: Record<string, unknown>) => void }) {
+// the caller's <Collapsible>) for one effect. Core has a bespoke editor for the
+// two effects it OWNS — ken-burns (rendered by SegmentMedia; two legitimate
+// shapes) and blend (emitted by core's own derivation) — and renders every other
+// effect through ParamFields: brand-declared fields when the catalog declares
+// them, else typed by the values the effect currently holds.
+function EffectEditor({
+  eff,
+  fields,
+  onPatch,
+}: {
+  eff: Record<string, unknown>;
+  fields?: readonly ParamField[];
+  onPatch: (patch: Record<string, unknown>) => void;
+}) {
   const type = eff.type as string;
   const num = (k: string) => (typeof eff[k] === 'number' ? (eff[k] as number) : undefined);
   if (type === 'ken-burns') {
     // Ken Burns has TWO shapes (both render, see SegmentMedia): the `direction`
-    // shorthand (roost — in/left/up) and explicit from/to pan+zoom (campaign).
+    // shorthand (in/left/up) and explicit from/to pan+zoom.
     // Show the control that matches what's actually set — a direction-based
     // effect edited with the from/to fields looked like an empty/phantom effect.
     const hasFromTo = ['fromX', 'toX', 'fromScale', 'toScale'].some((k) => typeof eff[k] === 'number');
@@ -301,45 +375,37 @@ function EffectEditor({ eff, onPatch }: { eff: Record<string, unknown>; onPatch:
       </>
     );
   }
-  if (type === 'vintage') {
-    return (
-      <SelectField lbl="Mode" value={eff.mode as string | undefined} options={['film', 'vhs']} onChange={(s) => onPatch({ mode: s })} />
-    );
-  }
-  return <div style={{ fontSize: 11, color: '#7a7d85', padding: '3px 0' }}>No editable params.</div>;
+  const { type: _t, ...params } = eff;
+  return <ParamFields values={params} fields={fields} onPatch={onPatch} />;
 }
 
 const seekBtn: React.CSSProperties = { ...input, cursor: 'pointer', marginBottom: 10, width: 'auto', padding: '4px 10px' };
 const linkBtn: React.CSSProperties = { ...input, cursor: 'pointer', marginTop: 4, width: '100%', padding: '6px 10px', textAlign: 'left', fontSize: 12 };
 const readonlyValue: React.CSSProperties = { fontSize: 13, color: '#c8cbd2', padding: '3px 0' };
 
-const EFFECT_DEFAULTS: Record<string, Record<string, unknown>> = {
-  vintage: { type: 'vintage', mode: 'film' },
-  'ken-burns': { type: 'ken-burns', fromScale: 1, toScale: 1.08, fromX: 0.5, toX: 0.5 },
-};
-
-// Outro option lists (roost's outro variations — shown only for an outro item
-// that carries `props`, i.e. the montage brands; campaign's parameterless outro
-// has no props so these never render there).
-const OUTRO_STYLES = ['organic', 'fade', 'bloom', 'static', 'heartbeat'];
-const OUTRO_VARIANTS = ['sand-brown', 'white-black'];
-
-function AddEffectControl({ onAdd }: { onAdd: (kind: string) => void }) {
+// The addable effects: core's own catalog plus whatever the brand declared.
+// Core ships only what core RENDERS (ken-burns via SegmentMedia) — every other
+// effect is a brand's and arrives through EditorMeta.effects.
+function AddEffectControl({ meta, onAdd }: { meta?: EditorMeta; onAdd: (effect: Record<string, unknown>) => void }) {
   const [open, setOpen] = useState(false);
+  const catalog = effectCatalog(meta);
   return (
     <div style={{ marginTop: 8 }}>
       <button type="button" onClick={() => setOpen((o) => !o)}
         style={{ ...seekBtn, marginBottom: 4 }}>+ Add effect</button>
       {open &&
-        Object.keys(EFFECT_DEFAULTS).map((k) => (
-          <button key={k} type="button" onClick={() => { onAdd(k); setOpen(false); }}
-            style={{ ...linkBtn }}>{k}</button>
+        catalog.map((e) => (
+          <button key={e.type} type="button" onClick={() => { onAdd({ type: e.type, ...(e.defaults ?? {}) }); setOpen(false); }}
+            style={{ ...linkBtn }}>{e.label ?? e.type}</button>
         ))}
     </div>
   );
 }
 
-export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, accentSlots }: LayeredInspectorProps) {
+export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, accentSlots, meta }: LayeredInspectorProps) {
+  // The dedicated prop wins; `meta.accentSlots` lets a host keep ONE metadata
+  // object instead of two props. Either way the values are the brand's.
+  const slots = accentSlots ?? meta?.accentSlots;
   const patchItem = (lane: LaneId, id: string, patch: Record<string, unknown>) => {
     const key = lane as keyof LayeredReel['tracks'];
     const arr = reel.tracks[key] as Array<{ id: string }>;
@@ -391,7 +457,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
         <h3 style={heading}>
           Transition {edge === 'in' ? 'in' : 'out'} · {TRANSITION_LABEL[kind] ?? kind}
         </h3>
-        <TransitionFields t={t} accentSlots={accentSlots} onChange={(next) => patchItem('video', id, { [edgeField]: next })} />
+        <TransitionFields t={t} accentSlots={slots} onChange={(next) => patchItem('video', id, { [edgeField]: next })} />
       </div>
     );
   }
@@ -458,16 +524,26 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
             </>
           );
         })()}
-        {v.kind === 'outro' && v.props && (
-          <>
-            <div style={section}>Outro</div>
-            <SelectField lbl="Style" value={(v.props as Record<string, unknown>).style as string | undefined} options={OUTRO_STYLES} onChange={(s) => patchItem('video', id, { props: { ...(v.props as object), style: s } })} />
-            <SelectField lbl="Variant" value={(v.props as Record<string, unknown>).variant as string | undefined} options={OUTRO_VARIANTS} onChange={(s) => patchItem('video', id, { props: { ...(v.props as object), variant: s } })} />
-            {/* The into-outro transition now lives on the PREVIOUS clip's
-                transitionOut (at-cut) — edit it via that clip's transition, not here. */}
-            <NumberField lbl="Logo delay (s)" step={0.1} value={(v.props as Record<string, unknown>).logoDelaySec as number | undefined} onCommit={(n) => patchItem('video', id, { props: { ...(v.props as object), logoDelaySec: n } })} />
-          </>
-        )}
+        {/* The item's opaque brand render-hint bag (`props` — e.g. an outro's
+            style/variant). Core renders it generically; a brand turns a field
+            into a dropdown by declaring it in meta.videoProps[kind].
+            The into-outro transition lives on the PREVIOUS clip's transitionOut
+            (at-cut) — edit it via that clip's transition, not here. */}
+        {(() => {
+          const props = (v.props ?? {}) as Record<string, unknown>;
+          const declared = meta?.videoProps?.[v.kind];
+          if (!declared?.length && !Object.keys(props).length) return null;
+          return (
+            <>
+              <div style={section}>{humanizeKey(v.kind)}</div>
+              <ParamFields
+                values={props}
+                fields={declared}
+                onPatch={(patch) => patchItem('video', id, { props: { ...props, ...patch } })}
+              />
+            </>
+          );
+        })()}
         <NumberField lbl="Music boost (dB)" value={v.musicBoostDb} onCommit={(n) => patchItem('video', id, { musicBoostDb: n })} />
         {/* Effects only apply to footage renderers (SegmentMedia + brand wrappers).
             outro/card render bespoke and ignore item.effects, so don't offer them. */}
@@ -493,6 +569,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
               >
                 <EffectEditor
                   eff={eff as Record<string, unknown>}
+                  fields={effectDefinition(meta, type)?.params}
                   onPatch={(patch) =>
                     patchItem('video', id, { effects: v.effects!.map((e, j) => (j === i ? { ...(e as Record<string, unknown>), ...patch } : e)) })
                   }
@@ -501,7 +578,8 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
             );
           })}
         <AddEffectControl
-          onAdd={(kind) => patchItem('video', id, { effects: [...(v.effects ?? []), EFFECT_DEFAULTS[kind]] })}
+          meta={meta}
+          onAdd={(effect) => patchItem('video', id, { effects: [...(v.effects ?? []), effect] })}
         />
           </>
         )}
@@ -511,7 +589,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           return (
             <>
               <div style={section}>Transition out</div>
-              <TransitionFields t={t} accentSlots={accentSlots} onChange={(next) => patchItem('video', id, { transitionOut: next })} />
+              <TransitionFields t={t} accentSlots={slots} onChange={(next) => patchItem('video', id, { transitionOut: next })} />
             </>
           );
         })()}
@@ -533,12 +611,12 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
         {content.text !== undefined && (
           <div style={field}>
             <label style={label}>Text</label>
-            {/* Multi-line WYSIWYG accent editor — a quote-pull can span several
-                lines (the roost teaser is a multi-line quote-pull). */}
-            <AccentEditor value={content.text ?? ''} onChange={(next) => patchContent({ text: next })} colors={accentSlots} multiline />
+            {/* Multi-line WYSIWYG accent editor — an overlay's text can span
+                several lines (e.g. a stacked pull-quote look). */}
+            <AccentEditor value={content.text ?? ''} onChange={(next) => patchContent({ text: next })} colors={slots} multiline />
           </div>
         )}
-        {/* Roost quote-pulls (the stacked teaser look) carry reveal/hide + font size. */}
+        {/* Overlay kinds that carry reveal/hide + font size (e.g. a stacked pull-quote). */}
         {(content.reveal !== undefined || content.hide !== undefined || content.fontSize !== undefined) && (
           <>
             <Row>

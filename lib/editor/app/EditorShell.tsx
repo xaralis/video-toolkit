@@ -93,7 +93,7 @@ export function EditorShell({
     <div className={styles.shell}>
       {/* Global reset so the editor fills the viewport with no white page frame.
           Templates that ship their own global.css already do this; templates
-          without one (e.g. roost-reels) relied on the browser default body
+          without one relied on the browser default body
           margin, which showed as a white border around the UI. */}
       <style>{`html, body, #root { height: 100%; margin: 0; } body { background: #0a0a0a; }`}</style>
       <header className={styles.header}>

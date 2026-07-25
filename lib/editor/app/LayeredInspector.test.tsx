@@ -18,7 +18,7 @@ describe('LayeredInspector effect add/remove', () => {
     const { getByText } = render(
       <LayeredInspector reel={base} selectedId="video:v1" onChange={onChange} onSeek={() => {}} fps={30} />);
     fireEvent.click(getByText('+ Add effect'));
-    fireEvent.click(getByText('ken-burns'));
+    fireEvent.click(getByText('Ken Burns'));
     const next = onChange.mock.calls.at(-1)![0] as LayeredReel;
     expect(next.tracks.video[0].effects).toHaveLength(2);
     expect(next.tracks.video[0].effects!.some((e) => e.type === 'ken-burns')).toBe(true);
@@ -142,5 +142,123 @@ describe('LayeredInspector accent sub-option (wipe color)', () => {
     render(
       <LayeredInspector reel={wipeReel} selectedId="transition:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
     expect(screen.queryByText('Color')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 6: core knows MECHANISMS, brands supply VALUES. The effect catalog, the
+// item-`props` editor and the accent palette all arrive as metadata; with none
+// supplied the inspector is brand-neutral but still fully functional.
+// ---------------------------------------------------------------------------
+
+const outroReel: LayeredReel = {
+  version: 'layered-1', meta: { topic: 't', totalDurationMs: 2000 },
+  tracks: {
+    video: [{ id: 'o1', kind: 'outro', startMs: 0, endMs: 2000, musicBoostDb: 0,
+              props: { style: 'organic', variant: 'sand-brown', logoDelaySec: 0.6 } }],
+    audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [],
+  },
+};
+
+describe('LayeredInspector item props (no brand metadata)', () => {
+  it('renders every prop generically, typed by its current value', () => {
+    render(<LayeredInspector reel={outroReel} selectedId="video:o1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    // Humanized labels, no brand vocabulary needed to reach the values.
+    expect((screen.getByLabelText('Style') as HTMLInputElement).value).toBe('organic');
+    expect((screen.getByLabelText('Variant') as HTMLInputElement).value).toBe('sand-brown');
+    const delay = screen.getByLabelText('Logo delay sec') as HTMLInputElement;
+    expect(delay.type).toBe('number');
+    expect(delay.value).toBe('0.6');
+  });
+
+  it('offers no brand outro vocabulary as choices', () => {
+    render(<LayeredInspector reel={outroReel} selectedId="video:o1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    // A plain text field, not a dropdown of roost's styles.
+    expect(screen.queryByRole('option', { name: 'heartbeat' })).toBeNull();
+    expect(screen.queryByRole('option', { name: 'white-black' })).toBeNull();
+  });
+
+  it('commits a generically-edited prop back onto the item', () => {
+    const onChange = vi.fn();
+    render(<LayeredInspector reel={outroReel} selectedId="video:o1" onChange={onChange} onSeek={() => {}} fps={30} />);
+    fireEvent.change(screen.getByLabelText('Logo delay sec'), { target: { value: '1.2' } });
+    const next = onChange.mock.calls.at(-1)![0] as LayeredReel;
+    expect((next.tracks.video[0].props as Record<string, unknown>).logoDelaySec).toBe(1.2);
+    expect((next.tracks.video[0].props as Record<string, unknown>).style).toBe('organic');
+  });
+});
+
+describe('LayeredInspector item props (brand metadata)', () => {
+  const meta = {
+    videoProps: {
+      outro: [
+        { prop: 'style', label: 'Style', options: ['organic', 'fade', 'heartbeat'] },
+        { prop: 'variant', options: ['sand-brown', 'white-black'] },
+      ],
+    },
+  };
+
+  it('renders a declared field as a dropdown over the brand values', () => {
+    render(<LayeredInspector reel={outroReel} selectedId="video:o1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
+    const style = screen.getByLabelText('Style') as HTMLSelectElement;
+    expect(style.tagName).toBe('SELECT');
+    expect(style.value).toBe('organic');
+    expect(screen.getByRole('option', { name: 'heartbeat' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'white-black' })).toBeTruthy();
+  });
+
+  it('still renders undeclared props generically alongside the declared ones', () => {
+    render(<LayeredInspector reel={outroReel} selectedId="video:o1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
+    expect((screen.getByLabelText('Logo delay sec') as HTMLInputElement).type).toBe('number');
+  });
+
+  it('renders a declared field even when the item does not carry that prop yet', () => {
+    const bare: LayeredReel = {
+      ...outroReel,
+      tracks: { ...outroReel.tracks, video: [{ id: 'o1', kind: 'outro', startMs: 0, endMs: 2000, musicBoostDb: 0, props: {} }] },
+    };
+    render(<LayeredInspector reel={bare} selectedId="video:o1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
+    expect((screen.getByLabelText('Style') as HTMLSelectElement).tagName).toBe('SELECT');
+  });
+});
+
+describe('LayeredInspector effect catalog', () => {
+  it('offers only core effects when no brand catalog is supplied', () => {
+    const { getByText, queryByText } = render(
+      <LayeredInspector reel={base} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    fireEvent.click(getByText('+ Add effect'));
+    expect(getByText('Ken Burns')).toBeTruthy();
+    expect(queryByText('vintage')).toBeNull();
+  });
+
+  it('adds a brand effect with the brand-declared defaults', () => {
+    const onChange = vi.fn();
+    const meta = { effects: [{ type: 'vintage', label: 'Vintage', defaults: { mode: 'film' } }] };
+    const { getByText } = render(
+      <LayeredInspector reel={base} selectedId="video:v1" onChange={onChange} onSeek={() => {}} fps={30} meta={meta} />);
+    fireEvent.click(getByText('+ Add effect'));
+    fireEvent.click(getByText('Vintage'));
+    const next = onChange.mock.calls.at(-1)![0] as LayeredReel;
+    expect(next.tracks.video[0].effects!.at(-1)).toEqual({ type: 'vintage', mode: 'film' });
+  });
+
+  it('renders a brand effect param as a dropdown over its declared options', () => {
+    const meta = {
+      effects: [{ type: 'vintage', params: [{ prop: 'mode', label: 'Mode', options: ['film', 'vhs'] }] }],
+    };
+    render(<LayeredInspector reel={base} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
+    fireEvent.click(screen.getByText('Effect · vintage')); // open the collapsible
+    const mode = screen.getByLabelText('Mode') as HTMLSelectElement;
+    expect(mode.tagName).toBe('SELECT');
+    expect(mode.value).toBe('film');
+  });
+
+  it('falls back to a generic typed editor for an undeclared effect param', () => {
+    render(<LayeredInspector reel={base} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    fireEvent.click(screen.getByText('Effect · vintage')); // open the collapsible
+    // `vintage` is unknown to core, but its `mode` is still reachable.
+    const mode = screen.getByLabelText('Mode') as HTMLInputElement;
+    expect(mode.tagName).toBe('INPUT');
+    expect(mode.value).toBe('film');
   });
 });
