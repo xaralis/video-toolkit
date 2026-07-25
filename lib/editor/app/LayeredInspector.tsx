@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import { AccentEditor } from './AccentEditor';
 import { TransitionPicker } from './TransitionPicker';
@@ -16,8 +17,8 @@ export interface LayeredInspectorProps {
   fps: number;
 }
 
-const label: React.CSSProperties = { fontSize: 11, color: '#7a7d85', display: 'block', marginBottom: 3 };
-const field: React.CSSProperties = { marginBottom: 12 };
+const label: React.CSSProperties = { fontSize: 11, color: '#7a7d85', display: 'block', marginBottom: 2 };
+const field: React.CSSProperties = { marginBottom: 8, flex: 1, minWidth: 0 };
 const input: React.CSSProperties = {
   width: '100%',
   background: '#1c1e22',
@@ -28,7 +29,11 @@ const input: React.CSSProperties = {
   fontSize: 12,
   boxSizing: 'border-box',
 };
-const heading: React.CSSProperties = { fontSize: 12, color: '#e8e8ea', margin: '0 0 12px', fontWeight: 600 };
+const heading: React.CSSProperties = { fontSize: 12, color: '#e8e8ea', margin: '0 0 10px', fontWeight: 600 };
+const panel: React.CSSProperties = { padding: 12, width: '100%', height: '100%', overflowY: 'auto', boxSizing: 'border-box' };
+const section: React.CSSProperties = { fontSize: 10, color: '#5f626a', textTransform: 'uppercase', letterSpacing: 0.4, margin: '10px 0 6px' };
+
+const Row = ({ children }: { children: ReactNode }) => <div style={{ display: 'flex', gap: 8 }}>{children}</div>;
 
 function NumberField({ lbl, value, step = 1, onCommit }: { lbl: string; value: number | undefined; step?: number; onCommit: (n: number) => void }) {
   return (
@@ -42,7 +47,7 @@ function NumberField({ lbl, value, step = 1, onCommit }: { lbl: string; value: n
         defaultValue={value ?? ''}
         onBlur={(e) => {
           const raw = e.target.value.trim();
-          if (raw === '') return; // cleared field → no-op, don't coerce to 0
+          if (raw === '') return;
           const n = Number(raw);
           if (!Number.isNaN(n)) onCommit(n);
         }}
@@ -60,6 +65,67 @@ function TextField({ lbl, value, onCommit }: { lbl: string; value: string | unde
   );
 }
 
+function SelectField({ lbl, value, options, onChange }: { lbl: string; value: string | undefined; options: string[]; onChange: (s: string) => void }) {
+  const opts = value && !options.includes(value) ? [value, ...options] : options;
+  return (
+    <div style={field}>
+      <label style={label}>{lbl}</label>
+      <select style={input} value={value ?? ''} onChange={(e) => onChange(e.target.value)}>
+        {value === undefined && <option value="">—</option>}
+        {opts.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+const BLEND_DIRECTIONS = ['tl-br', 'tr-bl', 'bl-tr', 'br-tl'];
+const OVERLAY_POSITIONS = [
+  'upper-left', 'upper-center', 'upper-right',
+  'center-left', 'center', 'center-right',
+  'lower-left', 'lower-center', 'lower-right',
+];
+
+// Editable params per effect type (Ken Burns motion, blend crossfade).
+function EffectEditor({ eff, onPatch }: { eff: Record<string, unknown>; onPatch: (patch: Record<string, unknown>) => void }) {
+  const type = eff.type as string;
+  const num = (k: string) => (typeof eff[k] === 'number' ? (eff[k] as number) : undefined);
+  if (type === 'ken-burns') {
+    return (
+      <>
+        <div style={section}>Effect · ken-burns</div>
+        <Row>
+          <NumberField lbl="From X" step={0.01} value={num('fromX')} onCommit={(n) => onPatch({ fromX: n })} />
+          <NumberField lbl="To X" step={0.01} value={num('toX')} onCommit={(n) => onPatch({ toX: n })} />
+        </Row>
+        <Row>
+          <NumberField lbl="From scale" step={0.05} value={num('fromScale')} onCommit={(n) => onPatch({ fromScale: n })} />
+          <NumberField lbl="To scale" step={0.05} value={num('toScale')} onCommit={(n) => onPatch({ toScale: n })} />
+        </Row>
+      </>
+    );
+  }
+  if (type === 'blend') {
+    return (
+      <>
+        <div style={section}>Effect · blend</div>
+        <TextField lbl="To source" value={eff.to as string | undefined} onCommit={(s) => onPatch({ to: s || undefined })} />
+        <SelectField lbl="Direction" value={eff.direction as string | undefined} options={BLEND_DIRECTIONS} onChange={(s) => onPatch({ direction: s })} />
+        <Row>
+          <NumberField lbl="Start %" value={num('startPct')} onCommit={(n) => onPatch({ startPct: n })} />
+          <NumberField lbl="End %" value={num('endPct')} onCommit={(n) => onPatch({ endPct: n })} />
+        </Row>
+      </>
+    );
+  }
+  return <div style={section}>Effect · {type}</div>;
+}
+
+const seekBtn: React.CSSProperties = { ...input, cursor: 'pointer', marginBottom: 10, width: 'auto', padding: '4px 10px' };
+
 export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: LayeredInspectorProps) {
   const patchItem = (lane: LaneId, id: string, patch: Record<string, unknown>) => {
     const key = lane as keyof LayeredReel['tracks'];
@@ -70,7 +136,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
 
   if (!selectedId) {
     return (
-      <div style={{ padding: 14 }}>
+      <div style={panel}>
         <h3 style={heading}>Reel</h3>
         <div style={field}>
           <label style={label}>Topic</label>
@@ -98,44 +164,45 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
     const v = reel.tracks.video.find((x) => x.id === id);
     if (!v) return null;
     return (
-      <div style={{ padding: 14 }}>
+      <div style={panel}>
         <h3 style={heading}>Clip · {v.kind}</h3>
-        <button type="button" style={{ ...input, cursor: 'pointer', marginBottom: 12, width: 'auto', padding: '4px 10px' }} onClick={() => onSeek(Math.round((v.startMs / 1000) * fps))}>
+        <button type="button" style={seekBtn} onClick={() => onSeek(Math.round((v.startMs / 1000) * fps))}>
           ⇥ seek to start
         </button>
         {v.source !== undefined && <TextField lbl="Source" value={v.source} onCommit={(s) => s.trim() && patchItem('video', id, { source: s })} />}
-        {v.sourceInMs !== undefined && (
-          <NumberField lbl="Trim in (s)" step={0.05} value={v.sourceInMs / 1000} onCommit={(n) => patchItem('video', id, { sourceInMs: Math.round(n * 1000) })} />
-        )}
-        {v.sourceOutMs !== undefined && (
-          <NumberField lbl="Trim out (s)" step={0.05} value={v.sourceOutMs / 1000} onCommit={(n) => patchItem('video', id, { sourceOutMs: Math.round(n * 1000) })} />
+        {(v.sourceInMs !== undefined || v.sourceOutMs !== undefined) && (
+          <Row>
+            <NumberField lbl="Trim in (s)" step={0.05} value={v.sourceInMs !== undefined ? v.sourceInMs / 1000 : undefined} onCommit={(n) => patchItem('video', id, { sourceInMs: Math.round(n * 1000) })} />
+            <NumberField lbl="Trim out (s)" step={0.05} value={v.sourceOutMs !== undefined ? v.sourceOutMs / 1000 : undefined} onCommit={(n) => patchItem('video', id, { sourceOutMs: Math.round(n * 1000) })} />
+          </Row>
         )}
         {(v.kind === 'clip' || v.kind === 'broll') && (
-          <>
+          <Row>
             <NumberField lbl="Focal X (0–1)" step={0.01} value={v.focalX} onCommit={(n) => patchItem('video', id, { focalX: n })} />
             <NumberField lbl="Focal Y (0–1)" step={0.01} value={v.focalY} onCommit={(n) => patchItem('video', id, { focalY: n })} />
-          </>
+          </Row>
         )}
-        <TextField lbl="Audio mode" value={v.audioMode} onCommit={(s) => patchItem('video', id, { audioMode: s || undefined })} />
         <NumberField lbl="Music boost (dB)" value={v.musicBoostDb} onCommit={(n) => patchItem('video', id, { musicBoostDb: n })} />
-        {v.effects && v.effects.length > 0 && (
-          <div style={field}>
-            <label style={label}>Effects</label>
-            <div style={{ fontSize: 11, color: '#9a9da5' }}>{v.effects.map((e) => (e as { type?: string }).type ?? '?').join(', ')}</div>
-          </div>
-        )}
-        <div style={field}>
-          <label style={label}>Transition out</label>
-          <TransitionPicker
-            value={
-              v.transitionOut && TRANSITION_KINDS.some((k) => k.kind === (v.transitionOut as { kind?: string }).kind)
-                ? (v.transitionOut as unknown as Transition)
-                : undefined
-            }
-            fps={fps}
-            onChange={(t) => patchItem('video', id, { transitionOut: t })}
-          />
-        </div>
+        {v.effects &&
+          v.effects.map((eff, i) => (
+            <EffectEditor
+              key={i}
+              eff={eff as Record<string, unknown>}
+              onPatch={(patch) =>
+                patchItem('video', id, { effects: v.effects!.map((e, j) => (j === i ? { ...(e as Record<string, unknown>), ...patch } : e)) })
+              }
+            />
+          ))}
+        <div style={section}>Transition out</div>
+        <TransitionPicker
+          value={
+            v.transitionOut && TRANSITION_KINDS.some((k) => k.kind === (v.transitionOut as { kind?: string }).kind)
+              ? (v.transitionOut as unknown as Transition)
+              : undefined
+          }
+          fps={fps}
+          onChange={(t) => patchItem('video', id, { transitionOut: t })}
+        />
       </div>
     );
   }
@@ -145,9 +212,9 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
     if (!o) return null;
     const content = o.content as { kind?: string; text?: string };
     return (
-      <div style={{ padding: 14 }}>
+      <div style={panel}>
         <h3 style={heading}>Overlay · {content.kind ?? 'overlay'}</h3>
-        <button type="button" style={{ ...input, cursor: 'pointer', marginBottom: 12, width: 'auto', padding: '4px 10px' }} onClick={() => onSeek(Math.round((o.startMs / 1000) * fps))}>
+        <button type="button" style={seekBtn} onClick={() => onSeek(Math.round((o.startMs / 1000) * fps))}>
           ⇥ seek to start
         </button>
         {content.text !== undefined && (
@@ -156,9 +223,13 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
             <AccentEditor value={content.text ?? ''} onChange={(next) => patchItem('overlays', id, { content: { ...o.content, text: next } })} />
           </div>
         )}
-        {o.position !== undefined && <TextField lbl="Position" value={o.position} onCommit={(s) => patchItem('overlays', id, { position: s })} />}
-        <NumberField lbl="Start (s)" step={0.05} value={o.startMs / 1000} onCommit={(n) => patchItem('overlays', id, { startMs: Math.round(n * 1000) })} />
-        <NumberField lbl="End (s)" step={0.05} value={o.endMs / 1000} onCommit={(n) => patchItem('overlays', id, { endMs: Math.round(n * 1000) })} />
+        {o.position !== undefined && (
+          <SelectField lbl="Position" value={o.position} options={OVERLAY_POSITIONS} onChange={(s) => patchItem('overlays', id, { position: s })} />
+        )}
+        <Row>
+          <NumberField lbl="Start (s)" step={0.05} value={o.startMs / 1000} onCommit={(n) => patchItem('overlays', id, { startMs: Math.round(n * 1000) })} />
+          <NumberField lbl="End (s)" step={0.05} value={o.endMs / 1000} onCommit={(n) => patchItem('overlays', id, { endMs: Math.round(n * 1000) })} />
+        </Row>
       </div>
     );
   }
@@ -167,27 +238,26 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
     const a = reel.tracks.audio.find((x) => x.id === id);
     if (!a) return null;
     return (
-      <div style={{ padding: 14 }}>
+      <div style={panel}>
         <h3 style={heading}>Audio</h3>
         <TextField lbl="Source" value={a.source} onCommit={(s) => s.trim() && patchItem('audio', id, { source: s })} />
-        <NumberField lbl="In-point (s)" step={0.05} value={a.sourceInMs / 1000} onCommit={(n) => patchItem('audio', id, { sourceInMs: Math.round(n * 1000) })} />
-        <NumberField lbl="Volume (dB)" value={a.volumeDb} onCommit={(n) => patchItem('audio', id, { volumeDb: n })} />
+        <Row>
+          <NumberField lbl="In-point (s)" step={0.05} value={a.sourceInMs / 1000} onCommit={(n) => patchItem('audio', id, { sourceInMs: Math.round(n * 1000) })} />
+          <NumberField lbl="Volume (dB)" value={a.volumeDb} onCommit={(n) => patchItem('audio', id, { volumeDb: n })} />
+        </Row>
       </div>
     );
   }
 
   if (lane === 'music') {
     const m = reel.tracks.music;
-    const patchMusic = (patch: Record<string, unknown>) =>
-      onChange({ ...reel, tracks: { ...reel.tracks, music: { ...m, ...patch } } });
+    const patchMusic = (patch: Record<string, unknown>) => onChange({ ...reel, tracks: { ...reel.tracks, music: { ...m, ...patch } } });
     return (
-      <div style={{ padding: 14 }}>
+      <div style={panel}>
         <h3 style={heading}>Music</h3>
         <TextField lbl="Source" value={m.source} onCommit={(s) => patchMusic({ source: s.trim() || undefined })} />
         <NumberField lbl="Base volume (dB)" value={m.baseVolumeDb} onCommit={(n) => patchMusic({ baseVolumeDb: n })} />
-        <div style={{ fontSize: 11, color: '#5f626a', marginTop: 8 }}>
-          The effective envelope (base + each clip’s music boost) is drawn on the Music lane.
-        </div>
+        <div style={{ fontSize: 11, color: '#5f626a', marginTop: 8 }}>The effective envelope (base + each clip’s music boost) is drawn on the Music lane.</div>
       </div>
     );
   }
@@ -196,10 +266,12 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
   const b = reel.tracks.brand.find((x) => x.id === id);
   if (!b) return null;
   return (
-    <div style={{ padding: 14 }}>
+    <div style={panel}>
       <h3 style={heading}>Brand · {b.kind}</h3>
-      <NumberField lbl="Start (s)" step={0.05} value={b.startMs / 1000} onCommit={(n) => patchItem('brand', id, { startMs: Math.round(n * 1000) })} />
-      <NumberField lbl="End (s)" step={0.05} value={b.endMs / 1000} onCommit={(n) => patchItem('brand', id, { endMs: Math.round(n * 1000) })} />
+      <Row>
+        <NumberField lbl="Start (s)" step={0.05} value={b.startMs / 1000} onCommit={(n) => patchItem('brand', id, { startMs: Math.round(n * 1000) })} />
+        <NumberField lbl="End (s)" step={0.05} value={b.endMs / 1000} onCommit={(n) => patchItem('brand', id, { endMs: Math.round(n * 1000) })} />
+      </Row>
     </div>
   );
 }
