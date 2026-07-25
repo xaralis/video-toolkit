@@ -241,7 +241,8 @@ export function LayeredTimeline({
   }, [playheadFrame, fps]);
 
   return (
-    <div style={{ display: 'flex', height: '100%', minHeight: 0, background: '#161719', fontFamily: FONT }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: '#161719', fontFamily: FONT }}>
+      <div style={{ display: 'flex', flex: '1 1 auto', minHeight: 0 }}>
       {/* Fixed lane-header column. xzdarcy renders only the track area, so the
           labels live in a parallel scroll container kept in two-way sync with
           the timeline's vertical scroll (its official scroll-sync mechanism):
@@ -363,6 +364,7 @@ export function LayeredTimeline({
                     <VolumeLine
                       volumeDb={reel.tracks.music.baseVolumeDb}
                       color="rgba(182,255,90,0.9)"
+                      resetDb={-8}
                       onChange={(db) =>
                         onChange({ ...reel, tracks: { ...reel.tracks, music: { ...reel.tracks.music, baseVolumeDb: db } } })
                       }
@@ -424,6 +426,33 @@ export function LayeredTimeline({
           }}
           onCursorDrag={(time) => playerRef.current?.seekTo(Math.round(time * fps))}
         />
+      </div>
+      </div>
+      {/* Gesture legend — the timeline's non-obvious interactions. */}
+      <div
+        style={{
+          flex: 'none',
+          height: 20,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+          padding: '0 12px',
+          borderTop: '1px solid #2a2c32',
+          fontSize: 10.5,
+          color: '#6b6f78',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+        }}
+      >
+        <span>
+          <span style={{ color: '#9a9a95' }}>Shift-drag a clip</span> — slip its source
+        </span>
+        <span>
+          <span style={{ color: '#9a9a95' }}>Drag the volume line</span> — set level
+        </span>
+        <span>
+          <span style={{ color: '#9a9a95' }}>Double-click it</span> — reset
+        </span>
       </div>
     </div>
   );
