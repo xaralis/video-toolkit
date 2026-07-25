@@ -126,9 +126,13 @@ export function deriveMontageLayered(cfg: MontageConfig, opts: MontageOpts = {})
   if (cfg.teaser?.lines?.length) {
     const startMs = Math.round((cfg.teaser.appearAtSec ?? 0) * 1000);
     const durF = teaserFrames(cfg.teaser.lines.length, cfg.teaser.reveal ?? 'line', fps);
+    // The teaser is a QUOTE-PULL overlay (the generic kind), rendered per-brand —
+    // roost renders it as its cream/brown stacked stack. Multi-line text lives as
+    // '\n'-joined text (the quote-pull convention); reveal/fontSize ride along as
+    // brand-read content fields.
     overlays.push({
       id: 'teaser', startMs, endMs: startMs + framesToMs(durF),
-      content: { kind: 'teaser', lines: cfg.teaser.lines, reveal: cfg.teaser.reveal ?? 'line', fontSize: cfg.teaser.fontSize ?? 96 },
+      content: { kind: 'quote-pull', text: cfg.teaser.lines.join('\n'), reveal: cfg.teaser.reveal ?? 'line', fontSize: cfg.teaser.fontSize ?? 96 },
     });
   }
 

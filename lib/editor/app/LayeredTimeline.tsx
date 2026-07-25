@@ -81,7 +81,8 @@ function blockColor(action: TimelineAction, reel: LayeredReel): string {
 // start of an overlay's text) instead of an opaque id.
 const basename = (s: string | undefined) => (s ? s.split('/').pop() ?? s : '');
 const snippet = (s: string, n = 22) => {
-  const plain = stripAccents(s).trim();
+  // Collapse newlines/whitespace so a multi-line quote-pull reads on one line.
+  const plain = stripAccents(s).replace(/\s+/g, ' ').trim();
   return plain.length > n ? `${plain.slice(0, n).trimEnd()}…` : plain;
 };
 const OVERLAY_KIND_LABEL: Record<string, string> = {

@@ -414,27 +414,17 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
         {content.text !== undefined && (
           <div style={field}>
             <label style={label}>Text</label>
-            <AccentEditor value={content.text ?? ''} onChange={(next) => patchContent({ text: next })} />
+            {/* Multi-line WYSIWYG accent editor — a quote-pull can span several
+                lines (the roost teaser is a multi-line quote-pull). */}
+            <AccentEditor value={content.text ?? ''} onChange={(next) => patchContent({ text: next })} multiline />
           </div>
         )}
-        {/* Teaser is a multi-line title card (roost). It's edited here like a
-            quote-pull — its own lines/reveal/size — just rendered in the brand's
-            own colours by the template's TeaserOverlay, not as an accent text. */}
-        {content.kind === 'teaser' && (
-          <>
-            <div style={field}>
-              <label style={label}>Lines (one per row)</label>
-              <textarea
-                style={{ ...input, height: 76, resize: 'vertical', lineHeight: 1.4 }}
-                value={(content.lines ?? []).join('\n')}
-                onChange={(e) => patchContent({ lines: e.target.value.split('\n') })}
-              />
-            </div>
-            <Row>
-              <SelectField lbl="Reveal" value={content.reveal ?? 'line'} options={['line', 'all']} onChange={(s) => patchContent({ reveal: s })} />
-              <NumberField lbl="Font size" step={4} value={content.fontSize} onCommit={(n) => patchContent({ fontSize: Math.round(n) })} />
-            </Row>
-          </>
+        {/* Roost quote-pulls (the stacked teaser look) carry reveal + font size. */}
+        {(content.reveal !== undefined || content.fontSize !== undefined) && (
+          <Row>
+            <SelectField lbl="Reveal" value={content.reveal ?? 'line'} options={['line', 'all']} onChange={(s) => patchContent({ reveal: s })} />
+            <NumberField lbl="Font size" step={4} value={content.fontSize} onCommit={(n) => patchContent({ fontSize: Math.round(n) })} />
+          </Row>
         )}
         {o.position !== undefined && (
           <SelectField lbl="Position" value={o.position} options={OVERLAY_POSITIONS} onChange={(s) => patchItem('overlays', id, { position: s })} />
