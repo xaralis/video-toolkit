@@ -57,20 +57,29 @@ shared at-cut engine renders (`lib/render/at-cut-transitions.tsx`). The `Transit
 the presentation function, for driving `<TransitionSeries>` by hand. Same effect, two entry
 points; the catalog that connects them is `lib/reel-config-base/transition-schema.ts`.
 
-| Transition | Kind | Description | Best For |
-|------------|------|-------------|----------|
-| `glitch()` | `glitch` | Digital distortion with slice displacement and RGB separation | Tech demos, cyberpunk, edgy reveals |
-| `rgbSplit()` | `rgb-split` | Chromatic aberration with color fringing | Modern tech, energetic transitions |
-| `zoomBlur()` | `zoom-blur` | Radial motion blur with scale | CTAs, reveals, high-energy moments |
-| `lightLeak()` | `light-leak` | Cinematic lens flare and overexposure | Emotional moments, celebrations, film aesthetic |
-| `pixelate()` | `pixelate` | Digital mosaic dissolution | Retro/gaming, digital transformations |
-| `checkerboard()` | `checkerboard` | Grid-based reveal with multiple patterns | Playful reveals, structured transitions |
-| `scanlineGlitch()` | `scanline-glitch` | Compressed CRT scanlines + RGB shift | Retro-futurism, modern edgy reels |
-| `whipPan()` | `whip-pan` | Directional motion blur — fast camera move | Energetic cuts, fast-paced reels |
-| `zoomThrough()` | `zoom-through` | Zoom out of outgoing, zoom into incoming | Product reveals, fast-cut edits |
-| `wipe()` | `wipe` | Directional sweep in a brand colour | Brand-consistent directional reveals |
-| `gradientWipe()` | `gradient-wipe` | Feathered diagonal blend band | Soft corner-to-corner reveals |
-| `burn()` | `burn` | Cloud-masked burn-through with a hot edge | Organic reveals, warm brand moments |
+The `Seen` column records where a presentation has actually been *looked at*, which is not
+the same as being wired up. `Series` means it renders correctly when hand-driven through
+`<TransitionSeries>` — that is what `showcase/transitions/` exercises, and what this table's
+old "✅ Validated" column meant, back when hand-driving was the only integration path. **No
+kind is yet visually confirmed through the at-cut engine**, which composites differently
+(handle-borrowed overlap rather than a shrinking sequence), so a presentation that looks right
+in the gallery can still misbehave at a cut. Closing that gap needs a render-parity pass in a
+brand repo; core cannot render (no `remotion` installed here).
+
+| Transition | Kind | Seen | Description | Best For |
+|------------|------|------|-------------|----------|
+| `glitch()` | `glitch` | Series | Digital distortion with slice displacement and RGB separation | Tech demos, cyberpunk, edgy reveals |
+| `rgbSplit()` | `rgb-split` | Series | Chromatic aberration with color fringing | Modern tech, energetic transitions |
+| `zoomBlur()` | `zoom-blur` | Series | Radial motion blur with scale | CTAs, reveals, high-energy moments |
+| `lightLeak()` | `light-leak` | Series | Cinematic lens flare and overexposure | Emotional moments, celebrations, film aesthetic |
+| `pixelate()` | `pixelate` | Series | Digital mosaic dissolution | Retro/gaming, digital transformations |
+| `checkerboard()` | `checkerboard` | Series | Grid-based reveal with multiple patterns | Playful reveals, structured transitions |
+| `scanlineGlitch()` | `scanline-glitch` | — | Compressed CRT scanlines + RGB shift | Retro-futurism, modern edgy reels |
+| `whipPan()` | `whip-pan` | — | Directional motion blur — fast camera move | Energetic cuts, fast-paced reels |
+| `zoomThrough()` | `zoom-through` | — | Zoom out of outgoing, zoom into incoming | Product reveals, fast-cut edits |
+| `wipe()` | `wipe` | — | Directional sweep in a brand colour | Brand-consistent directional reveals |
+| `gradientWipe()` | `gradient-wipe` | — | Feathered diagonal blend band | Soft corner-to-corner reveals |
+| `burn()` | `burn` | At-cut | Cloud-masked burn-through with a hot edge | Organic reveals, warm brand moments |
 
 A kind's tunable params are exactly its schema fields minus `kind`/`frames`; the editor derives
 its sub-option controls from that shape, so the two can't disagree. Every param of the six
