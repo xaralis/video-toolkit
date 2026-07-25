@@ -19,6 +19,36 @@ const reel = (music: Partial<LayeredReel['tracks']['music']>): LayeredReel => ({
 });
 const base = Math.pow(10, -8 / 20);
 
+describe('music envelope outro handling', () => {
+  // The outro is an ordinary time-windowed item; several are legitimate. The bed
+  // must follow the LAST one to end, not the first found.
+  const twoOutros: LayeredReel = {
+    version: 'layered-1',
+    meta: { topic: 't', totalDurationMs: 12000 },
+    tracks: {
+      video: [
+        { id: 'o1', kind: 'outro', startMs: 2000, endMs: 5000 },
+        { id: 'c1', kind: 'clip', startMs: 5000, endMs: 9000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 4000 },
+        { id: 'o2', kind: 'outro', startMs: 9000, endMs: 12000 },
+      ],
+      audio: [],
+      music: { source: 'm.mp3', baseVolumeDb: -8 },
+      overlays: [],
+      brand: [],
+    },
+  };
+
+  it('follows the last outro to end, not the first', () => {
+    const { volumeAt } = computeMusicEnvelope(twoOutros, { fps });
+    // The first outro ends at f=150 — the bed must still be playing there.
+    expect(volumeAt(150)).toBeCloseTo(base, 5);
+    expect(volumeAt(200)).toBeCloseTo(base, 5);
+    // Fade leads into the LAST outro's end (f=360), silence from there.
+    expect(volumeAt(345)).toBeCloseTo(base * 0.5, 5);
+    expect(volumeAt(360)).toBe(0);
+  });
+});
+
 describe('music envelope fades from data', () => {
   it('default fadeOut is 1000ms anchored to outro end (legacy parity)', () => {
     const { volumeAt } = computeMusicEnvelope(reel({}), { fps });

@@ -10,8 +10,13 @@ export interface MusicEnvelope {
 export function computeMusicEnvelope(reel: LayeredReel, opts: { fps: number }): MusicEnvelope {
   const { fps } = opts;
   const msToFrames = (ms: number) => Math.round((ms / 1000) * fps);
-  const outroItem = reel.tracks.video.find((v) => v.kind === 'outro');
-  const outroEndFrame = outroItem ? msToFrames(outroItem.endMs) : null;
+  // The outro is an ordinary time-windowed video item, not a singular "the end"
+  // marker: a reel may carry several (the cut just naturally places one last).
+  // So the bed follows the LAST outro to end — a `.find()` here would silence the
+  // music at the first one and play any later outro over silence. One outro →
+  // identical to the old first-match behaviour.
+  const outroEnds = reel.tracks.video.filter((v) => v.kind === 'outro').map((v) => msToFrames(v.endMs));
+  const outroEndFrame = outroEnds.length > 0 ? Math.max(...outroEnds) : null;
   const baseVolume = Math.pow(10, (reel.tracks.music.baseVolumeDb ?? -8) / 20);
   const musicEndFrame = reel.tracks.music.endMs !== undefined ? msToFrames(reel.tracks.music.endMs) : null;
 
