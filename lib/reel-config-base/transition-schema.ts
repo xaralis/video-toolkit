@@ -19,6 +19,19 @@
 // sub-option controls and its defaults all follow; the only other edit the
 // compiler will demand is the render mapping in lib/render/at-cut-transitions.
 //
+// MIGRATING A BRAND (on the submodule pin bump that brings this file in):
+// `layered-schema.ts` now types `transitionIn`/`transitionOut` as
+// `TransitionSchema` rather than `z.record(z.string(), z.unknown())`, so a
+// brand that SPREADS a transition object to inject its own look no longer
+// typechecks — spreading a `Transition | undefined` makes every property
+// optional, `kind` included, and an optional discriminant is not a Transition.
+// Rendering is unaffected (nothing re-parses at render time); this is a
+// compile-time migration only. Replace the spread with
+// `withTransitionOverrides` (bottom of this file):
+//
+//   -  ? { ...it, transitionOut: { ...it.transitionOut, mask: 'm.png' } }
+//   +  ? { ...it, transitionOut: withTransitionOverrides(it.transitionOut, { mask: 'm.png' }) }
+//
 // 30 fps assumption baked into copy text ("30 frames = 1 sec").
 import { z } from 'zod';
 
@@ -137,12 +150,34 @@ export type Transition = z.infer<typeof TransitionSchema>;
  *  elsewhere becomes a compiler-enforced "handle every kind" obligation. */
 export type TransitionKind = Transition['kind'];
 
+/** The keys of `T` that are REQUIRED, ignoring the two every member shares. */
+type RequiredExtraKeys<T> = {
+  [K in Exclude<keyof T, 'kind' | 'frames'>]-?: Record<string, never> extends Pick<T, K> ? never : K;
+}[Exclude<keyof T, 'kind' | 'frames'>];
+
+/** The members fully specified by `{ kind, frames }` — every field beyond those
+ *  is optional (so `burn` qualifies: its mask/glow/shaping bag is all optional).
+ *  `cut` is excluded: it has no `frames` at all, and `{ kind: 'cut', frames }`
+ *  is not a valid transition. Used to type config fields that get turned into
+ *  `{ kind, frames }` objects, so a kind needing a `direction`/`color`/`from`
+ *  can't be named there and then silently produce an invalid transition. */
+export type FramesOnlyTransition = Extract<Transition, { frames: number }> extends infer M
+  ? M extends Transition
+    ? [RequiredExtraKeys<M>] extends [never]
+      ? M
+      : never
+    : never
+  : never;
+
+/** The `kind` of any `FramesOnlyTransition`. */
+export type FramesOnlyTransitionKind = FramesOnlyTransition['kind'];
+
 const kindOf = (e: CatalogEntry) => (e.schema.shape.kind as z.ZodLiteral<string>).value;
 const entryFor = (kind: string): CatalogEntry | undefined => CATALOG.find((e) => kindOf(e) === kind);
 
 /** Every kind with its editor label, in catalog order. */
-export const TRANSITION_CATALOG: ReadonlyArray<{ kind: string; label: string }> = CATALOG.map((e) => ({
-  kind: kindOf(e),
+export const TRANSITION_CATALOG: ReadonlyArray<{ kind: TransitionKind; label: string }> = CATALOG.map((e) => ({
+  kind: kindOf(e) as TransitionKind,
   label: e.label,
 }));
 
@@ -158,11 +193,14 @@ export interface SubOptionChoice {
   label: string;
 }
 
-/** Describes one contextual control a transition kind needs beyond `frames`. */
+/** Describes one contextual control a transition kind needs beyond `frames`.
+ *  `enum` → dropdown (see `options`), `number` → numeric field, `boolean` →
+ *  checkbox. Anything else in a member's shape gets no control (see
+ *  `subOptionsFor`). */
 export interface SubOption {
   prop: string;
   label: string;
-  kind: 'enum' | 'number';
+  kind: 'enum' | 'number' | 'boolean';
   options?: SubOptionChoice[];
 }
 
@@ -188,33 +226,49 @@ const VALUE_LABELS: Record<string, string> = {
   'br-tl': 'Bottom-right → top-left',
 };
 
+/**
+ * The control ONE schema field maps to, or `null` when the field gets no
+ * control. Enums become dropdowns over exactly the schema's options; numbers
+ * become numeric fields; booleans become checkboxes. Every other type —
+ * notably burn's `mask`/`glowColor` strings — is skipped: there is no free-text
+ * sub-option control, and those two are brand-supplied rather than hand-tuned.
+ *
+ * Exported (rather than inlined into `subOptionsFor`) so the mapping can be
+ * pinned by test for a field SHAPE no catalog kind carries yet — the boolean
+ * case has no kind behind it until the pixelate/checkerboard/scanline kinds
+ * land, and a rule that only becomes testable after something depends on it is
+ * a rule that gets discovered broken.
+ */
+export function subOptionForField(prop: string, field: z.ZodTypeAny): SubOption | null {
+  const t = innerType(field);
+  if (t instanceof z.ZodEnum) {
+    const values = (t as z.ZodEnum<[string, ...string[]]>).options;
+    return {
+      prop,
+      label: humanize(prop),
+      kind: 'enum',
+      options: values.map((value) => ({ value, label: VALUE_LABELS[value] ?? humanize(value) })),
+    };
+  }
+  if (t instanceof z.ZodNumber) return { prop, label: humanize(prop), kind: 'number' };
+  if (t instanceof z.ZodBoolean) return { prop, label: humanize(prop), kind: 'boolean' };
+  return null;
+}
+
 /** The contextual controls a kind needs beyond `frames`, read STRUCTURALLY off
  *  that kind's own zod shape — so a field added to a member automatically gets
  *  a control and can never be described by a stale hand-written switch.
  *
- *  `kind` and `frames` are excluded (the picker renders those itself). Enums
- *  become dropdowns over exactly the schema's options; numbers become numeric
- *  fields. Every other type — notably burn's `mask`/`glowColor` strings — is
- *  skipped: there is no free-text sub-option control, and those two are
- *  brand-supplied rather than hand-tuned. */
+ *  `kind` and `frames` are excluded (the picker renders those itself); every
+ *  other field goes through `subOptionForField`. */
 export function subOptionsFor(kind: string): SubOption[] {
   const e = entryFor(kind);
   if (!e) return [];
   const out: SubOption[] = [];
   for (const [prop, field] of Object.entries(e.schema.shape)) {
     if (prop === 'kind' || prop === 'frames') continue;
-    const t = innerType(field as z.ZodTypeAny);
-    if (t instanceof z.ZodEnum) {
-      const values = (t as z.ZodEnum<[string, ...string[]]>).options;
-      out.push({
-        prop,
-        label: humanize(prop),
-        kind: 'enum',
-        options: values.map((value) => ({ value, label: VALUE_LABELS[value] ?? humanize(value) })),
-      });
-    } else if (t instanceof z.ZodNumber) {
-      out.push({ prop, label: humanize(prop), kind: 'number' });
-    }
+    const opt = subOptionForField(prop, field as z.ZodTypeAny);
+    if (opt) out.push(opt);
   }
   return out;
 }
@@ -228,6 +282,28 @@ export const DEFAULT_TRANSITION_FRAMES = 15;
  *  this permissive shape; `TransitionSchema` decides whether the settled
  *  result is real. */
 export type DraftTransition = { kind: string; frames?: number; [key: string]: unknown };
+
+/**
+ * The value `defaultTransition` seeds ONE required field with, or `undefined`
+ * when the field type has no sensible seed.
+ *
+ * Numbers seed at the schema's own lower bound rather than a flat 0: a required
+ * `z.number().min(1)` (a cell size, a step count — the shape most numeric
+ * transition params take) would otherwise get a default its own schema
+ * REJECTS, and this is exactly what the picker hands the user on a kind
+ * switch. Unbounded numbers still seed 0. Enums take their first option;
+ * booleans seed `false` (off is the neutral state for a look toggle).
+ *
+ * Exported alongside `subOptionForField`, and for the same reason: the
+ * min-aware and boolean rules have no catalog kind behind them yet.
+ */
+export function defaultValueForField(field: z.ZodTypeAny): unknown {
+  const inner = innerType(field);
+  if (inner instanceof z.ZodEnum) return (inner as z.ZodEnum<[string, ...string[]]>).options[0];
+  if (inner instanceof z.ZodNumber) return (inner as z.ZodNumber).minValue ?? 0;
+  if (inner instanceof z.ZodBoolean) return false;
+  return undefined;
+}
 
 /**
  * Builds a valid transition object for `kind`: `frames` (when the kind takes
@@ -256,9 +332,69 @@ export function defaultTransition(kind: string, opts?: { frames?: number }): Dra
     // Optional fields the catalog didn't name stay absent — their renderer has
     // its own fallback, and an unset control is honest about that.
     if ((field as z.ZodTypeAny).isOptional()) continue;
-    const inner = innerType(field as z.ZodTypeAny);
-    if (inner instanceof z.ZodEnum) t[prop] = (inner as z.ZodEnum<[string, ...string[]]>).options[0];
-    else if (inner instanceof z.ZodNumber) t[prop] = 0;
+    const seed = defaultValueForField(field as z.ZodTypeAny);
+    if (seed !== undefined) t[prop] = seed;
   }
   return t;
+}
+
+/** `Partial<T>`, except an EMPTY `T` yields `never` rather than `{}`. In a
+ *  union that distinction is everything: `{}` means "any non-null value", so a
+ *  single empty constituent makes the whole union accept anything (including a
+ *  typo'd field). `never` simply drops out of the union instead. */
+type NonEmptyPartial<T> = [keyof T] extends [never] ? never : Partial<T>;
+
+/** The overrides `withTransitionOverrides` accepts for a transition of type `T`,
+ *  DISTRIBUTED across the union so each member contributes its own fields.
+ *
+ *  The distribution is the whole point: `keyof` a union is only its COMMON
+ *  keys, so a non-distributive `Partial<Omit<Transition, 'kind'>>` would
+ *  collapse to `{}` and accept literally any object. `kind` is excluded — an
+ *  override may not change the discriminant — and `cut` (nothing to override
+ *  once `kind` is gone) contributes `never`, so it can't re-open the union. */
+export type TransitionOverrides<T extends Transition = Transition> = T extends Transition
+  ? NonEmptyPartial<Omit<T, 'kind'>>
+  : never;
+
+/** The overrides accepted for the argument type `T`. When `T` is `undefined`
+ *  alone (a caller passing a literal `undefined`) there is no member to read
+ *  fields off, so fall back to the whole vocabulary rather than `never` —
+ *  passing `undefined` is supported, and must not be un-callable. */
+type OverridesFor<T> = [Extract<T, Transition>] extends [never]
+  ? TransitionOverrides<Transition>
+  : TransitionOverrides<Extract<T, Transition>>;
+
+/**
+ * Returns a copy of `t` with `overrides` applied — the type-safe replacement
+ * for spreading a transition object by hand.
+ *
+ * Why this exists: `{ ...maybeTransition, mask: … }` on a `Transition |
+ * undefined` widens `kind` to OPTIONAL (`kind?: 'cut' | 'dissolve' | …`),
+ * because spreading a possibly-undefined value makes every property optional.
+ * The result is then no longer assignable to `VideoItem['transitionOut']` now
+ * that the field carries `TransitionSchema` instead of `z.record`. This helper
+ * preserves the discriminant and the precise member type, and passes
+ * `undefined` straight through — the "no transition on this edge" case.
+ *
+ * Typical use (a brand injecting its own look onto a derived transition):
+ *
+ * ```ts
+ * items.map((it) =>
+ *   it.transitionOut?.kind === 'burn'
+ *     ? { ...it, transitionOut: withTransitionOverrides(it.transitionOut, {
+ *         mask: 'brand/burn-mask.png',
+ *         glowColor: theme.colors.paper,
+ *       }) }
+ *     : it,
+ * );
+ * ```
+ */
+export function withTransitionOverrides<T extends Transition | undefined>(
+  t: T,
+  overrides: OverridesFor<T>,
+): T {
+  if (t === undefined) return undefined as T;
+  // The cast is contained here: the public signature is what callers see, and
+  // it guarantees `kind` survives (overrides can't carry one).
+  return { ...t, ...overrides } as T;
 }

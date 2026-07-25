@@ -9,7 +9,11 @@ import {
   subOptionsFor,
   defaultTransition,
 } from './transitions';
-import { TransitionSchema } from '@video-toolkit/lib/reel-config-base/transition-schema';
+import {
+  TransitionSchema,
+  subOptionForField,
+  defaultValueForField,
+} from '@video-toolkit/lib/reel-config-base/transition-schema';
 
 // The zod union's own members, read straight off the schema — the yardstick
 // every derived list below is measured against.
@@ -237,6 +241,79 @@ describe('subOptionsFor', () => {
     expect(subOptionsFor('fade')).toEqual([]);
     expect(subOptionsFor('clock-wipe')).toEqual([]);
     expect(subOptionsFor('iris')).toEqual([]);
+  });
+
+  // DECISION, pinned deliberately. Burn's shape carries four optional fields.
+  // Two are numeric look-shaping knobs a person may want to tune, so they get
+  // controls; `mask` and `glowColor` are STRINGS and stay uncontrolled — they
+  // are brand-supplied (a staticFile path and a theme colour injected by the
+  // brand's own composition), not hand-tuned in the inspector, and there is no
+  // free-text sub-option control to render them with. Before the unified
+  // catalog, burn surfaced nothing at all; exposing the two numbers is the
+  // intended delta. Change this list only on purpose.
+  it('surfaces burn’s two numeric knobs and neither of its brand-supplied strings', () => {
+    expect(subOptionsFor('burn').map((o) => o.prop)).toEqual(['edgeContrast', 'glowBand']);
+    expect(subOptionsFor('burn').map((o) => o.kind)).toEqual(['number', 'number']);
+  });
+});
+
+// The per-field readers behind subOptionsFor/defaultTransition. Tested directly
+// because their boolean and lower-bound rules have no catalog kind behind them
+// yet — the transition kinds that need them (pixelate, checkerboard,
+// scanlineGlitch) land next, and a rule nothing exercises is a rule that gets
+// discovered broken.
+describe('subOptionForField', () => {
+  it('maps a boolean field to a checkbox sub-option with no options list', () => {
+    expect(subOptionForField('invert', z.boolean())).toEqual({
+      prop: 'invert',
+      label: 'Invert',
+      kind: 'boolean',
+    });
+  });
+
+  it('maps an OPTIONAL boolean to a checkbox too', () => {
+    expect(subOptionForField('softEdges', z.boolean().optional())?.kind).toBe('boolean');
+    expect(subOptionForField('softEdges', z.boolean().optional())?.label).toBe('Soft edges');
+  });
+
+  it('maps numbers to numeric fields and enums to dropdowns', () => {
+    expect(subOptionForField('cellSize', z.number().min(1))?.kind).toBe('number');
+    const e = subOptionForField('from', z.enum(['in', 'out']));
+    expect(e?.kind).toBe('enum');
+    expect(e?.options?.map((o) => o.value)).toEqual(['in', 'out']);
+  });
+
+  it('gives strings and other types no control at all', () => {
+    expect(subOptionForField('mask', z.string())).toBeNull();
+    expect(subOptionForField('bag', z.record(z.string(), z.unknown()))).toBeNull();
+  });
+});
+
+describe('defaultValueForField', () => {
+  // The reason this rule exists: a required `z.number().min(1)` seeded with a
+  // flat 0 hands the user a value its own schema rejects, the moment they
+  // switch to that kind.
+  it('seeds a bounded number at the schema’s own lower bound, not 0', () => {
+    expect(defaultValueForField(z.number().min(1))).toBe(1);
+    expect(defaultValueForField(z.number().min(4).max(64))).toBe(4);
+    const bounded = z.number().min(1);
+    expect(bounded.safeParse(defaultValueForField(bounded)).success).toBe(true);
+  });
+
+  it('still seeds an unbounded number at 0', () => {
+    expect(defaultValueForField(z.number())).toBe(0);
+  });
+
+  it('seeds a boolean false — "off" is the neutral state for a look toggle', () => {
+    expect(defaultValueForField(z.boolean())).toBe(false);
+  });
+
+  it('seeds an enum with its first option', () => {
+    expect(defaultValueForField(z.enum(['out', 'in']))).toBe('out');
+  });
+
+  it('has no seed for a type it cannot default', () => {
+    expect(defaultValueForField(z.string())).toBeUndefined();
   });
 });
 

@@ -4,7 +4,7 @@
 // and survive only as meta.guidesMs ruler markers — see the layered spec.
 // Sibling to deriveLayered (different input shape, same output).
 import type { LayeredReel, VideoItem, OverlayItem, BrandLayerItem, Effect } from './layered-schema';
-import type { Transition, TransitionKind } from './transition-schema';
+import type { Transition, FramesOnlyTransitionKind } from './transition-schema';
 
 export interface MontageSegment {
   src: string;
@@ -26,7 +26,13 @@ export interface MontageConfig {
   segments: MontageSegment[];
   teaser?: { lines: string[]; appearAtSec: number; reveal?: 'line' | 'all'; fontSize?: number } | null;
   outro: {
-    style: string; variant: string; transition: TransitionKind; logoDelaySec?: number; beatStart: number;
+    // The outro's entrance is emitted below as `{ kind, frames }` on the last
+    // content clip, so only the kinds that ARE `{ kind, frames }` may be named
+    // here — `dissolve`, `burn`, `glitch`, … but not `slide`/`wipe`/
+    // `zoom-through`, which need a direction/colour/from this config has no
+    // place to carry. Naming one of those used to compile (behind an `as
+    // Transition`) and produce an invalid transition.
+    style: string; variant: string; transition: FramesOnlyTransitionKind; logoDelaySec?: number; beatStart: number;
   };
   watermark: { asset: string; corner: string; variant?: string };
 }
@@ -136,7 +142,7 @@ export function deriveMontageLayered(cfg: MontageConfig, opts: MontageOpts = {})
   if (video.length && transF > 0) {
     video[video.length - 1] = {
       ...video[video.length - 1],
-      transitionOut: { kind: cfg.outro.transition, frames: transF } as Transition,
+      transitionOut: { kind: cfg.outro.transition, frames: transF },
     } as VideoItem;
   }
 

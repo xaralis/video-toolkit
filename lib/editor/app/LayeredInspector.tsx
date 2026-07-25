@@ -135,6 +135,20 @@ function SelectField({
     </div>
   );
 }
+// Boolean control for on/off sub-options (a checkbox, not a two-value select —
+// a flag reads as a flag). `value` may be undefined for an optional field that
+// has never been set; that renders as unchecked and commits `true` on click.
+function CheckboxField({ lbl, value, onChange }: { lbl: string; value: boolean | undefined; onChange: (b: boolean) => void }) {
+  return (
+    <div style={field}>
+      <label style={{ ...label, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 0, cursor: 'pointer' }}>
+        <input type="checkbox" checked={value ?? false} onChange={(e) => onChange(e.target.checked)} />
+        {lbl}
+      </label>
+    </div>
+  );
+}
+
 const TRANSITION_LABEL: Record<string, string> = Object.fromEntries(TRANSITION_KINDS.map((k) => [k.kind, k.label]));
 
 // Shared full-catalog transition editor — kind + whatever contextual
@@ -157,25 +171,39 @@ function TransitionFields({ t, onChange }: { t: DraftTransition; onChange: (next
         optionLabel={(k) => TRANSITION_LABEL[k] ?? k}
         onChange={(nextKind) => onChange(defaultTransition(nextKind, { frames: t.frames }))}
       />
-      {subOptionsFor(kind).map((opt) =>
-        opt.kind === 'enum' ? (
-          <SelectField
-            key={opt.prop}
-            lbl={opt.label}
-            value={t[opt.prop] as string | undefined}
-            options={(opt.options ?? []).map((o) => o.value)}
-            optionLabel={(v) => opt.options?.find((o) => o.value === v)?.label ?? v}
-            onChange={(s) => onChange({ ...t, [opt.prop]: s })}
-          />
-        ) : (
+      {/* One control per SubOption.kind. Dispatch explicitly (not
+          enum-or-else-number) so a kind added to SubOption without a control
+          here renders nothing visible instead of a wrong-typed field. */}
+      {subOptionsFor(kind).map((opt) => {
+        if (opt.kind === 'enum')
+          return (
+            <SelectField
+              key={opt.prop}
+              lbl={opt.label}
+              value={t[opt.prop] as string | undefined}
+              options={(opt.options ?? []).map((o) => o.value)}
+              optionLabel={(v) => opt.options?.find((o) => o.value === v)?.label ?? v}
+              onChange={(s) => onChange({ ...t, [opt.prop]: s })}
+            />
+          );
+        if (opt.kind === 'boolean')
+          return (
+            <CheckboxField
+              key={opt.prop}
+              lbl={opt.label}
+              value={t[opt.prop] as boolean | undefined}
+              onChange={(b) => onChange({ ...t, [opt.prop]: b })}
+            />
+          );
+        return (
           <NumberField
             key={opt.prop}
             lbl={opt.label}
             value={t[opt.prop] as number | undefined}
             onCommit={(n) => onChange({ ...t, [opt.prop]: n })}
           />
-        ),
-      )}
+        );
+      })}
       {kindNeedsFrames(kind) && (
         <NumberField
           lbl="Length (frames)"
