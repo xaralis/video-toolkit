@@ -24,10 +24,12 @@ Core commits: `1c6223e` (SegmentMedia+types) · `0d48f95` (registry/resolver) ·
 - Watermark: **kept roost's own** — it recolors one PNG via CSS `mask-image` per `variant` (black/white/brown), which `GenericWatermark` (image-swap only) can't express. Not a regression.
 - Because the editor writes transitions to a clip's `transitionOut` (which the shared assembly reads), **editor-set roost transitions now render** — the reported "no effect" bug is fixed.
 
-## What changed — campaign (`progpce/video-toolkit`, commit `2713dae`)
+## What changed — campaign (`progpce/video-toolkit`, commits `2713dae`, `01e98fd`)
 
-- `LayeredCampaignReel` adopted the **shared `buildVideoNodes`** (drop-in of its own extracted loop; renders identical). 13 projects synced.
-- **Kept its own ClipSegment/BrollSegment/PhotoSegment.** They already consume core `cropCoverStyle`/`gradeFilter` and now the shared assembly. Folding their media onto `SegmentMedia` would mean reconciling campaign's baked-in handle/trim-in-seconds math with SegmentMedia's raw `sourceInMs`+handles model — a timing-sensitive change to 13 production reels that can't be safely validated with still frames and no review available. Per your "if these are shared already, it's fine / cleanest where unsure" guidance, kept as-is.
+- `LayeredCampaignReel` adopted the **shared `buildVideoNodes`** (`2713dae`; drop-in of its own extracted loop; renders identical). 13 projects synced.
+- `ClipSegment`/`BrollSegment`/`PhotoSegment` now render their **media via core `SegmentMedia`** (`01e98fd`): `renderVideoItem` passes each raw `item` with its prefixed source (`recordings/`|`broll/`) + `handles`; the segment renders `<SegmentMedia>` and keeps its overlay dispatch (captions/title/quote-pull/…) around it. The handle/trim-in-seconds concern was unfounded — subtracting an integer handle commutes with rounding, so `startFrom` is identical. **Verified by a per-kind before/after render gate: clip (frame 81), broll (frame 316), photo (`pp-ricni-sauna` frame 60) were SHA-256 IDENTICAL before vs after** — pixel-perfect, zero change.
+- So **both brands are core-sourced for clip/broll/photo** now.
+- The dead legacy `CampaignReel.tsx` (not wired to any `Root.tsx` Composition, never bundled) still calls the segments with the old signature — harmless at runtime, would fail `tsc`-in-isolation; left as-is (not deleted — it's a pre-existing artifact, your call).
 
 ## Kept brand-only (no core projection, as intended)
 
