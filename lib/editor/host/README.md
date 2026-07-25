@@ -57,3 +57,56 @@ colours reach the editor through this prop or not at all.
 Renders `<EditorHost>` into `container`, defaulting to `#root`. Throws if
 neither exists. `EditorHost` itself is exported from `./EditorHost` for hosts
 that manage their own React root.
+
+## The Node side: `.editor/vite.config.mts`
+
+The browser host above needs a dev server behind it. Core ships that too —
+the Vite dev-server plugin backing `/props`, `/save`, `/render`,
+`/project-state` and `/sources` (`editor-plugin.mts`), and the Vite config
+factory that wires it up (`vite-config.mts`). A brand's `.editor/` is then
+just `index.html`, `main.tsx` (above), and a short `vite.config.mts`.
+
+```ts
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+// Relative, not aliased: THIS file is what creates the @video-toolkit/lib alias,
+// so it cannot import through it.
+import { createEditorViteConfig } from '../../../toolkit/lib/editor/host/vite-config.mts';
+
+export default defineConfig(
+  createEditorViteConfig({
+    editorDir: path.dirname(fileURLToPath(import.meta.url)),
+    compositionId: 'LayeredCampaignReel',
+    plugins: [react(), tailwindcss()],
+    brandLib: true,
+  }),
+);
+```
+
+A brand with no Tailwind and no `brand-lib/` tier drops `tailwindcss()` and
+`brandLib`; one that needs extra Remotion render CLI flags (e.g. a software
+GL renderer) adds `extraArgs: ['--gl=angle']`.
+
+`createEditorViteConfig` returns a plain object, not a value wrapped in
+Vite's `defineConfig` — core has no `vite` dependency to import that from, so
+the brand's own `defineConfig` call does the wrapping. It roots Vite at
+`editorDir`, serves the project's `public/` dir, aliases `@`,
+`@video-toolkit/lib` (and `@brand-lib` when `brandLib: true`) plus the
+timeline-editor's dependencies from the *project's* `node_modules` (the
+toolkit submodule's own `node_modules` walk can't reach them), pins a single
+`zod` instance resolved from the project, re-resolves `@remotion/transitions`
+subpaths so the shared at-cut engine's runtime imports work, and appends
+`createEditorPlugin({ templateRoot, compositionId, extraArgs })` after any
+plugins the brand passed in. `editorDir`'s parent is taken as the project
+root, matching `remotion.config.ts`'s own layout assumption
+(`lib/project/README.md`).
+
+**Import `createEditorViteConfig` by relative path, never through
+`@video-toolkit/lib`.** Vite loads a config file by externalizing bare
+specifiers and resolving them through plain Node resolution — before the
+alias the config is about to *return* exists — so the alias can't be used to
+load the file that defines it. Same rule as `remotion.config.ts` and
+`vitest.config.ts`; see `lib/project/README.md`.
