@@ -756,6 +756,11 @@ function applyArraySpliceToSource(
  * deleted element's own comments go with it, and a freshly inserted element has no authored text
  * to preserve, so it is serialized as JSON (double-quoted keys) at its neighbours' indentation.
  *
+ * Note the asymmetry TypeScript's trivia model forces here: "its own comment" means its LEADING
+ * comment. A same-line TRAILING comment (`{ … }, // note`) is leading trivia of the FOLLOWING
+ * element, so deleting that following element takes the previous element's trailing comment with
+ * it. This is the mirror of the insertion bug fixed earlier and is not currently worked around.
+ *
  * The remaining caveat is elements with NO stable `id` (or a duplicated one): those are paired
  * positionally from the head of their gap, so a deletion at the head of a gap followed by an edited
  * element still shifts the pairing by one and rewrites the deleted element's source node — moving

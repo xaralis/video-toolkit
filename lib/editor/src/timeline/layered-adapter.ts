@@ -50,9 +50,9 @@ export function layeredToTimeline(reel: LayeredReel, fps: number): { editorData:
   // Transitions are a derived "at-the-cut" view: clips stay butted on the
   // video track. Every item's non-`cut` transitionOut gets one centered block
   // on its cut — including the LAST item, whose transitionOut is a closing
-  // fade to the coal background rather than into a following clip. The FIRST
-  // item's non-`cut` transitionIn gets one opening block anchored at time 0
-  // (a fade in from coal). Together this makes the lane a unified view of
+  // fade to the composition background rather than into a following clip. The
+  // FIRST item's non-`cut` transitionIn gets one opening block anchored at time
+  // 0 (a fade in from the background). Together this makes the lane a view of
   // every transition edge in the reel, not just adjacent-pair cuts.
   const vids = reel.tracks.video;
   const transitions: TLAction[] = [];

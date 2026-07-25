@@ -209,4 +209,20 @@ this phase.
   matching frames (a clip, a broll, a photo, and a frame mid-transition) before and after.
   Any pixel difference is a regression.
 - After Task 8, the new example must actually render.
-- Final: `grep -riE 'lime|teal|coal|roost|progresivn|sand-brown' lib/` returns nothing.
+- Final brand-leak gate:
+
+  ```bash
+  grep -riE 'lime|teal|roost|progresivn|sand-brown' lib/ --exclude-dir=node_modules --exclude='*.test.*'
+  ```
+
+  The exclusions are load-bearing: without them the gate walks 3.6 MB of `lib/editor/node_modules`
+  and is permanently red, which makes it useless as a signal. `coal` is dropped from the pattern
+  because it now matches only `fade-coal` — a persisted transition KIND name whose rename would
+  touch every baked `Root.tsx`, so it is deliberately kept (see the NAME NOTE on its catalog entry)
+  — and `COALESCE_MS`.
+
+  Expected remaining hits, all judged acceptable: provenance comments in
+  `lib/theming/segment/SegmentMedia.tsx` and `lib/transitions/presentations/burn.tsx` (useful
+  history, not values). Test fixtures still use PP's `{lime:…}`/`{teal:…}` vocabulary; renaming them
+  to neutral keys is a Phase 3 cleanup, worth doing because that very vocabulary is what hid the
+  `ACCENT_RE` leak Task 6 found.
