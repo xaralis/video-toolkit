@@ -146,12 +146,21 @@ import type { AccentSlot } from './palette';
  *  already-resolved overlay props (see OverlayRenderProps). */
 export type OverlayRenderer = React.FC<OverlayRenderProps>;
 
+/** One kind's registration: its brand-custom renderer plus any extra
+ *  brand-level configuration that renderer needs (stroke width, decoder
+ *  timing, font overrides, …). `config` is opaque to core — the root
+ *  threads it through to the renderer verbatim. */
+export interface OverlayRegistration {
+  renderer: OverlayRenderer;
+  config?: unknown; // brand-defined, renderer-specific
+}
+
 /** The theming contract a brand's theme satisfies. Extensible: new keys are
  *  added as future component kinds adopt the module. */
 export interface BrandTheme {
   accentSlots: AccentSlot[];
-  /** Per-kind brand-custom renderer overrides. Absent kind → core generic. */
-  overlayRenderers?: Partial<Record<OverlayKind, OverlayRenderer>>;
+  /** Per-kind brand-custom renderer + config. Absent kind → core generic. */
+  overlays?: Partial<Record<OverlayKind, OverlayRegistration>>;
 }
 
 export type OverlayKind = 'text'; // widened as kinds are added
@@ -162,11 +171,14 @@ export function resolveOverlayRenderer(
   theme: BrandTheme,
   kind: OverlayKind,
 ): OverlayRenderer;
+
+/** The brand config registered for a kind (undefined when none / generic). */
+export function overlayConfig(theme: BrandTheme, kind: OverlayKind): unknown;
 ```
 
-`resolveOverlayRenderer` returns `theme.overlayRenderers?.[kind]` when present,
-else the registered core generic for that kind (`GenericTextOverlay` for
-`'text'`).
+`resolveOverlayRenderer` returns `theme.overlays?.[kind]?.renderer` when present, else the
+registered core generic for that kind (`GenericTextOverlay` for `'text'`);
+`overlayConfig` returns `theme.overlays?.[kind]?.config`.
 
 #### 4. Shared overlay render props — the contract every renderer consumes
 
@@ -186,11 +198,40 @@ export interface OverlayRenderProps {
   /** The brand palette, so the renderer resolves keys → hex via the core
    *  helper (resolveAccentColor / paletteMap). No renderer hardcodes hex. */
   palette: AccentSlot[];
+  /** Extra brand-level configuration for this renderer, threaded down by the
+   *  root composition from the brand theme's OverlayRegistration.config.
+   *  Opaque to core; the renderer casts it to its own known shape. Lets a
+   *  brand tune its renderer (stroke width, decoder timing, fonts) without
+   *  core or the reel model knowing about it. */
+  config?: unknown;
   /** Clip-local animation state. */
   localFrame: number;
   totalFrames: number;
   fps: number;
 }
+```
+
+**Root passes config down (not globals).** The brand's root composition
+(`LayeredXReel`) is the single point that reads the brand theme and threads
+everything into the renderer — the resolved renderer, the `palette`, and the
+per-kind `config` — via `OverlayRenderProps`. Renderers stay pure with respect
+to brand config: they receive it as a prop instead of importing brand globals,
+so the same renderer could be reused with different config. Concretely, for each
+text overlay the root does:
+
+```tsx
+const Renderer = resolveOverlayRenderer(theme, 'text');
+const cfg = overlayConfig(theme, 'text');
+// … inside the overlay's Sequence:
+<Renderer
+  text={content.text}
+  placement={content.position ?? DEFAULT_PLACEMENT}
+  fontSize={content.fontSize}
+  reveal={content.reveal}
+  palette={theme.accentSlots}
+  config={cfg}
+  localFrame={/* … */} totalFrames={/* … */} fps={fps}
+/>
 ```
 
 The prop bag deliberately carries **content + palette**, not pre-resolved
@@ -241,12 +282,12 @@ overlay item's existing `startMs` / `endMs`.
 #### Brand-custom renderers
 
 - **Roost `overlays/TextOverlay.tsx` (`Text`)** — registers as
-  `overlayRenderers.text` in roost's theme. Consumes the shared props: positions
+  `overlays.text` in roost's theme. Consumes the shared props: positions
   via `placement`, colors each token span with `t.color` (now resolved hex),
   keeps its brown stroke + per-line spring rise. This is what makes roost
   *honor* accents (the "functional roost slots" decision).
 - **Campaign `brand-lib/overlays/QuotePullOverlay.tsx`** — registers as
-  `overlayRenderers.text` in campaign's theme (shallow integration). Its inline
+  `overlays.text` in campaign's theme (shallow integration). Its inline
   `const ACCENT_COLOR = { lime, teal }` is **deleted**; colors come from
   `paletteMap(props.palette)`. Its local `Token.color` type widens from
   `'lime' | 'teal'` to `string`. Decoder-scramble, pills, endpoint rule, and
@@ -265,15 +306,24 @@ accentSlots: [
   { key: 'rust',  label: 'Rust',  color: '#7b190a' },
   { key: 'green', label: 'Green', color: '#334f14' },
 ],
-overlayRenderers: { text: RoostText },
+overlays: {
+  text: { renderer: RoostText, config: { strokeRatio: 0.2, lineStaggerSec: 0.35 } },
+},
 
 // campaign
 accentSlots: [
   { key: 'lime', label: 'Lime', color: '#c6f432' },
   { key: 'teal', label: 'Teal', color: '#2ad4c5' },
 ],
-overlayRenderers: { text: QuotePullOverlay },
+overlays: {
+  text: { renderer: QuotePullOverlay, config: { endpointKey: 'teal' } },
+},
 ```
+
+The `config` shape is the brand's own concern — core never inspects it. Roost's
+renderer casts it to `{ strokeRatio; lineStaggerSec }`, campaign's to
+`{ endpointKey }`. This is the extension point for all future brand-level
+renderer tuning.
 
 The brand theme is the **single source** consumed by both the render path
 (`LayeredXReel` resolves the renderer + palette from it) and the editor (host
@@ -301,14 +351,14 @@ brand theme.ts ─accentSlots─▶ editor host ─▶ LayeredInspector ─▶ A
     │                                                             (swatch buttons,
     │                                                              inline-colored spans)
     │
-    │            ┌─ resolveOverlayRenderer(theme,'text') ─┐
-    │            │                                        │
-    └─ LayeredXReel ─ renders chosen renderer with OverlayRenderProps { content, palette, frames }
-                 │                                        │
-        brand-custom                               core generic
-        ├ Roost Text  → TextOverlayBase (deep: resolves key→hex, splits)
-        ├ QuotePull   → paletteMap(palette) + placementGeometry (shallow)
-        └ (future kinds…)                          GenericTextOverlay
+    │            ┌─ resolveOverlayRenderer(theme,'text') + overlayConfig(theme,'text') ─┐
+    │            │                                                                       │
+    └─ LayeredXReel ─ renders chosen renderer with OverlayRenderProps { content, palette, config, frames }
+                 │                                                                       │
+        brand-custom                                                              core generic
+        ├ Roost Text  → TextOverlayBase (deep: resolves key→hex, splits) + config
+        ├ QuotePull   → paletteMap(palette) + placementGeometry + config (shallow)
+        └ (future kinds…)                                                       GenericTextOverlay
 ```
 
 ## Back-compat & Migration
