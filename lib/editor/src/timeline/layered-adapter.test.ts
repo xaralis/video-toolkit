@@ -608,6 +608,53 @@ describe('applyTimelineChange — linked audio (bed follows its video)', () => {
   });
 });
 
+describe('applyTimelineChange — ripple reorder (drag a clip in ripple mode)', () => {
+  const reel = (): LayeredReel => ({
+    ...REEL,
+    meta: { topic: 'x', totalDurationMs: 12000 },
+    tracks: {
+      ...REEL.tracks,
+      overlays: [],
+      brand: [],
+      video: [
+        { id: 'A', kind: 'clip', startMs: 0, endMs: 5000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 5000 },
+        { id: 'B', kind: 'clip', startMs: 5000, endMs: 9000, source: 'b.mp4', sourceInMs: 0, sourceOutMs: 4000 },
+        { id: 'C', kind: 'clip', startMs: 9000, endMs: 12000, source: 'c.mp4', sourceInMs: 0, sourceOutMs: 3000 },
+      ],
+      audio: [
+        { id: 'a-A', startMs: 0, endMs: 5000, source: 'a.mp3', sourceInMs: 0, followsVideoId: 'A' },
+        { id: 'a-B', startMs: 5000, endMs: 9000, source: 'b.mp3', sourceInMs: 0, followsVideoId: 'B' },
+        { id: 'a-C', startMs: 9000, endMs: 12000, source: 'c.mp3', sourceInMs: 0, followsVideoId: 'C' },
+      ],
+    },
+  });
+  const moveVideo = (r: LayeredReel, id: string, startSec: number, endSec: number) => {
+    const { editorData } = layeredToTimeline(r, 30);
+    const changed = editorData.map((row) =>
+      row.id === 'video' ? { ...row, actions: row.actions.map((a) => (a.id === `video:${id}` ? { ...a, start: startSec, end: endSec } : a)) } : row,
+    );
+    return applyTimelineChange(r, changed, { ripple: true });
+  };
+
+  it('dragging A after B reorders to B, A, C and re-buts with no gaps', () => {
+    const r = moveVideo(reel(), 'A', 6, 11); // A's centre lands ~8.5s (between B and C)
+    expect(r.tracks.video.map((v) => v.id)).toEqual(['B', 'A', 'C']);
+    expect(r.tracks.video.map((v) => [v.startMs, v.endMs])).toEqual([[0, 4000], [4000, 9000], [9000, 12000]]);
+  });
+
+  it('linked beds follow the reorder into their clip’s new slot', () => {
+    const r = moveVideo(reel(), 'A', 6, 11);
+    const aA = r.tracks.audio.find((a) => a.id === 'a-A')!;
+    expect([aA.startMs, aA.endMs]).toEqual([4000, 9000]); // a-A rode along with A
+  });
+
+  it('dragging C to the front reorders to C, A, B', () => {
+    const r = moveVideo(reel(), 'C', 0, 3);
+    expect(r.tracks.video.map((v) => v.id)).toEqual(['C', 'A', 'B']);
+    expect(r.tracks.video.map((v) => [v.startMs, v.endMs])).toEqual([[0, 3000], [3000, 8000], [8000, 12000]]);
+  });
+});
+
 describe('deleteItem', () => {
   const reel: LayeredReel = {
     ...REEL,

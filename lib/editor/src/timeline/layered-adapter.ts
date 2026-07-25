@@ -250,6 +250,31 @@ function applyRipple(reel: LayeredReel, resolvedVideo: VideoItem[], newMs: NewMs
   return { ...reel, meta: { ...reel.meta, totalDurationMs: totalMs }, tracks };
 }
 
+// Ripple reorder (a drag in ripple mode): drop the moved clip into the sequence
+// at the position implied by its new start, then re-butt the whole video track
+// from the first clip's anchor so there are no gaps (standard NLE insert edit).
+// The moved clip's index is decided by where its CENTRE lands among the others.
+// Linked audio is realigned afterwards by relinkAudio.
+function rippleReorder(reel: LayeredReel, movedId: string, newStartMs: number): LayeredReel {
+  const vids = reel.tracks.video;
+  const moved = vids.find((v) => v.id === movedId);
+  if (!moved) return reel;
+  const others = vids.filter((v) => v.id !== movedId);
+  const dropCentre = newStartMs + (moved.endMs - moved.startMs) / 2;
+  let idx = others.findIndex((v) => (v.startMs + v.endMs) / 2 > dropCentre);
+  if (idx < 0) idx = others.length;
+  const ordered = [...others.slice(0, idx), moved, ...others.slice(idx)];
+  const anchor = Math.min(...vids.map((v) => v.startMs));
+  let t = anchor;
+  const video = ordered.map((v) => {
+    const span = v.endMs - v.startMs;
+    const nv = { ...v, startMs: t, endMs: t + span };
+    t += span;
+    return nv;
+  });
+  return { ...reel, tracks: { ...reel.tracks, video } };
+}
+
 export function applyTimelineChange(
   reel: LayeredReel,
   rows: TLRow[],
@@ -271,6 +296,17 @@ export function applyTimelineChange(
   });
 
   if (opts.ripple) {
+    // Ripple MOVE (drag): a video clip whose BOTH edges shifted is a move, not a
+    // trim — reorder it into the sequence and re-butt (standard ripple/insert
+    // edit), so no gaps open. Trims fall through to applyRipple below.
+    const moved = reel.tracks.video.find((v) => {
+      const np = newMs('video', v.id);
+      return np && np.startMs !== v.startMs && np.endMs !== v.endMs;
+    });
+    if (moved) {
+      const np = newMs('video', moved.id)!;
+      return relinkAudio(reel, rippleReorder(reel, moved.id, np.startMs));
+    }
     const rippled = applyRipple(reel, resolvedVideo, newMs);
     if (rippled) return relinkAudio(reel, rippled);
   }
