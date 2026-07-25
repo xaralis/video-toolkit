@@ -52,7 +52,7 @@ function readRunsFromDom(root: HTMLElement): Run[] {
     } else if (node instanceof HTMLElement) {
       if (node.nodeName === 'BR') return;
       const accent = node.getAttribute('data-accent');
-      const color: AccentColor | null = accent === 'lime' || accent === 'teal' ? accent : null;
+      const color: AccentColor | null = accent ?? null;
       runs.push({ text: node.textContent ?? '', color });
     }
   });
