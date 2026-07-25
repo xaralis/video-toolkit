@@ -14,5 +14,5 @@
       "@video-toolkit/lib/*": ["../*"]
     }
   },
-  "include": ["src", "app"]
+  "include": ["src", "app", "../theming"]
 }
