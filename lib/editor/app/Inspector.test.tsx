@@ -57,6 +57,7 @@ describe('Inspector', () => {
         selectedId={null}
         topic="Our story"
         chevron="HOUSING"
+        fps={30}
         onReelChange={vi.fn()}
         onSegmentChange={vi.fn()}
       />
@@ -75,6 +76,7 @@ describe('Inspector', () => {
         selectedId={null}
         topic="Our story"
         chevron="HOUSING"
+        fps={30}
         onReelChange={vi.fn()}
         onSegmentChange={vi.fn()}
       />
@@ -96,6 +98,7 @@ describe('Inspector', () => {
         selectedId={null}
         topic="Our story"
         chevron="HOUSING"
+        fps={30}
         onReelChange={onReelChange}
         onSegmentChange={vi.fn()}
       />
@@ -114,6 +117,7 @@ describe('Inspector', () => {
         selectedId={null}
         topic="Our story"
         chevron="HOUSING"
+        fps={30}
         onReelChange={onReelChange}
         onSegmentChange={vi.fn()}
       />
@@ -131,6 +135,7 @@ describe('Inspector', () => {
         selectedId="missing"
         topic="Our story"
         chevron="HOUSING"
+        fps={30}
         onReelChange={vi.fn()}
         onSegmentChange={vi.fn()}
       />
@@ -146,6 +151,7 @@ describe('Inspector', () => {
         selectedId="a"
         topic="Our story"
         chevron="HOUSING"
+        fps={30}
         onReelChange={vi.fn()}
         onSegmentChange={vi.fn()}
       />
@@ -163,6 +169,7 @@ describe('Inspector', () => {
         selectedId="b"
         topic="Our story"
         chevron="HOUSING"
+        fps={30}
         onReelChange={vi.fn()}
         onSegmentChange={vi.fn()}
       />
@@ -177,6 +184,7 @@ describe('Inspector', () => {
         selectedId="c"
         topic="Our story"
         chevron="HOUSING"
+        fps={30}
         onReelChange={vi.fn()}
         onSegmentChange={vi.fn()}
       />
@@ -189,6 +197,7 @@ describe('Inspector', () => {
         selectedId="d"
         topic="Our story"
         chevron="HOUSING"
+        fps={30}
         onReelChange={vi.fn()}
         onSegmentChange={vi.fn()}
       />
@@ -203,6 +212,7 @@ describe('Inspector', () => {
         selectedId="e"
         topic="Our story"
         chevron="HOUSING"
+        fps={30}
         onReelChange={vi.fn()}
         onSegmentChange={vi.fn()}
       />
@@ -222,6 +232,7 @@ describe('Inspector', () => {
         selectedId="a"
         topic="Our story"
         chevron="HOUSING"
+        fps={30}
         onReelChange={vi.fn()}
         onSegmentChange={vi.fn()}
       />
@@ -241,6 +252,7 @@ describe('Inspector', () => {
           selectedId="a"
           topic="Our story"
           chevron="HOUSING"
+          fps={30}
           onReelChange={vi.fn()}
           onSegmentChange={onSegmentChange}
         />
@@ -277,6 +289,7 @@ describe('Inspector', () => {
           selectedId="b"
           topic="Our story"
           chevron="HOUSING"
+          fps={30}
           onReelChange={vi.fn()}
           onSegmentChange={onSegmentChange}
         />
@@ -301,6 +314,7 @@ describe('Inspector', () => {
           selectedId="a"
           topic="Our story"
           chevron="HOUSING"
+          fps={30}
           onReelChange={vi.fn()}
           onSegmentChange={onSegmentChange}
         />
@@ -338,6 +352,7 @@ describe('Inspector', () => {
           selectedId="a"
           topic="Our story"
           chevron="HOUSING"
+          fps={30}
           onReelChange={vi.fn()}
           onSegmentChange={onSegmentChange}
         />
@@ -365,6 +380,7 @@ describe('Inspector', () => {
           selectedId="a"
           topic="Our story"
           chevron="HOUSING"
+          fps={30}
           onReelChange={vi.fn()}
           onSegmentChange={onSegmentChange}
         />
@@ -385,6 +401,7 @@ describe('Inspector', () => {
           selectedId="b"
           topic="Our story"
           chevron="HOUSING"
+          fps={30}
           onReelChange={vi.fn()}
           onSegmentChange={onSegmentChange}
         />
@@ -404,6 +421,7 @@ describe('Inspector', () => {
           selectedId="c"
           topic="Our story"
           chevron="HOUSING"
+          fps={30}
           onReelChange={vi.fn()}
           onSegmentChange={vi.fn()}
         />
@@ -420,6 +438,7 @@ describe('Inspector', () => {
           selectedId="d"
           topic="Our story"
           chevron="HOUSING"
+          fps={30}
           onReelChange={vi.fn()}
           onSegmentChange={vi.fn()}
         />
@@ -442,6 +461,7 @@ describe('Inspector', () => {
           selectedId="a"
           topic="Our story"
           chevron="HOUSING"
+          fps={30}
           onReelChange={vi.fn()}
           onSegmentChange={onSegmentChange}
           sources={availableSources}
@@ -467,6 +487,7 @@ describe('Inspector', () => {
           selectedId="b"
           topic="Our story"
           chevron="HOUSING"
+          fps={30}
           onReelChange={vi.fn()}
           onSegmentChange={onSegmentChange}
           sources={availableSources}
@@ -491,6 +512,7 @@ describe('Inspector', () => {
           selectedId="a"
           topic="Our story"
           chevron="HOUSING"
+          fps={30}
           onReelChange={vi.fn()}
           onSegmentChange={vi.fn()}
           sources={availableSources}
@@ -512,6 +534,7 @@ describe('Inspector', () => {
           selectedId="a"
           topic="Our story"
           chevron="HOUSING"
+          fps={30}
           onReelChange={vi.fn()}
           onSegmentChange={vi.fn()}
         />
@@ -528,6 +551,7 @@ describe('Inspector', () => {
           selectedId="c"
           topic="Our story"
           chevron="HOUSING"
+          fps={30}
           onReelChange={vi.fn()}
           onSegmentChange={vi.fn()}
           sources={availableSources}
@@ -541,6 +565,7 @@ describe('Inspector', () => {
           selectedId="d"
           topic="Our story"
           chevron="HOUSING"
+          fps={30}
           onReelChange={vi.fn()}
           onSegmentChange={vi.fn()}
           sources={availableSources}
@@ -554,12 +579,67 @@ describe('Inspector', () => {
           selectedId="e"
           topic="Our story"
           chevron="HOUSING"
+          fps={30}
           onReelChange={vi.fn()}
           onSegmentChange={vi.fn()}
           sources={availableSources}
         />
       );
       expect(screen.queryByLabelText('Source')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('transition to next scene', () => {
+    it('shows the transition section for a non-last segment', () => {
+      render(
+        <Inspector
+          segments={segments}
+          selectedId="a"
+          topic="Our story"
+          chevron="HOUSING"
+          fps={30}
+          onReelChange={vi.fn()}
+          onSegmentChange={vi.fn()}
+        />
+      );
+      expect(screen.getByText('Transition to next scene')).toBeInTheDocument();
+      // The picker's kind gallery is present.
+      expect(screen.getByRole('button', { name: 'Dissolve' })).toBeInTheDocument();
+    });
+
+    it('emits a valid transitionOut object when a transition kind is picked', () => {
+      const onSegmentChange = vi.fn();
+      render(
+        <Inspector
+          segments={segments}
+          selectedId="a"
+          topic="Our story"
+          chevron="HOUSING"
+          fps={30}
+          onReelChange={vi.fn()}
+          onSegmentChange={onSegmentChange}
+        />
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Dissolve' }));
+      expect(onSegmentChange).toHaveBeenCalledTimes(1);
+      expect(onSegmentChange).toHaveBeenCalledWith('a', {
+        transitionOut: { kind: 'dissolve', frames: 15 },
+      });
+    });
+
+    it('does not show the transition section for the last segment (outro)', () => {
+      render(
+        <Inspector
+          segments={segments}
+          selectedId="e"
+          topic="Our story"
+          chevron="HOUSING"
+          fps={30}
+          onReelChange={vi.fn()}
+          onSegmentChange={vi.fn()}
+        />
+      );
+      expect(screen.queryByText('Transition to next scene')).not.toBeInTheDocument();
     });
   });
 });

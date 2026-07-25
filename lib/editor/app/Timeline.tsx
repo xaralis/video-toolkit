@@ -1,10 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import {
   segmentDurationFrames,
   totalDurationFrames,
 } from '@video-toolkit/lib/reel-config-base/duration';
 import { frameFromClientX, rulerTicks } from './timeline-util';
+import { TRANSITION_KINDS, type Transition } from './transitions';
 import styles from './Timeline.module.css';
 
 /**
@@ -19,6 +20,8 @@ export type Segment = {
   trimIn?: number;
   trimOut?: number;
   durationMs?: number;
+  /** Transition played into the NEXT scene. Absent reads as a hard cut. */
+  transitionOut?: Transition;
 };
 
 export type TrimEdge = 'start' | 'end';
@@ -92,6 +95,21 @@ function titleFor(seg: Segment, index: number, durationFrames: number, fps: numb
   const seconds = fps > 0 ? durationFrames / fps : 0;
   parts.push(`${seconds.toFixed(1)}s`);
   return parts.join(' · ');
+}
+
+/** A segment's `transitionOut`, defaulting an absent one to a hard cut. */
+function transitionOf(seg: Segment): Transition {
+  return seg.transitionOut ?? { kind: 'cut' };
+}
+
+/** True when the transition is anything other than a hard cut (i.e. an effect). */
+function isEffectTransition(t: Transition): boolean {
+  return t.kind !== 'cut';
+}
+
+/** Human-readable label for a transition kind (falls back to the raw kind). */
+function transitionLabel(t: Transition): string {
+  return TRANSITION_KINDS.find((k) => k.kind === t.kind)?.label ?? t.kind;
 }
 
 type DragState = {
@@ -287,9 +305,17 @@ export function Timeline({
         {segments.map((seg, index) => {
           const durationFrames = segmentDurationFrames(seg, fps, outroFrames);
           const isSelected = seg.id === selectedId;
+          // A junction sits AFTER every block but the last, and reflects that
+          // (left) segment's `transitionOut`: an outline diamond for a cut,
+          // a filled dot for any effect. Clicking it selects the left segment
+          // so its Inspector transition section opens.
+          const isLast = index === segments.length - 1;
+          const transition = transitionOf(seg);
+          const effect = isEffectTransition(transition);
+          const transitionText = transitionLabel(transition);
           return (
+            <Fragment key={seg.id}>
             <button
-              key={seg.id}
               type="button"
               className={isSelected ? `${styles.block} ${styles.selected}` : styles.block}
               style={{ flexGrow: durationFrames, flexBasis: 0 }}
@@ -323,6 +349,29 @@ export function Timeline({
               )}
               <span className={styles.label}>{labelFor(seg, index)}</span>
             </button>
+            {!isLast && (
+              <button
+                type="button"
+                className={
+                  effect ? `${styles.junction} ${styles.junctionEffect}` : styles.junction
+                }
+                data-testid={`junction-${seg.id}`}
+                data-transition-kind={transition.kind}
+                aria-label={`Transition after scene ${index + 1}: ${transitionText}`}
+                title={transitionText}
+                // Selecting the LEFT segment (and NOT seeking) — stop the event
+                // before it reaches the track's pointerdown seek handler, which
+                // would otherwise scrub the playhead to this x-position.
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  onSelect(seg.id);
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {effect ? '●' : '◇'}
+              </button>
+            )}
+            </Fragment>
           );
         })}
       </div>
