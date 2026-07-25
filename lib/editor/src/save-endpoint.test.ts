@@ -29,6 +29,26 @@ describe('saveDefaultPropsToFile', () => {
   });
 });
 
+describe('saveDefaultPropsToFile — verification guard', () => {
+  it('rejects when the Composition has no defaultProps, leaving the original file untouched', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'reel-editor-'));
+    const file = join(dir, 'Root.tsx');
+    const noDefaultProps = `import { Composition } from 'remotion';
+export const Root = () => (
+  <Composition id="CampaignReel" component={C} fps={30} width={1} height={1} />
+);
+`;
+    writeFileSync(file, noDefaultProps, 'utf8');
+
+    await expect(
+      saveDefaultPropsToFile(file, { topic: 'new', segments: [] }),
+    ).rejects.toThrow(/no defaultProps attribute/);
+
+    const after = readFileSync(file, 'utf8');
+    expect(after).toBe(noDefaultProps);
+  });
+});
+
 describe('createSaveHandler', () => {
   it('resolves the target path and writes props', async () => {
     const file = tmpRoot();
