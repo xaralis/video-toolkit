@@ -92,8 +92,10 @@ function buildVideoItem(seg: OldSegment, startMs: number, endMs: number): VideoI
   // EffectSchema). Only broll segments carry these in the old segment model.
   const effects: Effect[] = [];
   if (seg.type === 'broll') {
-    if (seg.kenBurns) effects.push({ type: 'ken-burns', ...seg.kenBurns });
-    if (seg.blendTo) effects.push({ type: 'blend', to: seg.blendTo, ...(seg.blend ?? {}) });
+    // Spread caller params FIRST, then the discriminant/target — so a stray
+    // `type`/`to` key in brand-preset params can never clobber the effect kind.
+    if (seg.kenBurns) effects.push({ ...seg.kenBurns, type: 'ken-burns' });
+    if (seg.blendTo) effects.push({ ...(seg.blend ?? {}), to: seg.blendTo, type: 'blend' });
   }
 
   switch (seg.type) {
