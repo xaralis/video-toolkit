@@ -47,6 +47,9 @@ describe('deriveMontageLayered', () => {
     // outro item + props; reel length = last item end
     const outro = reel.tracks.video.find((v) => v.kind === 'outro')!;
     expect((outro as { props?: { style?: string } }).props?.style).toBe('organic');
+    // enter-transition length preserved for the renderer (montage ends at the
+    // outro beat, not at the very front → the real TRANSITION_FRAMES, not 0).
+    expect((outro as { props?: { transitionFrames?: number } }).props?.transitionFrames).toBe(15);
     expect(outro.endMs).toBe(reel.meta.totalDurationMs);
 
     // watermark hides before the outro

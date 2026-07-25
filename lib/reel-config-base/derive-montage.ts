@@ -112,6 +112,12 @@ export function deriveMontageLayered(cfg: MontageConfig, opts: MontageOpts = {})
     props: {
       style: cfg.outro.style, variant: cfg.outro.variant, transition: cfg.outro.transition,
       logoDelaySec: cfg.outro.logoDelaySec ?? 0.5, framesPerBeat: fpb, kickFrames: outroKickFrames,
+      // The real enter-transition length: preserved here because the renderer
+      // can't recover it from startMs alone — when the montage ends within
+      // TRANSITION_FRAMES of the outro, transitionStart clamps to 0 but the
+      // outro STILL animates in over transitionFrames (see RoostReel's
+      // atStart-vs-clamp split). 0 only when the outro sits at the very front.
+      transitionFrames: transF,
     },
     musicBoostDb: 0,
   });
