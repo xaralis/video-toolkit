@@ -1,188 +1,175 @@
-# Real Transitions in Absolute Placement — Design (model B: at-the-cut, handles)
+# Unified Transition System (at-the-cut, handles, full Remotion catalog) — Design
 
 **Date:** 2026-07-22
 **Branch:** `feat/reel-editor-skeleton`
-**Status:** approved (model B, xzdarcy verified), pending spec review
+**Status:** approved (model B + fully unified + full catalog), pending spec review
 
 ## Goal
 
-Make real transitions — `dissolve` / `fade-coal` / `glitch` / `whip-pan` /
-`wipe` / `zoom-through` — render in the absolute-placement layered composition,
-the way professional editors (Premiere / Final Cut / DaVinci) do it: a
-transition sits **at the cut** and borrows **handle frames** from both clips,
-so clips don't move and the sequence length doesn't change. This replaces the
-current degradation where any `transitionOut` collapses to a fade-in on the
-incoming clip.
+A single, unified transition system for the layered reel:
 
-## Why model B (at-the-cut, handles) over model A (overlap-consume)
+1. **Renders for real** in absolute placement — pro-editor "at-the-cut" model
+   (clips stay butted; the transition sits at the cut and borrows **handle
+   frames**; sequence length unchanged).
+2. **Uniform across every boundary** — clip↔clip, clip↔card, clip↔outro, and
+   the **edge fades** (opening from coal, closing to coal) — all the same
+   mechanism, all shown the same way on the timeline. Not just clip↔clip.
+3. **Supports the full transition catalog** — every `@remotion/transitions`
+   presentation shipped in 4.0.425 plus the toolkit's own custom presentations.
 
-The user's directive: do it like other editors. Pro NLEs use the **handle**
-model — the transition is an object at the cut, the clips stay butted, and the
-effect reveals source material beyond the trim (handles) on both sides. The
-sequence length is unchanged. (CapCut-style "overlap and shorten" — model A —
-was the alternative; rejected as non-pro and because it would ripple the whole
-timeline.)
+Replaces the current degradation where a `transitionOut` collapses to a fade-in.
 
-Model B's payoffs:
-- **No derivation / timing change.** Clips stay butted; `meta.totalDurationMs`,
-  audio items, brand span, and the music envelope are all untouched — the main
-  risk of model A disappears.
-- **Length editing is free** (no ripple): changing a transition's length only
-  changes `transitionOut.frames` (the render window + the block width); no clip
-  moves. Bounded by available handle frames.
-- **Cleaner timeline** and **xzdarcy-friendly**: clips stay non-overlapping on
-  the video lane (overlapping actions on one row is the one thing xzdarcy
-  doesn't do well); the transition is a normal single action on its own lane.
+## The catalog (core-owned)
 
-Cost: the composition must render **handle frames** (source beyond the trim) in
-the transition window. When a clip lacks handles (trimmed to the very start/end
-of its source), degrade gracefully (freeze the boundary frame, or shrink the
-window) — same as Premiere's "insufficient media" warning.
+Both the metadata (`lib/editor/app/transitions.ts` — kinds, labels,
+sub-options) and the custom presentations (`lib/transitions/` — `glitch`,
+`whipPan`, `zoomThrough`, `customWipe`) live in **core**, so transitions are a
+core-owned vocabulary a brand composition renders.
 
-## Key enabler
+| kind | presentation source | sub-options |
+|------|---------------------|-------------|
+| `cut` | none (hard cut) | — |
+| `fade` / `dissolve` | `@remotion/transitions/fade` | — |
+| `fade-coal` | `fade()` tinted coal | — |
+| `slide` | `@remotion/transitions/slide` | direction (4-way) |
+| `wipe` | `@remotion/transitions/wipe` | direction (4-way) |
+| `flip` | `@remotion/transitions/flip` | direction (4-way) |
+| `clock-wipe` | `@remotion/transitions/clock-wipe` | — |
+| `iris` | `@remotion/transitions/iris` | — |
+| `glitch` | `lib/transitions` (custom) | — |
+| `whip-pan` | `lib/transitions` (custom) | direction (4-way) |
+| `zoom-through` | `lib/transitions` (custom) | from (in/out) |
+| `gradient-wipe` | `lib/transitions` (custom) | direction + softness |
 
-`@remotion/transitions` **presentations** — `fade()` and the brand's custom
-`glitch()` / `whipPan({direction})` / `wipe({color, direction})` /
-`zoomThrough({direction})` — implement a simple interface
-(`presentationProgress`, `presentationDirection: 'entering' | 'exiting'`,
-`passedProps`, `presentationDurationInFrames`, `children`). `TransitionSeries`
-is only one driver; we drive the **same presentations manually** over a window
-centered on the cut, from absolute `<Sequence>`s — same visuals, absolute
-placement preserved.
+`TRANSITION_KINDS` / `subOptionsFor` / `defaultTransition` in `transitions.ts`
+are extended to this full set. The composition has one `presentationFor(kind)`
+mapping covering all of them (importing the Remotion presentations +
+`lib/transitions` customs). New kinds need a catalog entry + a `presentationFor`
+case; nothing else.
 
-## Design
+## Data model (small permissive additions)
 
-### Data — no change
+A transition lives at a **boundary** and is stored on the item before it:
 
-A transition stays a property of the outgoing clip: `transitionOut = { kind,
-frames, direction?, color? }` (already in the schema, permissive). Clips remain
-butted (`B.startMs === A.endMs`). No overlap is stored; no new schema; the
-derivation is unchanged. Alignment is **center-at-cut** (Premiere default);
-start/end-at-cut alignment is deferred.
+- **`transitionOut`** on the item BEFORE a boundary (already on the schema,
+  permissive). Now valid on ANY item including the **last** one — a
+  `transitionOut` on the last item is the **closing** transition (renders
+  against the coal background; e.g. the outro's fade-out becomes
+  `transitionOut: { kind: 'fade-coal', frames }` instead of hardcoded
+  composition logic).
+- **`transitionIn`** on the FIRST item — the **opening** transition (coal →
+  clip 1). New optional permissive field on `VideoItemSchema` (mirrors
+  `transitionOut`). Only meaningful on the first item; mid-reel incoming
+  boundaries are already covered by the previous item's `transitionOut`.
 
-### Rendering (composition) — the bulk of the work
+So every boundary in the reel — `[coal → item0]`, `[item i → item i+1]`,
+`[last → coal]` — can carry a transition, and each is a `{ kind, frames,
+direction?, from?, color?, softness? }` record. No new track; the derivation is
+unchanged (transitions are carried through, not repositioned).
 
-For a transition at cut `T` (where clip A ends and clip B starts, butted),
-`frames = N`, centered: the transition window in frames is
-`[Tf − floor(N/2), Tf + ceil(N/2)]` where `Tf = msToFrames(T)`.
+## Rendering — unified at-the-cut, any neighbour
 
-- **Outgoing A:** its render `<Sequence>` is extended `ceil(N/2)` frames past
-  its end; the extra frames show A's source **past `trimOut`** (handles). Over
-  the window, A's body is wrapped in the transition's presentation as
-  `exiting` (progress 0→1 across the window).
-- **Incoming B:** its render `<Sequence>` starts `floor(N/2)` frames earlier;
-  the extra frames show B's source **before `trimIn`** (handles). Over the
-  window, B's body is wrapped in the presentation as `entering`.
-- The two render-time extensions overlap over the window (data positions
-  unchanged) → the presentations composite into a real cross-dissolve / glitch
-  / wipe / whip-pan, identical to `TransitionSeries`.
+For a transition at boundary time `T`, `frames = N`, centered on the cut, the
+window is `[Tf − floor(N/2), Tf + ceil(N/2)]` (`Tf = msToFrames(T)`). During the
+window BOTH sides render and the kind's presentation blends them
+(`presentationDirection` `exiting` for the leaving side, `entering` for the
+arriving side, `presentationProgress` from `useCurrentFrame()`):
 
-Progress is computed from `useCurrentFrame()` relative to the window
-(`clamp((frame − windowStart) / N, 0, 1)`), so no `TransitionSeries` timing
-object is needed.
+- **Video-clip side** → shows **handle frames** (source beyond the trim):
+  exiting extends `trimOut` by `ceil(N/2)/fps`; entering pulls `trimIn` back by
+  `floor(N/2)/fps` (clamped ≥ source start). If a clip lacks handles, clamp /
+  freeze the boundary frame (Premiere's "insufficient media").
+- **Card / outro side** → no source handles; it simply renders its content
+  shifted into the window (cards are positional — always available).
+- **Coal / nothing side** (edge fades, single-sided) → the coal background shows
+  through; the clip fades from/to coal via the presentation. This is what makes
+  `transitionIn` on the first item and `transitionOut` on the last item work
+  with the SAME mechanism.
 
-**Handle clamping:** the usable half-window on each side is
-`min(N/2, availableHandleFrames)`. A's handle = `sourceDurationFrames −
-trimOutFrames`; B's handle = `trimInFrames`. If a side has fewer handle frames
-than `N/2`, clamp that side (and, to keep the effect symmetric, optionally the
-other) and — when zero — freeze the boundary frame. The pilot's clips are
-trimmed from longer sources, so handles exist; clamping is the safety net.
+The mechanism is identical regardless of neighbour type — that is the
+"unified" requirement. `FadeIn` and the hardcoded opening/outro fades are
+removed and replaced by this path.
 
-Kind → presentation (reuse the old `renderTransition`):
+## Editor — unified Transitions lane (xzdarcy verified)
 
-| `transitionOut.kind` | presentation                        |
-|----------------------|-------------------------------------|
-| `dissolve`           | `fade()`                            |
-| `fade-coal`          | `fade()`                            |
-| `glitch`             | `glitch()`                          |
-| `whip-pan`           | `whipPan({ direction })`            |
-| `wipe`               | `wipe({ color, direction })`        |
-| `zoom-through`       | `zoomThrough({ direction })`        |
-| `cut` / none         | no transition (hard cut)            |
+A dedicated **Transitions lane** (own row, thinner), **derived — the only
+schema change is the `transitionIn` field**. Verified against
+`@xzdarcy/react-timeline-editor`: free `start`/`end`, `getActionRender` custom
+marker, `onClickAction` selection, `flexible/movable:false` lock,
+`minStart/maxEnd` for a future length-drag. Clips stay non-overlapping on the
+video lane (xzdarcy's happy path).
 
-The current `FadeIn` degradation is removed.
+The adapter emits one centered-at-cut block per boundary transition — for each
+item's `transitionOut` (block centered on that item's `endMs`) AND the first
+item's `transitionIn` (block centered on `0`). All uniform: same marker, label
+`"<kind> · <frames>f"`.
 
-### Editor — derived Transitions lane (xzdarcy verified)
-
-A dedicated **Transitions lane** (own row, thinner `rowHeight`), **derived — no
-schema change**. Verified against `@xzdarcy/react-timeline-editor`: actions
-carry free `start`/`end`; `getActionRender` custom-renders the marker;
-`onClickAction` selects; `flexible: false` + `movable: false` (and
-`onActionMoving → false`) lock it; `minStart`/`maxEnd` are available to bound a
-future length-drag to the handle window. Crucially, clips stay non-overlapping
-on the video lane (xzdarcy's happy path).
-
-Per adjacent pair A→B where A has a non-`cut` `transitionOut`, the adapter emits
-one action on the `transitions` lane centered on the cut:
-`{ id: 'transition:'+A.id, start: cut − round((N/2)/fps*1000), end: cut + round((N/2)/fps*1000), effectId: kind }`
-where `cut = A.endMs = B.startMs`. `getActionRender` shows a marker + label
-("<kind> · <frames>f").
-
-Interaction (this work):
-- **Click** the block → select → inspector shows the transition: **kind**
-  (select), **direction** (whip-pan/wipe), and **length** (frames — editable
-  number; writes `transitionOut.frames`, no reposition, clamped to handles).
-- Lane is drag-locked (drag-to-resize the block on the timeline = later polish;
-  the inspector number field covers length now).
-
-Deferred: alignment selector (start/end-at-cut), drag-the-block-edge,
-drag-two-clips-to-create.
+Interaction (this work): click a block → inspector shows kind (full-catalog
+select), sub-options (`subOptionsFor(kind)` — direction / from / color /
+softness), and length (frames, editable — writes `frames`, no reposition).
+Lane drag-locked. Deferred: drag-block-edge, drag-to-create, alignment
+(start/end-at-cut; center-at-cut is the default).
 
 ## Files
 
-- `lib/reel-config-base/derive-layered.ts` — **no change** (transitions are
-  render + editor concerns; clips stay butted).
-- `lib/editor/src/timeline/layered-adapter.ts` (core) — derived `transitions`
-  lane: one centered-at-cut action per A→B pair with a non-`cut` `transitionOut`.
-- `lib/editor/app/LayeredTimeline.tsx` (core) — render the lane (thin row),
-  `getActionRender` marker + "<kind> · <frames>f" label, lock it.
-- `lib/editor/app/LayeredInspector.tsx` (core) — transition route: kind +
-  direction + editable length (writes the outgoing clip's `transitionOut`).
+- `lib/editor/app/transitions.ts` (core) — extend `TRANSITION_KINDS` +
+  `subOptionsFor` + `defaultTransition` to the full catalog (add `fade`,
+  `slide`, `flip`, `clock-wipe`, `iris`).
+- `lib/reel-config-base/layered-schema.ts` (core) — add optional
+  `transitionIn` (permissive record) to `VideoContainerBase`.
+- `lib/editor/src/timeline/layered-adapter.ts` (core) — emit unified transition
+  actions from every `transitionOut` (incl. last item) + the first item's
+  `transitionIn`.
+- `lib/editor/app/LayeredTimeline.tsx` (core) — render the lane uniformly.
+- `lib/editor/app/LayeredInspector.tsx` (core) — full-catalog transition editor
+  (kind + `subOptionsFor` sub-options + length); reconcile with the existing
+  video-lane "Transition out" section (share one editor body).
 - Pilot `../video-toolkit/projects/pp-namesti-republiky/src/LayeredCampaignReel.tsx`
-  (brand repo) — the handle-based at-cut render + `presentationFor(kind)`;
-  remove `FadeIn`. Brand presentations reused from `@brand-lib` +
-  `@remotion/transitions`. **No `Root.tsx` data change needed** (clips already
-  butted; the one `dissolve:12` renders against the outro at the cut).
-
-## Parity strategy
-
-- Pilot has one `transitionOut: { kind: 'dissolve', frames: 12 }` on the clip
-  before the outro. After the change, render and confirm:
-  - a real cross-dissolve at the cut into the outro (both visible, blending
-    using handle frames), not a fade-from-coal;
-  - **total duration UNCHANGED** (`46301`ms — model B doesn't shorten);
-  - audio across the cut intact; brand hides at content end as before.
-- Second check: a throwaway derive exercising `glitch` / `wipe` / `whip-pan`
-  (borrow pp-05 data) to confirm each presentation renders.
+  — `presentationFor(kind)` over the full catalog; unified at-cut render across
+  clip/card/outro/coal + edge fades; remove `FadeIn` + hardcoded opening/outro
+  fades; add the pilot's opening (`transitionIn`) / closing data if desired for
+  the parity check.
+- Custom presentations reused from `lib/transitions`; Remotion ones from
+  `@remotion/transitions/*`.
 
 ## Testing
 
-- `layered-adapter.test.ts`: the derived `transitions` lane yields one
-  centered-at-cut action per A→B pair whose A has a non-`cut` `transitionOut`
-  (`start = cut − round((N/2)/fps*1000)`, `end = cut + …`, id `transition:A`); a
-  `cut`/absent `transitionOut` yields none; the last item (outro) yields none
-  after it, but a `dissolve` INTO the outro yields one (pilot's case).
-- Composition: pure `presentationFor(kind)` mapping is unit-testable; a pure
-  `transitionWindow(clip, next, fps)` helper (window frames + clamped handles)
-  is unit-testable; the visual is covered by the parity render.
-- Inspector: selecting a transition routes to the transition editor; changing
-  kind/frames writes the outgoing clip's `transitionOut` (no reposition).
-- `derive-layered` tests: unchanged and green (no derivation change).
+- `transitions.test.ts`: `TRANSITION_KINDS` includes the full catalog; every
+  kind has a `defaultTransition`; `subOptionsFor` returns the right controls
+  (direction for slide/wipe/flip/whip-pan, from for zoom-through, softness for
+  gradient-wipe, none for fade/clock-wipe/iris/cut).
+- `layered-schema.test.ts`: a `VideoItem` parses with `transitionIn`; the field
+  is optional.
+- `layered-adapter.test.ts`: a transition action per `transitionOut` (incl. the
+  last item → to coal) and per first-item `transitionIn`; centered at the
+  boundary in seconds; a `cut`/absent transition yields none.
+- Composition: pure `presentationFor(kind)` covers the full catalog (unit); the
+  visual is the parity render.
+- Inspector: selecting a transition routes to the full-catalog editor; edits
+  write `transitionOut`/`transitionIn` (no reposition).
 - Full core suite + `tsc` green.
+
+## Parity strategy
+
+- Pilot's `dissolve: 12` (into the outro) renders as a real dissolve into the
+  outro card (both visible), total UNCHANGED (`46301`ms).
+- Add a pilot opening `transitionIn` (fade from coal) + confirm it renders as a
+  fade-in — proving the edge-fade / single-sided path.
+- Throwaway derive exercising `slide` / `wipe` / `flip` / `clock-wipe` / `iris`
+  / `glitch` / `whip-pan` to confirm each presentation renders.
 
 ## Risks
 
-- **Handle availability** — the real new risk. A clip trimmed to its source
-  boundary has no handles; the render must clamp/freeze rather than show black.
-  Mitigated by the `transitionWindow` clamp + the pilot parity render.
-- Manually-driven presentations must receive the props/progress
-  `TransitionSeries` gives them (`presentationDurationInFrames`, direction,
-  progress) — verified against each kind in the parity check.
-- Consecutive transitions (A→B→C) — B is `entering` on its head and `exiting`
-  on its tail; the two windows are disjoint, so they compose; a triple-chain
-  fixture guards it.
+- **Scope** — this is a full transition system, not one effect. Mitigated by
+  building the catalog (core, well-tested) before the render.
+- **Handle availability** — clamp/freeze when a clip lacks handles.
+- **Card/outro/coal sides** rendering into the window without doubling the main
+  render — the composition must gate the main body vs the transition window
+  cleanly (the parity render + a triple-boundary fixture guard it).
+- Manually-driven presentations must get the exact props (`presentationProgress`,
+  `presentationDirection`, `presentationDurationInFrames`) each kind expects —
+  verified per kind in the parity check.
 
 ## Deferred (follow-up)
 
-- Alignment (start/end-at-cut); drag-the-block-edge to set length;
-  drag-two-clips-to-create-a-transition.
+- Alignment (start/end-at-cut); drag-the-block-edge; drag-two-clips-to-create.
