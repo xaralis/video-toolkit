@@ -169,6 +169,42 @@ export function readDefaultProps(
   return evaluateLiteral(expr);
 }
 
+/**
+ * Verifies that `source` — freshly produced by `updateDefaultPropsSurgically`, and possibly by a
+ * caller's formatter after it — actually reads back as `expected`, and throws if it doesn't.
+ *
+ * Re-PARSING the rewritten source is not a sufficient gate. TypeScript's parser is deliberately
+ * error-recovering, so a truncated literal such as `defaultProps={{ a: [1, 2 }}` yields a value
+ * instead of throwing — and an unbalanced bracket or a swallowed element is exactly the shape a bug
+ * in the raw character-range surgery of `applyArraySpliceToSource` (an off-by-one `tail` slice, a
+ * mis-joined `parts` list) would produce. Comparing the round-tripped VALUE closes that gap: any
+ * rewrite that lost, duplicated, or altered data is rejected before the caller writes anything.
+ *
+ * `expected` is normalised through JSON first, because that is the only shape the writer can
+ * actually emit: `JSON.stringify` drops `undefined` members and turns a `Date` into a string, so
+ * comparing against the raw input would flag those faithful round-trips as corruption.
+ */
+export function verifyDefaultProps(
+  source: string,
+  expected: unknown,
+  opts: { compositionId?: string } = {},
+): void {
+  const readBack = readDefaultProps(source, opts);
+  let json: string | undefined;
+  try {
+    json = JSON.stringify(expected);
+  } catch {
+    json = undefined;
+  }
+  const normalized = json === undefined ? expected : (JSON.parse(json) as unknown);
+  if (!deepEqual(readBack, normalized)) {
+    throw new Error(
+      'verifyDefaultProps: the rewritten source does not match the props that were saved — ' +
+        'the rewrite is corrupt and was NOT written to disk.',
+    );
+  }
+}
+
 type PathSegment = string | number;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -199,6 +235,12 @@ function deepEqual(a: unknown, b: unknown): boolean {
  *  - `add`: `path`'s last segment is a NEW key that didn't exist on the object at the parent path
  *    — every other existing key on that object (and its comments/`as const`) is left untouched;
  *    only a new property is inserted into the existing object literal.
+ *
+ * `replace`/`add` carry their `value` inline rather than letting the apply phase re-read it out of
+ * the new props by `path`. Array segments in a `path` index the array AS IT EXISTS IN THE SOURCE,
+ * which is NOT the same index the element has in the new props once anything ahead of it was
+ * inserted or deleted — looking the value up by `path` would read the wrong element (or run off
+ * the end of a shortened array).
  *  - `array-splice`: elements were inserted into and/or deleted from the array at `path`.
  *    `start`/`deleteCount` are indices into the array AS IT EXISTS IN THE SOURCE (the old array),
  *    and `newElements` are freshly serialized values to insert at that position. A single Save may
@@ -209,22 +251,28 @@ function deepEqual(a: unknown, b: unknown): boolean {
  *    range — including its comments/`as const` — is left byte-untouched.
  */
 type DiffOp =
-  | { kind: 'replace'; path: PathSegment[] }
-  | { kind: 'add'; path: PathSegment[] }
+  | { kind: 'replace'; path: PathSegment[]; value: unknown }
+  | { kind: 'add'; path: PathSegment[]; value: unknown }
   | { kind: 'array-splice'; path: PathSegment[]; start: number; deleteCount: number; newElements: unknown[] };
 
 /**
- * Longest-common-subsequence alignment of two arrays under `deepEqual`. Returns the matched
- * `[oldIndex, newIndex]` anchor pairs in increasing order. Anchors are elements that survived the
- * edit completely unchanged; everything between two anchors is a "gap" that was inserted, deleted,
- * or edited in place. This is what lets several disjoint edits in one array be expressed as
- * several small ops instead of one big run covering all of them.
+ * Longest-common-subsequence alignment of two arrays under `matches` (defaults to `deepEqual`).
+ * Returns the matched `[oldIndex, newIndex]` anchor pairs in increasing order. Under `deepEqual`,
+ * anchors are elements that survived the edit completely unchanged; everything between two anchors
+ * is a "gap" that was inserted, deleted, or edited in place. This is what lets several disjoint
+ * edits in one array be expressed as several small ops instead of one big run covering all of them.
+ * A looser `matches` (see `identityAnchors`) is used inside a gap to line up elements that are the
+ * SAME element but no longer equal because the user edited them.
  */
-function lcsAnchors(oldArr: unknown[], newArr: unknown[]): Array<[number, number]> {
+function lcsAnchors(
+  oldArr: unknown[],
+  newArr: unknown[],
+  matches: (a: unknown, b: unknown) => boolean = deepEqual,
+): Array<[number, number]> {
   const n = oldArr.length;
   const m = newArr.length;
   const eq: boolean[][] = Array.from({ length: n }, (_unused, i) =>
-    Array.from({ length: m }, (_unused2, j) => deepEqual(oldArr[i], newArr[j])),
+    Array.from({ length: m }, (_unused2, j) => matches(oldArr[i], newArr[j])),
   );
 
   // dp[i][j] = LCS length of oldArr[i..] and newArr[j..]
@@ -253,14 +301,60 @@ function lcsAnchors(oldArr: unknown[], newArr: unknown[]): Array<[number, number
 }
 
 /**
+ * The stable identity of an array element, if it has one. Reel segments, overlays, and transitions
+ * all carry a unique `id`, which is what lets a gap's old and new elements be paired by WHICH
+ * element they are rather than by where they happen to sit — see `identityAnchors`.
+ */
+function stableKeyOf(value: unknown): string | undefined {
+  if (!isPlainObject(value)) return undefined;
+  const id = value.id;
+  if (typeof id === 'string') return `s:${id}`;
+  if (typeof id === 'number') return `n:${id}`;
+  return undefined;
+}
+
+function keyCounts(values: unknown[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    const key = stableKeyOf(value);
+    if (key !== undefined) counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * Aligns a gap's old and new elements by stable identity (`id`), returning order-preserving
+ * `[oldIndex, newIndex]` pairs. This is what keeps an author's comment attached to the element they
+ * wrote it for: a gap's elements are otherwise paired positionally from its head, so a DELETION at
+ * the head of a gap followed by a surviving-but-EDITED element would shift the pairing by one and
+ * rewrite the deleted element's source node — comment and all — with the survivor's data.
+ *
+ * A key only anchors when it occurs exactly once on each side; a duplicated `id` is ambiguous, so
+ * those elements fall back to positional pairing rather than guessing. Elements with no `id` at all
+ * (nested scalar/array members, hand-written objects without one) likewise fall back.
+ */
+function identityAnchors(oldGap: unknown[], newGap: unknown[]): Array<[number, number]> {
+  const oldCounts = keyCounts(oldGap);
+  const newCounts = keyCounts(newGap);
+  if (oldCounts.size === 0 || newCounts.size === 0) return [];
+  return lcsAnchors(oldGap, newGap, (a, b) => {
+    const key = stableKeyOf(a);
+    if (key === undefined || key !== stableKeyOf(b)) return false;
+    return oldCounts.get(key) === 1 && newCounts.get(key) === 1;
+  });
+}
+
+/**
  * Diffs two arrays into the smallest set of ops that turns the old one into the new one.
  *
  * A common prefix and suffix are trimmed first (the cheap, overwhelmingly common case), then the
  * remaining middle is aligned with `lcsAnchors`. Elements that survived unchanged act as anchors
- * and are never touched. Each gap between anchors is handled by pairing its old and new elements
- * positionally and recursing into each pair — so an element that was merely EDITED (its trim
- * nudged, say) is still updated leaf-by-leaf and keeps its comments/`as const` — and emitting a
- * splice only for the leftover insert or delete. That is what keeps "edit element 0 AND insert at
+ * and are never touched. Each gap between anchors is aligned a second time — by stable `id`, via
+ * `identityAnchors` — so an element that was merely EDITED (its trim nudged, say) is recognised as
+ * the same element, recursed into leaf-by-leaf, and keeps its own comments/`as const`, even when
+ * elements around it were inserted or deleted in the same Save. Whatever is left between two
+ * identity anchors has no identity correspondence and is paired positionally from the head, with a
+ * splice for the leftover insert or delete. That is what keeps "edit element 0 AND insert at
  * index 2" as two small disjoint ops instead of one run that reserializes everything between them.
  *
  * With no anchors and equal lengths this degenerates to plain index-by-index recursion, which is
@@ -294,22 +388,41 @@ function diffArrayElements(
   let oi = 0;
   let ni = 0;
   const emitGap = (oEnd: number, nEnd: number): void => {
-    const paired = Math.min(oEnd - oi, nEnd - ni);
-    for (let k = 0; k < paired; k++) {
-      diffOps(oldMid[oi + k], newMid[ni + k], [...path, prefix + oi + k], out);
+    const oldGap = oldMid.slice(oi, oEnd);
+    const newGap = newMid.slice(ni, nEnd);
+    // Indices below are relative to the gap; `prefix + oi + …` maps them back onto the SOURCE array.
+    let o = 0;
+    let n = 0;
+    const emitPositional = (oStop: number, nStop: number): void => {
+      const paired = Math.min(oStop - o, nStop - n);
+      for (let k = 0; k < paired; k++) {
+        diffOps(oldGap[o + k], newGap[n + k], [...path, prefix + oi + o + k], out);
+      }
+      // At most one of these is non-zero (`paired` consumed the shorter side).
+      const deleteCount = oStop - o - paired;
+      const inserted = newGap.slice(n + paired, nStop);
+      if (deleteCount > 0 || inserted.length > 0) {
+        out.push({
+          kind: 'array-splice',
+          path: path.slice(),
+          start: prefix + oi + o + paired,
+          deleteCount,
+          newElements: inserted,
+        });
+      }
+      o = oStop;
+      n = nStop;
+    };
+
+    for (const [anchorOld, anchorNew] of identityAnchors(oldGap, newGap)) {
+      emitPositional(anchorOld, anchorNew);
+      // Same element, edited: recurse so it is updated leaf-by-leaf in its own source node.
+      diffOps(oldGap[anchorOld], newGap[anchorNew], [...path, prefix + oi + anchorOld], out);
+      o = anchorOld + 1;
+      n = anchorNew + 1;
     }
-    // At most one of these is non-zero (`paired` consumed the shorter side).
-    const deleteCount = oEnd - oi - paired;
-    const inserted = newMid.slice(ni + paired, nEnd);
-    if (deleteCount > 0 || inserted.length > 0) {
-      out.push({
-        kind: 'array-splice',
-        path: path.slice(),
-        start: prefix + oi + paired,
-        deleteCount,
-        newElements: inserted,
-      });
-    }
+    emitPositional(oldGap.length, newGap.length);
+
     oi = oEnd;
     ni = nEnd;
   };
@@ -363,7 +476,7 @@ function diffOps(oldVal: unknown, newVal: unknown, path: PathSegment[], out: Dif
     const removedKeys = keysA.filter((k) => !keysBSet.has(k));
 
     if (removedKeys.length > 0) {
-      out.push({ kind: 'replace', path: path.slice() });
+      out.push({ kind: 'replace', path: path.slice(), value: newVal });
       return;
     }
 
@@ -373,7 +486,7 @@ function diffOps(oldVal: unknown, newVal: unknown, path: PathSegment[], out: Dif
     }
     for (const k of keysB) {
       if (!keysASet.has(k)) {
-        out.push({ kind: 'add', path: [...path, k] });
+        out.push({ kind: 'add', path: [...path, k], value: newVal[k] });
       }
     }
     return;
@@ -385,15 +498,7 @@ function diffOps(oldVal: unknown, newVal: unknown, path: PathSegment[], out: Dif
   }
 
   // Scalar difference or type change: replace the whole node at this path.
-  out.push({ kind: 'replace', path: path.slice() });
-}
-
-function getAtPath(root: unknown, path: PathSegment[]): unknown {
-  let cur = root;
-  for (const seg of path) {
-    cur = (cur as Record<PathSegment, unknown>)[seg];
-  }
-  return cur;
+  out.push({ kind: 'replace', path: path.slice(), value: newVal });
 }
 
 /** Unwraps `as const` / `satisfies T` / parenthesized wrappers to reach the underlying value node. */
@@ -633,10 +738,14 @@ function applyArraySpliceToSource(
  *    `as const` *inside* that particular object are lost, but everything outside it (siblings,
  *    ancestors) is unaffected.
  *
- * Arrays are aligned old-to-new (common prefix/suffix trim, then an LCS over the middle), so a
- * single Save may contain several independent array edits and each is handled on its own:
- *  - An element that merely CHANGED VALUE is recursed into and updated leaf-by-leaf, exactly like
- *    any other object — its comments and `as const` survive.
+ * Arrays are aligned old-to-new in two passes — a common prefix/suffix trim plus an LCS over the
+ * middle finds the elements that survived UNCHANGED, then each remaining gap is aligned again by
+ * stable `id` (`identityAnchors`) to find the elements that survived but were EDITED. A single Save
+ * may therefore contain several independent array edits and each is handled on its own:
+ *  - An element that merely CHANGED VALUE is recursed into and updated leaf-by-leaf in its own
+ *    source node, exactly like any other object — its comments and `as const` survive. This holds
+ *    even when elements around it were inserted or deleted in the same Save, **provided the
+ *    element carries a unique `id`** (every reel segment, overlay, and transition does).
  *  - Elements that were INSERTED or DELETED are spliced into the existing array literal by
  *    rebuilding it from the verbatim source text of every element that stayed. Elements outside
  *    the spliced range keep their own leading comments byte-for-byte (including the element that
@@ -646,6 +755,12 @@ function applyArraySpliceToSource(
  * The one thing that is NOT preserved is trivia belonging to something that no longer exists: a
  * deleted element's own comments go with it, and a freshly inserted element has no authored text
  * to preserve, so it is serialized as JSON (double-quoted keys) at its neighbours' indentation.
+ *
+ * The remaining caveat is elements with NO stable `id` (or a duplicated one): those are paired
+ * positionally from the head of their gap, so a deletion at the head of a gap followed by an edited
+ * element still shifts the pairing by one and rewrites the deleted element's source node — moving
+ * its comment onto data that isn't its own. Values stay correct either way; only comment
+ * attribution degrades, and only for id-less elements.
  */
 export function updateDefaultPropsSurgically(
   source: string,
@@ -679,14 +794,14 @@ export function updateDefaultPropsSurgically(
     if (op.path.length === 0) {
       // The top-level props object itself needs a whole-node replace (e.g. a top-level key was
       // removed) — nothing surgical to do at the root, replace the whole literal.
-      const serialized = JSON.stringify(newProps, null, 2);
+      const serialized = JSON.stringify(op.value, null, 2);
       jsxExpr.replaceWithText(serialized);
       continue;
     }
     if (op.kind === 'add') {
-      applyAddKey(jsxExpr, op.path, getAtPath(newProps, op.path));
+      applyAddKey(jsxExpr, op.path, op.value);
     } else {
-      applyLeafChange(jsxExpr, op.path, getAtPath(newProps, op.path));
+      applyLeafChange(jsxExpr, op.path, op.value);
     }
   }
 

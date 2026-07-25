@@ -459,6 +459,86 @@ describe('updateDefaultPropsSurgically', () => {
   });
 });
 
+const COMMENT_ANCHOR_ROOT = `import { Composition } from 'remotion';
+import { CampaignReel } from './CampaignReel';
+
+export const RemotionRoot = () => {
+  return (
+    <Composition
+      id="CampaignReel"
+      component={CampaignReel}
+      defaultProps={{
+        segments: [
+          // FIRST — intro
+          { id: 's0', trim: 1 },
+          // SECOND — b-roll
+          { id: 's1', trim: 2 },
+          // THIRD — outro
+          { id: 's2', trim: 3 },
+        ],
+      }}
+      fps={30}
+      width={1080}
+      height={1920}
+    />
+  );
+};
+`;
+
+describe('updateDefaultPropsSurgically — comments stay attached to their own element', () => {
+  it('does not reattach a deleted element’s comment to the surviving element that follows it', () => {
+    const current = readDefaultProps(COMMENT_ANCHOR_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    // One Save: delete s1 (head of the gap) AND edit s2 (which therefore stops being an anchor).
+    next.segments.splice(1, 1);
+    next.segments[1].trim = 9;
+
+    const out = updateDefaultPropsSurgically(COMMENT_ANCHOR_ROOT, next, {
+      compositionId: 'CampaignReel',
+    });
+
+    // The untouched head element is byte-exact.
+    expect(out).toContain("// FIRST — intro\n          { id: 's0', trim: 1 },");
+    // The deleted element took its own comment with it — it must NOT have been transplanted.
+    expect(out).not.toContain('// SECOND — b-roll');
+    expect(out).not.toContain("id: 's1'");
+    // The survivor keeps its OWN comment, byte-exact, with only its changed leaf rewritten.
+    expect(out).toContain("// THIRD — outro\n          { id: 's2', trim: 9 }");
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+
+  it('keeps every id-carrying element’s comment when a head deletion and a tail edit collide', () => {
+    const current = readDefaultProps(COMMENT_ANCHOR_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    // Delete the FIRST element and edit the LAST one: the whole array becomes one gap.
+    next.segments.splice(0, 1);
+    next.segments[1].trim = 7;
+
+    const out = updateDefaultPropsSurgically(COMMENT_ANCHOR_ROOT, next, {
+      compositionId: 'CampaignReel',
+    });
+
+    expect(out).not.toContain('// FIRST — intro');
+    expect(out).not.toContain("id: 's0'");
+    expect(out).toContain("// SECOND — b-roll\n          { id: 's1', trim: 2 },");
+    expect(out).toContain("// THIRD — outro\n          { id: 's2', trim: 7 }");
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+
+  it('still pairs positionally (no crash, correct values) when elements carry no stable id', () => {
+    const source = COMMENT_ANCHOR_ROOT.replace(/id: 's\d', /g, '');
+    const current = readDefaultProps(source, { compositionId: 'CampaignReel' }) as any;
+    expect(current.segments).toEqual([{ trim: 1 }, { trim: 2 }, { trim: 3 }]);
+    const next = JSON.parse(JSON.stringify(current));
+    next.segments.splice(1, 1);
+    next.segments[1].trim = 9;
+
+    const out = updateDefaultPropsSurgically(source, next, { compositionId: 'CampaignReel' });
+
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+});
+
 const ADD_KEY_ROOT = `import { Composition } from 'remotion';
 import { CampaignReel } from './CampaignReel';
 

@@ -1,7 +1,7 @@
 import { readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { readDefaultProps, updateDefaultPropsSurgically } from './default-props-writer';
+import { updateDefaultPropsSurgically, verifyDefaultProps } from './default-props-writer';
 
 export interface SaveDefaultPropsOpts {
   compositionId?: string;
@@ -32,10 +32,13 @@ export async function saveDefaultPropsToFile(
   if (opts.format) {
     next = await opts.format(next, filePath);
   }
-  // Verify the rewritten source is re-readable BEFORE touching the target file. Root.tsx is the
-  // single source of truth for Studio and /toolkit:render; if the rewrite ever produced malformed
-  // output, we must fail here rather than clobber the user's working file.
-  readDefaultProps(next, opts);
+  // Verify the rewritten source reads back as EXACTLY the props we were asked to save, BEFORE
+  // touching the target file. Root.tsx is the single source of truth for Studio and
+  // /toolkit:render; if the rewrite (or the formatter) ever produced malformed or lossy output we
+  // must fail here rather than clobber the user's working file. A parse-only check is not enough —
+  // TypeScript's parser recovers from unbalanced brackets and returns a value, which is precisely
+  // how a raw-character-range surgery bug would slip through. See `verifyDefaultProps`.
+  verifyDefaultProps(next, props, opts);
   // Atomic write: write a temp sibling, then rename over the target.
   const tmp = join(dirname(filePath), `.${randomUUID()}.Root.tsx.tmp`);
   try {
