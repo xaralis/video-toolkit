@@ -18,6 +18,13 @@ const Ms = z.number().min(0);
 // Every track item shares a time span.
 const TimeSpan = { startMs: Ms, endMs: Ms };
 
+// A generic clip effect: a typed tag + arbitrary params. Ken Burns, blend, colour, etc.
+// are effects. Kept permissive (a `type` discriminant + passthrough params) so core stays
+// generic and new effect kinds — or brand-preset params — need no schema change. This is
+// the real-NLE "clip carries a stack of effects" model; simplification lives in brand presets.
+export const EffectSchema = z.object({ type: z.string() }).passthrough();
+export type Effect = z.infer<typeof EffectSchema>;
+
 export const VideoItemSchema = z.object({
   id: z.string(),
   kind: z.enum(['clip', 'broll', 'multi-clip', 'card', 'outro']),
@@ -46,6 +53,9 @@ export const VideoItemSchema = z.object({
   cardProps: z.record(z.string(), z.unknown()).optional(),
   pattern: z.string().optional(),
   musicBoostDb: z.number().optional(), // this item's contribution to the music envelope while on screen
+  effects: z.array(EffectSchema).optional(),
+  // per-clip audio setting (clip voice|silent · broll inherit-from-clip|extend-previous|silent · multi-clip first|mix|silent)
+  audioMode: z.string().optional(),
   transitionOut: z.record(z.string(), z.unknown()).optional(), // the existing Transition union, stored permissively
 });
 

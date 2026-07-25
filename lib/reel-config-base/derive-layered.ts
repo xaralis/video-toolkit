@@ -9,7 +9,7 @@
 // derivation is sequential-only ("close parity", not frame-exact) — good
 // enough to seed the layered editor, not a source of playback truth.
 import { segmentDurationFrames } from './duration';
-import type { LayeredReel, VideoItem, AudioItem, OverlayItem } from './layered-schema';
+import type { LayeredReel, VideoItem, AudioItem, OverlayItem, Effect } from './layered-schema';
 
 // ---- Structural (non-Zod) input types -------------------------------------
 // Deliberately permissive / structural so this module doesn't couple to any
@@ -47,6 +47,9 @@ export interface OldSegment {
   audioSource?: string;
   audioStartSec?: number;
   aiGenerated?: boolean;
+  kenBurns?: Record<string, unknown>;
+  blendTo?: string;
+  blend?: Record<string, unknown>;
   overlay?: OldOverlaySpec; // broll / multi-clip
   // multi-clip
   layout?: string;
@@ -83,6 +86,16 @@ function musicBoostDbFor(type: string): number {
 
 function buildVideoItem(seg: OldSegment, startMs: number, endMs: number): VideoItem {
   const musicBoostDb = musicBoostDbFor(seg.type);
+
+  // Generic clip-effects list: Ken Burns and blend are effect ENTRIES, not
+  // named fields (real-NLE "clip carries a stack of effects" model — see
+  // EffectSchema). Only broll segments carry these in the old segment model.
+  const effects: Effect[] = [];
+  if (seg.type === 'broll') {
+    if (seg.kenBurns) effects.push({ type: 'ken-burns', ...seg.kenBurns });
+    if (seg.blendTo) effects.push({ type: 'blend', to: seg.blendTo, ...(seg.blend ?? {}) });
+  }
+
   switch (seg.type) {
     case 'clip':
       return {
@@ -97,6 +110,8 @@ function buildVideoItem(seg: OldSegment, startMs: number, endMs: number): VideoI
         ...(seg.focalY !== undefined ? { focalY: seg.focalY } : {}),
         ...(seg.crop !== undefined ? { crop: seg.crop } : {}),
         ...(seg.grade !== undefined ? { grade: seg.grade } : {}),
+        ...(effects.length ? { effects } : {}),
+        ...(seg.audioMode !== undefined ? { audioMode: seg.audioMode } : {}),
         ...(seg.transitionOut !== undefined ? { transitionOut: seg.transitionOut } : {}),
         musicBoostDb,
       };
@@ -114,6 +129,8 @@ function buildVideoItem(seg: OldSegment, startMs: number, endMs: number): VideoI
         ...(seg.crop !== undefined ? { crop: seg.crop } : {}),
         ...(seg.grade !== undefined ? { grade: seg.grade } : {}),
         ...(seg.aiGenerated !== undefined ? { aiGenerated: seg.aiGenerated } : {}),
+        ...(effects.length ? { effects } : {}),
+        ...(seg.audioMode !== undefined ? { audioMode: seg.audioMode } : {}),
         ...(seg.transitionOut !== undefined ? { transitionOut: seg.transitionOut } : {}),
         musicBoostDb,
       };
@@ -134,6 +151,7 @@ function buildVideoItem(seg: OldSegment, startMs: number, endMs: number): VideoI
               })),
             }
           : {}),
+        ...(seg.audioMode !== undefined ? { audioMode: seg.audioMode } : {}),
         ...(seg.transitionOut !== undefined ? { transitionOut: seg.transitionOut } : {}),
         musicBoostDb,
       };
