@@ -98,3 +98,49 @@ describe('LayeredInspector accentSlots', () => {
     expect(screen.queryByRole('button', { name: /Lime/ })).toBeNull();
   });
 });
+
+// wipe's `color` sub-option is the one 'accent' control in the catalog: the
+// schema names the field but not its values (see AccentKey in
+// transition-schema.ts), so TransitionFields fills the dropdown from whatever
+// accentSlots the brand handed the editor, and drops the control entirely
+// when there is no palette to choose from (see LayeredInspector.tsx's
+// `TransitionFields`, the `opt.kind === 'accent'` branch).
+const wipeReel: LayeredReel = {
+  version: 'layered-1', meta: { topic: 't', totalDurationMs: 2000 },
+  tracks: {
+    video: [{
+      id: 'v1', kind: 'photo', startMs: 0, endMs: 2000, source: 'a.jpg', musicBoostDb: 0,
+      transitionOut: { kind: 'wipe', frames: 15, direction: 'left' },
+    }],
+    audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [],
+  },
+};
+
+describe('LayeredInspector accent sub-option (wipe color)', () => {
+  it('renders the brand slots as options, keyed by slot key with slot label as text', () => {
+    render(
+      <LayeredInspector
+        reel={wipeReel}
+        selectedId="transition:v1"
+        onChange={() => {}}
+        onSeek={() => {}}
+        fps={30}
+        accentSlots={[
+          { key: 'gold', label: 'Gold', color: '#f6aa1c' },
+          { key: 'rust', label: 'Rust', color: '#b5482c' },
+        ]}
+      />,
+    );
+    expect(screen.getByText('Color')).toBeInTheDocument();
+    const gold = screen.getByRole('option', { name: 'Gold' }) as HTMLOptionElement;
+    expect(gold.value).toBe('gold');
+    const rust = screen.getByRole('option', { name: 'Rust' }) as HTMLOptionElement;
+    expect(rust.value).toBe('rust');
+  });
+
+  it('omits the control entirely when there is no brand palette', () => {
+    render(
+      <LayeredInspector reel={wipeReel} selectedId="transition:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.queryByText('Color')).toBeNull();
+  });
+});

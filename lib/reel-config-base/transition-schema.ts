@@ -43,6 +43,31 @@ export const TransitionFrames = z
 
 const Direction4 = z.enum(['left', 'right', 'up', 'down']);
 
+// Schemas recognised as "an accent-slot key" by `subOptionForField`, keyed by
+// membership rather than reference identity to `AccentKey` itself. Identity
+// alone is not enough: zod's `.describe()` clones into a NEW instance
+// (`new This({...this._def, description})` — see node_modules/zod/lib/types.js),
+// so `AccentKey.describe('x')` is no longer `=== AccentKey`. `.optional()`/
+// `.default()` do NOT reclone (they wrap the original as `innerType`), which is
+// why the identity check used to look like it worked — it only survived
+// because every existing catalog field happened to call `.optional()` before
+// `.describe()`, never after. `markAsAccentKey` closes that gap by patching
+// the marked instance's own `describe` so every clone it produces (in any
+// chain, any order, any depth) gets added to the set too.
+const ACCENT_SCHEMAS = new WeakSet<z.ZodTypeAny>();
+
+function markAsAccentKey<T extends z.ZodTypeAny>(schema: T): T {
+  ACCENT_SCHEMAS.add(schema);
+  const originalDescribe = schema.describe.bind(schema);
+  // Cast through `unknown`: the patched method's real signature (returning
+  // whatever `originalDescribe` returns, marked) is narrower than the base
+  // `describe(description: string): this` zod declares, which is all the
+  // rest of this module ever calls it through.
+  (schema as z.ZodTypeAny).describe = ((description: string) =>
+    markAsAccentKey(originalDescribe(description))) as unknown as z.ZodTypeAny['describe'];
+  return schema;
+}
+
 /**
  * A BRAND accent-slot key — the brand-neutral way for a core schema to name a
  * colour. To zod it is just a string, because the vocabulary belongs to the
@@ -53,14 +78,15 @@ const Direction4 = z.enum(['left', 'right', 'up', 'down']);
  * shape and leaves the values to the brand.
  *
  * This is a SINGLE SHARED INSTANCE on purpose: `subOptionForField` recognises
- * an accent field by identity, since nothing in a plain `z.string()` shape
- * distinguishes "a palette key" from burn's `mask` file path. Always reference
- * this constant (`.optional()` is fine — the unwrapping in `innerType` gets
- * back to it); never re-declare an equivalent `z.string()`.
+ * an accent field by SET MEMBERSHIP (see `ACCENT_SCHEMAS` above), since
+ * nothing in a plain `z.string()` shape distinguishes "a palette key" from
+ * burn's `mask` file path. Always derive a field from this constant —
+ * `.optional()`, `.describe()`, and any chain/order of the two are all safe;
+ * never re-declare an equivalent `z.string()`.
  */
-export const AccentKey = z
-  .string()
-  .describe('Brand accent-slot key (see the brand theme’s accentSlots); resolved to a hex at render time.');
+export const AccentKey = markAsAccentKey(
+  z.string().describe('Brand accent-slot key (see the brand theme’s accentSlots); resolved to a hex at render time.'),
+);
 
 /** One entry in the catalog: the kind's zod member plus the presentation
  *  metadata the zod schema cannot express (a human label, and the seed values
@@ -422,9 +448,10 @@ const VALUE_LABELS: Record<string, string> = {
 export function subOptionForField(prop: string, field: z.ZodTypeAny): SubOption | null {
   const t = innerType(field);
   const label = PROP_LABELS[prop] ?? humanize(prop);
-  // Identity, not shape: an accent key IS a string, and so is burn's `mask`.
-  // Only the shared `AccentKey` instance means "pick one of the brand's slots".
-  if (t === AccentKey) return { prop, label, kind: 'accent' };
+  // Set membership, not shape: an accent key IS a string, and so is burn's
+  // `mask`. Only a schema derived from the shared `AccentKey` (see
+  // `ACCENT_SCHEMAS`/`markAsAccentKey` above) means "pick one of the brand's slots".
+  if (ACCENT_SCHEMAS.has(t)) return { prop, label, kind: 'accent' };
   if (t instanceof z.ZodEnum) {
     const values = (t as z.ZodEnum<[string, ...string[]]>).options;
     return {

@@ -13,9 +13,10 @@ export interface WipeProps {
 }
 
 /** Used when no colour is supplied (or the brand's palette has no slot under
- *  the configured key). Near-black is the neutral choice: it reads as a wipe
- *  against almost any footage without asserting a brand colour. */
-const DEFAULT_COLOR = '#0a0a0a';
+ *  the configured key). Pure black, not a near-black brand tint: it reads as a
+ *  wipe against almost any footage without asserting a brand colour, and has
+ *  no provenance beyond "black". */
+const DEFAULT_COLOR = '#000';
 
 const Wipe: React.FC<TransitionPresentationComponentProps<WipeProps>> = ({
   children, presentationProgress, passedProps, presentationDirection,

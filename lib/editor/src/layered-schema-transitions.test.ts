@@ -53,10 +53,16 @@ describe('layered video item transitions are schema-typed', () => {
 
   it('rejects a bad enum value on a sub-option', () => {
     expect(
-      VideoItemSchema.safeParse({ ...clip, transitionOut: { kind: 'wipe', frames: 15, color: 'x', direction: 'sideways' } }).success,
-    ).toBe(false);
-    expect(
       VideoItemSchema.safeParse({ ...clip, transitionOut: { kind: 'slide', frames: 15, direction: 'sideways' } }).success,
+    ).toBe(false);
+  });
+
+  // wipe's `color` is free-form (any brand accent-slot key), but it is still a
+  // STRING field — not truly untyped. This is wipe-specific, unlike the enum
+  // check above: it fails on `color`'s type, not on `direction`.
+  it('rejects a non-string value for wipe’s color', () => {
+    expect(
+      VideoItemSchema.safeParse({ ...clip, transitionOut: { kind: 'wipe', frames: 15, color: 42, direction: 'left' } }).success,
     ).toBe(false);
   });
 

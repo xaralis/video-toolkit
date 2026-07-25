@@ -425,6 +425,17 @@ describe('subOptionForField', () => {
     // A look-alike plain string is still uncontrolled.
     expect(subOptionForField('color', z.string().optional())).toBeNull();
   });
+
+  // Regression: zod's `.describe()` clones into a NEW instance
+  // (`new This({...this._def, description})`), so a naive `t === AccentKey`
+  // identity check only survives `.optional()` BEFORE `.describe()` — the
+  // order every existing catalog field happens to use. The equally natural
+  // reverse order (`.describe()` then `.optional()`) used to silently produce
+  // no control at all (not even an error). AccentKey must recognise both.
+  it('still maps to an accent picker when .describe() comes before .optional()', () => {
+    const field = AccentKey.describe('A differently-worded description').optional();
+    expect(subOptionForField('color', field)?.kind).toBe('accent');
+  });
 });
 
 describe('defaultValueForField', () => {
