@@ -1,3 +1,4 @@
+// Explicit React import: files under lib/theming are transformed with the classic JSX runtime under the editor's Vitest config, so `React` must be in scope.
 import React from 'react';
 import type { OverlayRenderProps } from '../types';
 import { placementGeometry } from '../placement';
@@ -9,10 +10,9 @@ import { parseAccents } from '../../transcripts/accent-parser';
 export const GenericTextOverlay: React.FC<OverlayRenderProps> = ({ text, placement, fontSize = 64 }) => {
   const plain = parseAccents(text).map((t) => t.text).join('');
   const geo = placementGeometry(placement);
-  return React.createElement(
-    'div',
-    {
-      style: {
+  return (
+    <div
+      style={{
         position: 'absolute',
         ...geo.containerStyle,
         transform: 'translateY(-50%)',
@@ -24,8 +24,9 @@ export const GenericTextOverlay: React.FC<OverlayRenderProps> = ({ text, placeme
         lineHeight: 1.3,
         whiteSpace: 'pre-wrap',
         pointerEvents: 'none',
-      } as React.CSSProperties,
-    },
-    plain,
+      } as React.CSSProperties}
+    >
+      {plain}
+    </div>
   );
 };
