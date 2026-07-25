@@ -16,9 +16,12 @@ const REEL: LayeredReel = {
 };
 
 describe('layeredToTimeline', () => {
-  it('maps the 4 tracks to 4 rows in order video/overlays/audio/brand', () => {
+  it('maps tracks to rows in NLE order overlays/video/audio/music/brand, music as one block', () => {
     const { editorData } = layeredToTimeline(REEL);
-    expect(editorData.map((r) => r.id)).toEqual(['video', 'overlays', 'audio', 'brand']);
+    expect(editorData.map((r) => r.id)).toEqual(['overlays', 'video', 'audio', 'music', 'brand']);
+    const musicRow = editorData.find((r) => r.id === 'music')!;
+    expect(musicRow.actions).toHaveLength(1);
+    expect(musicRow.actions[0]).toMatchObject({ id: 'music:base', start: 0, end: 5, effectId: 'music' });
   });
 
   it('maps the video item to an action with id/start/end/effectId derived from the item', () => {

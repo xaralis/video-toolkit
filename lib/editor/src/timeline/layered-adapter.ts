@@ -3,7 +3,9 @@ import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-sc
 export interface TLAction { id: string; start: number; end: number; effectId: string; movable?: boolean; flexible?: boolean; }
 export interface TLRow { id: string; actions: TLAction[]; }
 
-export const LANES = ['video', 'overlays', 'audio', 'brand'] as const;
+// Display order, top → bottom (NLE convention): overlays highest, then video
+// and its audio directly stacked, then the music bed, then brand marks.
+export const LANES = ['overlays', 'video', 'audio', 'music', 'brand'] as const;
 export type LaneId = (typeof LANES)[number];
 const MS = 1000;
 
@@ -23,11 +25,16 @@ export function layeredToTimeline(reel: LayeredReel): { editorData: TLRow[] } {
   });
   const audio = reel.tracks.audio.map((a) => act('audio', a.id, a.startMs, a.endMs, 'audio'));
   const brand = reel.tracks.brand.map((b) => act('brand', b.id, b.startMs, b.endMs, `brand-${b.kind}`));
+  // Music is a single base layer (not an item array) — show it as one block
+  // spanning the reel. Its derived envelope + editing is sub-spec 3, so it is
+  // display-only here (locked in the timeline).
+  const music: TLAction[] = [act('music', 'base', 0, reel.meta.totalDurationMs, 'music')];
   return {
     editorData: [
-      { id: 'video', actions: video },
       { id: 'overlays', actions: overlays },
+      { id: 'video', actions: video },
       { id: 'audio', actions: audio },
+      { id: 'music', actions: music },
       { id: 'brand', actions: brand },
     ],
   };
