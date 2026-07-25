@@ -1,5 +1,8 @@
+// Explicit React import: files under lib/theming are transformed with the classic JSX runtime under the editor's Vitest config, so `React` must be in scope.
 import React from 'react';
 import { Img, staticFile } from 'remotion';
+
+type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 
 export interface WatermarkProps {
   /** One or more logo images the user can switch between. */
@@ -8,63 +11,44 @@ export interface WatermarkProps {
   asset?: string;
   /** Which image in `assets` to show (default 0). */
   index?: number;
-  corner?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+  corner?: Corner;
   sizePx?: number;
   marginPx?: number;
   alpha?: number;
 }
 
-const cornerStyle = (
-  corner: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right',
-  marginPx: number,
-): Pick<React.CSSProperties, 'top' | 'right' | 'bottom' | 'left'> => {
-  switch (corner) {
-    case 'top-left':
-      return { top: marginPx, left: marginPx };
-    case 'top-right':
-      return { top: marginPx, right: marginPx };
-    case 'bottom-left':
-      return { bottom: marginPx, left: marginPx };
-    case 'bottom-right':
-      return { bottom: marginPx, right: marginPx };
-  }
+// Declarative corner→edge map (mirrors placement.ts's PlacementGeometry table).
+// Each entry names the two edge props to anchor at `marginPx`.
+const CORNER_EDGES: Record<Corner, [vertical: 'top' | 'bottom', horizontal: 'left' | 'right']> = {
+  'top-left': ['top', 'left'],
+  'top-right': ['top', 'right'],
+  'bottom-left': ['bottom', 'left'],
+  'bottom-right': ['bottom', 'right'],
 };
 
+function cornerStyle(corner: Corner, marginPx: number): Pick<React.CSSProperties, 'top' | 'right' | 'bottom' | 'left'> {
+  const [v, h] = CORNER_EDGES[corner];
+  return { [v]: marginPx, [h]: marginPx };
+}
+
 export const GenericWatermark: React.FC<WatermarkProps> = (props) => {
-  // Resolve image list: use assets if present, fallback to single asset
+  // Back-compat: a single `asset` reads as a one-element `assets` list.
   const imageList = props.assets ?? (props.asset ? [props.asset] : []);
+  if (imageList.length === 0) return null;
 
-  // If no images, render nothing
-  if (imageList.length === 0) {
-    return null;
-  }
-
-  // Pick the image, clamped to valid range
+  // The chosen image, clamped so an out-of-range index never picks `undefined`.
   const idx = Math.min(Math.max(props.index ?? 0, 0), imageList.length - 1);
   const selectedImage = imageList[idx];
-
-  // Resolve src: use HTTP URLs directly, local paths via staticFile
   const src = selectedImage.startsWith('http') ? selectedImage : staticFile(selectedImage);
 
-  // Determine corner position
-  const corner = props.corner ?? 'top-right';
-  const marginPx = props.marginPx ?? 40;
-  const sizePx = props.sizePx ?? 160;
-  const alpha = props.alpha ?? 1;
+  const style: React.CSSProperties = {
+    ...cornerStyle(props.corner ?? 'top-right', props.marginPx ?? 40),
+    width: props.sizePx ?? 160,
+    height: 'auto',
+    opacity: props.alpha ?? 1,
+    position: 'absolute',
+    pointerEvents: 'none',
+  };
 
-  const cornerPos = cornerStyle(corner, marginPx);
-
-  return (
-    <Img
-      src={src}
-      style={{
-        ...cornerPos,
-        width: sizePx,
-        height: 'auto',
-        opacity: alpha,
-        position: 'absolute',
-        pointerEvents: 'none',
-      } as React.CSSProperties}
-    />
-  );
+  return <Img src={src} style={style} />;
 };

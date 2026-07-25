@@ -8,25 +8,21 @@ import { parseAccents } from '../../transcripts/accent-parser';
  *  coloring and NO animation. The fallback when a brand registers no custom
  *  text renderer. */
 export const GenericTextOverlay: React.FC<OverlayRenderProps> = ({ text, placement, fontSize = 64 }) => {
+  // Generic fallback: strip accent markup to plain text (no per-token color).
   const plain = parseAccents(text).map((t) => t.text).join('');
   const geo = placementGeometry(placement);
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        ...geo.containerStyle,
-        transform: 'translateY(-50%)',
-        textAlign: geo.textAlign,
-        color: '#ffffff',
-        fontFamily: 'sans-serif',
-        fontWeight: 700,
-        fontSize,
-        lineHeight: 1.3,
-        whiteSpace: 'pre-wrap',
-        pointerEvents: 'none',
-      } as React.CSSProperties}
-    >
-      {plain}
-    </div>
-  );
+  const style: React.CSSProperties = {
+    position: 'absolute',
+    ...geo.containerStyle,
+    transform: 'translateY(-50%)',
+    textAlign: geo.textAlign,
+    color: '#ffffff',
+    fontFamily: 'sans-serif',
+    fontWeight: 700,
+    fontSize,
+    lineHeight: 1.3,
+    whiteSpace: 'pre-wrap',
+    pointerEvents: 'none',
+  };
+  return <div style={style}>{plain}</div>;
 };
