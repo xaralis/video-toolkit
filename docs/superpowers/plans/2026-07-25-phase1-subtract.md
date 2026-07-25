@@ -20,8 +20,22 @@ no longer knows either brand's name.
 
 These bind every task. Copy them into every reviewer dispatch.
 
-1. **No rendered output may change.** This phase is pure subtraction and re-plumbing.
-   Any change to a rendered frame is a defect, not an improvement.
+1. **Rendering an existing literal must not change; derivation output is free to change.**
+   The two paths have different rules, and conflating them cost one review cycle already.
+   - **Render path — frozen.** A `LayeredReel` literal already baked into a project's
+     `Root.tsx` must render frame-identical before and after. Any pixel change is a defect.
+   - **Derivation path — open.** `deriveLayered` / `deriveMontageLayered` may legitimately
+     emit different output; improving what they emit is part of the point of this work
+     (user, 2026-07-25). There is exactly one derived project today (`roost-reel-01`), it is
+     already baked and hand-tuned, and future projects will be generated on the corrected
+     derivation. Do not contort a fix to preserve derivation output, and do not treat a
+     changed derivation result as a regression.
+
+   **Source of truth:** a project's live cut is the inlined `defaultProps` literal in
+   `src/Root.tsx`. `reel.config.json` is the one-way authoring INPUT to the cut and is
+   expected to diverge from the literal once the cut is hand-tuned — that divergence is the
+   designed flow, not drift. Never validate against `reel.config.json`, and never re-sync it
+   over a tuned literal.
 2. **The test suite must stay green.** Baseline is 47 files / 475 tests. A task may
    remove tests belonging to deleted code; it may not leave a failing or skipped test.
 3. **Never delete a file without proving it has no live importer** — check core `lib/`
@@ -102,9 +116,11 @@ the `@remotion/transitions` versions. Pick one implementation per kind and delet
 
 **Note:** tightening `transitionIn`/`transitionOut` may surface existing data that does not
 validate. There are **17 vendored projects** across the two brand repos
-(`progpce/video-toolkit/projects/`, `roost/video-toolkit/projects/`) carrying `LayeredReel`
-literals. Before committing, parse every one of them against the tightened schema and report
-any that fail. Report such cases rather than loosening the schema to accommodate them — a
+(`progpce/video-toolkit/projects/`, `roost/video-toolkit/projects/`). Before committing,
+parse every one against the tightened schema and report any that fail. **Parse the
+`defaultProps` literal in each project's `src/Root.tsx` — not `reel.config.json`**, which is
+the generator input and does not describe the live cut. A review in Task 2 already reached a
+false conclusion by checking the wrong file. Report such cases rather than loosening the schema to accommodate them — a
 literal that does not validate is either a real defect or a migration this phase must name.
 
 ## Task 4 — Wire the six orphan transitions in
