@@ -181,28 +181,28 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
         <button type="button" style={seekBtn} onClick={() => onSeek(Math.round((v.startMs / 1000) * fps))}>
           ⇥ seek to start
         </button>
-        {v.source !== undefined && <TextField lbl="Source" value={v.source} onCommit={(s) => s.trim() && patchItem('video', id, { source: s })} />}
-        {(v.sourceInMs !== undefined || v.sourceOutMs !== undefined) && (
-          <Row>
-            <NumberField lbl="Trim in (s)" step={0.05} value={v.sourceInMs !== undefined ? v.sourceInMs / 1000 : undefined} onCommit={(n) => patchItem('video', id, { sourceInMs: Math.round(n * 1000) })} />
-            <NumberField lbl="Trim out (s)" step={0.05} value={v.sourceOutMs !== undefined ? v.sourceOutMs / 1000 : undefined} onCommit={(n) => patchItem('video', id, { sourceOutMs: Math.round(n * 1000) })} />
-          </Row>
-        )}
         {(v.kind === 'clip' || v.kind === 'broll') && (
-          <Row>
-            <NumberField
-              lbl="Zoom (1 = fit)"
-              step={0.05}
-              value={1 / ((v.crop as { width?: number } | undefined)?.width ?? 1)}
-              onCommit={(z) =>
-                patchItem('video', id, {
-                  crop: z > 1 ? { ...((v.crop as object) ?? {}), width: 1 / z } : undefined,
-                })
-              }
-            />
-            <NumberField lbl="Focal X" step={0.01} value={v.focalX} onCommit={(n) => patchItem('video', id, { focalX: n })} />
-            <NumberField lbl="Focal Y" step={0.01} value={v.focalY} onCommit={(n) => patchItem('video', id, { focalY: n })} />
-          </Row>
+          <>
+            <TextField lbl="Source" value={v.source} onCommit={(s) => s.trim() && patchItem('video', id, { source: s })} />
+            <Row>
+              <NumberField lbl="Trim in (s)" step={0.05} value={v.sourceInMs / 1000} onCommit={(n) => patchItem('video', id, { sourceInMs: Math.round(n * 1000) })} />
+              <NumberField lbl="Trim out (s)" step={0.05} value={v.sourceOutMs / 1000} onCommit={(n) => patchItem('video', id, { sourceOutMs: Math.round(n * 1000) })} />
+            </Row>
+            <Row>
+              <NumberField
+                lbl="Zoom (1 = fit)"
+                step={0.05}
+                value={1 / ((v.crop as { width?: number } | undefined)?.width ?? 1)}
+                onCommit={(z) =>
+                  patchItem('video', id, {
+                    crop: z > 1 ? { ...((v.crop as object) ?? {}), width: 1 / z } : undefined,
+                  })
+                }
+              />
+              <NumberField lbl="Focal X" step={0.01} value={v.focalX} onCommit={(n) => patchItem('video', id, { focalX: n })} />
+              <NumberField lbl="Focal Y" step={0.01} value={v.focalY} onCommit={(n) => patchItem('video', id, { focalY: n })} />
+            </Row>
+          </>
         )}
         <NumberField lbl="Music boost (dB)" value={v.musicBoostDb} onCommit={(n) => patchItem('video', id, { musicBoostDb: n })} />
         {v.effects &&

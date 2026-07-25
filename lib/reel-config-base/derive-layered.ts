@@ -114,7 +114,7 @@ function buildVideoItem(seg: OldSegment, startMs: number, endMs: number): VideoI
         kind: 'clip',
         startMs,
         endMs,
-        source: seg.source,
+        source: seg.source ?? '',
         sourceInMs: msFromSec(seg.trimIn),
         sourceOutMs: msFromSec(seg.trimOut),
         ...(seg.focalX !== undefined ? { focalX: seg.focalX } : {}),
@@ -122,7 +122,6 @@ function buildVideoItem(seg: OldSegment, startMs: number, endMs: number): VideoI
         ...(seg.crop !== undefined ? { crop: seg.crop } : {}),
         ...(seg.grade !== undefined ? { grade: seg.grade } : {}),
         ...(effects.length ? { effects } : {}),
-        ...(seg.audioMode !== undefined ? { audioMode: seg.audioMode } : {}),
         ...(seg.transitionOut !== undefined ? { transitionOut: seg.transitionOut } : {}),
         musicBoostDb,
       };
@@ -132,7 +131,7 @@ function buildVideoItem(seg: OldSegment, startMs: number, endMs: number): VideoI
         kind: 'broll',
         startMs,
         endMs,
-        source: seg.source,
+        source: seg.source ?? '',
         sourceInMs: msFromSec(seg.trimIn),
         sourceOutMs: msFromSec(seg.trimOut),
         ...(seg.focalX !== undefined ? { focalX: seg.focalX } : {}),
@@ -141,7 +140,6 @@ function buildVideoItem(seg: OldSegment, startMs: number, endMs: number): VideoI
         ...(seg.grade !== undefined ? { grade: seg.grade } : {}),
         ...(seg.aiGenerated !== undefined ? { aiGenerated: seg.aiGenerated } : {}),
         ...(effects.length ? { effects } : {}),
-        ...(seg.audioMode !== undefined ? { audioMode: seg.audioMode } : {}),
         ...(seg.transitionOut !== undefined ? { transitionOut: seg.transitionOut } : {}),
         musicBoostDb,
       };
@@ -151,19 +149,14 @@ function buildVideoItem(seg: OldSegment, startMs: number, endMs: number): VideoI
         kind: 'multi-clip',
         startMs,
         endMs,
-        ...(seg.layout !== undefined ? { layout: seg.layout as VideoItem['layout'] } : {}),
-        ...(seg.sources !== undefined
-          ? {
-              sources: seg.sources.map((s) => ({
-                source: s.source,
-                sourceInMs: msFromSec(s.trimIn),
-                sourceOutMs: msFromSec(s.trimOut),
-                ...(s.label !== undefined ? { label: s.label } : {}),
-                ...(s.zoom !== undefined ? { zoom: s.zoom } : {}),
-              })),
-            }
-          : {}),
-        ...(seg.audioMode !== undefined ? { audioMode: seg.audioMode } : {}),
+        layout: seg.layout as 'split-h' | 'split-v' | 'pip' | 'quad',
+        sources: (seg.sources ?? []).map((s) => ({
+          source: s.source,
+          sourceInMs: msFromSec(s.trimIn),
+          sourceOutMs: msFromSec(s.trimOut),
+          ...(s.label !== undefined ? { label: s.label } : {}),
+          ...(s.zoom !== undefined ? { zoom: s.zoom } : {}),
+        })),
         ...(seg.transitionOut !== undefined ? { transitionOut: seg.transitionOut } : {}),
         musicBoostDb,
       };
@@ -173,7 +166,7 @@ function buildVideoItem(seg: OldSegment, startMs: number, endMs: number): VideoI
         kind: 'card',
         startMs,
         endMs,
-        ...(seg.cardKind !== undefined ? { cardKind: seg.cardKind } : {}),
+        cardKind: seg.cardKind ?? '',
         ...(seg.cardProps !== undefined ? { cardProps: seg.cardProps } : {}),
         ...(seg.pattern !== undefined ? { pattern: seg.pattern } : {}),
         ...(seg.transitionOut !== undefined ? { transitionOut: seg.transitionOut } : {}),

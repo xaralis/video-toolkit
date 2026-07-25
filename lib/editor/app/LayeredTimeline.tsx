@@ -91,7 +91,7 @@ function timelineLabel(action: TimelineAction, reel: LayeredReel): string {
     const v = reel.tracks.video.find((x) => x.id === id);
     if (!v) return id;
     const kind = VIDEO_KIND_LABEL[v.kind] ?? v.kind;
-    const src = basename(v.source);
+    const src = basename('source' in v ? v.source : undefined);
     return src ? `${kind} ${v.id}: ${src}` : `${kind} ${v.id}`;
   }
   if (lane === 'audio') {

@@ -140,7 +140,7 @@ describe('deriveLayered', () => {
     expect(kenBurns).toMatchObject({ fromX: 0.35 });
     const blend = v2.effects?.find((e) => e.type === 'blend');
     expect(blend).toMatchObject({ to: 'b2.mp4', direction: 'tl-br' });
-    expect(v2.audioMode).toBe('inherit-from-clip');
+    expect('audioMode' in v2).toBe(false); // audioMode is not part of the layered VideoItem contract
   });
   it('places overlays at absolute time = clip start + appearAt', () => {
     const r = deriveLayered(OLD, OPTS);
@@ -175,6 +175,7 @@ describe('deriveLayered', () => {
       const r = deriveLayered(MULTI, OPTS);
       const mc = r.tracks.video.find((v) => v.id === 'seg-mc')!;
       expect(mc.kind).toBe('multi-clip');
+      if (mc.kind !== 'multi-clip') throw new Error('expected multi-clip');
       expect(mc.layout).toBe('split-h');
       expect(mc.startMs).toBe(0);
       // durationMs 4100 → round(4100/1000*30)=123 frames → 123/30*1000 = 4100ms
@@ -183,10 +184,11 @@ describe('deriveLayered', () => {
     it('maps every source (trim windows to ms) and carries per-source zoom', () => {
       const r = deriveLayered(MULTI, OPTS);
       const mc = r.tracks.video.find((v) => v.id === 'seg-mc')!;
+      if (mc.kind !== 'multi-clip') throw new Error('expected multi-clip');
       expect(mc.sources).toHaveLength(2);
-      expect(mc.sources![0]).toMatchObject({ source: 'a.MP4', sourceInMs: 3000, sourceOutMs: 7500 });
+      expect(mc.sources[0]).toMatchObject({ source: 'a.MP4', sourceInMs: 3000, sourceOutMs: 7500 });
       // regression guard: pp-05's split-screen zoom on the 2nd source must survive derivation
-      expect(mc.sources![1]).toMatchObject({ source: 'b.MP4', sourceInMs: 0, sourceOutMs: 5400, zoom: 3 });
+      expect(mc.sources[1]).toMatchObject({ source: 'b.MP4', sourceInMs: 0, sourceOutMs: 5400, zoom: 3 });
     });
     it('silent multi-clip fills the music gap (+6) and emits no audio item', () => {
       const r = deriveLayered(MULTI, OPTS);
