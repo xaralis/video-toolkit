@@ -185,4 +185,97 @@ describe('Timeline', () => {
     expect(screen.queryByTestId('trim-handle-end-a')).not.toBeInTheDocument();
     expect(screen.queryByTestId('trim-handle-end-b')).toBeInTheDocument();
   });
+
+  describe('playhead', () => {
+    // total = 90 (clip) + 90 (broll) + 180 (outro) = 360 frames
+
+    it('renders no playhead when playheadFrame is omitted', () => {
+      render(
+        <Timeline
+          segments={segments}
+          selectedId={null}
+          onSelect={vi.fn()}
+          fps={30}
+          outroFrames={180}
+        />
+      );
+      expect(screen.queryByTestId('playhead')).not.toBeInTheDocument();
+    });
+
+    it('renders no playhead when playheadFrame is null', () => {
+      render(
+        <Timeline
+          segments={segments}
+          selectedId={null}
+          onSelect={vi.fn()}
+          fps={30}
+          outroFrames={180}
+          playheadFrame={null as unknown as undefined}
+        />
+      );
+      expect(screen.queryByTestId('playhead')).not.toBeInTheDocument();
+    });
+
+    it('positions the playhead at the percentage of total duration', () => {
+      render(
+        <Timeline
+          segments={segments}
+          selectedId={null}
+          onSelect={vi.fn()}
+          fps={30}
+          outroFrames={180}
+          playheadFrame={180}
+        />
+      );
+      const playhead = screen.getByTestId('playhead');
+      expect(playhead).toHaveAttribute('data-left-pct', '50');
+      expect(playhead.style.left).toBe('50%');
+    });
+
+    it('clamps a playheadFrame beyond total duration to 100%', () => {
+      render(
+        <Timeline
+          segments={segments}
+          selectedId={null}
+          onSelect={vi.fn()}
+          fps={30}
+          outroFrames={180}
+          playheadFrame={9000}
+        />
+      );
+      const playhead = screen.getByTestId('playhead');
+      expect(playhead).toHaveAttribute('data-left-pct', '100');
+      expect(playhead.style.left).toBe('100%');
+    });
+
+    it('clamps a negative playheadFrame to 0%', () => {
+      render(
+        <Timeline
+          segments={segments}
+          selectedId={null}
+          onSelect={vi.fn()}
+          fps={30}
+          outroFrames={180}
+          playheadFrame={-50}
+        />
+      );
+      const playhead = screen.getByTestId('playhead');
+      expect(playhead).toHaveAttribute('data-left-pct', '0');
+      expect(playhead.style.left).toBe('0%');
+    });
+
+    it('does not intercept pointer events', () => {
+      render(
+        <Timeline
+          segments={segments}
+          selectedId={null}
+          onSelect={vi.fn()}
+          fps={30}
+          outroFrames={180}
+          playheadFrame={180}
+        />
+      );
+      expect(screen.getByTestId('playhead').style.pointerEvents).toBe('none');
+    });
+  });
 });

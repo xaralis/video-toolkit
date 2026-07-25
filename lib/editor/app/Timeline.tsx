@@ -1,6 +1,9 @@
 import { useEffect, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { segmentDurationFrames } from '@video-toolkit/lib/reel-config-base/duration';
+import {
+  segmentDurationFrames,
+  totalDurationFrames,
+} from '@video-toolkit/lib/reel-config-base/duration';
 import styles from './Timeline.module.css';
 
 /**
@@ -34,6 +37,14 @@ export interface TimelineProps {
   onTrim?: (id: string, edge: TrimEdge, deltaFrames: number) => void;
   fps: number;
   outroFrames: number;
+  /**
+   * Current playback position, in frames from the start of the reel. When
+   * provided, a thin vertical playhead line is overlaid on the timeline at
+   * `(playheadFrame / total) * 100%`, clamped to [0, total]. Omit (or pass
+   * null/undefined) to render no playhead at all — existing callers that
+   * don't pass this prop are unaffected.
+   */
+  playheadFrame?: number | null;
 }
 
 function labelFor(seg: Segment, index: number): string {
@@ -67,6 +78,7 @@ export function Timeline({
   onTrim,
   fps,
   outroFrames,
+  playheadFrame,
 }: TimelineProps) {
   const dragRef = useRef<DragState | null>(null);
   const onTrimRef = useRef(onTrim);
@@ -126,8 +138,24 @@ export function Timeline({
     };
   }, []);
 
+  const total = totalDurationFrames(segments, fps, outroFrames);
+  const hasPlayhead = playheadFrame !== undefined && playheadFrame !== null;
+  const clampedPlayheadFrame = hasPlayhead
+    ? Math.min(Math.max(playheadFrame as number, 0), total)
+    : 0;
+  // Guard against total === 0 (no segments): avoid NaN from a 0/0 division.
+  const playheadLeftPct = hasPlayhead && total > 0 ? (clampedPlayheadFrame / total) * 100 : 0;
+
   return (
     <div className={styles.timeline}>
+      {hasPlayhead && (
+        <div
+          className={styles.playhead}
+          data-testid="playhead"
+          data-left-pct={playheadLeftPct}
+          style={{ left: `${playheadLeftPct}%`, pointerEvents: 'none' }}
+        />
+      )}
       {segments.map((seg, index) => {
         const durationFrames = segmentDurationFrames(seg, fps, outroFrames);
         const isSelected = seg.id === selectedId;
