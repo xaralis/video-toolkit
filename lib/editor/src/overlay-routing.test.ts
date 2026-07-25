@@ -30,6 +30,11 @@ describe('routeOverlays', () => {
     const r = routeOverlays([o('c', 'chevron')], regs);
     expect(r.singleton.map((x) => x.id)).toEqual(['c']);
   });
+  it('a singleton kind yields at most one node — extras are dropped, not put on the track', () => {
+    const r = routeOverlays([o('c1', 'chevron'), o('c2', 'chevron')], regs);
+    expect(r.singleton.map((x) => x.id)).toEqual(['c1']);
+    expect(r.track).toEqual([]);
+  });
   it('no registrations → everything on track', () => {
     const r = routeOverlays([o('a', 'title')], undefined);
     expect(r.track.length).toBe(1);

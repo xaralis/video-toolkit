@@ -14,10 +14,20 @@ export function routeOverlays(
   const track: OverlayItem[] = [];
   const singleton: OverlayItem[] = [];
   const anchored = new Map<string, OverlayItem[]>();
+  // A 'singleton' kind yields AT MOST ONE node — the first item of that kind.
+  // Extras are dropped, not rerouted: a once-per-reel marker is mounted
+  // unwrapped at a fixed position, so a second one would just paint on top of
+  // the first. This matches the reference campaign composition, which picked
+  // its chevron with `.find()` and filtered every chevron off the overlay track.
+  const seenSingleton = new Set<string>();
   for (const item of overlays) {
-    const routing = registrations?.[overlayKind(item)]?.routing ?? 'track';
+    const kind = overlayKind(item);
+    const routing = registrations?.[kind]?.routing ?? 'track';
     if (routing === 'singleton') {
-      singleton.push(item);
+      if (!seenSingleton.has(kind)) {
+        seenSingleton.add(kind);
+        singleton.push(item);
+      }
     } else if (routing === 'anchored' && item.anchorVideoId) {
       const list = anchored.get(item.anchorVideoId) ?? [];
       list.push(item);
