@@ -209,6 +209,27 @@ describe('applyTimelineChange', () => {
     expect(result.meta.totalDurationMs).toBe(10000);
   });
 
+  it('resizing a clip left reveals earlier footage but cannot pass the source start (sourceInMs >= 0)', () => {
+    const reel: LayeredReel = {
+      ...REEL,
+      meta: { topic: 'Fixture', totalDurationMs: 5000 },
+      tracks: {
+        ...REEL.tracks,
+        video: [{ id: 'A', kind: 'clip', startMs: 2000, endMs: 5000, source: 'a.mp4', sourceInMs: 1000, sourceOutMs: 4000 }],
+      },
+    };
+    const { editorData } = layeredToTimeline(reel, 30);
+    // The clip carries a minStart = where sourceInMs would hit 0 (2000-1000 = 1s).
+    expect(editorData.find((r) => r.id === 'video')!.actions[0].minStart).toBe(1);
+    // Drag A's start way left (to 0.5s) — only 1000ms of footage exists before it.
+    const changed = editorData.map((row) =>
+      row.id === 'video' ? { ...row, actions: row.actions.map((a) => ({ ...a, start: 0.5, end: 5 })) } : row,
+    );
+    const A = applyTimelineChange(reel, changed).tracks.video[0];
+    expect(A.kind === 'clip' && A.sourceInMs).toBe(0); // clamped at the source start
+    expect(A.startMs).toBe(1000); // start could only extend 1000ms left
+  });
+
   it('trims the previous clip when the next clip is dragged left over it (no dangling overlap)', () => {
     const reel: LayeredReel = {
       ...REEL,
@@ -217,7 +238,9 @@ describe('applyTimelineChange', () => {
         ...REEL.tracks,
         video: [
           { id: 'A', kind: 'clip', startMs: 0, endMs: 5000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 5000 },
-          { id: 'B', kind: 'clip', startMs: 5000, endMs: 9000, source: 'b.mp4', sourceInMs: 0, sourceOutMs: 4000 },
+          // B has 2s of footage before its in-point, so its left handle CAN
+          // extend 1s left (over A); the source trim moves with it.
+          { id: 'B', kind: 'clip', startMs: 5000, endMs: 9000, source: 'b.mp4', sourceInMs: 2000, sourceOutMs: 6000 },
         ],
       },
     };
