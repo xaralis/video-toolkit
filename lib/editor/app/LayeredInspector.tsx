@@ -56,15 +56,16 @@ function useLiveField(external: string) {
   };
 }
 
-function NumberField({ lbl, value, step = 1, onCommit }: { lbl: string; value: number | undefined; step?: number; onCommit: (n: number) => void }) {
+function NumberField({ lbl, value, step = 1, onCommit, disabled, title }: { lbl: string; value: number | undefined; step?: number; onCommit: (n: number) => void; disabled?: boolean; title?: string }) {
   const f = useLiveField(value === undefined ? '' : String(value));
   return (
-    <div style={field}>
+    <div style={field} title={title}>
       <label style={label}>{lbl}</label>
       <input
-        style={input}
+        style={disabled ? { ...input, opacity: 0.45, cursor: 'not-allowed' } : input}
         type="number"
         step={step}
+        disabled={disabled}
         value={f.text}
         onFocus={f.onFocus}
         onBlur={f.onBlur}
@@ -239,7 +240,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
         </div>
         <div style={field}>
           <label style={label}>Total duration</label>
-          <div style={{ ...input, background: '#161719' }}>{(reel.meta.totalDurationMs / 1000).toFixed(2)}s</div>
+          <div style={{ fontSize: 13, color: '#c8cbd2', padding: '3px 0' }}>{(reel.meta.totalDurationMs / 1000).toFixed(2)}s</div>
         </div>
         <div style={field}>
           <label style={label}>Music</label>
@@ -369,11 +370,13 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
         <h3 style={heading}>Audio</h3>
         <TextField lbl="Source" value={a.source} onCommit={(s) => s.trim() && patchItem('audio', id, { source: s })} />
         <Row>
-          <NumberField lbl="Trim in (s)" step={0.05} value={a.sourceInMs / 1000} onCommit={(n) => patchItem('audio', id, { sourceInMs: Math.round(n * 1000) })} />
+          <NumberField lbl="Trim in (s)" step={0.05} value={a.sourceInMs / 1000} disabled={!!a.followsVideoId} title={a.followsVideoId ? 'Linked to a clip — unlink to trim independently' : undefined} onCommit={(n) => patchItem('audio', id, { sourceInMs: Math.round(n * 1000) })} />
           <NumberField
             lbl="Trim out (s)"
             step={0.05}
             value={(a.sourceOutMs ?? a.sourceInMs + (a.endMs - a.startMs)) / 1000}
+            disabled={!!a.followsVideoId}
+            title={a.followsVideoId ? 'Linked to a clip — unlink to trim independently' : undefined}
             onCommit={(n) => patchItem('audio', id, { sourceOutMs: Math.round(n * 1000) })}
           />
         </Row>

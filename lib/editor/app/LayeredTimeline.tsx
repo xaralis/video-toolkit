@@ -314,6 +314,14 @@ function LayeredTimelineImpl({
   // at rest every action is unbounded and moves freely.
   const [resizeBound, setResizeBound] = useState<{ id: string; minStart: number; maxEnd?: number } | null>(null);
 
+  // A LINKED audio bed follows its clip 1:1, so it can't be trimmed or moved on
+  // its own — its handles are disabled (like the greyed Trim in/out fields) until
+  // it's unlinked. Action ids of every currently-linked bed.
+  const linkedAudioIds = useMemo(
+    () => new Set(reel.tracks.audio.filter((a) => a.followsVideoId).map((a) => `audio:${a.id}`)),
+    [reel],
+  );
+
   // Mark the selected action so xzdarcy highlights it.
   const data: TimelineRow[] = useMemo(
     () =>
@@ -322,13 +330,13 @@ function LayeredTimelineImpl({
         rowHeight: r.id === 'transitions' ? TRANSITIONS_ROW_H : ROW_H,
         // Keep every action movable so it stays clickable/selectable — xzdarcy
         // suppresses onClickAction on movable:false actions. Locked lanes (brand
-        // = content-end-derived span; music = single base layer) get flexible:false
-        // to hide the resize handles, and their move is also blocked in
-        // onActionMoving below (movable:true is only for the click affordance).
+        // = content-end-derived span; music = single base layer) and linked audio
+        // get flexible:false to hide the resize handles; their move is also blocked
+        // in onActionMoving below (movable:true is only for the click affordance).
         actions: r.actions.map((a) => ({
           ...a,
           selected: a.id === selectedId,
-          flexible: !LOCKED_LANES.has(laneOfRow(r.id)),
+          flexible: !LOCKED_LANES.has(laneOfRow(r.id)) && !linkedAudioIds.has(a.id),
           movable: true,
           // Live resize clamp for the action under the handle (this gesture only).
           ...(resizeBound && resizeBound.id === a.id
@@ -336,7 +344,7 @@ function LayeredTimelineImpl({
             : {}),
         })),
       })),
-    [editorData, selectedId, resizeBound],
+    [editorData, selectedId, resizeBound, linkedAudioIds],
   );
 
   const effects: Record<string, TimelineEffect> = useMemo(() => {
@@ -490,6 +498,7 @@ function LayeredTimelineImpl({
                   // footage bound, so their grips are never muted.
                   const { lane, id } = parseActionId(action.id);
                   if (LOCKED_LANES.has(lane)) return null;
+                  if (linkedAudioIds.has(action.id)) return null; // linked bed: no trim grips
                   let grips = { left: false, right: false };
                   if (lane === 'video') {
                     const gs = gripState(reel.tracks.video.find((v) => v.id === id), capMsById[id]);
@@ -503,6 +512,14 @@ function LayeredTimelineImpl({
                     </>
                   );
                 })()}
+                {linkedAudioIds.has(action.id) && (
+                  <span
+                    title="Linked to its clip — unlink in the inspector to trim it on its own"
+                    style={{ position: 'absolute', right: 5, top: '50%', transform: 'translateY(-50%)', fontSize: 11, opacity: 0.85, pointerEvents: 'none' }}
+                  >
+                    🔒
+                  </span>
+                )}
                 {wf && <Waveform peaks={wf.peaks} sourceInMs={wf.sourceInMs} spanMs={wf.spanMs} />}
                 {action.id.startsWith('audio:') && (
                   <VolumeLine
@@ -550,7 +567,9 @@ function LayeredTimelineImpl({
           }}
           // Block drag/resize on locked lanes (returning false cancels it) while
           // keeping the action clickable/selectable.
-          onActionMoving={({ action }) => (LOCKED_LANES.has(parseActionId(action.id).lane) ? false : undefined)}
+          onActionMoving={({ action }) =>
+            LOCKED_LANES.has(parseActionId(action.id).lane) || linkedAudioIds.has(action.id) ? false : undefined
+          }
           // On resize START, arm the live drag clamp for this clip/broll so its
           // handle hard-stops at the footage window / next clip. Cleared on END.
           // (No onActionResizing veto — the bounds do the stopping in real time.)
