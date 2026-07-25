@@ -114,17 +114,39 @@ are recomputed from the (now overlapped) clip spans.
 spans, the envelope timing shifts accordingly; no logic change, but the derived
 `points` move — covered by the envelope's existing tests plus the parity render.
 
+## Editor — derived Transitions lane
+
+Because the clips now really overlap, the overlap needs a clear visual. The
+editor gets a dedicated **Transitions lane** (like the music/brand lanes), but
+it is a **derived view — no schema change**. A transition block is computed
+from two adjacent clips: where clip A (carrying a non-`cut` `transitionOut`)
+overlaps the next clip B (`B.startMs < A.endMs`), a block spans
+`[B.startMs, A.endMs]`, labelled with the kind + length (e.g. "dissolve · 12f").
+Everything it shows already lives in the data: the length IS the overlap
+(`A.endMs − B.startMs`), the kind/direction live on `A.transitionOut`.
+
+Interaction (this work):
+- **Click a transition block** → select it → the inspector shows the transition:
+  **kind** (a select over dissolve/fade-coal/glitch/whip-pan/wipe/zoom-through)
+  and **direction** (for whip-pan/wipe). Editing these writes back to
+  `A.transitionOut` only — no clip repositioning.
+- The lane is drag-locked (like music/brand): the block can't be freely moved.
+- **Length shown read-only** (derived from the overlap).
+
+Deferred to a follow-up (all require repositioning clips = ripple-edit, not
+opened here):
+- Changing a transition's **length** (drag the block's edge, or a length field
+  that moves B's start and cascades subsequent clips).
+- **Drag two clips to overlap** to create a transition.
+
 ## Scope
 
-- **In scope:** transitions render correctly in the layered composition
-  (the must-have), for every kind currently in use, via the overlap +
-  presentation mechanism; derivation produces real overlaps; parity verified on
-  the pilot.
-- **Deferred (follow-up):** surfacing transitions as **first-class timeline
-  blocks** in the editor (the user's "ideally their own blocks"). For now they
-  stay a per-clip `transitionOut` property edited via the existing inspector
-  select; the editor renders overlaps implicitly. A later sub-spec can add a
-  transitions lane / boundary handles + drag-to-set-transition.
+- **In scope:** (1) transitions render correctly in the layered composition for
+  every kind in use, via overlap + presentation; (2) derivation produces real
+  overlaps; (3) a derived Transitions lane renders the blocks + click-to-select
+  with kind/direction editing in the inspector; (4) parity verified on the pilot.
+- **Deferred (follow-up):** transition length editing / drag-edge / drag-to-
+  create — anything that repositions clips (ripple-edit).
 
 ## Files
 
@@ -140,6 +162,14 @@ spans, the envelope timing shifts accordingly; no logic change, but the derived
   presentations.
 - Brand transition presentations live in `@brand-lib` + `@remotion/transitions`
   (reused, not rewritten).
+- `lib/editor/app/timeline/layered-adapter.ts` (core) — add a derived
+  `transitions` lane: compute a transition action per adjacent overlapping pair
+  (id encodes the outgoing clip, e.g. `transition:<clipId>`); drag-locked.
+- `lib/editor/app/LayeredTimeline.tsx` (core) — render the lane + a per-block
+  label ("<kind> · <frames>f"); add `transitions` to `LANES` and `LOCKED_LANES`.
+- `lib/editor/app/LayeredInspector.tsx` (core) — a transition route: kind select
+  + direction (whip-pan/wipe), writing back to the outgoing clip's
+  `transitionOut`; length read-only.
 
 ## Parity strategy
 
@@ -163,6 +193,12 @@ spans, the envelope timing shifts accordingly; no logic change, but the derived
 - `music-envelope` tests stay green (spans shift, logic unchanged).
 - Composition: pure `renderTransitionPresentation` mapping is unit-testable
   (kind → presentation); the visual is covered by the parity render.
+- `layered-adapter.test.ts`: the derived `transitions` lane yields one action
+  per overlapping adjacent pair spanning `[next.startMs, prev.endMs]` with a
+  `transition:<clipId>` id; a `cut`/no-overlap boundary yields none; the outro
+  boundary yields none.
+- Inspector: selecting a transition action routes to the transition editor;
+  changing kind writes the outgoing clip's `transitionOut.kind` (no reposition).
 - Full core suite + `tsc` green.
 
 ## Risks
