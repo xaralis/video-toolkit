@@ -86,3 +86,18 @@ describe('VideoItemSchema — container contract', () => {
     expect(parsed.transitionIn).toBeUndefined();
   });
 });
+
+it('accepts an optional per-item props bag and meta.guidesMs', () => {
+  const reel = {
+    version: 'layered-1',
+    meta: { topic: 'x', totalDurationMs: 1000, guidesMs: [0, 500, 1000] },
+    tracks: {
+      video: [{ id: 'v1', kind: 'photo', startMs: 0, endMs: 1000, source: 'a.jpg',
+                props: { displayMode: 'paper-frame' }, musicBoostDb: 0 }],
+      audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [],
+    },
+  };
+  const parsed = LayeredReelSchema.parse(reel);
+  expect(parsed.meta.guidesMs).toEqual([0, 500, 1000]);
+  expect((parsed.tracks.video[0] as { props?: Record<string, unknown> }).props).toEqual({ displayMode: 'paper-frame' });
+});
