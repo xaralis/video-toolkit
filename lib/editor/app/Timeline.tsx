@@ -68,8 +68,30 @@ export interface TimelineProps {
   playheadFrame?: number | null;
 }
 
+/**
+ * The block's always-visible label. Deliberately just the 1-based scene
+ * index (or "outro") rather than `${type} · ${index}` — on a timeline with
+ * many short segments, blocks are often too narrow to show the type without
+ * truncating to an unreadable fragment (e.g. "cli…" or "c…"). The index
+ * alone always fits and stays legible; the type (plus source and duration)
+ * is still available on hover via `titleFor`.
+ */
 function labelFor(seg: Segment, index: number): string {
-  return seg.type === 'outro' ? 'outro' : `${seg.type} · ${index + 1}`;
+  return seg.type === 'outro' ? 'outro' : `${index + 1}`;
+}
+
+/**
+ * Full human description for the block's native `title` tooltip, e.g.
+ * "Scene 3 · clip · TH-01a_uvod-secap.mp4 · 2.3s". Includes the source
+ * filename only when the segment has one (broll/multi-clip/card/outro
+ * segments may not).
+ */
+function titleFor(seg: Segment, index: number, durationFrames: number, fps: number): string {
+  const parts = [`Scene ${index + 1}`, seg.type];
+  if (seg.source) parts.push(seg.source);
+  const seconds = fps > 0 ? durationFrames / fps : 0;
+  parts.push(`${seconds.toFixed(1)}s`);
+  return parts.join(' · ');
 }
 
 type DragState = {
@@ -281,7 +303,7 @@ export function Timeline({
               // keyboard Enter/Space on a focused block), which never goes
               // through the track's pointerdown handler at all.
               onClick={() => onSelect(seg.id)}
-              title={labelFor(seg, index)}
+              title={titleFor(seg, index, durationFrames, fps)}
             >
               {isSelected && (
                 <>

@@ -19,8 +19,11 @@ describe('Timeline', () => {
         outroFrames={180}
       />
     );
-    expect(screen.getByText('clip · 1')).toBeInTheDocument();
-    expect(screen.getByText('broll · 2')).toBeInTheDocument();
+    // Visible label is the 1-based index (or "outro"), not "type · index" —
+    // see the "scene labels" describe block below for the rationale and the
+    // accompanying title-tooltip coverage.
+    expect(screen.getByText('1')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
     expect(screen.getByText('outro')).toBeInTheDocument();
   });
 
@@ -40,7 +43,7 @@ describe('Timeline', () => {
     // click never reliably reaches the block in a real browser once
     // setPointerCapture retargets it. A plain fireEvent.click wouldn't
     // exercise that path, so drive the real gesture instead.
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'broll · 2' }));
+    fireEvent.pointerDown(screen.getByRole('button', { name: '2' }));
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith('b');
   });
@@ -55,8 +58,8 @@ describe('Timeline', () => {
         outroFrames={180}
       />
     );
-    expect(screen.getByRole('button', { name: 'clip · 1' }).className).toMatch(/selected/);
-    expect(screen.getByRole('button', { name: 'broll · 2' }).className).not.toMatch(/selected/);
+    expect(screen.getByRole('button', { name: '1' }).className).toMatch(/selected/);
+    expect(screen.getByRole('button', { name: '2' }).className).not.toMatch(/selected/);
   });
 
   it('sets data-duration-frames from segmentDurationFrames', () => {
@@ -69,11 +72,11 @@ describe('Timeline', () => {
         outroFrames={180}
       />
     );
-    expect(screen.getByRole('button', { name: 'clip · 1' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: '1' })).toHaveAttribute(
       'data-duration-frames',
       '90'
     );
-    expect(screen.getByRole('button', { name: 'broll · 2' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: '2' })).toHaveAttribute(
       'data-duration-frames',
       '90'
     );
@@ -96,7 +99,7 @@ describe('Timeline', () => {
       />
     );
 
-    const block = screen.getByRole('button', { name: 'broll · 2' });
+    const block = screen.getByRole('button', { name: '2' });
 
     // jsdom performs no layout, so getBoundingClientRect() always reports
     // zeros. Stub the selected block's rect with a known pixel width so the
@@ -142,7 +145,7 @@ describe('Timeline', () => {
       />
     );
 
-    const block = screen.getByRole('button', { name: 'broll · 2' });
+    const block = screen.getByRole('button', { name: '2' });
     vi.spyOn(block, 'getBoundingClientRect').mockReturnValue({
       width: 300,
       height: 40,
@@ -189,6 +192,63 @@ describe('Timeline', () => {
     );
     expect(screen.queryByTestId('trim-handle-end-a')).not.toBeInTheDocument();
     expect(screen.queryByTestId('trim-handle-end-b')).toBeInTheDocument();
+  });
+
+  describe('scene labels', () => {
+    // A source on the clip so the title's "source" segment is exercised too.
+    const labelSegments = [
+      { id: 'x', type: 'clip', source: 'TH-01a_uvod-secap.mp4', trimIn: 0, trimOut: 2.3 },
+      { id: 'y', type: 'broll', trimIn: 0, trimOut: 3 },
+      { id: 'z', type: 'outro' },
+    ];
+
+    it('shows the scene index as the visible label, not a truncated type string', () => {
+      render(
+        <Timeline
+          segments={labelSegments}
+          selectedId={null}
+          onSelect={vi.fn()}
+          fps={30}
+          outroFrames={180}
+        />
+      );
+      expect(screen.getByRole('button', { name: '1' }).textContent).toBe('1');
+      expect(screen.getByRole('button', { name: '2' }).textContent).toBe('2');
+      expect(screen.getByRole('button', { name: 'outro' }).textContent).toBe('outro');
+    });
+
+    it('sets a title tooltip with the scene number, type, source, and duration in seconds', () => {
+      render(
+        <Timeline
+          segments={labelSegments}
+          selectedId={null}
+          onSelect={vi.fn()}
+          fps={30}
+          outroFrames={180}
+        />
+      );
+      const clipBlock = screen.getByRole('button', { name: '1' });
+      expect(clipBlock.title).toContain('clip');
+      expect(clipBlock.title).toContain('TH-01a_uvod-secap.mp4');
+      expect(clipBlock.title).toContain('2.3s');
+      expect(clipBlock.title).toMatch(/Scene 1/);
+    });
+
+    it('omits the source segment of the title when the segment has none', () => {
+      render(
+        <Timeline
+          segments={labelSegments}
+          selectedId={null}
+          onSelect={vi.fn()}
+          fps={30}
+          outroFrames={180}
+        />
+      );
+      const brollBlock = screen.getByRole('button', { name: '2' });
+      expect(brollBlock.title).toContain('broll');
+      expect(brollBlock.title).toContain('3.0s');
+      expect(brollBlock.title).toMatch(/Scene 2/);
+    });
   });
 
   describe('time ruler', () => {
@@ -315,7 +375,7 @@ describe('Timeline', () => {
         />
       );
       stubTrackRect();
-      const block = screen.getByRole('button', { name: 'broll · 2' });
+      const block = screen.getByRole('button', { name: '2' });
       fireEvent.pointerDown(block, { clientX: 200 });
       expect(onSelect).toHaveBeenCalledWith('b');
       expect(onSeek).toHaveBeenCalledWith(200);
@@ -336,7 +396,7 @@ describe('Timeline', () => {
         />
       );
       stubTrackRect();
-      const block = screen.getByRole('button', { name: 'clip · 1' });
+      const block = screen.getByRole('button', { name: '1' });
 
       fireEvent.pointerDown(block, { clientX: 10 });
       fireEvent.pointerUp(window, { clientX: 10 });
@@ -378,7 +438,7 @@ describe('Timeline', () => {
       );
       stubTrackRect();
 
-      const block = screen.getByRole('button', { name: 'broll · 2' });
+      const block = screen.getByRole('button', { name: '2' });
       vi.spyOn(block, 'getBoundingClientRect').mockReturnValue({
         width: 300,
         height: 40,

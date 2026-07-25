@@ -68,6 +68,26 @@ describe('Inspector', () => {
     expect(chevronInput.value).toBe('HOUSING');
   });
 
+  it('shows Chevron before Topic, each with clarifying helper text', () => {
+    const { container } = render(
+      <Inspector
+        segments={segments}
+        selectedId={null}
+        topic="Our story"
+        chevron="HOUSING"
+        onReelChange={vi.fn()}
+        onSegmentChange={vi.fn()}
+      />
+    );
+    expect(
+      screen.getByText('Category badge shown on screen (once, at the start).')
+    ).toBeInTheDocument();
+    expect(screen.getByText('Internal label — not shown in the video.')).toBeInTheDocument();
+
+    const text = container.textContent ?? '';
+    expect(text.indexOf('Chevron')).toBeLessThan(text.indexOf('Topic'));
+  });
+
   it('calls onReelChange with the new topic when typing in the Topic input', () => {
     const onReelChange = vi.fn();
     render(
