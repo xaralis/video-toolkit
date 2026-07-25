@@ -18,6 +18,11 @@ export interface EditorShellProps {
   inspector?: ReactNode;
   /** Rendered in the bottom strip. Falls back to a placeholder when omitted. */
   timeline?: ReactNode;
+  /** Undo/redo (multi-step). Buttons show when the handlers are provided. */
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
 }
 
 /**
@@ -38,12 +43,26 @@ export function EditorShell({
   dirty,
   inspector,
   timeline,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
 }: EditorShellProps) {
   return (
     <div className={styles.shell}>
       <header className={styles.header}>
         <span className={styles.projectName}>{projectName}</span>
         <div className={styles.saveGroup}>
+          {(onUndo || onRedo) && (
+            <div style={{ display: 'flex', gap: 4, marginRight: 4 }}>
+              <button type="button" className={styles.discardButton} onClick={onUndo} disabled={!canUndo} title="Undo (⌘Z)">
+                ↶
+              </button>
+              <button type="button" className={styles.discardButton} onClick={onRedo} disabled={!canRedo} title="Redo (⌘⇧Z)">
+                ↷
+              </button>
+            </div>
+          )}
           {dirty && <span className={styles.unsavedIndicator}>● Unsaved changes</span>}
           {dirty && onDiscard && (
             <button type="button" className={styles.discardButton} onClick={onDiscard} disabled={saving}>
