@@ -35,6 +35,7 @@ import { LottieAnimation } from '../../../lib/components'; // adjust depth to yo
 | `loop` / `speed` / `direction` | Playback: loop (default true), rate multiplier, 1 or -1. |
 | `recolor` | Runtime `{ '#old': '#new' }` remap of fills/strokes (quick tweak; prefer building brand-colored JSON). |
 | `x` / `y` / `size` | Overlay placement (% center) and px size. Omit all three to render inline. |
+| `style` | Extra style overrides merged last. |
 
 It handles the `delayRender`/fetch/`continueRender` dance for you; you only pass a `src` or data.
 
@@ -67,7 +68,8 @@ python3 -m video_toolkit.lottie build progress --set value=60 --color accent=#1d
 
 Color slots map named roles to color paths inside the Lottie JSON; `--brand` maps brand palette
 colors onto them (`accent`→`primary`, `accentLight`→`primaryLight`, `track`→`divider`, `fg`→`textDark`,
-`bg`→`bgLight`). Explicit `--color` wins over `--brand`.
+`bg`→`bgLight`). These are first-choice keys — some slots fall back if absent: `accentLight` falls
+back to `primary`, `track` falls back to `bgLight`. Explicit `--color` wins over `--brand`.
 
 ## Sourcing an existing Lottie (LottieFiles or local)
 
@@ -105,3 +107,6 @@ a `<LottieAnimation src="lottie/<name>.json" … />` inside the target segment.
   lottie-web player; it plays on wall-clock time and will not render frame-accurately.
 - **Loop length** — templates author a natural loop (30–45 frames). For a longer on-screen hold, keep
   `loop` on and give the overlay a longer segment duration; don't stretch the JSON.
+- **Semantic color templates still default to brand accent** — `check`, `cross`, and every other
+  template take the brand accent color by default when built with `--brand`. To keep a semantic
+  color (e.g. green check, red cross) pass an explicit override like `--color accent=#22c55e`.

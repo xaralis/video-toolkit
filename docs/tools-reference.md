@@ -28,7 +28,7 @@ or from a background command.
 
 | Type | Tools | When to Use |
 |------|-------|-------------|
-| **Project tools** | voiceover, music_gen, sfx, sync_timing | During video creation workflow |
+| **Project tools** | voiceover, music_gen, sfx, sync_timing, lottie | During video creation workflow |
 | **Sync tools** | sync_template, sync_brand_assets, sync_project | Keep a project's vendored code / brand assets / heavy media up to date |
 | **Utility tools** | addmusic, locate_watermark | Quick transformations on existing videos |
 | **Cloud GPU** | image_edit, upscale, dewatermark, qwen3_tts, music_gen, flux2 | AI processing via RunPod or Modal (`--cloud runpod\|modal`) |
