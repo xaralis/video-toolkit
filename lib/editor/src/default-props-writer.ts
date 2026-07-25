@@ -199,11 +199,14 @@ function deepEqual(a: unknown, b: unknown): boolean {
  *  - `add`: `path`'s last segment is a NEW key that didn't exist on the object at the parent path
  *    — every other existing key on that object (and its comments/`as const`) is left untouched;
  *    only a new property is inserted into the existing object literal.
- *  - `array-splice`: the array at `path` changed length. `start`/`deleteCount` bound the minimal
- *    contiguous run of elements that differ from the old array (found via a common-prefix/common-
- *    suffix scan), and `newElements` are the values that replace that run. Every element outside
- *    the run — including its comments/`as const` — is left byte-untouched; this covers append,
- *    prepend, insert-in-the-middle, delete, and duplicate without reserializing untouched siblings.
+ *  - `array-splice`: elements were inserted into and/or deleted from the array at `path`.
+ *    `start`/`deleteCount` are indices into the array AS IT EXISTS IN THE SOURCE (the old array),
+ *    and `newElements` are freshly serialized values to insert at that position. A single Save may
+ *    produce SEVERAL disjoint splices for one array (plus ordinary `replace`/`add` ops for
+ *    elements that merely changed in place); the apply phase therefore runs all non-splice ops
+ *    first and then the splices from the highest `start` down, so every op's indices stay valid
+ *    against the original AST. Every element outside a splice's own `[start, start+deleteCount)`
+ *    range — including its comments/`as const` — is left byte-untouched.
  */
 type DiffOp =
   | { kind: 'replace'; path: PathSegment[] }
@@ -211,17 +214,64 @@ type DiffOp =
   | { kind: 'array-splice'; path: PathSegment[]; start: number; deleteCount: number; newElements: unknown[] };
 
 /**
- * Finds the minimal contiguous "changed" run between `oldArr` and `newArr` by trimming a common
- * prefix and a common suffix (via `deepEqual`, elementwise) off both ends. Everything in the
- * prefix/suffix is identical between the two arrays and needs no edit at all; only the run in the
- * middle — `oldArr[start, start+deleteCount)` — actually differs, and `newElements` is what it
- * should become. This is what lets a single insert/delete/duplicate at any position be expressed
- * as one small splice instead of a whole-array replace.
+ * Longest-common-subsequence alignment of two arrays under `deepEqual`. Returns the matched
+ * `[oldIndex, newIndex]` anchor pairs in increasing order. Anchors are elements that survived the
+ * edit completely unchanged; everything between two anchors is a "gap" that was inserted, deleted,
+ * or edited in place. This is what lets several disjoint edits in one array be expressed as
+ * several small ops instead of one big run covering all of them.
  */
-function arraySplice(
+function lcsAnchors(oldArr: unknown[], newArr: unknown[]): Array<[number, number]> {
+  const n = oldArr.length;
+  const m = newArr.length;
+  const eq: boolean[][] = Array.from({ length: n }, (_unused, i) =>
+    Array.from({ length: m }, (_unused2, j) => deepEqual(oldArr[i], newArr[j])),
+  );
+
+  // dp[i][j] = LCS length of oldArr[i..] and newArr[j..]
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = eq[i][j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+
+  const anchors: Array<[number, number]> = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (eq[i][j]) {
+      anchors.push([i, j]);
+      i++;
+      j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      i++;
+    } else {
+      j++;
+    }
+  }
+  return anchors;
+}
+
+/**
+ * Diffs two arrays into the smallest set of ops that turns the old one into the new one.
+ *
+ * A common prefix and suffix are trimmed first (the cheap, overwhelmingly common case), then the
+ * remaining middle is aligned with `lcsAnchors`. Elements that survived unchanged act as anchors
+ * and are never touched. Each gap between anchors is handled by pairing its old and new elements
+ * positionally and recursing into each pair — so an element that was merely EDITED (its trim
+ * nudged, say) is still updated leaf-by-leaf and keeps its comments/`as const` — and emitting a
+ * splice only for the leftover insert or delete. That is what keeps "edit element 0 AND insert at
+ * index 2" as two small disjoint ops instead of one run that reserializes everything between them.
+ *
+ * With no anchors and equal lengths this degenerates to plain index-by-index recursion, which is
+ * exactly what a same-length array diff should do.
+ */
+function diffArrayElements(
   oldArr: unknown[],
   newArr: unknown[],
-): { start: number; deleteCount: number; newElements: unknown[] } {
+  path: PathSegment[],
+  out: DiffOp[],
+): void {
   const oldLen = oldArr.length;
   const newLen = newArr.length;
   const maxPrefix = Math.min(oldLen, newLen);
@@ -238,11 +288,52 @@ function arraySplice(
     suffix++;
   }
 
-  return {
-    start: prefix,
-    deleteCount: oldLen - prefix - suffix,
-    newElements: newArr.slice(prefix, newLen - suffix),
+  const oldMid = oldArr.slice(prefix, oldLen - suffix);
+  const newMid = newArr.slice(prefix, newLen - suffix);
+
+  let oi = 0;
+  let ni = 0;
+  const emitGap = (oEnd: number, nEnd: number): void => {
+    const paired = Math.min(oEnd - oi, nEnd - ni);
+    for (let k = 0; k < paired; k++) {
+      diffOps(oldMid[oi + k], newMid[ni + k], [...path, prefix + oi + k], out);
+    }
+    // At most one of these is non-zero (`paired` consumed the shorter side).
+    const deleteCount = oEnd - oi - paired;
+    const inserted = newMid.slice(ni + paired, nEnd);
+    if (deleteCount > 0 || inserted.length > 0) {
+      out.push({
+        kind: 'array-splice',
+        path: path.slice(),
+        start: prefix + oi + paired,
+        deleteCount,
+        newElements: inserted,
+      });
+    }
+    oi = oEnd;
+    ni = nEnd;
   };
+
+  for (const [anchorOld, anchorNew] of lcsAnchors(oldMid, newMid)) {
+    emitGap(anchorOld, anchorNew);
+    oi = anchorOld + 1;
+    ni = anchorNew + 1;
+  }
+  emitGap(oldMid.length, newMid.length);
+}
+
+/** Orders two op paths. Numeric segments compare numerically (so index 10 sorts after index 2);
+ * when one path is a prefix of the other, the deeper path sorts last. */
+function comparePaths(a: PathSegment[], b: PathSegment[]): number {
+  const shared = Math.min(a.length, b.length);
+  for (let i = 0; i < shared; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (x === y) continue;
+    if (typeof x === 'number' && typeof y === 'number') return x - y;
+    return String(x) < String(y) ? -1 : 1;
+  }
+  return a.length - b.length;
 }
 
 /**
@@ -256,11 +347,11 @@ function arraySplice(
  *  - **Key removed** (regardless of whether keys were also added): there is no source AST node
  *    to surgically delete a property from, so the whole object at this path is replaced instead.
  *
- * Arrays recurse element-by-element when the length is unchanged. When the length differs, a
- * common-prefix/common-suffix scan (`arraySplice`) finds the minimal contiguous run that actually
- * changed and emits a single `array-splice` op scoped to that run — every element outside it
- * (including its own comments/`as const`) is left alone. This covers append, prepend, insert-in-
- * the-middle, delete, and duplicate without reserializing untouched siblings.
+ * Arrays go through `diffArrayElements`, which aligns old and new elements and emits one op per
+ * independent edit — elements that only changed value are recursed into (keeping their comments/
+ * `as const`), and only genuinely inserted/deleted runs become `array-splice` ops. This covers
+ * append, prepend, insert-in-the-middle, delete, duplicate, and several disjoint edits in one
+ * Save, without reserializing untouched siblings.
  */
 function diffOps(oldVal: unknown, newVal: unknown, path: PathSegment[], out: DiffOp[]): void {
   if (deepEqual(oldVal, newVal)) return;
@@ -289,14 +380,7 @@ function diffOps(oldVal: unknown, newVal: unknown, path: PathSegment[], out: Dif
   }
 
   if (Array.isArray(oldVal) && Array.isArray(newVal)) {
-    if (oldVal.length === newVal.length) {
-      for (let i = 0; i < oldVal.length; i++) {
-        diffOps(oldVal[i], newVal[i], [...path, i], out);
-      }
-      return;
-    }
-    const { start, deleteCount, newElements } = arraySplice(oldVal, newVal);
-    out.push({ kind: 'array-splice', path: path.slice(), start, deleteCount, newElements });
+    diffArrayElements(oldVal, newVal, path, out);
     return;
   }
 
@@ -447,32 +531,83 @@ function applyAddKey(topValueNode: Node, path: PathSegment[], newValue: unknown)
   objLit.addPropertyAssignment({ name: propertyNameFor(key), initializer: serialized });
 }
 
-/** Applies a single `array-splice` op: the array at `path` changed length. Removes `deleteCount`
- * elements starting at `start` from the existing array literal AST node, then inserts
- * `newElements` (freshly serialized — they have no prior AST to preserve) at that same position.
- * Every element outside `[start, start + deleteCount)` is never touched, so its comments/`as const`
- * survive byte-for-byte, and the array literal node itself (and any `as const`/`satisfies` wrapping
- * it) is never replaced either. */
-function applyArraySplice(
-  topValueNode: Node,
-  path: PathSegment[],
-  start: number,
-  deleteCount: number,
-  newElements: unknown[],
-): void {
-  const containerNode = unwrapValue(navigateToValueNode(topValueNode, path));
+/** Applies a single `array-splice` op to `source` and returns the new source text: the
+ * `deleteCount` elements starting at `start` are removed from the array literal at `path`, and
+ * `newElements` (freshly serialized — they have no prior AST to preserve) are put in their place.
+ *
+ * The array literal's text is rebuilt from the VERBATIM source text of every element outside
+ * `[start, start + deleteCount)` — each element's `getFullText()`, which carries its own leading
+ * trivia (its comments and indentation) with it — and swapped into `source` by exact character
+ * range. Both halves of that are deliberate:
+ *  - ts-morph's `insertElements(index, …)` inserts *after* the leading trivia of the element
+ *    currently at `index`, which silently swallows a neighbour's comment. Copying each surviving
+ *    element's full text keeps the comment attached to the element the author wrote it for.
+ *  - ts-morph's `replaceWithText` re-indents every line of the text it is handed, so untouched
+ *    elements would come back shifted. Plain string splicing at `[arrayStart, arrayEnd)` leaves
+ *    them byte-identical.
+ *
+ * Anything outside the `[…]` — including an `as const`/`satisfies` wrapping the array — is not
+ * part of the replaced range and is therefore untouched. */
+function applyArraySpliceToSource(
+  source: string,
+  compositionId: string | undefined,
+  op: Extract<DiffOp, { kind: 'array-splice' }>,
+): string {
+  const attr = findDefaultPropsAttr(source, compositionId);
+  const jsxExpr = attr.getInitializer()?.asKind(SyntaxKind.JsxExpression)?.getExpression();
+  if (!jsxExpr) {
+    throw new Error(
+      'updateDefaultPropsSurgically: defaultProps initializer is not a JSX expression.',
+    );
+  }
+
+  const containerNode = unwrapValue(navigateToValueNode(jsxExpr, op.path));
   if (containerNode.getKind() !== SyntaxKind.ArrayLiteralExpression) {
     throw new Error(
-      `updateDefaultPropsSurgically: expected an array literal at path "${path.join('.')}".`,
+      `updateDefaultPropsSurgically: expected an array literal at path "${op.path.join('.')}".`,
     );
   }
   const arrLit = containerNode.asKindOrThrow(SyntaxKind.ArrayLiteralExpression);
-  for (let i = 0; i < deleteCount; i++) {
-    arrLit.removeElement(start);
+  const elements = arrLit.getElements();
+  const { start, deleteCount } = op;
+  if (start < 0 || start + deleteCount > elements.length) {
+    throw new Error(
+      `updateDefaultPropsSurgically: array splice [${start}, ${start + deleteCount}) out of bounds at path "${op.path.join('.')}".`,
+    );
   }
-  if (newElements.length > 0) {
-    arrLit.insertElements(start, newElements.map((v) => JSON.stringify(v, null, 2)));
+
+  const before = elements.slice(0, start).map((el) => el.getFullText());
+  const after = elements.slice(start + deleteCount).map((el) => el.getFullText());
+
+  // Indent new elements like their surviving neighbours (the first indented line inside a kept
+  // element's full text); fall back to the array's own indentation + one level when every original
+  // element is being replaced and there is nothing to copy the indentation from.
+  const neighbourIndent = [...before, ...after]
+    .map((text) => /\n([ \t]*)\S/.exec(text)?.[1])
+    .find((found) => found !== undefined);
+  const indent = neighbourIndent ?? `${arrLit.getIndentationText()}  `;
+  const serializedNew = op.newElements.map(
+    (v) => `\n${indent}${JSON.stringify(v, null, 2).split('\n').join(`\n${indent}`)}`,
+  );
+
+  const parts = [...before, ...serializedNew, ...after];
+
+  let replacement: string;
+  if (parts.length === 0) {
+    // Everything was deleted: there is no element left to hang the original trailing comma and
+    // closing-bracket indentation off, so collapse to an empty literal.
+    replacement = '[]';
+  } else {
+    // Everything from the last original element's end up to (and including) the closing bracket:
+    // a trailing comma, any trailing comment, and the closing bracket's own indentation.
+    const tail =
+      elements.length > 0
+        ? source.slice(elements[elements.length - 1].getEnd(), arrLit.getEnd())
+        : source.slice(arrLit.getStart() + 1, arrLit.getEnd());
+    replacement = `[${parts.join(',')}${tail}`;
   }
+
+  return source.slice(0, arrLit.getStart()) + replacement + source.slice(arrLit.getEnd());
 }
 
 /**
@@ -498,12 +633,19 @@ function applyArraySplice(
  *    `as const` *inside* that particular object are lost, but everything outside it (siblings,
  *    ancestors) is unaffected.
  *
- * Arrays recurse element-by-element when the length is unchanged (existing elements may still
- * change value). When the length differs — an element was inserted, deleted, or duplicated — a
- * common-prefix/common-suffix scan finds the minimal contiguous run that actually changed and
- * splices only that run into the existing array literal AST node (removing/inserting elements in
- * place). Every element outside that run, and the array literal node itself (with any `as const`/
- * `satisfies` wrapping it), is left byte-untouched.
+ * Arrays are aligned old-to-new (common prefix/suffix trim, then an LCS over the middle), so a
+ * single Save may contain several independent array edits and each is handled on its own:
+ *  - An element that merely CHANGED VALUE is recursed into and updated leaf-by-leaf, exactly like
+ *    any other object — its comments and `as const` survive.
+ *  - Elements that were INSERTED or DELETED are spliced into the existing array literal by
+ *    rebuilding it from the verbatim source text of every element that stayed. Elements outside
+ *    the spliced range keep their own leading comments byte-for-byte (including the element that
+ *    happens to sit at the insertion point), a deleted element takes its own comment with it, and
+ *    the array literal's `as const`/`satisfies` wrapper is never touched.
+ *
+ * The one thing that is NOT preserved is trivia belonging to something that no longer exists: a
+ * deleted element's own comments go with it, and a freshly inserted element has no authored text
+ * to preserve, so it is serialized as JSON (double-quoted keys) at its neighbours' indentation.
  */
 export function updateDefaultPropsSurgically(
   source: string,
@@ -526,7 +668,14 @@ export function updateDefaultPropsSurgically(
     return source;
   }
 
-  for (const op of ops) {
+  // Every op's path indexes the array literals AS THEY EXIST IN THE SOURCE, so ops that shift
+  // those indices must run last: first the length-preserving ops (replace/add), then the splices
+  // from the deepest/highest index downwards, so that no splice invalidates a pending one's path.
+  const splices = ops.filter((op): op is Extract<DiffOp, { kind: 'array-splice' }> => op.kind === 'array-splice');
+  const inPlaceOps = ops.filter((op) => op.kind !== 'array-splice');
+  splices.sort((a, b) => comparePaths(b.path, a.path) || b.start - a.start);
+
+  for (const op of inPlaceOps) {
     if (op.path.length === 0) {
       // The top-level props object itself needs a whole-node replace (e.g. a top-level key was
       // removed) — nothing surgical to do at the root, replace the whole literal.
@@ -536,12 +685,18 @@ export function updateDefaultPropsSurgically(
     }
     if (op.kind === 'add') {
       applyAddKey(jsxExpr, op.path, getAtPath(newProps, op.path));
-    } else if (op.kind === 'array-splice') {
-      applyArraySplice(jsxExpr, op.path, op.start, op.deleteCount, op.newElements);
     } else {
       applyLeafChange(jsxExpr, op.path, getAtPath(newProps, op.path));
     }
   }
 
-  return attr.getSourceFile().getFullText();
+  // Splices are text-level edits (see `applyArraySpliceToSource`), so they run against the source
+  // produced by the in-place ops, each one re-parsing the text it is handed. The descending order
+  // guarantees a pending op's indices still refer to the same elements after an earlier splice.
+  let out = attr.getSourceFile().getFullText();
+  for (const op of splices) {
+    out = applyArraySpliceToSource(out, opts.compositionId, op);
+  }
+
+  return out;
 }

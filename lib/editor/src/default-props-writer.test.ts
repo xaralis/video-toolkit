@@ -207,7 +207,10 @@ export const RemotionRoot = () => {
         segments: [
           // ── Úsek 1 ──
           { id: 's1', type: 'clip' as const, trimIn: 0, trimOut: 3, overlays: [ { kind: 'quote-pull' as const, text: 'A {lime:b}.' } ] },
+          // ── Úsek 2 ──
           { id: 's2', type: 'broll' as const, trimIn: 0, trimOut: 4 },
+          // ── Úsek 3 ──
+          { id: 's3', type: 'card' as const, trimIn: 0, trimOut: 6 },
         ] as const,
       }}
       fps={30}
@@ -217,6 +220,19 @@ export const RemotionRoot = () => {
   );
 };
 `;
+
+// Byte-exact source of each segment, including its OWN leading comment and indentation. Asserting
+// on these (rather than only on the comment text) is what proves an untouched neighbour came back
+// verbatim instead of being re-serialized/re-indented with the same values.
+const S1_VERBATIM = `
+          // ── Úsek 1 ──
+          { id: 's1', type: 'clip' as const, trimIn: 0, trimOut: 3, overlays: [ { kind: 'quote-pull' as const, text: 'A {lime:b}.' } ] },`;
+const S2_VERBATIM = `
+          // ── Úsek 2 ──
+          { id: 's2', type: 'broll' as const, trimIn: 0, trimOut: 4 },`;
+const S3_VERBATIM = `
+          // ── Úsek 3 ──
+          { id: 's3', type: 'card' as const, trimIn: 0, trimOut: 6 },`;
 
 describe('updateDefaultPropsSurgically', () => {
   it('changes only chevron, preserving comments and as const elsewhere', () => {
@@ -280,7 +296,7 @@ describe('updateDefaultPropsSurgically', () => {
   it('surgically appends a new array element without reserializing the existing elements', () => {
     const current = readDefaultProps(SURGICAL_ROOT, { compositionId: 'CampaignReel' }) as any;
     const next = JSON.parse(JSON.stringify(current));
-    next.segments.push({ id: 's3', type: 'card', trimIn: 0, trimOut: 2 });
+    next.segments.push({ id: 's4', type: 'card', trimIn: 0, trimOut: 2 });
 
     const out = updateDefaultPropsSurgically(SURGICAL_ROOT, next, { compositionId: 'CampaignReel' });
 
@@ -290,8 +306,35 @@ describe('updateDefaultPropsSurgically', () => {
     expect(out).toContain('// reel meta');
     expect(out).toContain("topic: 'Klima' as const");
     expect(out).toContain('// ── Úsek 1 ──');
+    expect(out).toContain('// ── Úsek 2 ──');
+    expect(out).toContain('// ── Úsek 3 ──');
     expect(out).toContain("type: 'clip' as const");
     expect(out).toContain("type: 'broll' as const");
+    expect(out).toContain("kind: 'quote-pull' as const");
+    expect(out).toContain('] as const');
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+
+  it('surgically prepends a new element at index 0, keeping the (neighbouring) first element\'s comment', () => {
+    const current = readDefaultProps(SURGICAL_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    next.segments.unshift({ id: 's0', type: 'card', trimIn: 0, trimOut: 1 });
+
+    const out = updateDefaultPropsSurgically(SURGICAL_ROOT, next, { compositionId: 'CampaignReel' });
+
+    // Every existing element keeps its OWN leading comment — including s1, whose
+    // comment sits exactly at the insertion point and must not be consumed by the
+    // newly inserted element.
+    expect(out).toContain('// ── Úsek 1 ──');
+    expect(out).toContain('// ── Úsek 2 ──');
+    expect(out).toContain('// ── Úsek 3 ──');
+    // The comment must still be attached to s1, not stranded above the new element — and every
+    // existing element comes back byte-for-byte, indentation included.
+    expect(out).toContain(S1_VERBATIM);
+    expect(out).toContain(S2_VERBATIM);
+    expect(out).toContain(S3_VERBATIM);
+    expect(out.indexOf('"id": "s0"')).toBeLessThan(out.indexOf('// ── Úsek 1 ──'));
+    expect(out).toContain("type: 'clip' as const");
     expect(out).toContain("kind: 'quote-pull' as const");
     expect(out).toContain('] as const');
     expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
@@ -309,8 +352,11 @@ describe('updateDefaultPropsSurgically', () => {
     expect(out).toContain("type: 'clip' as const");
     expect(out).toContain("kind: 'quote-pull' as const");
     expect(out).toContain('A {lime:b}.');
-    // ...s2 (after the insertion point) is untouched...
-    expect(out).toContain("type: 'broll' as const");
+    // ...s2 sits AT the insertion point and must keep its own comment...
+    expect(out).toContain(S2_VERBATIM);
+    // ...s3 (after the insertion point) is untouched...
+    expect(out).toContain(S3_VERBATIM);
+    expect(out).toContain(S1_VERBATIM);
     // ...the array's own `as const` wrapper survives (the array node itself was
     // never wholesale-replaced)...
     expect(out).toContain('] as const');
@@ -322,19 +368,82 @@ describe('updateDefaultPropsSurgically', () => {
   it('surgically deletes an array element, preserving the surviving elements\' comments and as const', () => {
     const current = readDefaultProps(SURGICAL_ROOT, { compositionId: 'CampaignReel' }) as any;
     const next = JSON.parse(JSON.stringify(current));
-    next.segments.splice(1, 1); // drop s2, keep s1
+    next.segments.splice(1, 1); // drop s2, keep s1 + s3
 
     const out = updateDefaultPropsSurgically(SURGICAL_ROOT, next, { compositionId: 'CampaignReel' });
 
-    // The surviving element (s1) — including its leading comment and nested
-    // as-const overlay — is untouched, proving the deletion is surgical rather
-    // than a whole-array reserialize.
+    // The surviving elements (s1, s3) — including their leading comments and s1's
+    // nested as-const overlay — are untouched, proving the deletion is surgical
+    // rather than a whole-array reserialize. The deleted element takes its OWN
+    // comment with it and leaves its neighbours' alone.
+    expect(out).toContain(S1_VERBATIM);
+    expect(out).toContain(S3_VERBATIM);
+    expect(out).not.toContain('// ── Úsek 2 ──');
+    expect(out).toContain("type: 'clip' as const");
+    expect(out).toContain("kind: 'quote-pull' as const");
+    expect(out).toContain('A {lime:b}.');
+    expect(out).toContain("type: 'card' as const");
+    expect(out).toContain('] as const');
+    expect(out).not.toContain('s2');
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+
+  it('applies a leaf edit AND a disjoint insert in the same array without reserializing the untouched elements', () => {
+    const current = readDefaultProps(SURGICAL_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    // One realistic Save: nudge s1's trim, then duplicate/insert a clip at index 2.
+    next.segments[0].trimOut = 5;
+    next.segments.splice(2, 0, { id: 's2b', type: 'card', trimIn: 0, trimOut: 1 });
+
+    const out = updateDefaultPropsSurgically(SURGICAL_ROOT, next, { compositionId: 'CampaignReel' });
+
+    // s1 was edited in place: only its trimOut changed, its comment + nested
+    // as-const overlay survive (it was NOT swallowed by the insert's edit run).
     expect(out).toContain('// ── Úsek 1 ──');
     expect(out).toContain("type: 'clip' as const");
     expect(out).toContain("kind: 'quote-pull' as const");
     expect(out).toContain('A {lime:b}.');
+    expect(out).toContain('trimOut: 5');
+    // s2 sits between the two edits and must come back byte-for-byte.
+    expect(out).toContain(S2_VERBATIM);
+    // s3 sits at the insertion point and must keep its own comment, byte-for-byte.
+    expect(out).toContain(S3_VERBATIM);
+    expect(out).toContain('"id": "s2b"');
     expect(out).toContain('] as const');
-    expect(out).not.toContain('s2');
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+
+  it('applies two disjoint inserts in the same array in one call', () => {
+    const current = readDefaultProps(SURGICAL_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    next.segments.splice(2, 0, { id: 'x2', type: 'card', trimIn: 0, trimOut: 1 });
+    next.segments.splice(1, 0, { id: 'x1', type: 'card', trimIn: 0, trimOut: 1 });
+
+    const out = updateDefaultPropsSurgically(SURGICAL_ROOT, next, { compositionId: 'CampaignReel' });
+
+    expect(out).toContain(S1_VERBATIM);
+    expect(out).toContain(S2_VERBATIM);
+    expect(out).toContain(S3_VERBATIM);
+    expect(out).toContain('] as const');
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+
+  it('applies a delete and a disjoint insert in the same array in one call', () => {
+    const current = readDefaultProps(SURGICAL_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    next.segments.push({ id: 's9', type: 'card', trimIn: 0, trimOut: 2 });
+    next.segments.splice(1, 1); // drop s2
+
+    const out = updateDefaultPropsSurgically(SURGICAL_ROOT, next, { compositionId: 'CampaignReel' });
+
+    expect(out).toContain(S1_VERBATIM);
+    expect(out).not.toContain('// ── Úsek 2 ──');
+    // s3 keeps its comment; only its trailing comma differs now that an element follows it.
+    expect(out).toContain('// ── Úsek 3 ──');
+    expect(out).toContain("{ id: 's3', type: 'card' as const, trimIn: 0, trimOut: 6 }");
+    expect(out).toContain("kind: 'quote-pull' as const");
+    expect(out).toContain("type: 'clip' as const");
+    expect(out).toContain('] as const');
     expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
   });
 
