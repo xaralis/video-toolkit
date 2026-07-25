@@ -51,8 +51,11 @@ and editing an array in the editor destroyed authored comments and `as const`.
 
 ## Phase 2 outcome
 
-14 commits (`377fab4..6cf4642`), 36 files, **+2765 / −23** (excluding the plan
-document itself, which was committed at the branch point). 55 test files /
+The whole branch, re-derived from `git log`/`git diff --stat` rather than carried forward from an
+earlier count: 18 commits (`bb9a89d..8351451` — every commit since Phase 1 merged, including the
+Phase 2 plan doc's own commit), 40 files, **+4035 / −80**, excluding the 2007-line plan document
+committed at the branch point (`docs/superpowers/plans/2026-07-25-phase2-core-owns-brand-shell.md`);
+including that file, 41 files / **+6042 / −80**. 55 test files /
 **561 tests** green. `tsc --noEmit` in `lib/editor` holds at its 34-error
 pre-existing baseline — verified by diffing error *sets* against a worktree at the
 merge base (`bb9a89d`); the two sets are byte-identical, no line added or removed.
@@ -185,7 +188,33 @@ assertion turns a routine submodule bump into a hard stop. Recorded in
 - **The Save-test rewrite dropped** the old "clicking a disabled Save does not POST"
   assertion. No mutation-killing power was lost — the replacement drives the real
   dirty-tracking path — but the disabled-button guard is no longer asserted.
-- **`lib/project/README.md`** says "these three" and then discusses two.
+- ~~`lib/project/README.md` says "these three" and then discusses two.~~ **Fixed in the
+  final fix wave** — reworded to "these two" (`paths.ts` is never imported by a brand
+  config file; only `remotion-config.ts`/`vitest-config.ts` are).
+
+**Closed in the final fix wave (whole-branch review, before merge):**
+- **The spread-form Save spine had zero test coverage.** Every real brand Save goes through
+  `save-endpoint.ts` → `updateDefaultPropsSurgically` + `verifyDefaultProps`, never
+  `rewriteDefaultProps` — but the spread-form fixtures added during Phase 2 only drove
+  `readDefaultProps`/`rewriteDefaultProps`. Closed: `src/default-props-writer.test.ts` now
+  has a `SPREAD_TWO_COMPS_WITH_ARRAY` fixture driven through `updateDefaultPropsSurgically`
+  with an array splice (the one path, `applyArraySpliceToSource`, that re-parses intermediate
+  source and re-resolves the id via `findDefaultPropsAttr` a second time against already-edited
+  spread-form source) plus a `verifyDefaultProps` round-trip. Verified by mutation. No stale
+  risk remains — this was pure missing coverage, not a production bug.
+- **`idOf`'s explicit-`id`-vs-spread-id precedence was inverted relative to JSX.** The resolver
+  preferred an explicit `id="…"` attribute over a `{...layeredCompositionProps({ id })}` spread
+  regardless of source order, but JSX/React apply props in source order — whichever is written
+  LAST wins at runtime. Fixed in `lib/editor/src/default-props-writer.ts`'s `idOf`: it now picks
+  whichever candidate has the higher index in `el.getAttributes()`. Two new tests cover both
+  orderings, each verified by mutation to fail independently. Closed — this was pathological and
+  self-limiting (no real `Root.tsx` writes both `id=` and a `layeredCompositionProps` spread on
+  the same element today) but is now correct either way.
+- **A second 60-frame floor.** `lib/render/layered-composition-props.ts`'s `MIN_FRAMES` is now
+  exported and `lib/editor/host/host-duration.ts`'s `framesForReel` imports it instead of
+  hardcoding its own `60`. Cross-file drift is no longer possible — verified by mutating
+  `MIN_FRAMES` and confirming both `layered-composition-props.test.ts` and
+  `host-duration.test.ts`'s floor assertions fail. Closed.
 
 **Deferred, judged genuinely fine to carry:**
 - The `AccentKey` marker in `transition-schema.ts` patches zod's `describe()` so clones stay
@@ -213,6 +242,19 @@ direction-branching cell clipping, `pixelate`'s opaque black root. Core cannot r
 `remotion`), so this needs a render-parity pass in a brand repo. **Nothing that renders today
 can regress** — every one of those kinds was unreachable before Phase 1.
 
+**Top residual risk on this branch, needs the first brand-side `tsc` to close:**
+`layeredCompositionProps` (`lib/render/layered-composition-props.ts`) has never been
+type-checked against a real Remotion `<Composition>` — core has no `remotion` installed, and
+`examples/` sits inside no tsconfig, so core's own `tsc --noEmit` cannot see this at all.
+Migration item A in `docs/superpowers/phase2-migrations.md` is graded *tsc-caught*, which is
+honest about severity but untested in direction: if the unconstrained `<C>` type parameter on
+`LayeredCompositionOptions<C>['component']` defeats Remotion's own `Props` inference from
+`component`, a brand's `defaultProps` type-check could silently **loosen** instead of erroring —
+the opposite of what "tsc-caught" promises. The first brand-side `npx tsc --noEmit` after the
+submodule pin bumps settles it in seconds (see `phase2-migrations.md`'s "Suggested order" step
+6). Treat any change in `defaultProps` type strictness on `<Composition>` there as a real
+regression to investigate, not noise to dismiss.
+
 ---
 
 ## Working conventions established
@@ -227,5 +269,13 @@ can regress** — every one of those kinds was unreachable before Phase 1.
   `--no-gpg-sign` immediately. (Also recorded in `~/.claude/CLAUDE.md`.)
 - Core has no `remotion` installed, so anything importing it cannot be unit tested here.
   Keep the pure/JSX split documented in `lib/render/README.md`.
+- **`EditorHost`'s verification boundary, named explicitly** (the general rule above is true but
+  too coarse to tell you what's actually unverified): the Focus/Zoom crop-gesture overlay, the
+  `setFocal`/`setZoom` POSITIVE path (a real drag/pinch actually moving a clip's crop), the
+  transport toolbar's play/pause/scrub controls, and Remotion `Player` playback events are all
+  unreachable in jsdom — they need a real timeline selection and a real Player instance, neither
+  of which jsdom provides. These are inspected (rendered, snapshot-checked, prop-shape-checked)
+  by the existing tests, not exercised end-to-end. Same caveat added to
+  `lib/editor/host/README.md`, which otherwise advertises Focus/Zoom with no verification note.
 - The brand-leak gate needs its exclusions or it walks `node_modules` and is permanently red:
   `grep -riE 'lime|teal|roost|progresivn|sand-brown' lib/ --exclude-dir=node_modules --exclude='*.test.*'`

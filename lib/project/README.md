@@ -288,7 +288,7 @@ one home for that logic, so the workarounds — the `zod$` alias, the
 guard — live in one place instead of being copy-pasted (and drifting) across every
 `remotion.config.ts`.
 
-**Import these three with a relative specifier, not `@video-toolkit/lib/...`.**
+**Import these two with a relative specifier, not `@video-toolkit/lib/...`.**
 `remotion.config.ts` and `vitest.config.ts` are both loaded by their tool
 (Remotion's CLI, Vite/Vitest) via esbuild *before* any bundler alias exists —
 Vite externalizes bare specifiers in a config file and resolves them through

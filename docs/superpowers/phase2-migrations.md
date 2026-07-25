@@ -411,7 +411,7 @@ Focus/Zoom crop gestures on the preview.
 
 ### F. `.editor/vite.config.mts` → `createEditorViteConfig`; `.editor/editor-plugin.mts` → **deleted**
 
-**Applies to:** the same 12 `.editor/` directories. 58 + 176 lines → 15, and one file fewer.
+**Applies to:** the same 12 `.editor/` directories. 58 + 176 lines → 17, and one file fewer.
 
 **Delete** `.editor/editor-plugin.mts`.
 
@@ -739,7 +739,7 @@ also settled by adoption).
 
 ### F. `.editor/vite.config.mts` → `createEditorViteConfig`; `.editor/editor-plugin.mts` → **deleted**
 
-62 + 176 lines → 15, and one file fewer. **Delete** `.editor/editor-plugin.mts`.
+62 + 176 lines → 16, and one file fewer. **Delete** `.editor/editor-plugin.mts`.
 
 **`.editor/vite.config.mts`, after** (the whole file):
 
@@ -814,6 +814,11 @@ guard is sequenced to land **after** roost migrates — see `docs/zod-version.md
 
 Per repo, per directory:
 
+0. **Bump the `toolkit/` submodule pin first.** Every item below — item **C**'s
+   `extends "../../toolkit/lib/project/tsconfig.base.json"` and every relative import in items
+   **C** and **F** (`../../toolkit/lib/...`, `../../../toolkit/lib/...`) — resolves to nothing
+   until the pin moves past Phase 2. `git submodule update --remote toolkit` (or pin to the
+   Phase 2 merge commit), commit the pin bump, then proceed.
 1. **G** (zod pin) — `npm install` once, before anything type-checks against it.
 2. **C** (build config) — everything else runs through the alias these files create.
 3. **B** (fonts), **A** (composition props), **D** (roost only).
@@ -825,6 +830,17 @@ Per repo, per directory:
    and the timeline loads), `npm run editor` (the editor loads, edits, and **saves** — Save
    exercises `readDefaultProps` against the new `Root.tsx` spread, which is the one thing that
    fails loudly if item **A** was spelled wrong), and one `npm run render:preview`.
+
+   **Top thing to check here, above all else: run `npx tsc --noEmit` on the brand project
+   itself, not just core.** `layeredCompositionProps` (item **A**) has never been type-checked
+   against a real Remotion `<Composition>` — core has no `remotion` installed and `examples/`
+   sits inside no tsconfig, so core's own `tsc --noEmit` cannot see this. Item **A** is graded
+   *tsc-caught* above, which is honest about severity but untested in direction: if the
+   unconstrained `<C>` type parameter on `LayeredCompositionOptions<C>['component']` defeats
+   Remotion's own `Props` inference from `component`, a brand's `defaultProps` type-check could
+   silently *loosen* instead of erroring — the opposite of what "tsc-caught" promises. The first
+   brand-side `npx tsc --noEmit` after the pin bump settles it in seconds; treat any change in
+   `defaultProps` type strictness on `<Composition>` there as a real regression, not noise.
 
 ## Not carried by `sync_template.py`
 

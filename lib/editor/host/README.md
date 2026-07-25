@@ -52,6 +52,16 @@ colours reach the editor through this prop or not at all.
 - Focus/Zoom on the preview: pinch to zoom a clip's crop, two-finger scroll or
   drag to move its focal point.
 
+**Verification boundary.** Core has no `remotion`, so anything importing it cannot be unit
+tested here (see `docs/superpowers/HANDOFF.md`) — but that general rule undersells what's
+actually unverified in `EditorHost` specifically: the Focus/Zoom overlay above, the
+`setFocal`/`setZoom` POSITIVE path (a real drag/pinch actually moving a clip's crop, as opposed
+to the handler wiring), the transport toolbar's play/pause/scrub controls, and Remotion
+`Player` playback events are all unreachable in jsdom — each needs a real timeline selection or
+a real `Player` instance to exercise, not just a rendered DOM. The existing tests inspect these
+(render, prop shape, snapshot), they do not drive them end-to-end. Verifying them for real means
+opening the editor in a brand repo.
+
 ## `mountEditorHost(options, container?)`
 
 Renders `<EditorHost>` into `container`, defaulting to `#root`. Throws if
