@@ -126,3 +126,18 @@ def test_colorize_maps_color(tmp_path):
 def test_colorize_requires_map(tmp_path):
     with pytest.raises(SystemExit):
         main(["colorize", str(FIXTURES / "sample_lottie.json"), "-o", str(tmp_path / "x.json")])
+
+
+@pytest.mark.parametrize("template", ["spinner", "pulse", "arrow", "confetti", "check", "cross", "progress"])
+def test_build_each_template_valid(tmp_path, template):
+    out = tmp_path / f"{template}.json"
+    assert main(["build", template, "--brand", "brands/default/brand.json", "-o", str(out)]) == 0
+    assert is_valid_lottie(json.loads(out.read_text()))
+
+
+def test_progress_value_slot(tmp_path):
+    out = tmp_path / "progress.json"
+    assert main(["build", "progress", "--set", "value=60", "-o", str(out)]) == 0
+    data = json.loads(out.read_text())
+    end_keyframes = nav(data, ["layers", 0, "shapes", 1, "it", 2, "e", "k"])
+    assert end_keyframes[1]["s"][0] == 60.0
