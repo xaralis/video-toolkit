@@ -15,7 +15,13 @@ function evaluateLiteral(node: Node): unknown {
   switch (node.getKind()) {
     case SyntaxKind.ObjectLiteralExpression: {
       const obj = node.asKindOrThrow(SyntaxKind.ObjectLiteralExpression);
-      const result: Record<string, unknown> = {};
+      // Build on a null-prototype object so a literal key named "__proto__" (or any other
+      // Object.prototype accessor) becomes an ordinary own data property via [[Set]] instead of
+      // triggering the inherited `__proto__` setter and reassigning the result's prototype. The
+      // final spread copies every own enumerable property (including a key literally named
+      // "__proto__") onto a normal plain object via [[DefineOwnProperty]], not [[Set]] — matching
+      // JSON.parse's semantics of always producing a real own data property.
+      const result: Record<string, unknown> = Object.create(null);
       for (const prop of obj.getProperties()) {
         if (!prop.isKind(SyntaxKind.PropertyAssignment)) {
           throw new Error(
@@ -23,12 +29,19 @@ function evaluateLiteral(node: Node): unknown {
           );
         }
         const nameNode = prop.getNameNode();
-        const key = nameNode.isKind(SyntaxKind.StringLiteral)
-          ? nameNode.getLiteralValue()
-          : nameNode.getText();
+        let key: string;
+        if (nameNode.isKind(SyntaxKind.StringLiteral)) {
+          key = nameNode.getLiteralValue();
+        } else if (nameNode.isKind(SyntaxKind.Identifier)) {
+          key = nameNode.getText();
+        } else {
+          throw new Error(
+            `readDefaultProps: unsupported object member "${prop.getText()}" (computed property names are not supported; only plain "key: value" properties are supported).`,
+          );
+        }
         result[key] = evaluateLiteral(prop.getInitializerOrThrow());
       }
-      return result;
+      return { ...result };
     }
     case SyntaxKind.ArrayLiteralExpression: {
       const arr = node.asKindOrThrow(SyntaxKind.ArrayLiteralExpression);
