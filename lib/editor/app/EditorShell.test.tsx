@@ -7,7 +7,7 @@ describe('EditorShell', () => {
     render(<EditorShell preview={<div data-testid="pv">PREVIEW</div>} projectName="my-reel" />);
     expect(screen.getByTestId('pv')).toBeInTheDocument();
     expect(screen.getByText('my-reel')).toBeInTheDocument();
-    expect(screen.getByText(/Inspektor/i)).toBeInTheDocument();
+    expect(screen.getByText(/Inspector/i)).toBeInTheDocument();
     expect(screen.getByText(/Timeline/i)).toBeInTheDocument();
   });
 
