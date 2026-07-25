@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import { AccentEditor } from './AccentEditor';
+import { Collapsible } from './Collapsible';
 import { TRANSITION_KINDS, defaultTransition, kindNeedsFrames, subOptionsFor, type Transition } from './transitions';
 import { parseActionId, type LaneId } from '../src/timeline/layered-adapter';
 
@@ -184,24 +185,15 @@ const OVERLAY_POSITIONS = [
   'lower-left', 'lower-center', 'lower-right',
 ];
 
-// Editable params per effect type (Ken Burns motion, blend crossfade, vintage
-// film/vhs grade). `onRemove` renders a remove button in the shared header.
-function EffectEditor({ eff, onPatch, onRemove }: { eff: Record<string, unknown>; onPatch: (patch: Record<string, unknown>) => void; onRemove?: () => void }) {
+// Editable params (BODY only — the collapsible header + remove ✕ are supplied by
+// the caller's <Collapsible>) per effect type: Ken Burns motion, blend crossfade,
+// vintage film/vhs grade.
+function EffectEditor({ eff, onPatch }: { eff: Record<string, unknown>; onPatch: (patch: Record<string, unknown>) => void }) {
   const type = eff.type as string;
   const num = (k: string) => (typeof eff[k] === 'number' ? (eff[k] as number) : undefined);
-  const header = (
-    <div style={{ ...section, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span>Effect · {type}</span>
-      {onRemove && (
-        <button type="button" aria-label={`remove effect ${type}`} onClick={onRemove}
-          style={{ background: 'none', border: 'none', color: '#9a9da5', cursor: 'pointer', fontSize: 13 }}>✕</button>
-      )}
-    </div>
-  );
   if (type === 'ken-burns') {
     return (
       <>
-        {header}
         <Row>
           <NumberField lbl="From X" step={0.01} value={num('fromX')} onCommit={(n) => onPatch({ fromX: n })} />
           <NumberField lbl="To X" step={0.01} value={num('toX')} onCommit={(n) => onPatch({ toX: n })} />
@@ -216,7 +208,6 @@ function EffectEditor({ eff, onPatch, onRemove }: { eff: Record<string, unknown>
   if (type === 'blend') {
     return (
       <>
-        {header}
         <TextField lbl="To source" value={eff.to as string | undefined} onCommit={(s) => onPatch({ to: s || undefined })} />
         <SelectField lbl="Direction" value={eff.direction as string | undefined} options={BLEND_DIRECTIONS} onChange={(s) => onPatch({ direction: s })} />
         <Row>
@@ -228,15 +219,10 @@ function EffectEditor({ eff, onPatch, onRemove }: { eff: Record<string, unknown>
   }
   if (type === 'vintage') {
     return (
-      <>
-        {header}
-        <SelectField lbl="Mode" value={eff.mode as string | undefined}
-          options={['film', 'vhs']}
-          onChange={(s) => onPatch({ mode: s })} />
-      </>
+      <SelectField lbl="Mode" value={eff.mode as string | undefined} options={['film', 'vhs']} onChange={(s) => onPatch({ mode: s })} />
     );
   }
-  return header;
+  return <div style={{ fontSize: 11, color: '#7a7d85', padding: '3px 0' }}>No editable params.</div>;
 }
 
 const seekBtn: React.CSSProperties = { ...input, cursor: 'pointer', marginBottom: 10, width: 'auto', padding: '4px 10px' };
@@ -247,6 +233,12 @@ const EFFECT_DEFAULTS: Record<string, Record<string, unknown>> = {
   vintage: { type: 'vintage', mode: 'film' },
   'ken-burns': { type: 'ken-burns', fromScale: 1, toScale: 1.08, fromX: 0.5, toX: 0.5 },
 };
+
+// Outro option lists (roost's outro variations — shown only for an outro item
+// that carries `props`, i.e. the montage brands; campaign's parameterless outro
+// has no props so these never render there).
+const OUTRO_STYLES = ['organic', 'fade', 'bloom', 'static', 'heartbeat'];
+const OUTRO_VARIANTS = ['sand-brown', 'white-black'];
 
 function AddEffectControl({ onAdd }: { onAdd: (kind: string) => void }) {
   const [open, setOpen] = useState(false);
@@ -354,18 +346,43 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
             </Row>
           </>
         )}
+        {v.kind === 'outro' && v.props && (
+          <>
+            <div style={section}>Outro</div>
+            <SelectField lbl="Style" value={(v.props as Record<string, unknown>).style as string | undefined} options={OUTRO_STYLES} onChange={(s) => patchItem('video', id, { props: { ...(v.props as object), style: s } })} />
+            <SelectField lbl="Variant" value={(v.props as Record<string, unknown>).variant as string | undefined} options={OUTRO_VARIANTS} onChange={(s) => patchItem('video', id, { props: { ...(v.props as object), variant: s } })} />
+            <SelectField lbl="Enter transition" value={(v.props as Record<string, unknown>).transition as string | undefined} options={['dissolve', 'burn']} onChange={(s) => patchItem('video', id, { props: { ...(v.props as object), transition: s } })} />
+            <NumberField lbl="Logo delay (s)" step={0.1} value={(v.props as Record<string, unknown>).logoDelaySec as number | undefined} onCommit={(n) => patchItem('video', id, { props: { ...(v.props as object), logoDelaySec: n } })} />
+          </>
+        )}
         <NumberField lbl="Music boost (dB)" value={v.musicBoostDb} onCommit={(n) => patchItem('video', id, { musicBoostDb: n })} />
         {v.effects &&
-          v.effects.map((eff, i) => (
-            <EffectEditor
-              key={i}
-              eff={eff as Record<string, unknown>}
-              onPatch={(patch) =>
-                patchItem('video', id, { effects: v.effects!.map((e, j) => (j === i ? { ...(e as Record<string, unknown>), ...patch } : e)) })
-              }
-              onRemove={() => patchItem('video', id, { effects: v.effects!.filter((_, j) => j !== i) })}
-            />
-          ))}
+          v.effects.map((eff, i) => {
+            const type = (eff as { type?: string }).type ?? 'effect';
+            return (
+              <Collapsible
+                key={i}
+                title={`Effect · ${type}`}
+                right={
+                  <button
+                    type="button"
+                    aria-label={`remove effect ${type}`}
+                    onClick={() => patchItem('video', id, { effects: v.effects!.filter((_, j) => j !== i) })}
+                    style={{ background: 'none', border: 'none', color: '#9a9da5', cursor: 'pointer', fontSize: 13 }}
+                  >
+                    ✕
+                  </button>
+                }
+              >
+                <EffectEditor
+                  eff={eff as Record<string, unknown>}
+                  onPatch={(patch) =>
+                    patchItem('video', id, { effects: v.effects!.map((e, j) => (j === i ? { ...(e as Record<string, unknown>), ...patch } : e)) })
+                  }
+                />
+              </Collapsible>
+            );
+          })}
         <AddEffectControl
           onAdd={(kind) => patchItem('video', id, { effects: [...(v.effects ?? []), EFFECT_DEFAULTS[kind]] })}
         />
@@ -386,7 +403,8 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
   if (lane === 'overlays') {
     const o = reel.tracks.overlays.find((x) => x.id === id);
     if (!o) return null;
-    const content = o.content as { kind?: string; text?: string };
+    const content = o.content as { kind?: string; text?: string; lines?: string[]; reveal?: string; fontSize?: number };
+    const patchContent = (patch: Record<string, unknown>) => patchItem('overlays', id, { content: { ...o.content, ...patch } });
     return (
       <div style={panel}>
         <h3 style={heading}>Overlay · {content.kind ?? 'overlay'}</h3>
@@ -396,8 +414,27 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
         {content.text !== undefined && (
           <div style={field}>
             <label style={label}>Text</label>
-            <AccentEditor value={content.text ?? ''} onChange={(next) => patchItem('overlays', id, { content: { ...o.content, text: next } })} />
+            <AccentEditor value={content.text ?? ''} onChange={(next) => patchContent({ text: next })} />
           </div>
+        )}
+        {/* Teaser is a multi-line title card (roost). It's edited here like a
+            quote-pull — its own lines/reveal/size — just rendered in the brand's
+            own colours by the template's TeaserOverlay, not as an accent text. */}
+        {content.kind === 'teaser' && (
+          <>
+            <div style={field}>
+              <label style={label}>Lines (one per row)</label>
+              <textarea
+                style={{ ...input, height: 76, resize: 'vertical', lineHeight: 1.4 }}
+                value={(content.lines ?? []).join('\n')}
+                onChange={(e) => patchContent({ lines: e.target.value.split('\n') })}
+              />
+            </div>
+            <Row>
+              <SelectField lbl="Reveal" value={content.reveal ?? 'line'} options={['line', 'all']} onChange={(s) => patchContent({ reveal: s })} />
+              <NumberField lbl="Font size" step={4} value={content.fontSize} onCommit={(n) => patchContent({ fontSize: Math.round(n) })} />
+            </Row>
+          </>
         )}
         {o.position !== undefined && (
           <SelectField lbl="Position" value={o.position} options={OVERLAY_POSITIONS} onChange={(s) => patchItem('overlays', id, { position: s })} />
