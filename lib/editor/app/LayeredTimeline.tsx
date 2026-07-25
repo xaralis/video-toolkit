@@ -8,9 +8,11 @@ import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-sc
 import {
   layeredToTimeline,
   applyTimelineChange,
+  parseActionId,
   LANES,
   type LaneId,
 } from '../src/timeline/layered-adapter';
+import { stripAccents } from './accent';
 
 // Fixed, typed lanes (D4) — the structure comes from the reel, not free-form
 // adding. Order matches the adapter's row order.
@@ -42,12 +44,22 @@ const EFFECT_COLOR: Record<string, string> = {
   'brand-disclaimer': '#4a4c54',
 };
 const colorFor = (effectId: string) => EFFECT_COLOR[effectId] ?? '#5a5c64';
-const labelFor = (action: TimelineAction) => {
-  // The action id is `${lane}:${itemId}` — show the item id (readable enough
-  // for the reviewer smoke; richer labels come later).
-  const idx = action.id.indexOf(':');
-  return idx >= 0 ? action.id.slice(idx + 1) : action.id;
-};
+
+// Block label. Overlays show the start of their text (accent markup stripped)
+// so a quote-pull/title reads as its content, not an opaque id; other lanes
+// show the item id.
+function actionLabel(action: TimelineAction, reel: LayeredReel): string {
+  const { lane, id } = parseActionId(action.id);
+  if (lane === 'overlays') {
+    const ov = reel.tracks.overlays.find((o) => o.id === id);
+    const text = (ov?.content as { text?: string } | undefined)?.text;
+    if (text && text.trim()) {
+      const plain = stripAccents(text).trim();
+      return plain.length > 24 ? `${plain.slice(0, 24).trimEnd()}…` : plain;
+    }
+  }
+  return id;
+}
 
 // xzdarcy layout (from its CSS): the time-ruler area is 32px and the edit-area
 // (rows) has a 10px margin-top — so the first row starts 42px down. The lane
@@ -178,7 +190,7 @@ export function LayeredTimeline({
               }}
               title={action.id}
             >
-              {labelFor(action)}
+              {actionLabel(action, reel)}
             </div>
           )}
           onChange={(d) => {
