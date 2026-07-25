@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
 import {
   TRANSITION_KINDS,
   DURATION_PRESETS,
@@ -8,6 +9,83 @@ import {
   subOptionsFor,
   defaultTransition,
 } from './transitions';
+import { TransitionSchema } from '@video-toolkit/lib/reel-config-base/transition-schema';
+
+// The zod union's own members, read straight off the schema — the yardstick
+// every derived list below is measured against.
+const SCHEMA_MEMBERS = TransitionSchema.options as ReadonlyArray<z.ZodObject<z.ZodRawShape>>;
+const SCHEMA_KINDS = SCHEMA_MEMBERS.map((m) => (m.shape.kind as z.ZodLiteral<string>).value);
+const shapeFor = (kind: string) =>
+  SCHEMA_MEMBERS.find((m) => (m.shape.kind as z.ZodLiteral<string>).value === kind)!.shape;
+
+// Unwraps ZodOptional/ZodDefault so a prop's underlying type can be inspected.
+function inner(t: z.ZodTypeAny): z.ZodTypeAny {
+  let cur = t;
+  while (cur instanceof z.ZodOptional || cur instanceof z.ZodDefault) cur = cur._def.innerType;
+  return cur;
+}
+
+// These are the anti-drift tests: they assert the editor catalog is DERIVED
+// from TransitionSchema rather than hand-maintained beside it. A kind added to
+// the schema alone (or a sub-option renamed on one side only) fails here.
+describe('catalog is derived from TransitionSchema', () => {
+  it('lists exactly the schema’s kinds, in the schema’s order', () => {
+    expect(TRANSITION_KINDS.map((k) => k.kind)).toEqual(SCHEMA_KINDS);
+  });
+
+  it('gives every schema kind a non-empty label', () => {
+    for (const { kind, label } of TRANSITION_KINDS) {
+      expect(typeof label, kind).toBe('string');
+      expect(label.length, kind).toBeGreaterThan(0);
+    }
+  });
+
+  it('needs frames exactly when the kind’s schema has a frames field', () => {
+    for (const kind of SCHEMA_KINDS) {
+      expect(kindNeedsFrames(kind), kind).toBe('frames' in shapeFor(kind));
+    }
+  });
+
+  it('builds a default for every kind that the schema accepts', () => {
+    for (const kind of SCHEMA_KINDS) {
+      const parsed = TransitionSchema.safeParse(defaultTransition(kind));
+      const why = parsed.success ? '' : JSON.stringify(parsed.error.issues);
+      expect(parsed.success, `${kind}: ${why}`).toBe(true);
+    }
+  });
+
+  it('offers only sub-options the kind’s schema actually declares', () => {
+    for (const kind of SCHEMA_KINDS) {
+      const shape = shapeFor(kind);
+      for (const opt of subOptionsFor(kind)) {
+        expect(Object.keys(shape), `${kind}.${opt.prop}`).toContain(opt.prop);
+        expect(opt.prop, kind).not.toBe('frames');
+      }
+    }
+  });
+
+  it('mirrors each enum sub-option’s values from the schema enum', () => {
+    for (const kind of SCHEMA_KINDS) {
+      for (const opt of subOptionsFor(kind)) {
+        if (opt.kind !== 'enum') continue;
+        const field = inner(shapeFor(kind)[opt.prop]);
+        expect(field, `${kind}.${opt.prop}`).toBeInstanceOf(z.ZodEnum);
+        expect(opt.options?.map((o) => o.value)).toEqual((field as z.ZodEnum<[string, ...string[]]>).options);
+      }
+    }
+  });
+
+  it('surfaces every required non-frames field of a kind as a sub-option', () => {
+    for (const kind of SCHEMA_KINDS) {
+      const props = subOptionsFor(kind).map((o) => o.prop);
+      for (const [prop, field] of Object.entries(shapeFor(kind))) {
+        if (prop === 'kind' || prop === 'frames') continue;
+        if (field.isOptional()) continue;
+        expect(props, `${kind}.${prop}`).toContain(prop);
+      }
+    }
+  });
+});
 
 describe('TRANSITION_KINDS', () => {
   it('lists all 14 kinds with human-readable labels', () => {

@@ -15,6 +15,7 @@ import {
 } from '../transitions';
 import { useCurrentFrame } from 'remotion';
 import { getTransitionRecord, type TransitionRecord } from './transition-record';
+import type { Transition, TransitionKind } from '../reel-config-base/transition-schema';
 
 export { getTransitionRecord, type TransitionRecord };
 
@@ -24,63 +25,50 @@ export const DIRECTION_4WAY: Record<string, 'from-left' | 'from-right' | 'from-t
   left: 'from-left', right: 'from-right', up: 'from-top', down: 'from-bottom',
 };
 
-// The full transition catalog (lib/editor/app/transitions.ts is the source of
-// truth for kinds/sub-options) mapped to a renderable @remotion/transitions
-// presentation. `cut`/absent/unrecognised → null (hard cut, no wrap).
+type Dims = { width: number; height: number };
+
+// One renderer per transition kind, keyed by TransitionKind — so the COMPILER
+// demands an entry for every kind in the catalog (lib/reel-config-base/
+// transition-schema.ts). This replaced a `switch` with a `default: return null`
+// arm, which happily swallowed a kind the catalog had but the renderer didn't:
+// the reel just played a hard cut and nothing said why.
 //
-// `wipe` maps to the toolkit's OWN custom wipe (color + 2-way direction) —
-// NOT @remotion/transitions/wipe (4-way, colourless) — because that's what
-// `subOptionsFor('wipe')` describes and what pp-05's CampaignReel.tsx already
-// renders for this kind; the design doc's catalog table names the official
-// package for every OTHER official kind, but 'wipe' as a distinct schema kind
-// is this custom one.
-export function presentationFor(
-  t: TransitionRecord | undefined,
-  dims: { width: number; height: number },
-): AnyPresentation | null {
+// Each entry receives its OWN narrowed member of the union, so `t.color`,
+// `t.from`, `t.mask` etc. are typed rather than cast out of a loose record.
+//
+// `wipe` maps to the toolkit's OWN custom wipe (color + 2-way direction) — NOT
+// @remotion/transitions/wipe (4-way, colourless) — because that's what the
+// schema's `wipe` member describes and what pp-05's CampaignReel.tsx already
+// renders for this kind; the official package backs every OTHER official kind.
+type Renderer<K extends TransitionKind> = (t: Extract<Transition, { kind: K }>, dims: Dims) => AnyPresentation | null;
+
+const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
+  // `cut` is the absence of a transition; the gate in ./transition-record
+  // filters it out long before here, but the map must still cover it.
+  'cut': () => null,
+  'fade': () => fade() as AnyPresentation,
+  'dissolve': () => fade() as AnyPresentation,
+  // Coal shows through simply because opacity<1 reveals the composition's own
+  // coal-coloured background — no tinting needed.
+  'fade-coal': () => fade() as AnyPresentation,
+  'glitch': () => glitch() as AnyPresentation,
+  'burn': (t) => burn({ mask: t.mask, glowColor: t.glowColor, edgeContrast: t.edgeContrast, glowBand: t.glowBand }) as AnyPresentation,
+  'slide': (t) => slide({ direction: DIRECTION_4WAY[t.direction] ?? 'from-left' }) as AnyPresentation,
+  'flip': (t) => flip({ direction: DIRECTION_4WAY[t.direction] ?? 'from-left' }) as AnyPresentation,
+  'whip-pan': (t) => whipPan({ direction: t.direction }) as AnyPresentation,
+  'zoom-through': (t) => zoomThrough({ direction: t.from }) as AnyPresentation,
+  'clock-wipe': (_t, dims) => clockWipe({ width: dims.width, height: dims.height }) as AnyPresentation,
+  'iris': (_t, dims) => iris({ width: dims.width, height: dims.height }) as AnyPresentation,
+  'wipe': (t) => customWipe({ color: t.color, direction: t.direction }) as AnyPresentation,
+  'gradient-wipe': (t) => gradientWipe({ direction: t.direction, softness: t.softness }) as AnyPresentation,
+};
+
+// `cut`/absent/unrecognised → null (hard cut, no wrap). "Unrecognised" can still
+// happen at runtime: a hand-edited Root.tsx literal is not schema-validated.
+export function presentationFor(t: TransitionRecord | undefined, dims: Dims): AnyPresentation | null {
   if (!t) return null;
-  const dir4 = DIRECTION_4WAY[String(t.direction)] ?? 'from-left';
-  switch (t.kind) {
-    case 'fade':
-    case 'dissolve':
-    // Coal shows through simply because opacity<1 reveals the composition's
-    // own coal-coloured background — no tinting needed.
-    case 'fade-coal':
-      return fade() as AnyPresentation;
-    case 'slide':
-      return slide({ direction: dir4 }) as AnyPresentation;
-    case 'flip':
-      return flip({ direction: dir4 }) as AnyPresentation;
-    case 'clock-wipe':
-      return clockWipe({ width: dims.width, height: dims.height }) as AnyPresentation;
-    case 'iris':
-      return iris({ width: dims.width, height: dims.height }) as AnyPresentation;
-    case 'wipe':
-      return customWipe({
-        color: t.color as 'lime' | 'teal' | 'coal' | undefined,
-        direction: t.direction as 'left' | 'right' | undefined,
-      }) as AnyPresentation;
-    case 'glitch':
-      return glitch() as AnyPresentation;
-    case 'burn':
-      return burn({
-        mask: t.mask as string | undefined,
-        glowColor: t.glowColor as string | undefined,
-        edgeContrast: t.edgeContrast as number | undefined,
-        glowBand: t.glowBand as number | undefined,
-      }) as AnyPresentation;
-    case 'whip-pan':
-      return whipPan({ direction: t.direction as 'left' | 'right' | 'up' | 'down' | undefined }) as AnyPresentation;
-    case 'zoom-through':
-      return zoomThrough({ direction: t.from as 'in' | 'out' | undefined }) as AnyPresentation;
-    case 'gradient-wipe':
-      return gradientWipe({
-        direction: t.direction as 'tl-br' | 'tr-bl' | 'bl-tr' | 'br-tl' | undefined,
-        softness: t.softness,
-      }) as AnyPresentation;
-    default:
-      return null;
-  }
+  const render = PRESENTATIONS[t.kind] as Renderer<TransitionKind> | undefined;
+  return render ? render(t, dims) : null;
 }
 
 // Invokes one presentation's component directly (not via TransitionSeries —

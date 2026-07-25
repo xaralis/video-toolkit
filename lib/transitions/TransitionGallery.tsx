@@ -22,7 +22,6 @@ import { glitch } from './presentations/glitch';
 import { rgbSplit } from './presentations/rgb-split';
 import { zoomBlur } from './presentations/zoom-blur';
 import { lightLeak } from './presentations/light-leak';
-import { clockWipe } from './presentations/clock-wipe';
 import { pixelate } from './presentations/pixelate';
 
 // Scene colors for visual variety
@@ -179,7 +178,6 @@ const TRANSITIONS = [
   { name: 'rgbSplit()', presentation: rgbSplit({ direction: 'horizontal' }), duration: 25 },
   { name: 'zoomBlur()', presentation: zoomBlur({ direction: 'in' }), duration: 25 },
   { name: 'lightLeak()', presentation: lightLeak({ temperature: 'warm' }), duration: 35 },
-  { name: 'clockWipe()', presentation: clockWipe({ direction: 'clockwise' }), duration: 25 },
   { name: 'pixelate()', presentation: pixelate({ maxBlockSize: 50 }), duration: 25 },
   { name: 'slide()', presentation: slide(), duration: 20 },
   { name: 'fade()', presentation: fade(), duration: 25 },
@@ -265,7 +263,6 @@ export const transitionMap = {
   rgbSplit: { presentation: rgbSplit({ direction: 'horizontal' }), duration: 25 },
   zoomBlur: { presentation: zoomBlur({ direction: 'in' }), duration: 25 },
   lightLeak: { presentation: lightLeak({ temperature: 'warm' }), duration: 35 },
-  clockWipe: { presentation: clockWipe({ direction: 'clockwise' }), duration: 25 },
   pixelate: { presentation: pixelate({ maxBlockSize: 50 }), duration: 25 },
   slide: { presentation: slide(), duration: 20 },
   fade: { presentation: fade(), duration: 25 },

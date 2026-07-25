@@ -12,7 +12,7 @@ const OLD = {
     { id: 'seg-002', type: 'broll', source: 'b.mp4', trimIn: 0, trimOut: 4, audioMode: 'inherit-from-clip',
       audioSource: 'a.mp4', audioStartSec: 5.75, aiGenerated: true,
       kenBurns: { fromX: 0.35, toX: 0.62 }, blendTo: 'b2.mp4', blend: { direction: 'tl-br', startPct: 10, endPct: 40 },
-      transitionOut: { kind: 'dissolve', frames: 12 } },
+      transitionOut: { kind: 'dissolve' as const, frames: 12 } },
     { id: 'seg-008', type: 'outro' },
   ],
 };
@@ -300,7 +300,7 @@ describe('deriveLayered', () => {
           { kind: 'title', text: '{lime:Sauna}.', appearAt: 0, durationMs: 3000 },
           { kind: 'quote-pull', text: 'Co vy na to{teal:?}', placement: 'upper-center', appearAt: 1000, durationMs: 3000 },
         ],
-        transitionOut: { kind: 'dissolve', frames: 12 },
+        transitionOut: { kind: 'dissolve' as const, frames: 12 },
       },
       { id: 'seg-z', type: 'outro' },
     ],

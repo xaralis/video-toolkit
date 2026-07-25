@@ -167,7 +167,6 @@ The toolkit includes a transitions library for scene-to-scene effects:
 | `rgbSplit()` | Chromatic aberration effect |
 | `zoomBlur()` | Radial motion blur |
 | `lightLeak()` | Cinematic lens flare |
-| `clockWipe()` | Radial sweep reveal |
 | `pixelate()` | Digital mosaic dissolution |
 | `checkerboard()` | Grid-based reveal (9 patterns) |
 

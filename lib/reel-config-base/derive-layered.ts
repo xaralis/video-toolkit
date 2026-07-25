@@ -13,6 +13,7 @@
 // derivation is sequential-only ("close parity", not frame-exact) — good
 // enough to seed the layered editor, not a source of playback truth.
 import { segmentDurationFrames } from './duration';
+import type { Transition } from './transition-schema';
 import type { LayeredReel, VideoItem, AudioItem, OverlayItem, Effect } from './layered-schema';
 
 // ---- Cut authoring format — structural (non-Zod) input types --------------
@@ -47,7 +48,9 @@ export interface CutSegment {
   focalY?: number;
   crop?: Record<string, unknown>;
   grade?: Record<string, unknown>;
-  transitionOut?: Record<string, unknown>;
+  // Typed with the shared catalog, not a loose record — the layered item this
+  // compiles into validates against TransitionSchema.
+  transitionOut?: Transition;
   // clip
   overlays?: CutOverlaySpec[];
   // broll

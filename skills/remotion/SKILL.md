@@ -37,7 +37,7 @@ The toolkit includes a transitions library at `lib/transitions/` for scene-to-sc
 ```tsx
 import { TransitionSeries, linearTiming } from '@remotion/transitions';
 // Import custom transitions from lib (adjust path based on your project location)
-import { glitch, lightLeak, clockWipe, checkerboard } from '@video-toolkit/lib/transitions';
+import { glitch, lightLeak, checkerboard } from '@video-toolkit/lib/transitions';
 // Or import from @remotion/transitions for official ones
 import { slide, fade } from '@remotion/transitions/slide';
 
@@ -63,7 +63,6 @@ import { slide, fade } from '@remotion/transitions/slide';
 | `rgbSplit()` | `direction`, `displacement` | Modern tech, energetic transitions |
 | `zoomBlur()` | `direction`, `blurAmount` | CTAs, high-energy moments, impact |
 | `lightLeak()` | `temperature`, `direction` | Celebrations, film aesthetic, warm moments |
-| `clockWipe()` | `startAngle`, `direction`, `segments` | Time-related content, playful reveals |
 | `pixelate()` | `maxBlockSize`, `gridSize`, `scanlines`, `glitchArtifacts`, `randomness` | Retro/gaming, digital transformations |
 | `checkerboard()` | `gridSize`, `pattern`, `stagger`, `squareAnimation` | Playful reveals, structured transitions |
 
@@ -83,9 +82,6 @@ zoomBlur({ direction: 'in', blurAmount: 20 })
 
 // Chromatic aberration
 rgbSplit({ direction: 'diagonal', displacement: 30 })
-
-// Clock sweep reveal
-clockWipe({ direction: 'clockwise', startAngle: 0 })
 
 // Retro pixelation
 pixelate({ maxBlockSize: 50, glitchArtifacts: true })

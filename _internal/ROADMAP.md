@@ -81,7 +81,7 @@ An open-source, AI-native video production workspace for Claude Code, featuring:
 
 **Transitions Library:**
 - [x] Transitions library (`lib/transitions/`)
-- [x] Custom presentations: glitch, rgbSplit, zoomBlur, lightLeak, clockWipe, pixelate, checkerboard
+- [x] Custom presentations: glitch, rgbSplit, zoomBlur, lightLeak, pixelate, checkerboard
 - [x] Re-exports official transitions: slide, fade, wipe, flip
 - [x] Transitions gallery showcase (`showcase/transitions/`)
 - [x] Documentation in Remotion skill and CLAUDE.md
@@ -223,7 +223,7 @@ An open-source, AI-native video production workspace for Claude Code, featuring:
 | Tools | 12 | voiceover, music, sfx, redub, addmusic, dewatermark, locate_watermark, notebooklm_brand, image_edit, upscale, sadtalker, qwen3_tts |
 | Commands | 13 | setup, video, brand, template, skills, contribute, record-demo, generate-voiceover, scene-review, design, versions, redub, voice-clone |
 | Components | 11 | AnimatedBackground, SlideTransition, Label, Vignette, FilmGrain, LogoWatermark, SplitScreen, NarratorPiP, Envelope, PointingHand, MazeDecoration |
-| Transitions | 7 | glitch, rgbSplit, zoomBlur, lightLeak, clockWipe, pixelate, checkerboard |
+| Transitions | 6 | glitch, rgbSplit, zoomBlur, lightLeak, pixelate, checkerboard |
 | Examples | 3 | hello-world, digital-samba-skill-demo, sprint-review-cho-oyu |
 
 ---

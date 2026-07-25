@@ -57,7 +57,6 @@ export const MyVideo = () => {
 | `rgbSplit()` | Chromatic aberration with color fringing | Modern tech, energetic transitions | ✅ Validated |
 | `zoomBlur()` | Radial motion blur with scale | CTAs, reveals, high-energy moments | ✅ Validated |
 | `lightLeak()` | Cinematic lens flare and overexposure | Emotional moments, celebrations, film aesthetic | ✅ Validated |
-| `clockWipe()` | Radial wipe like clock hands | Time-related content, playful reveals | ✅ Validated |
 | `pixelate()` | Digital mosaic dissolution | Retro/gaming, digital transformations | ✅ Validated |
 | `checkerboard()` | Grid-based reveal with multiple patterns | Playful reveals, structured transitions | ✅ Validated |
 
@@ -112,17 +111,6 @@ lightLeak({
   direction: 'right',     // 'left' | 'right' | 'top' | 'bottom' | 'center'. Default: 'right'
   intensity: 0.8,         // Overexposure strength (0-1). Default: 0.8
   flareArtifacts: true,   // Lens flare spots. Default: true
-})
-```
-
-### clockWipe(options?)
-
-```tsx
-clockWipe({
-  startAngle: 0,              // Starting angle in degrees. Default: 0 (12 o'clock)
-  direction: 'clockwise',     // 'clockwise' | 'counterclockwise'. Default: 'clockwise'
-  segments: 1,                // Number of wipe arms. Default: 1
-  softEdge: true,             // Soft glow on edge. Default: true
 })
 ```
 
@@ -194,7 +182,7 @@ springTiming({
 | **Celebration/Launch** | `lightLeak`, `zoomBlur` |
 | **Retro/Gaming** | `pixelate`, `glitch` |
 | **Cinematic** | `lightLeak`, `fade`, `wipe` |
-| **Playful/Creative** | `clockWipe`, `checkerboard`, `flip` |
+| **Playful/Creative** | `checkerboard`, `flip` |
 | **High Energy** | `zoomBlur`, `rgbSplit`, `glitch` |
 | **Structured/Grid** | `checkerboard`, `pixelate` |
 

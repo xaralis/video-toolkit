@@ -4,6 +4,7 @@
 // and survive only as meta.guidesMs ruler markers — see the layered spec.
 // Sibling to deriveLayered (different input shape, same output).
 import type { LayeredReel, VideoItem, OverlayItem, BrandLayerItem, Effect } from './layered-schema';
+import type { Transition, TransitionKind } from './transition-schema';
 
 export interface MontageSegment {
   src: string;
@@ -25,7 +26,7 @@ export interface MontageConfig {
   segments: MontageSegment[];
   teaser?: { lines: string[]; appearAtSec: number; reveal?: 'line' | 'all'; fontSize?: number } | null;
   outro: {
-    style: string; variant: string; transition: string; logoDelaySec?: number; beatStart: number;
+    style: string; variant: string; transition: TransitionKind; logoDelaySec?: number; beatStart: number;
   };
   watermark: { asset: string; corner: string; variant?: string };
 }
@@ -73,11 +74,12 @@ export function deriveMontageLayered(cfg: MontageConfig, opts: MontageOpts = {})
     // precedes it to carry the boundary); for every later segment the fade
     // must instead be written onto the segment BEFORE it — otherwise the
     // layout engine silently never sees it and the boundary renders as a cut.
-    const transitionIn = hasFadeIn && i === 0 ? { transitionIn: { kind: 'fade', frames: 6 } } : {};
+    const transitionIn: { transitionIn?: Transition } =
+      hasFadeIn && i === 0 ? { transitionIn: { kind: 'fade', frames: 6 } } : {};
     if (hasFadeIn && i > 0 && video.length) {
       video[video.length - 1] = {
         ...video[video.length - 1],
-        transitionOut: { kind: 'fade', frames: 6 },
+        transitionOut: { kind: 'fade', frames: 6 } satisfies Transition,
       } as VideoItem;
     }
     if (s.type === 'photo') {
@@ -134,7 +136,7 @@ export function deriveMontageLayered(cfg: MontageConfig, opts: MontageOpts = {})
   if (video.length && transF > 0) {
     video[video.length - 1] = {
       ...video[video.length - 1],
-      transitionOut: { kind: cfg.outro.transition, frames: transF },
+      transitionOut: { kind: cfg.outro.transition, frames: transF } as Transition,
     } as VideoItem;
   }
 

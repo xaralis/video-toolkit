@@ -3,7 +3,7 @@ import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-sc
 import { withTotalDuration } from '@video-toolkit/lib/reel-config-base/total-duration';
 import { AccentEditor } from './AccentEditor';
 import { Collapsible } from './Collapsible';
-import { TRANSITION_KINDS, defaultTransition, kindNeedsFrames, subOptionsFor, type Transition } from './transitions';
+import { TRANSITION_KINDS, defaultTransition, kindNeedsFrames, subOptionsFor, type DraftTransition } from './transitions';
 import { parseActionId, type LaneId } from '../src/timeline/layered-adapter';
 import type { AccentSlot } from '../../theming/palette';
 import { PLACEMENTS } from '../../theming/placement';
@@ -142,7 +142,11 @@ const TRANSITION_LABEL: Record<string, string> = Object.fromEntries(TRANSITION_K
 // kindNeedsFrames. Used both by the video-lane "Transition out" section and
 // the transitions-lane route (which targets transitionIn or transitionOut
 // depending on `edge`), so the two never diverge again.
-function TransitionFields({ t, onChange }: { t: Transition; onChange: (next: Transition) => void }) {
+// `t` is a DraftTransition, not the strict `Transition` union: the picker
+// writes one field at a time, so mid-edit the object is legitimately not yet
+// a valid member (a kind just switched to `wipe` has no `color` for an
+// instant). TransitionSchema is what judges the settled result.
+function TransitionFields({ t, onChange }: { t: DraftTransition; onChange: (next: DraftTransition) => void }) {
   const kind = t.kind ?? 'cut';
   return (
     <>
@@ -321,7 +325,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     const v = reel.tracks.video.find((x) => x.id === id);
     if (!v) return null;
     const edgeField = edge === 'in' ? 'transitionIn' : 'transitionOut';
-    const t = (v[edgeField] ?? { kind: 'cut' }) as Transition;
+    const t = (v[edgeField] ?? { kind: 'cut' }) as DraftTransition;
     const kind = t.kind ?? 'cut';
     return (
       <div style={panel}>
@@ -444,7 +448,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
         )}
         {(() => {
           const raw = v.transitionOut as { kind?: string } | undefined;
-          const t: Transition = raw && TRANSITION_KINDS.some((k) => k.kind === raw.kind) ? (raw as Transition) : { kind: 'cut' };
+          const t: DraftTransition = raw && TRANSITION_KINDS.some((k) => k.kind === raw.kind) ? (raw as DraftTransition) : { kind: 'cut' };
           return (
             <>
               <div style={section}>Transition out</div>

@@ -149,7 +149,7 @@ import { glitch, lightLeak, checkerboard } from '@video-toolkit/lib/transitions'
 </TransitionSeries>
 ```
 
-Available transitions: `glitch`, `rgbSplit`, `zoomBlur`, `lightLeak`, `clockWipe`, `pixelate`, `checkerboard`, plus official Remotion transitions (`slide`, `fade`, `wipe`, `flip`).
+Available transitions: `glitch`, `rgbSplit`, `zoomBlur`, `lightLeak`, `pixelate`, `checkerboard`, plus official Remotion transitions (`slide`, `fade`, `wipe`, `flip`, `clockWipe`, `iris`).
 
 See [lib/transitions/README.md](../lib/transitions/README.md) for full options.
 

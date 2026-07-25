@@ -907,17 +907,6 @@
       "bestFor": "Celebrations, film aesthetic, warm moments",
       "status": "stable"
     },
-    "clockWipe": {
-      "path": "lib/transitions/presentations/clock-wipe.tsx",
-      "description": "Radial sweep reveal like clock hands",
-      "options": [
-        "startAngle",
-        "direction",
-        "segments"
-      ],
-      "bestFor": "Time-related content, playful reveals",
-      "status": "stable"
-    },
     "pixelate": {
       "path": "lib/transitions/presentations/pixelate.tsx",
       "description": "Digital mosaic dissolution with glitch artifacts",
