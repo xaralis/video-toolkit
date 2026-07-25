@@ -188,15 +188,18 @@ opened here):
 
 - `derive-layered.test.ts`: adjacent clips with `transitionOut: { frames: N }`
   overlap by `N` (next `startMs = prev.endMs − round(N/fps*1000)`); `totalMs`
-  equals Σdurations − Σoverlaps; a `cut`/no-transition boundary does NOT overlap;
-  the outro is never overlapped into.
+  equals Σdurations − Σoverlaps; a `cut`/no-transition boundary does NOT overlap.
+  A clip whose `transitionOut` precedes the outro DOES overlap into the outro
+  (a dissolve-into-outro is valid — this is exactly the pilot's case); only the
+  last item (the outro, no following clip) has nothing to overlap into.
 - `music-envelope` tests stay green (spans shift, logic unchanged).
 - Composition: pure `renderTransitionPresentation` mapping is unit-testable
   (kind → presentation); the visual is covered by the parity render.
 - `layered-adapter.test.ts`: the derived `transitions` lane yields one action
   per overlapping adjacent pair spanning `[next.startMs, prev.endMs]` with a
-  `transition:<clipId>` id; a `cut`/no-overlap boundary yields none; the outro
-  boundary yields none.
+  `transition:<clipId>` id; a `cut`/no-overlap boundary yields none; the last
+  item (outro) yields no block after it (nothing follows), but a dissolve INTO
+  the outro yields one (the pilot's case).
 - Inspector: selecting a transition action routes to the transition editor;
   changing kind writes the outgoing clip's `transitionOut.kind` (no reposition).
 - Full core suite + `tsc` green.
