@@ -110,3 +110,15 @@ specifiers and resolving them through plain Node resolution — before the
 alias the config is about to *return* exists — so the alias can't be used to
 load the file that defines it. Same rule as `remotion.config.ts` and
 `vitest.config.ts`; see `lib/project/README.md`.
+
+**`createEditorPlugin`'s return type is `satisfies Plugin`, not `: Plugin`.**
+Vite/Rollup type every plugin hook (including `configureServer`) as
+`ObjectHook<T>` — a union of a plain function and `{ handler, order }` —
+and calling a union through a non-callable arm is a TS error at any call
+site typed through that interface, including this module's own test
+(`plug().configureServer!(server)`). `satisfies Plugin` checks structural
+compatibility with Vite's `Plugin` shape without widening the returned
+literal's type to it, so callers see the concrete object type — whose
+`configureServer` is the exact function defined here, callable at the test
+call site — while remaining fully substitutable wherever a real `Plugin` is
+expected (Vite's `plugins` array, `createEditorViteConfig`'s spread above).

@@ -11,15 +11,25 @@ function fakeServer() {
   return { routes, server: { middlewares: { use: (r: string, h: Function) => routes.set(r, h) } } };
 }
 
-/** Minimal ServerResponse stand-in capturing what a handler wrote. */
+/**
+ * Minimal ServerResponse stand-in capturing what a handler wrote. `done` resolves the
+ * instant `end()` is called, so async route assertions can `await res.done` instead of
+ * a fixed sleep — a fixed sleep races the handler's own async work (it reads the
+ * request body, then awaits a write) and is flaky under load, not just standalone.
+ */
 function fakeRes() {
+  let resolveDone: () => void;
+  const done = new Promise<void>((resolve) => {
+    resolveDone = resolve;
+  });
   const res: any = {
     statusCode: 0,
     headers: {} as Record<string, string>,
     body: '',
     setHeader(k: string, v: string) { this.headers[k] = v; },
-    end(b?: string) { this.body = b ?? ''; this.ended = true; },
+    end(b?: string) { this.body = b ?? ''; this.ended = true; resolveDone(); },
     ended: false,
+    done,
   };
   return res;
 }
@@ -59,6 +69,7 @@ describe('createEditorPlugin', () => {
     plug().configureServer!(server as any);
     const res = fakeRes();
     routes.get('/props')!({ method: 'GET' }, res);
+    await res.done;
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body)).toEqual({ reel: { version: 'layered-1' } });
   });
@@ -123,8 +134,10 @@ describe('createEditorPlugin', () => {
     };
     routes.get('/save')!(req, res);
     // The save handler is async internally (reads the request body, then awaits the
-    // write); wait a tick for it to settle before asserting on the filesystem.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // write); await the response's own completion signal rather than a fixed sleep —
+    // a fixed sleep races the handler and is flaky under load (observed ~1/3 runs
+    // under the full suite), not just standalone.
+    await res.done;
     expect(res.statusCode).toBe(200);
     expect(fs.existsSync('/etc/somewhere-else/Root.tsx')).toBe(false);
     const written = fs.readFileSync(path.join(root, 'src/Root.tsx'), 'utf-8');

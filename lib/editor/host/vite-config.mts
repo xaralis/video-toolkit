@@ -1,6 +1,7 @@
+import fs from 'fs';
 import path from 'path';
-import { createRequire } from 'module';
-import { toolkitAliases, resolveToolkitPaths } from '../../project/paths';
+import { toolkitAliases, resolveToolkitPaths, assertToolkitLib } from '../../project/paths';
+import { defaultResolveZod } from '../../project/remotion-config';
 import { createEditorPlugin } from './editor-plugin.mts';
 
 /**
@@ -27,30 +28,40 @@ export interface EditorViteConfigOptions {
   extraArgs?: string[];
   /** Dev-server port. Defaults to 3100. */
   port?: number;
+  /** Seam for testing — same purpose as `applyToolkitWebpack`'s `resolveZod` option
+   *  (`lib/project/remotion-config.ts`). Defaults to `defaultResolveZod`. */
+  resolveZod?: (templateRoot: string) => string;
+  /** Seam for testing — same purpose as `applyToolkitWebpack`'s `existsSync` option.
+   *  Defaults to `fs.existsSync`. */
+  existsSync?: (p: string) => boolean;
 }
 
 export function createEditorViteConfig(opts: EditorViteConfigOptions): Record<string, unknown> {
   const { editorDir, compositionId, plugins = [], brandLib = false, extraArgs = [], port = 3100 } = opts;
+  const exists = opts.existsSync ?? fs.existsSync;
 
   // .editor/ lives at templates/<name>/.editor (or projects/<name>/.editor) — one hop
   // up is the project root, matching remotion.config.ts's own layout assumptions.
   const templateRoot = path.resolve(editorDir, '..');
-  const { projectNodeModules } = resolveToolkitPaths(templateRoot);
+  const { toolkitLib, projectNodeModules } = resolveToolkitPaths(templateRoot);
+
+  // Mirrors applyToolkitWebpack's guard (lib/project/remotion-config.ts): without it, a
+  // layout mismatch resolves toolkitLib to a nonexistent directory silently, and the
+  // failure only surfaces later as a confusing "module not found" at the first import
+  // that touches it, far from the actual cause.
+  assertToolkitLib(toolkitLib, templateRoot, exists);
 
   // Resolve FROM THE PROJECT, not from core: the alias exists to pin one zod instance
   // shared with the project's own src/ (mirrors lib/project/remotion-config.ts's
   // `defaultResolveZod` — same rule, same reason: resolving from core would create a
   // second zod instance and bring back the "discriminator value for key `type` could
-  // not be extracted" crash it prevents). Tolerate a template root that doesn't exist
-  // (a caller under test, with a synthetic `editorDir`) by omitting the alias rather
-  // than throwing — a real brand's template root always exists and has zod installed,
-  // so this only ever engages in that synthetic case.
-  let zodMain: string | undefined;
-  try {
-    zodMain = createRequire(path.join(templateRoot, 'index.js')).resolve('zod');
-  } catch {
-    zodMain = undefined;
-  }
+  // not be extracted" crash it prevents). Set unconditionally: a real brand's template
+  // root always has zod installed, so a resolution failure here is an actual layout
+  // problem (missing/hoisted zod) that should throw loudly, not be swallowed into a
+  // silently-omitted alias — an omitted alias lets Vite fall back to resolving zod from
+  // the toolkit submodule instead, which is exactly the dual-instance crash this alias
+  // exists to prevent, just deferred to a much more confusing point at runtime.
+  const zodMain = (opts.resolveZod ?? defaultResolveZod)(templateRoot);
 
   // The shared at-cut engine (toolkit/lib/render) runtime-imports
   // @remotion/transitions/* from OUTSIDE this project's tree, so Vite's normal
@@ -89,7 +100,7 @@ export function createEditorViteConfig(opts: EditorViteConfigOptions): Record<st
       alias: {
         '@': path.resolve(templateRoot, 'src'),
         ...toolkitAliases(templateRoot, { brandLib }),
-        ...(zodMain ? { zod$: zodMain } : {}),
+        zod$: zodMain,
         // The timeline component lives in the toolkit submodule, whose node_modules
         // walk can't reach this project's siblings — alias its bare deps to the
         // project's installed copies (dir aliases so /dist/*.css subpaths resolve).
