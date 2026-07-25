@@ -7,20 +7,22 @@ export interface MusicEnvelope {
   points: Array<{ frame: number; gain: number }>;
 }
 
-// Faithful extraction of LayeredCampaignReel.tsx's musicVolumeAt (verified against
-// it): base gain × 10^(item.musicBoostDb/20) of the primary video item at the
-// frame, with the last-1s outro linear fade and silence after the outro end.
 export function computeMusicEnvelope(reel: LayeredReel, opts: { fps: number }): MusicEnvelope {
   const { fps } = opts;
   const msToFrames = (ms: number) => Math.round((ms / 1000) * fps);
   const outroItem = reel.tracks.video.find((v) => v.kind === 'outro');
   const outroEndFrame = outroItem ? msToFrames(outroItem.endMs) : null;
-  const OUTRO_FADE_OUT_FRAMES = fps; // last 1 second
-  const outroFadeOutStart = outroEndFrame !== null ? outroEndFrame - OUTRO_FADE_OUT_FRAMES : null;
   const baseVolume = Math.pow(10, (reel.tracks.music.baseVolumeDb ?? -8) / 20);
-  // Explicit music out-point (trimmed bed): silence from there on. Absent =
-  // the bed follows the content end and only the outro rule silences it.
   const musicEndFrame = reel.tracks.music.endMs !== undefined ? msToFrames(reel.tracks.music.endMs) : null;
+
+  // Fades are data (spec 2026-07-25): fadeOut defaults to the legacy 1s and
+  // anchors to whichever end comes first — the explicit music trim (endMs) or
+  // the outro end. fadeIn defaults to 0 (off), ramping from frame 0.
+  const fadeOutFrames = msToFrames(reel.tracks.music.fadeOutMs ?? 1000);
+  const fadeInFrames = msToFrames(reel.tracks.music.fadeInMs ?? 0);
+  const ends = [musicEndFrame, outroEndFrame].filter((x): x is number => x !== null);
+  const fadeEndFrame = ends.length > 0 ? Math.min(...ends) : null;
+  const fadeStartFrame = fadeEndFrame !== null && fadeOutFrames > 0 ? fadeEndFrame - fadeOutFrames : null;
 
   const findPrimaryVideoItemAt = (f: number): VideoItem | null => {
     let primary: VideoItem | null = null;
@@ -40,19 +42,20 @@ export function computeMusicEnvelope(reel: LayeredReel, opts: { fps: number }): 
     const item = findPrimaryVideoItemAt(f);
     const boostDb = item?.musicBoostDb ?? 0;
     let factor = Math.pow(10, boostDb / 20);
-    if (outroFadeOutStart !== null && outroEndFrame !== null && f >= outroFadeOutStart && f < outroEndFrame) {
-      const t = (f - outroFadeOutStart) / OUTRO_FADE_OUT_FRAMES;
-      factor *= 1 - t;
+    if (fadeStartFrame !== null && fadeEndFrame !== null && f >= fadeStartFrame && f < fadeEndFrame) {
+      factor *= 1 - (f - fadeStartFrame) / fadeOutFrames;
+    }
+    if (fadeInFrames > 0 && f < fadeInFrames) {
+      factor *= f / fadeInFrames;
     }
     return baseVolume * factor;
   };
 
-  // Vertices for a step/ramp polyline: each video item start (level steps), the
-  // outro fade start + its last frame + the outro end (ramp to 0), and 0/total.
   const totalFrames = msToFrames(reel.meta.totalDurationMs);
   const verts = new Set<number>([0, totalFrames]);
   for (const v of reel.tracks.video) verts.add(msToFrames(v.startMs));
-  if (outroFadeOutStart !== null) verts.add(outroFadeOutStart);
+  if (fadeInFrames > 0) verts.add(fadeInFrames);
+  if (fadeStartFrame !== null) verts.add(fadeStartFrame);
   if (outroEndFrame !== null) { verts.add(outroEndFrame); verts.add(Math.max(0, outroEndFrame - 1)); }
   if (musicEndFrame !== null) { verts.add(musicEndFrame); verts.add(Math.max(0, musicEndFrame - 1)); }
   const points = [...verts]

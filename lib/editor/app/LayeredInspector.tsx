@@ -517,6 +517,10 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
         <Row>
           <NumberField lbl="Volume (dB)" value={a.volumeDb} onCommit={(n) => patchItem('audio', id, { volumeDb: n })} />
         </Row>
+        <Row>
+          <NumberField lbl="Fade in (s)" step={0.05} value={(a.fadeInMs ?? 0) / 1000} onCommit={(n) => patchItem('audio', id, { fadeInMs: n > 0 ? Math.round(n * 1000) : undefined })} />
+          <NumberField lbl="Fade out (s)" step={0.05} value={(a.fadeOutMs ?? 0) / 1000} onCommit={(n) => patchItem('audio', id, { fadeOutMs: n > 0 ? Math.round(n * 1000) : undefined })} />
+        </Row>
         {/* Linked audio: bound beds follow their clip through every edit; unlink
             to edit this bed independently. Re-link binds it to the clip under it. */}
         {a.followsVideoId ? (
@@ -575,9 +579,13 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           value={(m.endMs ?? reel.meta.totalDurationMs) / 1000}
           onCommit={(n) => patchMusic({ endMs: n > 0 ? Math.round(n * 1000) : undefined })}
         />
+        <Row>
+          <NumberField lbl="Fade in (s)" step={0.05} value={(m.fadeInMs ?? 0) / 1000} onCommit={(n) => patchMusic({ fadeInMs: n > 0 ? Math.round(n * 1000) : undefined })} />
+          <NumberField lbl="Fade out (s)" step={0.05} value={(m.fadeOutMs ?? 1000) / 1000} onCommit={(n) => patchMusic({ fadeOutMs: Math.round(n * 1000) })} />
+        </Row>
         <div style={{ fontSize: 11, color: '#5f626a', marginTop: 8 }}>
-          The effective envelope (base + each clip’s music boost) is drawn on the Music lane. Set End to 0 to follow the
-          content end again. The reel is always as long as its furthest-reaching track.
+          The effective envelope (base + each clip’s music boost + fades) is drawn on the Music lane. Set End to 0 to follow the
+          content end again; Fade out 0 = hard cut. The reel is always as long as its furthest-reaching track.
         </div>
       </div>
     );
