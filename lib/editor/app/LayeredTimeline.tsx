@@ -224,6 +224,7 @@ export interface LayeredTimelineProps {
   /** The last-saved reel — supplies each clip's AUTHORED length so a trim can be
    * restored to it (even when the file is a touch shorter, i.e. it holds a frame). */
   savedReel?: LayeredReel | null;
+  guidesMs?: number[]; // vertical ruler guide markers (e.g. roost beat onsets)
 }
 
 function LayeredTimelineImpl({
@@ -238,6 +239,7 @@ function LayeredTimelineImpl({
   snapping = true,
   onZoom,
   savedReel,
+  guidesMs,
 }: LayeredTimelineProps) {
   const stateRef = useRef<TimelineState>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -425,7 +427,22 @@ function LayeredTimelineImpl({
         </div>
       </div>
 
-      <div style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden' }}>
+      <div style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', position: 'relative' }}>
+        {guidesMs && guidesMs.length > 0 && (
+          <div aria-hidden style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5 }}>
+            {guidesMs.map((ms, i) => (
+              <div
+                key={i}
+                data-guide-tick
+                style={{
+                  position: 'absolute', top: 0, bottom: 0,
+                  left: 12 + (ms / 1000) * scaleWidth, // 12 = <Timeline startLeft>
+                  width: 1, background: 'rgba(182,255,90,0.35)',
+                }}
+              />
+            ))}
+          </div>
+        )}
         <Timeline
           ref={stateRef}
           editorData={data}

@@ -22,3 +22,14 @@ if (typeof window !== 'undefined' && typeof (window as any).PointerEvent === 'un
   }
   (window as any).PointerEvent = PointerEventPolyfill;
 }
+
+// jsdom does not implement ResizeObserver, which @xzdarcy/react-timeline-editor
+// uses to measure container width. Polyfill a minimal no-op version.
+if (typeof window !== 'undefined' && typeof (window as any).ResizeObserver === 'undefined') {
+  class ResizeObserverPolyfill {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  (window as any).ResizeObserver = ResizeObserverPolyfill;
+}
