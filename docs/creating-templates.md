@@ -44,34 +44,269 @@ export const MyBrandReel: React.FC<{ reel: LayeredReel }> = ({ reel }) => (
 ```
 templates/my-template/
 ├── package.json
-├── tsconfig.json          # paths: @video-toolkit/lib/* → ../../toolkit/lib/*
-├── remotion.config.ts     # the alias AND resolve.modules (see below)
+├── tsconfig.json          # extends core's base; declares its own paths
+├── remotion.config.ts     # applyToolkitWebpack(Config, {...})
+├── vitest.config.ts       # createToolkitVitestConfig({...})
 ├── src/
 │   ├── index.ts           # registerRoot
-│   ├── Root.tsx           # <Composition> + the reel literal in defaultProps
-│   ├── MyBrandReel.tsx    # the wrapper that binds the theme
+│   ├── Root.tsx           # layeredCompositionProps + the reel literal in defaultProps
+│   ├── MyBrandReel.tsx    # the wrapper that binds the theme (and loads the fonts)
 │   └── config/
 │       ├── composition-theme.tsx   # the CompositionTheme
-│       └── …                       # renderers, fonts, brand constants
-└── public/
+│       └── …                       # renderers, brand constants
+├── .editor/               # the reel editor — three small files, see below
+│   ├── index.html
+│   ├── main.tsx           # mountEditorHost({...})
+│   └── vite.config.mts    # createEditorViteConfig({...})
+└── public/                # fonts/, brand/, recordings/, broll/
 ```
 
-### The one setup line people forget
+A template sits **two hops below the brand repo root**, alongside the `toolkit/`
+submodule — `<repo>/templates/<name>/`, the same depth as `<repo>/projects/<name>/`.
+Every path below assumes that layout, and core's helpers compute their own paths
+from it.
 
-`lib/render` does a **runtime** import of `@remotion/transitions/*`, and `lib/`
-sits outside the project's own tree, so webpack's default upward module walk
-never reaches the project's `node_modules`. Every consuming project's
-`remotion.config.ts` must therefore add:
+## What a template owns, in full
+
+Everything mechanical is core's. What follows is the complete build/editor surface
+a template still writes — six short files. They match
+[lib/project/README.md](../lib/project/README.md) and
+[lib/editor/host/README.md](../lib/editor/host/README.md) verbatim; if any of the
+three ever disagree, those two are the source of truth.
+
+### Two rules that break a template if you get them wrong
+
+**Config files import core by RELATIVE path, never through `@video-toolkit/lib`.**
+Vite and esbuild load a config file by externalizing bare specifiers and resolving
+them through plain Node resolution — *before* the alias the config is about to
+return exists — and they do not read tsconfig `paths`. From
+`templates/<name>/` that means `../../toolkit/lib/…`; from
+`templates/<name>/.editor/` it is `../../../toolkit/lib/…`. Bare
+`@video-toolkit/lib/…` stays correct inside `src/` and inside `.editor/main.tsx`,
+which a configured bundler handles.
+
+**A template's own `tsconfig.json` must still declare `@video-toolkit/lib/*`.**
+TypeScript's `compilerOptions.paths` does not merge across `extends` — the
+extending config's `paths` replaces the base's wholesale — which is why core's
+`tsconfig.base.json` deliberately declares no `paths` at all.
+
+### `remotion.config.ts`
 
 ```ts
-resolve: {
-  modules: [path.resolve(process.cwd(), 'node_modules'), 'node_modules'],
-  alias: { '@video-toolkit/lib': toolkitLib },
+import { Config } from '@remotion/cli/config';
+import { enableTailwind } from '@remotion/tailwind-v4'; // omit if the brand has no Tailwind
+import { applyToolkitWebpack } from '../../toolkit/lib/project/remotion-config';
+
+applyToolkitWebpack(Config, {
+  projectRoot: process.cwd(),
+  brandLib: true, // omit/false if this brand has no brand-lib tier
+  tailwind: enableTailwind, // omit if the brand has no Tailwind
+});
+Config.setVideoImageFormat('jpeg');
+Config.setOverwriteOutput(true);
+```
+
+`applyToolkitWebpack` carries the workaround that used to be copy-pasted into every
+template and drift: `lib/render` does a **runtime** import of
+`@remotion/transitions/*`, and `lib/` sits outside the project's own tree, so
+webpack's default upward module walk never reaches the project's `node_modules`.
+It sets `resolve.modules` for that, the `@video-toolkit/lib` (and optional
+`@brand-lib`) alias, the `zod$` single-instance pin resolved **from the project
+root**, and a `toolkit/lib not found at …` guard so a layout mistake fails
+diagnosably instead of as a confusing "module not found".
+
+### `vitest.config.ts`
+
+```ts
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { defineConfig } from 'vitest/config';
+import { createToolkitVitestConfig } from '../../toolkit/lib/project/vitest-config';
+
+export default defineConfig(
+  createToolkitVitestConfig({
+    projectRoot: path.dirname(fileURLToPath(import.meta.url)),
+    brandLib: true, // omit/false if this brand has no brand-lib tier
+    // extraTestInclude: ['tests/**/*.test.ts'], // only if the project also has a top-level tests/ dir
+  }),
+);
+```
+
+`extraTestInclude` **appends** to the default `['src/**/*.test.ts',
+'src/**/*.test.tsx']`, so a project with its own `tests/` dir can never silently
+drop the `src/` globs.
+
+### `tsconfig.json`
+
+```json
+{
+  "extends": "../../toolkit/lib/project/tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "paths": {
+      "@/*": ["src/*"],
+      "@video-toolkit/lib/*": ["../../toolkit/lib/*"],
+      "@brand-lib/*": ["../../brand-lib/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "out"]
 }
 ```
 
-Without it the bundle fails with `Can't resolve '@remotion/transitions/…'`. See
-[lib/render/README.md](../lib/render/README.md).
+The base supplies `target`, `module`, `moduleResolution`, `jsx`, `strict`,
+`esModuleInterop`, `skipLibCheck`, `forceConsistentCasingInFileNames` and
+`resolveJsonModule`.
+
+### `src/Root.tsx` — an id, a literal, nothing else
+
+```tsx
+import { Composition } from 'remotion';
+import { layeredCompositionProps } from '@video-toolkit/lib/render/layered-composition-props';
+import { MyBrandReel } from './MyBrandReel';
+import { fps, width, height } from './config/reel-config';
+
+export const RemotionRoot: React.FC = () => (
+  <Composition
+    {...layeredCompositionProps({
+      id: 'MyBrandReel',
+      component: MyBrandReel,
+      fps,
+      width,
+      height,
+    })}
+    defaultProps={{ reel: { /* … the authored literal … */ } }}
+  />
+);
+```
+
+`layeredCompositionProps` owns the `calculateMetadata` that derives the duration
+from `meta.totalDurationMs`, the 60-frame floor, and the placeholder
+`durationInFrames` — one definition, so a composition and its render cannot drift.
+
+**Spell the call literally, with an inline options object.** The editor's surgical
+Save finds the composition id by matching the spread's callee *source text* against
+an allowlist and reading a string-literal `id:` off the first argument. An import
+alias (`as lcp`), a namespace call (`r.layeredCompositionProps`) and hoisted options
+(`layeredCompositionProps(OPTS)`) all fail — loudly, with
+`no <Composition> with id="…"`, but they fail. `examples/layered-minimal/src/Root.tsx`
+is the reference, and a test runs the real reader against it.
+
+### Fonts
+
+Do not write a `src/lib/load-fonts.ts`. Call core's, once at module scope of the
+reel component (`MyBrandReel.tsx`), so Studio, a headless render and the editor's
+`<Player>` all reach the fonts by importing that one module:
+
+```ts
+import { loadBrandFonts } from '@video-toolkit/lib/render/load-fonts';
+
+loadBrandFonts([
+  { family: 'Geist', file: 'fonts/Geist-Bold.ttf', weight: '700' },
+  { family: 'JetBrains Mono', file: 'fonts/JetBrainsMono-Regular.ttf', weight: '400' },
+]);
+```
+
+`file` is a path inside `public/` (it goes through `staticFile`). `style: 'normal'`
+and `display: 'block'` are the defaults. A bold face must be declared explicitly
+rather than synthesized — synthesized bold reads fuzzy at caption sizes. The
+generous `delayRender` timeout (120s) and 2 retries are the default because under
+multi-tab render concurrency Remotion re-reads the TTFs per browser context and can
+exceed the 28s default.
+
+### `.editor/main.tsx`
+
+```tsx
+import { mountEditorHost } from '@video-toolkit/lib/editor/host/mount';
+import { MyBrandReel } from '../src/MyBrandReel';
+import { brandTheme } from '../src/config/brand-theme';
+import { editorMeta } from '../src/config/editor-meta';
+import { fps, width, height } from '../src/config/reel-config';
+import '../src/styles/global.css';
+
+mountEditorHost({
+  component: MyBrandReel,
+  projectName: 'my-template',
+  fps,
+  width,
+  height,
+  accentSlots: brandTheme.accentSlots,
+  meta: editorMeta,
+});
+```
+
+That is the whole file. Only `component`, `projectName`, `fps`, `width` and
+`height` are required — a template with no palette, no editor vocabulary and no
+stylesheet drops the last three lines and the CSS import.
+
+**`meta` and `accentSlots` must be module-level constants, never inline literals.**
+`LayeredTimeline` is memoized with a shallow compare and re-renders on every
+playhead frame; a fresh object each render defeats the memo and stutters playback.
+**`accentSlots` has no default** — omitting it means no palette in the accent
+editor, never a colour core invented.
+
+Core ships the rest with no configuration: beats snapping (the toggle disables
+itself when a reel has no `meta.guidesMs`), undo/redo, Escape/Space/⌫, Save via
+⌘S or the header button, the `beforeunload` guard, and Focus/Zoom crop gestures.
+
+### `.editor/vite.config.mts`
+
+```ts
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+// Relative, not aliased: THIS file is what creates the @video-toolkit/lib alias,
+// so it cannot import through it.
+import { createEditorViteConfig } from '../../../toolkit/lib/editor/host/vite-config.mts';
+
+export default defineConfig(
+  createEditorViteConfig({
+    editorDir: path.dirname(fileURLToPath(import.meta.url)),
+    compositionId: 'MyBrandReel',
+    plugins: [react(), tailwindcss()],
+    brandLib: true,
+  }),
+);
+```
+
+A brand with no Tailwind and no `brand-lib/` drops `tailwindcss()` and `brandLib`;
+one that needs extra Remotion render CLI flags (e.g. a software GL renderer) adds
+`extraArgs: ['--gl=angle']`. The `.mts` suffix inside the specifier is required.
+
+`createEditorViteConfig` returns a plain object rather than a `defineConfig` call —
+core has no `vite` dependency to import that identity function from, so the brand's
+own `defineConfig` wraps it. It appends `createEditorPlugin({ templateRoot,
+compositionId, extraArgs })`, the dev-server plugin backing `/props`, `/save`,
+`/render`, `/project-state` and `/sources`. Save's target file path is closed over
+`templateRoot` at config time and is never read from the request.
+
+**There is no `.editor/editor-plugin.mts`.** It lives in core.
+
+### `.editor/index.html`
+
+The one editor file that cannot move to core (Vite needs a real entry document).
+It must keep `<div id="root">` — `mountEditorHost` throws otherwise.
+
+```html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>my-template — editor</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>
+```
 
 ## Writing the theme
 
@@ -157,12 +392,14 @@ And always `<OffthreadVideo>`, never a raw `<video>` element.
 1. In a brand repo, copy an existing template
    (`cp -r templates/campaign-reels templates/my-template`), or start from
    `examples/layered-minimal` when you want the smallest possible base.
-2. Rename it in `package.json`, then repoint **both** paths into `lib/` — they are
-   relative to where the copy came from, so a copy that moves resolves to nothing:
-   - `tsconfig.json` → `"@video-toolkit/lib/*": ["../../toolkit/lib/*"]`
-   - `remotion.config.ts` → `path.resolve(process.cwd(), '../../toolkit/lib')`
-     (webpack does not read tsconfig paths, so the two must be kept in sync — this
-     is the one setup line people forget).
+2. Rename it in `package.json`. As long as the copy stays at `templates/<name>/` or
+   `projects/<name>/`, the relative hops keep working: `applyToolkitWebpack`,
+   `createToolkitVitestConfig` and `createEditorViteConfig` all compute
+   `toolkit/lib` themselves from the project root, so there is no second copy of
+   the path to keep in sync. Only the literal specifiers still have to match the
+   depth — `../../toolkit/…` from the template root, `../../../toolkit/…` from
+   `.editor/`, plus the `@video-toolkit/lib/*` entry in `tsconfig.json` `paths`.
+   Move the copy to a different depth and all of those resolve to nothing.
 3. Write `src/config/composition-theme.tsx`: accent slots, background, then only
    the renderers your brand genuinely needs.
 4. Keep the reel literal inline in `Root.tsx` `defaultProps` — Studio and the

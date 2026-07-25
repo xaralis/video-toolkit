@@ -1063,6 +1063,63 @@
       "updated": "2026-07-20"
     }
   },
+  "coreModulesNote": "The core modules a brand's build/editor shell is assembled from (Phase 2: core owns the brand shell). Unlike `components`, these are not visual primitives — they are the wiring a template used to hand-copy: the <Composition> prop bundle, brand font loading, the webpack/vitest/tsconfig presets, and the reel editor host plus its Vite dev-server plugin. Brand-side usage and the migration from hand-written copies: docs/creating-templates.md and docs/superpowers/phase2-migrations.md.",
+  "coreModules": {
+    "layeredCompositionProps": {
+      "path": "lib/render/layered-composition-props.ts",
+      "description": "The <Composition> prop bundle for a layered reel — calculateMetadata from meta.totalDurationMs, the 60-frame floor, and layeredDurationInFrames as the one definition of a reel's length. Spread it inline in Root.tsx; the editor's surgical Save matches the callee by source text",
+      "created": "2026-07-25",
+      "updated": "2026-07-25"
+    },
+    "loadBrandFonts": {
+      "path": "lib/render/load-fonts.ts",
+      "description": "Registers a brand's fonts and blocks rendering until they are ready, with the render-concurrency hardening (120s timeout, 2 retries) as the default. Pure normalisation half in lib/render/fonts.ts",
+      "created": "2026-07-25",
+      "updated": "2026-07-25"
+    },
+    "applyToolkitWebpack": {
+      "path": "lib/project/remotion-config.ts",
+      "description": "remotion.config.ts preset — the @video-toolkit/lib alias, the resolve.modules fix for @remotion/transitions, the zod$ single-instance pin resolved from the project root, and the toolkit/lib existence guard",
+      "created": "2026-07-25",
+      "updated": "2026-07-25"
+    },
+    "createToolkitVitestConfig": {
+      "path": "lib/project/vitest-config.ts",
+      "description": "vitest.config.ts preset — same aliases and zod dedupe as the webpack side, with extraTestInclude appending to the default src globs",
+      "created": "2026-07-25",
+      "updated": "2026-07-25"
+    },
+    "toolkitTsconfigBase": {
+      "path": "lib/project/tsconfig.base.json",
+      "description": "The nine compilerOptions every brand tsconfig repeats. Declares no `paths` on purpose: TypeScript does not merge paths across extends, so every template must declare @video-toolkit/lib/* itself",
+      "created": "2026-07-25",
+      "updated": "2026-07-25"
+    },
+    "mountEditorHost": {
+      "path": "lib/editor/host/mount.tsx",
+      "description": "The whole reel editor as one call — state, history, keyboard handling, preview Player, timeline toolbar, crop gestures, save/discard. A brand's .editor/main.tsx is this call plus its CSS import. EditorHost is exported separately for hosts managing their own React root",
+      "created": "2026-07-25",
+      "updated": "2026-07-25"
+    },
+    "createEditorViteConfig": {
+      "path": "lib/editor/host/vite-config.mts",
+      "description": "Factory for a brand's .editor/vite.config.mts — aliases, the zod pin, the @remotion/transitions re-resolver, and createEditorPlugin appended. Must be imported by RELATIVE path: it creates the alias, so it cannot be loaded through it",
+      "created": "2026-07-25",
+      "updated": "2026-07-25"
+    },
+    "createEditorPlugin": {
+      "path": "lib/editor/host/editor-plugin.mts",
+      "description": "Vite dev-server plugin backing the editor's /props, /save, /render, /project-state and /sources routes. The save target path is closed over templateRoot at config time, never read from the request",
+      "created": "2026-07-25",
+      "updated": "2026-07-25"
+    },
+    "formatWithProjectPrettier": {
+      "path": "lib/editor/host/prettier-format.ts",
+      "description": "Default formatter for the editor's Save — resolves the project's own Prettier config, and degrades to writing unformatted source when Prettier is not installed",
+      "created": "2026-07-25",
+      "updated": "2026-07-25"
+    }
+  },
   "brands": {
     "default": {
       "path": "brands/default/",
