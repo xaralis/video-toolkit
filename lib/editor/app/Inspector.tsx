@@ -1,6 +1,5 @@
-import { useEffect, useRef } from 'react';
 import styles from './Inspector.module.css';
-import { wrapAccent, type AccentColor } from './accent';
+import { AccentEditor } from './AccentEditor';
 
 /**
  * A single overlay entry. Deliberately loose (not the full reel-config-base
@@ -127,13 +126,12 @@ function sourceOptionsFor(
 /**
  * Inspector — reel-level fields + selected-scene editing for the reel editor.
  *
- * Presentational and controlled: no persisted internal state, only a
- * transient ref used to restore text-input selection after an accent wrap.
- * With no selection, shows a Reel section with Topic/Chevron text inputs
- * bound to `topic`/`chevron`/`onReelChange`. With a selected segment, shows
- * the read-only Scene summary (type, timing) plus editable Source (clip/broll
- * only, via `sources`), audioMode, and overlay text (with Lime/Teal accent
- * buttons) via `onSegmentChange`.
+ * Presentational and controlled: no persisted internal state. With no
+ * selection, shows a Reel section with Topic/Chevron text inputs bound to
+ * `topic`/`chevron`/`onReelChange`. With a selected segment, shows the
+ * read-only Scene summary (type, timing) plus editable Source (clip/broll
+ * only, via `sources`), audioMode, and overlay text (via a WYSIWYG
+ * `AccentEditor`) via `onSegmentChange`.
  */
 export function Inspector({
   segments,
@@ -145,19 +143,6 @@ export function Inspector({
   sources,
 }: InspectorProps) {
   const selected = selectedId === null ? undefined : segments.find((s) => s.id === selectedId);
-
-  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-  const pendingSelection = useRef<{ key: string; start: number; end: number } | null>(null);
-
-  useEffect(() => {
-    const pending = pendingSelection.current;
-    if (!pending) return;
-    const el = inputRefs.current[pending.key];
-    if (el) {
-      el.setSelectionRange(pending.start, pending.end);
-    }
-    pendingSelection.current = null;
-  });
 
   if (!selected) {
     return (
@@ -189,15 +174,6 @@ export function Inspector({
   const audioOptions = AUDIO_MODE_OPTIONS[selected.type];
   const overlayEntries = overlayEntriesFor(selected);
   const sourceOptions = sourceOptionsFor(selected, sources);
-
-  const handleAccent = (entry: OverlayEntry, color: AccentColor) => {
-    const el = inputRefs.current[entry.key];
-    const selStart = el?.selectionStart ?? entry.text.length;
-    const selEnd = el?.selectionEnd ?? entry.text.length;
-    const result = wrapAccent(entry.text, selStart, selEnd, color);
-    pendingSelection.current = { key: entry.key, start: result.selStart, end: result.selEnd };
-    onSegmentChange(selected.id, entry.toPatch(result.text));
-  };
 
   return (
     <div className={styles.inspector}>
@@ -250,31 +226,10 @@ export function Inspector({
         overlayEntries.map((entry) => (
           <div className={styles.field} key={entry.key}>
             <span className={styles.label}>Overlay text</span>
-            <input
-              type="text"
-              className={styles.input}
+            <AccentEditor
               value={entry.text}
-              ref={(el) => {
-                inputRefs.current[entry.key] = el;
-              }}
-              onChange={(e) => onSegmentChange(selected.id, entry.toPatch(e.target.value))}
+              onChange={(next) => onSegmentChange(selected.id, entry.toPatch(next))}
             />
-            <div className={styles.accentButtons}>
-              <button
-                type="button"
-                className={styles.accentButton}
-                onClick={() => handleAccent(entry, 'lime')}
-              >
-                Lime
-              </button>
-              <button
-                type="button"
-                className={styles.accentButton}
-                onClick={() => handleAccent(entry, 'teal')}
-              >
-                Teal
-              </button>
-            </div>
           </div>
         ))
       ) : (

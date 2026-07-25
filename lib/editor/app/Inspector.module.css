@@ -52,26 +52,6 @@
   border-color: #b6ff5a;
 }
 
-.accentButtons {
-  display: flex;
-  gap: 6px;
-}
-
-.accentButton {
-  background: #26282f;
-  border: 1px solid #34363e;
-  border-radius: 4px;
-  padding: 4px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #e8e8ea;
-  cursor: pointer;
-}
-
-.accentButton:hover {
-  border-color: #b6ff5a;
-}
-
 .note {
   font-size: 12px;
   font-style: italic;
