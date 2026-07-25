@@ -15,7 +15,7 @@ export interface OverlayRenderProps {
   /** Disappear animation. 'fade' = fade out at the end; 'none' = cut (no hide). */
   hide?: 'fade' | 'none';
   /** Brand palette; renderers resolve keys→hex via paletteMap/resolveAccentColor. */
-  palette: AccentSlot[];
+  palette: readonly AccentSlot[];
   /** Opaque brand-level config threaded down by the root from the theme. */
   config?: unknown;
   /** Usually 0 — the overlay is mounted in a Sequence at the item's start. */
@@ -36,7 +36,7 @@ export interface OverlayRegistration {
 
 /** The theming contract a brand's theme object satisfies. */
 export interface BrandTheme {
-  accentSlots: AccentSlot[];
+  accentSlots: readonly AccentSlot[];
   /** Per-kind brand-custom renderer + config. Absent kind → core generic. */
   overlays?: Partial<Record<OverlayKind, OverlayRegistration>>;
   /** Per-kind brand-custom video renderer + config. Absent kind → core generic. */
@@ -76,10 +76,10 @@ export interface VideoRegistration {
 }
 
 /** How an overlay kind reaches the screen. 'track' (default): one absolute
- *  Sequence per item. 'anchored': delivered to the owning video renderer via
- *  anchoredOverlays instead (items without anchorVideoId fall back to track).
- *  'singleton': mounted once, unwrapped (e.g. a chevron marker). */
-export type OverlayRouting = 'track' | 'anchored' | 'singleton';
+ *  Sequence per item, so every item animates in its own [startMs, endMs) window.
+ *  'anchored': delivered to the owning video renderer via anchoredOverlays
+ *  instead (items without anchorVideoId fall back to track). */
+export type OverlayRouting = 'track' | 'anchored';
 
 export interface OverlayItemRegistration {
   routing?: OverlayRouting;

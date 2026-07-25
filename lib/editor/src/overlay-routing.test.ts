@@ -9,7 +9,6 @@ const o = (id: string, kind: string, anchorVideoId?: string): OverlayItem => ({
 describe('routeOverlays', () => {
   const regs = {
     title: { routing: 'anchored' as const },
-    chevron: { routing: 'singleton' as const },
     'stat-callout': {},
   };
   it('defaults unregistered and routing-less kinds to track', () => {
@@ -26,14 +25,11 @@ describe('routeOverlays', () => {
     const r = routeOverlays([o('t3', 'title')], regs);
     expect(r.track.map((x) => x.id)).toEqual(['t3']);
   });
-  it('singletons collected separately', () => {
-    const r = routeOverlays([o('c', 'chevron')], regs);
-    expect(r.singleton.map((x) => x.id)).toEqual(['c']);
-  });
-  it('a singleton kind yields at most one node — extras are dropped, not put on the track', () => {
+  it('every item of a kind reaches the track — no per-kind capping', () => {
+    // A reel may legitimately carry several markers of one kind at different
+    // points on the timeline; each gets its own Sequence window.
     const r = routeOverlays([o('c1', 'chevron'), o('c2', 'chevron')], regs);
-    expect(r.singleton.map((x) => x.id)).toEqual(['c1']);
-    expect(r.track).toEqual([]);
+    expect(r.track.map((x) => x.id)).toEqual(['c1', 'c2']);
   });
   it('no registrations → everything on track', () => {
     const r = routeOverlays([o('a', 'title')], undefined);

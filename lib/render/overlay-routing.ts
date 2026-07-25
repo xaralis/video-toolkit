@@ -10,25 +10,12 @@ export function overlayKind(item: OverlayItem): string {
 export function routeOverlays(
   overlays: OverlayItem[],
   registrations: Record<string, OverlayItemRegistration> | undefined,
-): { track: OverlayItem[]; singleton: OverlayItem[]; anchored: Map<string, OverlayItem[]> } {
+): { track: OverlayItem[]; anchored: Map<string, OverlayItem[]> } {
   const track: OverlayItem[] = [];
-  const singleton: OverlayItem[] = [];
   const anchored = new Map<string, OverlayItem[]>();
-  // A 'singleton' kind yields AT MOST ONE node — the first item of that kind.
-  // Extras are dropped, not rerouted: a once-per-reel marker is mounted
-  // unwrapped at a fixed position, so a second one would just paint on top of
-  // the first. This matches the reference campaign composition, which picked
-  // its chevron with `.find()` and filtered every chevron off the overlay track.
-  const seenSingleton = new Set<string>();
   for (const item of overlays) {
-    const kind = overlayKind(item);
-    const routing = registrations?.[kind]?.routing ?? 'track';
-    if (routing === 'singleton') {
-      if (!seenSingleton.has(kind)) {
-        seenSingleton.add(kind);
-        singleton.push(item);
-      }
-    } else if (routing === 'anchored' && item.anchorVideoId) {
+    const routing = registrations?.[overlayKind(item)]?.routing ?? 'track';
+    if (routing === 'anchored' && item.anchorVideoId) {
       const list = anchored.get(item.anchorVideoId) ?? [];
       list.push(item);
       anchored.set(item.anchorVideoId, list);
@@ -36,5 +23,5 @@ export function routeOverlays(
       track.push(item); // 'track', or 'anchored' with no anchor — keep it visible
     }
   }
-  return { track, singleton, anchored };
+  return { track, anchored };
 }

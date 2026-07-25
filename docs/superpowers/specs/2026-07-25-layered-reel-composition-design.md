@@ -74,15 +74,15 @@ cover the whole assembly:
   - `anchored` — NOT rendered on the track; delivered to the owning video
     item's renderer via `VideoRenderProps.anchoredOverlays` (campaign `title`,
     whose caption-lift logic lives inside the footage body).
-  - `singleton` — mounted once, outside any per-item Sequence; a kind routed
-    this way yields at most one node (the first item of that kind).
-    **No brand currently uses this mode.** It was introduced for campaign's
-    `chevron`, but a reel may legitimately carry several chevrons at different
-    points on the timeline, so chevron routes on the `track` instead (each item
-    gets its own Sequence and animates in its own window). Kept for genuinely
-    once-per-reel chrome; a candidate for removal under YAGNI if nothing adopts it.
   Core knows the *modes*, never the kind names — a brand declares which of its
   kinds routes which way.
+
+  A third mode, `singleton` (mounted once, unwrapped, capped at one node per
+  kind), was introduced here for campaign's `chevron` and **has since been
+  removed**: a reel may legitimately carry several chevrons at different points on
+  the timeline, so chevron routes on the `track` like everything else, and nothing
+  else ever adopted the mode. Dropping it also retired the z-ordering question of
+  where unwrapped singletons paint relative to the overlay track.
 - `renderBrandTrack?: (items: BrandLayerItem[]) => ReactNode` — one hook, the
   template decides (roost: `Watermark` per watermark item; campaign: a single
   `PersistentOverlay` spanning the union of brand-item spans, because that
@@ -146,7 +146,7 @@ the editor UI:
 3. **campaign-reels** (PP repo, submodule bump) — `renderVideoItem` /
    `renderOverlayItem` bodies relocate into theme registrations; render bodies
    (FootageSegment etc.) untouched. Parity is most sensitive here (handle
-   offsets, title/caption lift, chevron singleton) — verify with tsc + vitest
+   offsets, title/caption lift, chevron routing) — verify with tsc + vitest
    + before/after frame dumps on an existing pilot project.
 
 Vendored template copies inside `projects/` are unaffected; projects pull the

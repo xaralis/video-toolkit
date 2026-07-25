@@ -42,7 +42,7 @@ export interface TextOverlayBaseProps {
   applyEndpoint?: boolean;
   /** When present, token color KEYS are resolved to hex via this palette; when
    *  absent, tokens keep their raw accent key (back-compat). */
-  palette?: AccentSlot[];
+  palette?: readonly AccentSlot[];
   render: (ctx: TextRenderCtx) => React.ReactNode;
 }
 

@@ -39,7 +39,7 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
   const { fps, width, height } = useVideoConfig();
   const msToFrames = (ms: number) => Math.round((ms / 1000) * fps);
 
-  const { track, singleton, anchored } = routeOverlays(reel.tracks.overlays, theme.overlayItems);
+  const { track, anchored } = routeOverlays(reel.tracks.overlays, theme.overlayItems);
 
   // ---- video ----------------------------------------------------------------
   const videoItems = theme.prepareVideoTrack ? theme.prepareVideoTrack(reel.tracks.video) : reel.tracks.video;
@@ -89,10 +89,6 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
       </Sequence>
     );
   });
-  const singletonNodes = singleton.map((item) => (
-    <React.Fragment key={item.id}>{theme.overlayItems?.[overlayKind(item)]?.render?.(item) ?? null}</React.Fragment>
-  ));
-
   return (
     <AbsoluteFill style={{ backgroundColor: theme.background }}>
       {videoNodes}
@@ -100,12 +96,6 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
       {musicSource && (
         <Audio src={musicSource.startsWith('http') ? musicSource : staticFile(musicSource)} volume={volumeAt} />
       )}
-      {/* Singletons paint UNDER the overlay track: a singleton is an ambient,
-          once-per-reel marker (e.g. a category chevron), while track overlays are
-          content callouts that must win an overlap. This order is the reference
-          campaign composition's (chevron before overlayNodes) — keeping it makes
-          parity structural instead of a coincidence of current placement geometry. */}
-      {singletonNodes}
       {overlayNodes}
       {theme.renderBrandTrack ? theme.renderBrandTrack(reel.tracks.brand) : null}
     </AbsoluteFill>

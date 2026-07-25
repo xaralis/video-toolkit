@@ -19,7 +19,17 @@ export default defineConfig({
       'remotion': fileURLToPath(new URL('./node_modules/remotion', import.meta.url)),
     },
   },
+  // Vite only serves files under the project root by default; the sibling lib
+  // packages whose tests we now include live above it.
+  server: { fs: { allow: [fileURLToPath(new URL('..', import.meta.url))] } },
   test: {
+    // Cover the sibling core lib packages too, not just lib/editor: their tests
+    // (reel-config-base, theming, transcripts, render) previously sat outside the
+    // runner's root and never executed.
+    include: [
+      '{app,src}/**/*.test.{ts,tsx}',
+      '../{reel-config-base,theming,transcripts,render}/**/*.test.{ts,tsx}',
+    ],
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./vitest.setup.ts'],

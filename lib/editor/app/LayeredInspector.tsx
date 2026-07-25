@@ -19,7 +19,7 @@ export interface LayeredInspectorProps {
   onSeek: (frame: number) => void;
   fps: number;
   /** Brand accent palette for the text AccentEditor. */
-  accentSlots?: AccentSlot[];
+  accentSlots?: readonly AccentSlot[];
 }
 
 const label: React.CSSProperties = { fontSize: 11, color: '#7a7d85', display: 'block', marginBottom: 2 };

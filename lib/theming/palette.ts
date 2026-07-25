@@ -8,7 +8,7 @@ export interface AccentSlot {
 }
 
 /** Build a key→hex lookup from a brand's slots. */
-export function paletteMap(slots: AccentSlot[]): Record<string, string> {
+export function paletteMap(slots: readonly AccentSlot[]): Record<string, string> {
   const map: Record<string, string> = {};
   for (const s of slots) map[s.key] = s.color;
   return map;
@@ -16,7 +16,7 @@ export function paletteMap(slots: AccentSlot[]): Record<string, string> {
 
 /** Resolve one accent key to its hex, or null when the key is unknown or the
  *  run is unaccented (key === null). */
-export function resolveAccentColor(slots: AccentSlot[], key: string | null): string | null {
+export function resolveAccentColor(slots: readonly AccentSlot[], key: string | null): string | null {
   if (key === null) return null;
   return paletteMap(slots)[key] ?? null;
 }

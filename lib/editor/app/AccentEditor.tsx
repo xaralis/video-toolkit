@@ -16,7 +16,7 @@ export interface AccentEditorProps {
    * Accent palette driving the toolbar buttons. Data-driven so a brand can
    * supply its own palette later; defaults to Lime + Teal.
    */
-  colors?: AccentEditorColor[];
+  colors?: readonly AccentEditorColor[];
   /** Allow newlines (textarea-style). Default false = single-line caption. */
   multiline?: boolean;
 }
