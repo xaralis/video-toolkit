@@ -114,3 +114,15 @@ def test_build_unknown_template_errors(tmp_path):
 def test_build_unknown_slot_errors(tmp_path):
     with pytest.raises(SystemExit):
         main(["build", "spinner", "--color", "ghost=#000000", "-o", str(tmp_path / "x.json")])
+
+
+def test_colorize_maps_color(tmp_path):
+    out = tmp_path / "out.json"
+    assert main(["colorize", str(FIXTURES / "sample_lottie.json"),
+                 "--map", "#ff0000=#00ff00", "-o", str(out)]) == 0
+    assert distinct_colors(json.loads(out.read_text())) == ["#00ff00"]
+
+
+def test_colorize_requires_map(tmp_path):
+    with pytest.raises(SystemExit):
+        main(["colorize", str(FIXTURES / "sample_lottie.json"), "-o", str(tmp_path / "x.json")])
