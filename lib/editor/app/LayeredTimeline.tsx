@@ -79,8 +79,12 @@ const VIDEO_KIND_LABEL: Record<string, string> = {
   outro: 'Outro',
 };
 
-function timelineLabel(action: TimelineAction, reel: LayeredReel): string {
+function timelineLabel(action: TimelineAction, reel: LayeredReel, fps: number): string {
   const { lane, id } = parseActionId(action.id);
+  if (lane === 'transitions') {
+    const frames = Math.round((action.end - action.start) * fps);
+    return `${action.effectId} · ${frames}f`;
+  }
   if (lane === 'overlays') {
     const o = reel.tracks.overlays.find((x) => x.id === id);
     const c = o?.content as { kind?: string; text?: string } | undefined;
@@ -139,10 +143,15 @@ const RULER_H = 32;
 const EDIT_AREA_MARGIN = 10;
 const HEADER_OFFSET = RULER_H + EDIT_AREA_MARGIN; // 42
 const ROW_H = 34;
+// Transitions are markers at the cut, not full clips — a thinner row keeps
+// the lane visually distinct from the video/audio blocks above and below it.
+const TRANSITIONS_ROW_H = 18;
+const TRANSITION_MARKER_COLOR = '#c9a227';
 
 // Lanes whose items are display-only (their span is derived / not an item
-// array): brand span is content-end-derived, music is a single base layer.
-const LOCKED_LANES = new Set(['brand', 'music']);
+// array): brand span is content-end-derived, music is a single base layer,
+// transitions are derived from adjacent clips' `transitionOut`.
+const LOCKED_LANES = new Set(['brand', 'music', 'transitions']);
 
 export interface LayeredTimelineProps {
   reel: LayeredReel;
@@ -187,7 +196,7 @@ export function LayeredTimeline({
     () =>
       editorData.map((r) => ({
         ...r,
-        rowHeight: ROW_H,
+        rowHeight: r.id === 'transitions' ? TRANSITIONS_ROW_H : ROW_H,
         // Keep every action movable so it stays clickable/selectable — xzdarcy
         // suppresses onClickAction on movable:false actions. Locked lanes (brand
         // = content-end-derived span; music = single base layer) get flexible:false
@@ -234,7 +243,7 @@ export function LayeredTimeline({
             <div
               key={lane}
               style={{
-                height: ROW_H,
+                height: lane === 'transitions' ? TRANSITIONS_ROW_H : ROW_H,
                 display: 'flex',
                 alignItems: 'center',
                 paddingLeft: 10,
@@ -267,6 +276,34 @@ export function LayeredTimeline({
           }}
           style={{ width: '100%', height: '100%', background: '#161719', fontFamily: FONT }}
           getActionRender={(action) => {
+            if (parseActionId(action.id).lane === 'transitions') {
+              // A derived marker at the cut, not a clip — small centered pill
+              // rather than the full-block styling used below.
+              return (
+                <div
+                  style={{
+                    position: 'relative',
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 6px',
+                    borderRadius: 999,
+                    background: TRANSITION_MARKER_COLOR,
+                    color: '#1a1a1a',
+                    fontFamily: FONT,
+                    fontSize: 10,
+                    overflow: 'hidden',
+                    boxShadow: action.selected ? 'inset 0 0 0 2px #e8e8ea' : undefined,
+                  }}
+                  title={action.id}
+                >
+                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {timelineLabel(action, reel, fps)}
+                  </span>
+                </div>
+              );
+            }
             const wf = waveformFor(action, reel, peaks);
             return (
               <div
@@ -292,7 +329,7 @@ export function LayeredTimeline({
                 )}
                 {action.id.startsWith('music:') && <MusicEnvelope points={envelope.points} totalFrames={totalFrames} />}
                 <span style={{ position: 'relative', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {timelineLabel(action, reel)}
+                  {timelineLabel(action, reel, fps)}
                 </span>
               </div>
             );

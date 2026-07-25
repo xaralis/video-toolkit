@@ -172,6 +172,42 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
 
   const { lane, id } = parseActionId(selectedId);
 
+  if (lane === 'transitions') {
+    // The `transitions` lane is a derived "at-the-cut" view (see
+    // layered-adapter.ts): the marker's itemId is the outgoing clip, and
+    // every write here mutates only that clip's `transitionOut` — no
+    // repositioning of clips or the marker itself.
+    const v = reel.tracks.video.find((x) => x.id === id);
+    if (!v) return null;
+    const t = (v.transitionOut ?? {}) as { kind?: string; frames?: number; direction?: string };
+    const kind = t.kind ?? 'cut';
+    return (
+      <div style={panel}>
+        <h3 style={heading}>Transition · {TRANSITION_LABEL[kind] ?? kind}</h3>
+        <SelectField
+          lbl="Kind"
+          value={kind}
+          options={['dissolve', 'fade-coal', 'glitch', 'whip-pan', 'wipe', 'zoom-through', 'cut']}
+          optionLabel={(k) => TRANSITION_LABEL[k] ?? k}
+          onChange={(nextKind) => patchItem('video', id, { transitionOut: { ...t, kind: nextKind } })}
+        />
+        {(kind === 'whip-pan' || kind === 'wipe') && (
+          <SelectField
+            lbl="Direction"
+            value={t.direction}
+            options={['left', 'right', 'up', 'down']}
+            onChange={(s) => patchItem('video', id, { transitionOut: { ...t, direction: s } })}
+          />
+        )}
+        <NumberField
+          lbl="Length (frames)"
+          value={t.frames}
+          onCommit={(n) => patchItem('video', id, { transitionOut: { ...t, frames: Math.max(1, Math.round(n)) } })}
+        />
+      </div>
+    );
+  }
+
   if (lane === 'video') {
     const v = reel.tracks.video.find((x) => x.id === id);
     if (!v) return null;
