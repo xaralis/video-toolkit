@@ -28,7 +28,12 @@ const CORNER_EDGES: Record<Corner, [vertical: 'top' | 'bottom', horizontal: 'lef
 
 function cornerStyle(corner: Corner, marginPx: number): Pick<React.CSSProperties, 'top' | 'right' | 'bottom' | 'left'> {
   const [v, h] = CORNER_EDGES[corner];
-  return { [v]: marginPx, [h]: marginPx };
+  // Assign into a typed object (not a computed-key literal, which TS widens to
+  // an index signature that no longer satisfies the Pick<CSSProperties> return).
+  const edges: Pick<React.CSSProperties, 'top' | 'right' | 'bottom' | 'left'> = {};
+  edges[v] = marginPx;
+  edges[h] = marginPx;
+  return edges;
 }
 
 export const GenericWatermark: React.FC<WatermarkProps> = (props) => {
