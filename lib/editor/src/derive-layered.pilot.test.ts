@@ -149,6 +149,14 @@ describe('deriveLayered — pilot smoke (pp-namesti-republiky)', () => {
     }
   });
 
+  it('hides brand watermark/disclaimer during the outro (they end at content-end, not reel-end)', () => {
+    const layered = deriveLayered(PP_NAMESTI_DEFAULT_PROPS, { fps: 30, outroFrames: 180 });
+    for (const b of layered.tracks.brand) {
+      expect(b.endMs).toBeGreaterThan(0);
+      expect(b.endMs).toBeLessThan(layered.meta.totalDurationMs);
+    }
+  });
+
   it('preserves motion as generic clip effects: broll ken-burns + broll-to-broll blend', () => {
     const layered = deriveLayered(PP_NAMESTI_DEFAULT_PROPS, { fps: 30, outroFrames: 180 });
     const seg002 = layered.tracks.video.find((v) => v.id === 'seg-002')!;
