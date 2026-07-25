@@ -14,6 +14,7 @@
 - **Aliases via manual `resolve.alias`** mirroring `remotion.config.ts` (`@video-toolkit/lib`, `@brand-lib`, `zod$`) — NOT `vite-tsconfig-paths` (it can't resolve brand-lib↔toolkit-lib imports outside any `src/` include glob).
 - **Vite config MUST be `.mts`** (template `package.json` has no `"type":"module"`; the plugins are ESM-only). In it, reconstruct `__dirname`/`require` via `fileURLToPath(import.meta.url)` / `createRequire(import.meta.url)`.
 - **Single source of truth stays `Root.tsx`'s inlined `defaultProps` literal.** Save goes through the Plan-1 spine (`saveDefaultPropsToFile` / `createSaveHandler`), which AST-rewrites it server-side. Never introduce `config.json`. Studio Save must keep working.
+- **NEVER convert `Root.tsx`'s inline `defaultProps={{…}}` to a reference** (e.g. `defaultProps={someImportedConst}`). Both Studio Save and the Plan-1 AST writer require the inline object literal at the `<Composition>`. The editor obtains the current props by running Plan-1's `readDefaultProps` on the `Root.tsx` **source, server-side** (a dev-server `GET /props`), and returning JSON to the browser — never by importing, exporting, or duplicating the props literal. `Root.tsx` is not modified by this plan at all.
 - **`resolve` is the entire path-confinement boundary.** The `POST /save` handler's `resolve` MUST map to the project's own `src/Root.tsx` and reject any client-supplied path escape (`..`, absolute paths, symlinks). The browser sends only `{ props }`.
 - **compositionId is `"CampaignReel"`** (the `<Composition id>` in the template's `Root.tsx`).
 - **Node 20+** for all npm/vite/test commands (shell default node may be a stale v10 via nvm).
@@ -80,44 +81,47 @@ describe('EditorShell', () => {
 ### Task 2: Template Vite host — `npm run editor` mounts the real composition
 
 **Files (in `video-toolkit/templates/campaign-reels`):**
-- Create: `.editor/index.html`, `.editor/main.tsx`, `.editor/vite.config.mts`
+- Create: `.editor/index.html`, `.editor/main.tsx`, `.editor/vite.config.mts`, `.editor/editor-plugin.mts`
 - Modify: `package.json` (devDeps `@vitejs/plugin-react`, `@tailwindcss/vite`, `vite`; script `"editor": "vite --config .editor/vite.config.mts --port 3100"`)
+- **Not modified:** `src/Root.tsx` stays byte-for-byte unchanged.
 
 **Interfaces:**
-- Consumes: `EditorShell` from `@video-toolkit/lib/editor/app/EditorShell` (core, via the existing `@video-toolkit/lib` alias); `CampaignReel` composition + `fps`/`width`/`height` from the template's `src`; the current props via a build-time read of `Root.tsx` (see step).
-- Produces: a running editor at `http://localhost:3100` showing the real reel in `<Player>` inside `EditorShell`.
+- Consumes: `EditorShell` from `@video-toolkit/lib/editor/app/EditorShell` and `readDefaultProps` from `@video-toolkit/lib/editor/save-endpoint`-adjacent module (`@video-toolkit/lib/editor/default-props-writer`) — both via the existing `@video-toolkit/lib` alias; `CampaignReel` composition + `buildReelConfig`/`fps`/`width`/`height`/`outroFrames` from the template's `src`; `totalDurationFrames` from `@video-toolkit/lib/reel-config-base/duration`.
+- Produces: a running editor at `http://localhost:3100` showing the real reel in `<Player>` inside `EditorShell`, with the initial props read from `src/Root.tsx` server-side.
 
-- [ ] **Step 1: Port the spike's `vite.config.mts`** into `.editor/vite.config.mts` — the proven config from `plan2-spike-report.md`: `root: __dirname` (the `.editor` dir), `plugins: [react(), tailwindcss()]`, `publicDir` → the template's `public/`, and manual `resolve.alias` for `@` (template `src`), `@video-toolkit/lib`, `@brand-lib`, `zod$` (via `createRequire(import.meta.url)`), with `__dirname` rebuilt from `import.meta.url`.
+- [ ] **Step 1: Port the spike's `vite.config.mts`** into `.editor/vite.config.mts` — the proven config from `plan2-spike-report.md`: `root: __dirname` (the `.editor` dir), `plugins: [react(), tailwindcss(), editorPlugin()]` (the last from Step 4), `publicDir` → the template's `public/`, and manual `resolve.alias` for `@` (template `src`), `@video-toolkit/lib`, `@brand-lib`, `zod$` (via `createRequire(import.meta.url)`), with `__dirname` rebuilt from `import.meta.url`. Keep the `@video-toolkit/lib` alias PORTABLE (`path.resolve(templateRoot, '../../toolkit/lib')`) exactly as `remotion.config.ts` does — do not hardcode an absolute machine path.
 
-- [ ] **Step 2: `.editor/main.tsx`** — import `global.css`; read the current `defaultProps` for the composition. Preferred: expose them from the template without duplicating — import the same `defaultProps` object the composition uses. If `Root.tsx` only inlines them in JSX (not exported), add a minimal, non-breaking export in `src/Root.tsx` (`export const campaignReelDefaultProps = {…}` and reference it in the `<Composition defaultProps={campaignReelDefaultProps}>`) so both Studio and the editor read one literal — this keeps the single-source-of-truth intact and is Studio-Save-compatible (still an inlined object literal). Render `createRoot(...).render(<EditorApp/>)` where `EditorApp` holds the props in `useState`, renders `<EditorShell projectName="campaign-reels" preview={<Player component={CampaignReel} inputProps={props} durationInFrames={totalDurationFrames(...)} compositionWidth={width} compositionHeight={height} fps={fps} controls style={{width:'100%'}}/>} onSave={...} saving={...}/>`. (Save wired in Task 3 — for now `onSave` can be a no-op stub.)
+- [ ] **Step 2: `.editor/editor-plugin.mts`** — a Vite plugin whose `configureServer(server)` adds a `GET /props` route: it reads the project's `src/Root.tsx` from disk, calls `readDefaultProps(source, { compositionId: 'CampaignReel' })`, and responds `200 application/json` with the props (or `500 {error}`). The project root is derived from the plugin's own known config path, not from the request. (Task 3 adds `POST /save` to this same plugin.)
 
-- [ ] **Step 3: `.editor/index.html`** — trivial shell with `<div id="root">` + `<script type="module" src="./main.tsx">`.
+- [ ] **Step 3: `.editor/main.tsx`** — import `global.css`; on load `fetch('/props')` → the current props; hold them in `useState`; render `createRoot(...).render(<EditorApp/>)` where `EditorApp` renders `<EditorShell projectName="campaign-reels" preview={<Player component={CampaignReel} inputProps={props} durationInFrames={totalDurationFrames(buildReelConfig(props).segments, fps, outroFrames)} compositionWidth={width} compositionHeight={height} fps={fps} controls style={{width:'100%'}}/>} onSave={() => {/* stub; wired in Task 3 */}} />`. Show a minimal "loading…" state until `/props` resolves. Do NOT import or duplicate the props literal from `Root.tsx` — they come only from `/props`.
 
-- [ ] **Step 4: Add devDeps + script** in `package.json` (`npm install -D @vitejs/plugin-react @tailwindcss/vite vite` with Node 20; add `"editor"` script).
+- [ ] **Step 4: `.editor/index.html`** — trivial shell with `<div id="root">` + `<script type="module" src="./main.tsx">`.
 
-- [ ] **Step 5: Browser-verify** — run `npm run editor`, load `http://localhost:3100` in the browser, confirm: the reel renders in the Player inside the EditorShell (header + placeholders visible around it), scrubbing works, no console "could not resolve import" / asset-404 errors. Capture a screenshot in the report.
+- [ ] **Step 5: Add devDeps + script** in `package.json` (`npm install -D @vitejs/plugin-react @tailwindcss/vite vite` with Node 20; add the `"editor"` script).
 
-- [ ] **Step 6: Commit in the template repo** (branch `feat/reel-editor-skeleton` in `video-toolkit`; commit `.editor/**` + `package.json`/lock + the tiny `Root.tsx` export if added). **Do not push.**
+- [ ] **Step 6: Browser-verify** — run `npm run editor`, load `http://localhost:3100` in the browser, confirm: `/props` returns the real props, the reel renders in the Player inside the EditorShell (header + placeholders visible around it), scrubbing works, no console "could not resolve import" / asset-404 errors. Capture a screenshot in the report. Confirm `src/Root.tsx` is unchanged (`git status` clean for it).
+
+- [ ] **Step 7: Commit in the template repo** (create branch `feat/reel-editor-skeleton` in `video-toolkit` first; commit `.editor/**` + `package.json`/lock). **Do not push. Do not commit the `toolkit` submodule pointer change.**
 
 ---
 
 ### Task 3: Wire Save — `POST /save` round-trips props to `Root.tsx`
 
 **Files:**
-- Create: `.editor/save-plugin.mts` (a Vite plugin: `configureServer` mounting `POST /save`)
-- Modify: `.editor/vite.config.mts` (add the plugin), `.editor/main.tsx` (Save button posts props, tracks `saving`)
+- Modify: `.editor/editor-plugin.mts` (add `POST /save` alongside the existing `GET /props`)
+- Modify: `.editor/main.tsx` (Save button posts props, tracks `saving`; add a minimal dev-only `topic` text input so a change can be made and verified)
 
 **Interfaces:**
-- Consumes: `createSaveHandler` from `@video-toolkit/lib/editor` (Plan 1). `resolve` returns `{ filePath: <abs path to this project's src/Root.tsx>, compositionId: 'CampaignReel' }` and ignores/validates any client `rootPath` (the path is derived server-side from the Vite config's known project root — the client cannot choose it).
+- Consumes: `createSaveHandler` from `@video-toolkit/lib/editor/save-endpoint` (Plan 1). `resolve` returns `{ filePath: <this project's src/Root.tsx>, compositionId: 'CampaignReel' }` and ignores any client `rootPath` (path derived server-side from the plugin's known project root — the client cannot choose it).
 - Produces: clicking Save persists the in-memory props to `src/Root.tsx` via the AST rewrite; the on-disk file updates and re-reads equal.
 
-- [ ] **Step 1: `save-plugin.mts`** — a Vite plugin whose `configureServer(server)` adds a middleware: on `POST /save`, read the JSON body `{ props }`, call `createSaveHandler(() => ({ filePath: resolve(projectRoot, 'src/Root.tsx'), compositionId: 'CampaignReel' }))({ rootPath: 'ignored', props })`, respond `200 {ok:true}` or `500 {error}`. The project root is captured from the config, NOT from the request.
+- [ ] **Step 1: add `POST /save` to `editor-plugin.mts`** — in the same `configureServer` middleware: on `POST /save`, read JSON body `{ props }`, call `createSaveHandler(() => ({ filePath: join(projectRoot, 'src/Root.tsx'), compositionId: 'CampaignReel' }))({ rootPath: 'ignored', props })`, respond `200 {ok:true}` or `500 {error}`. `projectRoot` comes from the plugin config, NOT the request.
 
-- [ ] **Step 2: main.tsx Save** — `onSave` POSTs `{ props }` to `/save`, sets `saving` true→false, surfaces errors (a simple alert/toast is fine for the skeleton).
+- [ ] **Step 2: main.tsx Save + minimal editing** — add a small `topic` text input bound to `props` state (this is the one concrete edit the skeleton exercises); `onSave` POSTs `{ props }` to `/save`, sets `saving` true→false, surfaces errors (a simple alert is fine).
 
-- [ ] **Step 3: Browser-verify round-trip** — with `npm run editor` running: change one prop in memory (temporarily add a dev-only control, e.g. a text input bound to `props.topic`, OR trigger a known mutation), click Save, then confirm on disk that `src/Root.tsx`'s `defaultProps` reflects the change and still parses (run the template's typecheck/build or `readDefaultProps` on the file). Revert any dev-only control before committing if it's not part of the intended skeleton. Confirm Studio Save still works (open Studio once, confirm it loads the composition).
+- [ ] **Step 3: Browser-verify round-trip** — with `npm run editor` running: edit the `topic` input, click Save, confirm `200 {ok:true}`; then confirm on disk that `src/Root.tsx`'s `defaultProps.topic` reflects the change AND the file still parses (run `readDefaultProps` on it, or the template's typecheck). Confirm the inline `defaultProps={{…}}` literal is STILL an inline literal (not a reference) so Studio Save remains intact; open Studio once and confirm it loads the composition. Screenshot the round-trip in the report.
 
-- [ ] **Step 4: Commit in the template repo** (`.editor/**` changes). **Do not push.**
+- [ ] **Step 4: Commit in the template repo** (`.editor/**` + any `Root.tsx` change from Save — note: Save legitimately rewrites `Root.tsx`'s literal; that on-disk change from a verification save may be left or reverted, your call, but do not hand-edit `Root.tsx`). **Do not push. Do not commit the `toolkit` submodule pointer.**
 
 ---
 
