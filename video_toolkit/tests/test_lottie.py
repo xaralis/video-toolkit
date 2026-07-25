@@ -75,3 +75,42 @@ def test_all_catalog_templates_valid():
                 assert isinstance(ref, list) and len(ref) >= 3, f"{tid}.{slot}: path {p} is not a color array"
         for name, p in meta.get("valueSlots", {}).items():
             nav(data, p)  # must resolve without KeyError/IndexError
+
+
+def _accent_hex(out_path):
+    data = json.loads(Path(out_path).read_text())
+    slot_paths = load_catalog()["templates"]["spinner"]["colorSlots"]["accent"]
+    return rgba_to_hex(nav(data, slot_paths[0]))
+
+
+def test_build_explicit_color(tmp_path):
+    out = tmp_path / "spinner.json"
+    assert main(["build", "spinner", "--color", "accent=#123456", "-o", str(out)]) == 0
+    assert _accent_hex(out) == "#123456"
+    assert is_valid_lottie(json.loads(out.read_text()))
+
+
+def test_build_brand_maps_primary(tmp_path):
+    brand = tmp_path / "brand.json"
+    brand.write_text(json.dumps({"colors": {"primary": "#00ff00"}}))
+    out = tmp_path / "spinner.json"
+    assert main(["build", "spinner", "--brand", str(brand), "-o", str(out)]) == 0
+    assert _accent_hex(out) == "#00ff00"
+
+
+def test_build_explicit_overrides_brand(tmp_path):
+    brand = tmp_path / "brand.json"
+    brand.write_text(json.dumps({"colors": {"primary": "#00ff00"}}))
+    out = tmp_path / "spinner.json"
+    main(["build", "spinner", "--brand", str(brand), "--color", "accent=#0000ff", "-o", str(out)])
+    assert _accent_hex(out) == "#0000ff"
+
+
+def test_build_unknown_template_errors(tmp_path):
+    with pytest.raises(SystemExit):
+        main(["build", "nope", "-o", str(tmp_path / "x.json")])
+
+
+def test_build_unknown_slot_errors(tmp_path):
+    with pytest.raises(SystemExit):
+        main(["build", "spinner", "--color", "ghost=#000000", "-o", str(tmp_path / "x.json")])
