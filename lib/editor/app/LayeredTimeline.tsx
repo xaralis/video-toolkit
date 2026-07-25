@@ -91,9 +91,9 @@ const VIDEO_KIND_LABEL: Record<string, string> = {
 
 // Trim-grip affordance for a clip/broll edge. An edge is "muted" when it CAN'T
 // extend outward: the left in-point is already at the source start
-// (sourceInMs<=0, nothing earlier to reveal); the right out-point has hit the
-// clip's footage cap (a broll never caps — it holds its last frame, so its
-// right edge is never muted). Returns null for kinds without a single trim.
+// (sourceInMs<=0, nothing earlier to reveal); the right out-point has hit its
+// footage cap (the end of the file — for a clip or a video-backed broll alike).
+// Returns null for kinds without a single trim source.
 function gripState(
   item: VideoItem | undefined,
   footageCapMs: number | undefined,
