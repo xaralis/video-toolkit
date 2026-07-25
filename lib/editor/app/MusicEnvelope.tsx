@@ -8,15 +8,21 @@ export interface MusicEnvelopeProps {
 // Draws the derived music-volume envelope as a staircase over the Music block
 // (which spans the whole reel). Levels are constant between video items and
 // step at each boundary — reflecting the per-clip musicBoost + outro rules.
-// Normalized to the loudest point so the shape (base / +6 broll / +10 outro /
-// fade to 0) reads clearly. Read-only.
+// Drawn on the SAME dB scale as VolumeLine (-24…+6) so the draggable base-volume
+// line aligns with it and the boosts read as steps above the base. Read-only.
 export function MusicEnvelope({ points, totalFrames, color = '#e8e8ea' }: MusicEnvelopeProps) {
   if (points.length === 0 || totalFrames <= 0) return null;
-  const maxGain = Math.max(...points.map((p) => p.gain), 1e-6);
+  const MIN = -24;
+  const MAX = 6;
   const W = 1000;
   const H = 100;
   const x = (f: number) => (f / totalFrames) * W;
-  const y = (g: number) => H - Math.max(0, Math.min(1, g / maxGain)) * (H - 2) - 1;
+  // linear gain → dB → the shared -24…+6 fraction (matches VolumeLine).
+  const y = (g: number) => {
+    const db = g <= 0 ? MIN : 20 * Math.log10(g);
+    const frac = Math.max(0, Math.min(1, (db - MIN) / (MAX - MIN)));
+    return H - frac * 96 - 2;
+  };
 
   let d = `M${x(points[0].frame).toFixed(1)},${y(points[0].gain).toFixed(1)}`;
   for (let i = 1; i < points.length; i++) {
