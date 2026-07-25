@@ -10,30 +10,26 @@
 // it in place, which they can only do while it is literally here.
 import React from 'react';
 import { Composition } from 'remotion';
+import { layeredCompositionProps } from '@video-toolkit/lib/render/layered-composition-props';
 import { MinimalReel } from './MinimalReel';
-
-const FPS = 30;
 
 export const RemotionRoot: React.FC = () => (
   <Composition
-    id="MinimalReel"
-    component={MinimalReel}
     // The composition's length is DERIVED FROM THE DATA, the way every real
-    // template does it: `calculateMetadata` reads `meta.totalDurationMs` off the
-    // props that are actually rendered, so an edit to the timeline moves the
-    // composition with it. The `durationInFrames` below is only the placeholder
-    // Remotion requires on the element — calculateMetadata always overrides it.
+    // template does it: `layeredCompositionProps` supplies a `calculateMetadata`
+    // that reads `meta.totalDurationMs` off the props that are actually
+    // rendered, so an edit to the timeline moves the composition with it.
     // (`meta.totalDurationMs` itself is kept honest by core's
     // `withTotalDuration` in lib/reel-config-base/total-duration.ts, which the
     // editor applies on every edit; recompute it with `computeTotalDurationMs`
     // if you hand-edit the tracks below.)
-    calculateMetadata={({ props }: { props: { reel: { meta: { totalDurationMs: number } } } }) => ({
-      durationInFrames: Math.max(60, Math.round((props.reel.meta.totalDurationMs / 1000) * FPS)),
+    {...layeredCompositionProps({
+      id: 'MinimalReel',
+      component: MinimalReel,
+      fps: 30,
+      width: 1080,
+      height: 1920,
     })}
-    durationInFrames={180}
-    fps={FPS}
-    width={1080}
-    height={1920}
     defaultProps={{
       reel: {
         version: 'layered-1',

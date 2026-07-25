@@ -103,12 +103,37 @@ function idOf(el: CompositionEl): string | undefined {
       (a as JsxAttribute).getNameNode().getText() === 'id',
   );
   const init = attr?.getInitializer();
-  if (!init) return undefined;
-  if (init.getKind() === SyntaxKind.StringLiteral) {
-    return init.asKindOrThrow(SyntaxKind.StringLiteral).getLiteralValue();
+  if (init) {
+    if (init.getKind() === SyntaxKind.StringLiteral) {
+      return init.asKindOrThrow(SyntaxKind.StringLiteral).getLiteralValue();
+    }
+    const expr = init.asKind(SyntaxKind.JsxExpression)?.getExpression();
+    const literalId = expr?.asKind(SyntaxKind.StringLiteral)?.getLiteralValue();
+    if (literalId !== undefined) return literalId;
   }
-  const expr = init.asKind(SyntaxKind.JsxExpression)?.getExpression();
-  return expr?.asKind(SyntaxKind.StringLiteral)?.getLiteralValue();
+  // `id` may also arrive via a spread, e.g.
+  // `{...layeredCompositionProps({ id: 'X', ... })}` (see lib/render/
+  // layered-composition-props.ts) — look for an `id: '…'` property inside any
+  // spread's call-expression argument object literal.
+  for (const spread of el.getAttributes()) {
+    if (spread.getKind() !== SyntaxKind.JsxSpreadAttribute) continue;
+    const spreadExpr = spread.asKindOrThrow(SyntaxKind.JsxSpreadAttribute).getExpression();
+    if (!spreadExpr.isKind(SyntaxKind.CallExpression)) continue;
+    for (const arg of spreadExpr.getArguments()) {
+      if (!arg.isKind(SyntaxKind.ObjectLiteralExpression)) continue;
+      const idProp = arg
+        .getProperties()
+        .find(
+          (p): p is PropertyAssignment =>
+            p.isKind(SyntaxKind.PropertyAssignment) && p.getNameNode().getText() === 'id',
+        );
+      const idInit = idProp?.getInitializer();
+      if (idInit?.isKind(SyntaxKind.StringLiteral)) {
+        return idInit.getLiteralValue();
+      }
+    }
+  }
+  return undefined;
 }
 
 function findDefaultPropsAttr(source: string, compositionId?: string): JsxAttribute {
