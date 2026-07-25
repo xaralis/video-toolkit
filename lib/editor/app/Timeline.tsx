@@ -46,6 +46,14 @@ export interface TimelineProps {
    * the Timeline renders and behaves the same (no seek gesture) without it.
    * A trim-handle drag always stopPropagation()s before this can fire, so
    * trimming never also seeks.
+   *
+   * This same pointerdown is also what drives block selection (see
+   * `onSelect`): a native `click` can't be relied on here because
+   * `setPointerCapture` (see `startSeek`) retargets the resulting click away
+   * from the block's `<button>` and onto the track itself in real browsers.
+   * So the track's pointerdown handler hit-tests its event target for the
+   * nearest `[data-segment-id]` ancestor and calls `onSelect` directly when
+   * one is found — same gesture, same event, no dependency on `click`.
    */
   onSeek?: (frame: number) => void;
   fps: number;
@@ -79,8 +87,11 @@ type DragState = {
  * not component state). Each block's flex-grow is proportional to its
  * duration in frames (via `segmentDurationFrames`), so the strip reads as a
  * proportional scrubber even without a shared pixels-per-frame scale.
- * Clicking a block reports its id via `onSelect`; the currently selected
- * segment is styled distinctly and grows thin left/right drag handles.
+ * Clicking a block reports its id via `onSelect`, fired from the same
+ * track pointerdown that drives `onSeek` (see that prop's doc — a native
+ * `click` can land on the wrong element once pointer capture retargets it,
+ * so selection doesn't depend on one). The currently selected segment is
+ * styled distinctly and grows thin left/right drag handles.
  * Dragging a handle reports incremental deltaFrames via `onTrim` — see that
  * prop's doc for the contract. Dragging a handle never triggers `onSelect`.
  *
@@ -162,6 +173,20 @@ export function Timeline({
 
     const frame = frameFromClientX(e.clientX, rect.left, rect.width, totalRef.current);
     onSeekRef.current?.(frame);
+
+    // Select the block under the pointer, if any, from this same pointerdown
+    // rather than the block's own onClick: setPointerCapture above retargets
+    // the native `click` that would normally follow onto the track div, so a
+    // block's onClick never sees it in a real browser. Hit-testing the raw
+    // event target (captured BEFORE setPointerCapture can affect anything —
+    // that call only retargets future events, not this one) sidesteps that
+    // entirely. No block under the pointer (track background) is a no-op,
+    // same as before this pointerdown-driven seek existed.
+    const blockEl = (e.target as HTMLElement).closest?.('[data-segment-id]');
+    const segmentId = blockEl?.getAttribute('data-segment-id');
+    if (segmentId) {
+      onSelect(segmentId);
+    }
 
     window.addEventListener('pointermove', handleSeekPointerMoveRef.current);
     window.addEventListener('pointerup', handleSeekPointerUpRef.current);
@@ -247,6 +272,14 @@ export function Timeline({
               className={isSelected ? `${styles.block} ${styles.selected}` : styles.block}
               style={{ flexGrow: durationFrames, flexBasis: 0 }}
               data-duration-frames={durationFrames}
+              data-segment-id={seg.id}
+              // Selection is driven by the track's pointerdown hit-test above
+              // (see startSeek) so it fires together with onSeek and doesn't
+              // depend on a native click — which setPointerCapture retargets
+              // away from this button in real browsers anyway. This onClick
+              // is a harmless fallback for non-pointer activation (e.g.
+              // keyboard Enter/Space on a focused block), which never goes
+              // through the track's pointerdown handler at all.
               onClick={() => onSelect(seg.id)}
               title={labelFor(seg, index)}
             >
