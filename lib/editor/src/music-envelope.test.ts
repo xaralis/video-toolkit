@@ -69,8 +69,13 @@ describe('computeMusicEnvelope', () => {
     const reel = buildReel();
     reel.tracks.music.endMs = 4000; // trims the bed mid-broll (frame 120)
     const { volumeAt, points } = computeMusicEnvelope(reel, { fps: FPS });
-    expect(volumeAt(119)).toBeCloseTo(baseGain * Math.pow(10, 6 / 20), 10);
-    expect(volumeAt(120)).toBe(0);
+    // With the new data-driven fades, endMs now fades into the trim point over 1000ms (30 frames).
+    // fadeEndFrame = 120, fadeStartFrame = 90. At frame 119, we're 29 frames into the 30-frame fade.
+    const brollGain = baseGain * Math.pow(10, 6 / 20);
+    expect(volumeAt(90)).toBeCloseTo(brollGain, 10); // fade start, still at full
+    expect(volumeAt(105)).toBeCloseTo(brollGain * 0.5, 10); // midway through fade
+    expect(volumeAt(119)).toBeCloseTo(brollGain * (1 - 29 / 30), 10); // nearly at end
+    expect(volumeAt(120)).toBe(0); // at trim point
     expect(volumeAt(200)).toBe(0);
     // The polyline carries the drop-to-zero vertex at the trim point.
     const endPoint = points.find((p) => p.frame === 120);
