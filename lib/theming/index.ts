@@ -8,8 +8,12 @@ export type {
   VideoRenderProps,
   VideoRenderer,
   VideoKind,
+  FootageVideoKind,
   VideoRegistration,
   BrandTheme,
+  OverlayRouting,
+  OverlayItemRegistration,
+  CompositionTheme,
 } from './types';
 export { resolveOverlayRenderer, overlayConfig, resolveVideoRenderer, videoConfig } from './brand-theme';
 export { SegmentMedia } from './segment/SegmentMedia';
