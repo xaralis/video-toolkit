@@ -201,7 +201,11 @@ function buildVideoItem(seg: CutSegment, startMs: number, endMs: number): VideoI
 function buildOverlayItems(segId: string, videoItem: VideoItem, raw: CutOverlaySpec[]): OverlayItem[] {
   return raw.map((overlay, i) => {
     const { kind, appearAt, durationMs, placement, position, ...rest } = overlay;
-    const startMs = videoItem.startMs + appearAt;
+    // Some overlays carry no top-level appearAt — a party-logos overlay, for
+    // instance, times each logo individually inside `logos[]` and the container
+    // just spans the segment. Default a missing appearAt to 0 (segment start)
+    // so the overlay item derives real ms, not NaN.
+    const startMs = videoItem.startMs + (appearAt ?? 0);
     return {
       id: raw.length === 1 ? `${segId}-ov` : `${segId}-ov-${i}`,
       startMs,
