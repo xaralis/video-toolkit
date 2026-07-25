@@ -8,11 +8,10 @@
 export type { Transition, TransitionKind } from './transition-schema';
 import type { Transition } from './transition-schema';
 
-export interface Crop {
-  width: number;
-  x?: number;
-  y?: number;
-}
+// Derived from CropSchema (segment-base-schemas.ts) so this and the zod
+// schema can never drift — same precedent as Transition above.
+export type { Crop } from './segment-base-schemas';
+import type { Crop } from './segment-base-schemas';
 
 // Per-clip colour correction, applied IN the composition (before the brand LUT,
 // rule #32). For matching exposure / white balance across shots — not for the

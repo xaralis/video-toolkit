@@ -1,4 +1,8 @@
-export type AccentColor = string;
+// `AccentColor` has one declaration, in the accent-parser (the module that
+// actually produces/consumes colored tokens for rendering); re-exported here
+// so existing imports of `AccentColor` from this module keep working.
+import type { AccentColor } from '@video-toolkit/lib/transcripts/accent-parser';
+export type { AccentColor };
 
 export interface AccentSelection {
   text: string;

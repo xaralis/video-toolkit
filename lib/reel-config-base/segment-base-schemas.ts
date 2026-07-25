@@ -39,6 +39,14 @@ export const CropSchema = z
   })
   .describe('Static crop/zoom: one dimension (width) + x/y position. Frame stays 9:16.');
 
+// `Crop` used to be a hand-written interface declared independently in THREE
+// places (here as CropSchema, plus lib/reel-config-base/crop.ts and
+// base-types.ts) — the same drift risk TransitionSchema/Transition already
+// hit once (see transition-schema.ts). This is now the one source: the type
+// is inferred from the schema above, and both crop.ts and base-types.ts
+// re-export it rather than redeclaring it.
+export type Crop = z.infer<typeof CropSchema>;
+
 // Per-clip colour correction, applied IN the composition BEFORE the brand LUT
 // (rule #32). Use it to match exposure / white balance across shots — NOT to
 // build the brand look (that's the LUT). Subtle values; heavy grading fights
