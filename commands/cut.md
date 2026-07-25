@@ -4,8 +4,10 @@ description: Bridge SCREENPLAY.md + footage → reel config defaultProps
 
 # Cut
 
-Read the screenplay, inventory footage, transcribe, and write the
-generated `defaultProps={{...}}` literal into `src/Root.tsx`.
+Read the screenplay, inventory footage, transcribe, map footage to a segment
+config, then **derive the track-native `LayeredReel`** and write it as the
+`defaultProps={{ reel: {...} }}` literal into `src/Root.tsx` (the
+`LayeredCampaignReel` composition renders from it).
 
 ## Quick start
 
@@ -134,12 +136,34 @@ Build the full `defaultProps` object:
 }
 ```
 
+### Step 6b: Derive the layered model (the source of truth)
+
+The project renders from the track-native **`LayeredReel`** model (tracks:
+`video`/`audio`/`overlays`/`music`/`brand`, all absolute-ms items), so the
+segment config from Step 6 is an **intermediate**. Derive it:
+
+1. Run `deriveLayered(<segment config>, { fps, outroFrames })` from
+   `@video-toolkit/lib/reel-config-base/derive-layered` — via a throwaway
+   `npx tsx` script importing the relative submodule path
+   (`../../../toolkit/lib/reel-config-base/derive-layered.ts`), the same pattern
+   a project flip uses. This reshapes the segments into the four tracks (Ken
+   Burns / blend become generic `effects[]`; per-clip `musicBoostDb`; audio
+   beds; chevron + brand seeded from rules).
+2. **Populate brand item props from the theme** so timeline labels + edits are
+   self-describing: the `watermark` brand item gets
+   `props: { asset: <theme.watermark.asset> }`, the `disclaimer` gets
+   `props: { text: <theme.disclaimer.text> }` (read from `src/config/theme.ts`).
+
+The result is the `LayeredReel` the `LayeredCampaignReel` composition renders from.
+
 ### Step 7: Write into `src/Root.tsx`
 
-Locate the existing `defaultProps={{...}}` block in `src/Root.tsx` via
-regex (or a simple AST-aware string operation) and replace it with the
-generated literal. Run `prettier` on the file afterwards to normalize
-formatting.
+Write the derived `LayeredReel` as an **inline literal** in the
+`LayeredCampaignReel` composition's `defaultProps={{ reel: {...} }}` — inline so
+Remotion Studio's Save and the editor's surgical Save can patch it in place.
+Replace the existing `defaultProps` block (keep a single
+`<Composition id="LayeredCampaignReel" …>`; a project scaffolded from the current
+template already has this shape). Run `prettier` afterwards.
 
 ```bash
 npx prettier --write projects/<name>/src/Root.tsx
