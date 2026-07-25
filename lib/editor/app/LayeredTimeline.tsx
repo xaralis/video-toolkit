@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import type { RefObject } from 'react';
+import type { RefObject, CSSProperties } from 'react';
 import { Timeline, type TimelineState } from '@xzdarcy/react-timeline-editor';
 import type { TimelineRow, TimelineAction, TimelineEffect } from '@xzdarcy/timeline-engine';
 import '@xzdarcy/react-timeline-editor/dist/react-timeline-editor.css';
@@ -95,7 +95,7 @@ export function LayeredTimeline({
   scaleWidth = 80,
 }: LayeredTimelineProps) {
   const stateRef = useRef<TimelineState>(null);
-  const headerInnerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const editorData = useMemo(() => layeredToTimeline(reel).editorData, [reel]);
 
@@ -129,30 +129,37 @@ export function LayeredTimeline({
 
   return (
     <div style={{ display: 'flex', height: '100%', minHeight: 0, background: '#161719' }}>
-      {/* Fixed lane-header column (xzdarcy renders only the track area). The
-          ruler spacer stays fixed; the labels scroll in sync with the rows. */}
+      {/* Fixed lane-header column. xzdarcy renders only the track area, so the
+          labels live in a parallel scroll container kept in two-way sync with
+          the timeline's vertical scroll (its official scroll-sync mechanism):
+          timeline scroll → list.scrollTop, list scroll → TimelineState.setScrollTop.
+          The ruler spacer stays fixed on top. */}
       <div style={{ width: 92, flex: 'none', borderRight: '1px solid #2a2c32', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ height: HEADER_OFFSET, flex: 'none' }} />
-        <div style={{ flex: '1 1 auto', overflow: 'hidden', position: 'relative' }}>
-          <div ref={headerInnerRef} style={{ position: 'absolute', top: 0, left: 0, right: 0, willChange: 'transform' }}>
-            {LANES.map((lane) => (
-              <div
-                key={lane}
-                style={{
-                  height: ROW_H,
-                  display: 'flex',
-                  alignItems: 'center',
-                  paddingLeft: 10,
-                  fontSize: 11,
-                  color: '#9a9da5',
-                  borderBottom: '1px solid #202227',
-                  boxSizing: 'border-box',
-                }}
-              >
-                {LANE_LABELS[lane]}
-              </div>
-            ))}
-          </div>
+        <div
+          ref={listRef}
+          onScroll={(e) => stateRef.current?.setScrollTop(e.currentTarget.scrollTop)}
+          style={
+            { flex: '1 1 auto', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', msOverflowStyle: 'none' } as CSSProperties
+          }
+        >
+          {LANES.map((lane) => (
+            <div
+              key={lane}
+              style={{
+                height: ROW_H,
+                display: 'flex',
+                alignItems: 'center',
+                paddingLeft: 10,
+                fontSize: 11,
+                color: '#9a9da5',
+                borderBottom: '1px solid #202227',
+                boxSizing: 'border-box',
+              }}
+            >
+              {LANE_LABELS[lane]}
+            </div>
+          ))}
         </div>
       </div>
 
@@ -168,8 +175,8 @@ export function LayeredTimeline({
           scale={1}
           scaleWidth={scaleWidth}
           startLeft={12}
-          onScroll={({ scrollTop }) => {
-            if (headerInnerRef.current) headerInnerRef.current.style.transform = `translateY(${-scrollTop}px)`;
+          onScroll={(param) => {
+            if (listRef.current) listRef.current.scrollTop = param.scrollTop;
           }}
           style={{ width: '100%', height: '100%', background: '#161719' }}
           getActionRender={(action) => (
