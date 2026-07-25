@@ -15,5 +15,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/xaralis/video-toolkit.git"
+  },
+  "devDependencies": {
+    "zod": "3.22.3"
   }
 }
