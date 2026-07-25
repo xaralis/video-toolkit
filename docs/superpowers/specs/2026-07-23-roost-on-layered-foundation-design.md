@@ -54,16 +54,16 @@ segment `startMs = round(beatStart·fpb / fps · 1000)`,
 | `teaser {lines, reveal, fontSize, appearAtSec}` | `overlays[] · content:{kind:'teaser', lines, reveal, fontSize}` | `OverlayContent` is already `z.record` — no schema change; span = `appearAtSec` → `teaserDurationInFrames` |
 | `outro {style, variant, transition, logoDelaySec, beatStart}` | `video[] · kind:'outro'` + `props` | reel length derived from the outro's end → `meta.totalDurationMs` (same rule as campaign) |
 | `watermark {asset, corner, variant}` | `brand[] · kind:'watermark'` + `props` | spans `[0, transitionStart]` (hides before the outro) |
-| `vintage: film\|vhs` | `meta.treatment.vintage` | reel-wide look |
+| `vintage: film\|vhs` (config-level) | **per footage item** `effects:[{type:'vintage', mode}]` | a generic clip effect (like ken-burns), individually adjustable per clip; the roost cut stamps it on **all** footage items by default (see below) — no new schema field |
 | `kicks` (onset seconds) | `meta.guidesMs` **and** outro `props.kickFrames` | ruler guides + heartbeat-logo pulse; **non-structural** |
 
 ## Architecture
 
-Four layers, three in **core** (shared) and one in the **roost template**:
+Five parts, four in **core** (shared) and one in the **roost template**:
 
-### 1. Core schema — three generic, optional additions
+### 1. Core schema — two generic, optional additions
 
-`lib/reel-config-base/layered-schema.ts`. All optional, so campaign-reels is
+`lib/reel-config-base/layered-schema.ts`. Both optional, so campaign-reels is
 byte-unaffected and any brand can use them:
 
 - `VideoContainerBase.props?: Record<string, unknown>` — a per-item brand
@@ -71,11 +71,22 @@ byte-unaffected and any brand can use them:
   `style`/`variant`/`transition`/`logoDelaySec`/`kickFrames`). Generic escape
   hatch, mirrors `BrandLayerItemSchema.props`.
 - `meta.guidesMs?: number[]` — **guide-only**, non-structural ruler markers.
-- `meta.treatment?: Record<string, unknown>` — reel-wide look (roost `vintage`).
 
 `OverlayContent` (`z.record`) and `EffectSchema` (`{type}.passthrough()`) are
-already permissive — `teaser` overlays and direction-based ken-burns need no
-schema change.
+already permissive — `teaser` overlays, direction-based ken-burns, **and the
+`vintage` effect** need no schema change.
+
+**Vintage is a per-clip effect, not a reel-wide treatment.** Each footage item
+(photo / broll) carries its own `effects:[{type:'vintage', mode:'film'|'vhs'}]`,
+so it is individually adjustable in the editor's effects inspector — the same
+generic-clip-effect model as ken-burns (simplification lives in brand
+defaults/rules, never special-case fields). The roost cut command applies the
+brand's vintage to **all** footage items by default; the user overrides
+per-clip. The migration derivation stands in for that default: it stamps the
+config-level `cfg.vintage` onto every footage item's `effects`. Outro and teaser
+keep their own look (matching roost's current `film` scoping; the brief `vhs`
+scanline nuance over teaser/outro is dropped as an acceptable close-parity
+simplification). This removes the reel-wide `meta.treatment` field entirely.
 
 ### 2. Core montage derivation
 
@@ -128,9 +139,11 @@ maps each `VideoItem` kind to a roost brand component —
 - `photo` → `KenBurnsPhoto` wrapped by `displayMode` (full-bleed | `PaperBackground` paper-frame),
 - `broll` → `MontageClip`/`OffthreadVideo` (muted, `startFrom` from `sourceInMs`), same `displayMode` wrap,
 - `outro` → roost `Outro` (params from item `props`; `kickFrames` from `props`),
-— renders the music track (with fade), the `teaser` overlay, the `watermark`
-brand item, and the reel-wide `vintage` treatment from `meta.treatment`, and
-delegates video-track assembly + transitions to the core at-cut engine.
+— and expands each footage item's `{type:'vintage', mode}` effect into its
+grade + grain (and, for `vhs`, a scanline overlay) **scoped to that clip's
+Sequence**, so vintage is genuinely per-clip. It also renders the music track
+(with fade), the `teaser` overlay, and the `watermark` brand item, and delegates
+video-track assembly + transitions to the core at-cut engine.
 
 Roost only uses `cut`/`fade`, so the engine's `presentationFor` returns
 `fade()` or null — no new transition kinds.
@@ -160,8 +173,9 @@ carries the beat grid forward as an editing aid only.
 - **Derivation (core, unit):** `deriveMontageLayered` over a real `roost-reel-01`
   fixture — beat→ms correctness, photo/video→item kinds, teaser overlay span,
   outro placement + `totalDurationMs === last item end`, watermark hides at
-  `transitionStart`, `guidesMs` populated from `kicks`, `meta.treatment` from
-  `vintage`. `LayeredReelSchema.parse` must pass.
+  `transitionStart`, `guidesMs` populated from `kicks`, and a `vintage` effect
+  stamped on **every** footage item when `cfg.vintage` is set (none when it is
+  null). `LayeredReelSchema.parse` must pass.
 - **Transition-engine extraction (core):** existing campaign render smokes must
   still pass (parity) after the refactor — render-verify ≥2 campaign projects.
 - **Roost render smoke:** migrate `roost-reel-01`, render a photo frame, a
