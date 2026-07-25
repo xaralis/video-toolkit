@@ -49,3 +49,29 @@ def test_info_json_output(capsys):
     assert out["layers"] == 1
     assert out["valid"] is True
     assert out["colors"] == ["#ff0000"]
+
+
+from video_toolkit.lottie import load_catalog, CATALOG_DIR
+
+
+def test_list_includes_spinner(capsys):
+    rc = main(["list"])
+    assert rc == 0
+    assert "spinner" in capsys.readouterr().out
+
+
+def test_all_catalog_templates_valid():
+    cat = load_catalog()["templates"]
+    assert cat, "catalog must declare templates"
+    for tid, meta in cat.items():
+        path = CATALOG_DIR / "templates" / meta["file"]
+        assert path.exists(), f"{tid}: missing template file {meta['file']}"
+        data = json.loads(path.read_text())
+        assert is_valid_lottie(data), f"{tid}: not structurally valid Lottie"
+        for slot, paths in meta.get("colorSlots", {}).items():
+            assert isinstance(paths, list) and paths, f"{tid}.{slot}: colorSlots must be a non-empty list of paths"
+            for p in paths:
+                ref = nav(data, p)
+                assert isinstance(ref, list) and len(ref) >= 3, f"{tid}.{slot}: path {p} is not a color array"
+        for name, p in meta.get("valueSlots", {}).items():
+            nav(data, p)  # must resolve without KeyError/IndexError

@@ -1,0 +1,10 @@
+{
+  "templates": {
+    "spinner": {
+      "description": "Looping circular loader ring",
+      "file": "spinner.json",
+      "colorSlots": { "accent": [ ["layers", 0, "shapes", 0, "it", 1, "c", "k"] ] },
+      "valueSlots": {}
+    }
+  }
+}
