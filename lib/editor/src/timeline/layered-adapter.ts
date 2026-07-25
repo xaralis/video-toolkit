@@ -5,7 +5,9 @@ export interface TLRow { id: string; actions: TLAction[]; }
 
 // Display order, top → bottom (NLE convention): overlays highest, then video
 // and its audio directly stacked, then the music bed, then brand marks.
-export const LANES = ['overlays', 'video', 'transitions', 'audio', 'music', 'brand'] as const;
+// Display order, top → bottom. Transitions sit ABOVE video so the video track
+// and its (linked) audio stay adjacent as one visual group.
+export const LANES = ['overlays', 'transitions', 'video', 'audio', 'music', 'brand'] as const;
 export type LaneId = (typeof LANES)[number];
 const MS = 1000;
 const TRANSITION_PREFIX = 'transition:';
@@ -71,8 +73,8 @@ export function layeredToTimeline(reel: LayeredReel, fps: number): { editorData:
   return {
     editorData: [
       ...packLane('overlays', overlays),
-      { id: 'video', actions: video },
       { id: 'transitions', actions: transitions },
+      { id: 'video', actions: video },
       ...packLane('audio', audio),
       { id: 'music', actions: music },
       ...packLane('brand', brand),
