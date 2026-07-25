@@ -221,6 +221,7 @@ function EffectEditor({ eff, onPatch }: { eff: Record<string, unknown>; onPatch:
 
 const seekBtn: React.CSSProperties = { ...input, cursor: 'pointer', marginBottom: 10, width: 'auto', padding: '4px 10px' };
 const linkBtn: React.CSSProperties = { ...input, cursor: 'pointer', marginTop: 4, width: '100%', padding: '6px 10px', textAlign: 'left', fontSize: 12 };
+const readonlyValue: React.CSSProperties = { fontSize: 13, color: '#c8cbd2', padding: '3px 0' };
 
 export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: LayeredInspectorProps) {
   const patchItem = (lane: LaneId, id: string, patch: Record<string, unknown>) => {
@@ -234,17 +235,18 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
     return (
       <div style={panel}>
         <h3 style={heading}>Reel</h3>
+        {/* All read-only — plain text, not field-styled boxes (they aren't editable). */}
         <div style={field}>
           <label style={label}>Topic</label>
-          <div style={{ ...input, background: '#161719' }}>{reel.meta.topic}</div>
+          <div style={readonlyValue}>{reel.meta.topic}</div>
         </div>
         <div style={field}>
           <label style={label}>Total duration</label>
-          <div style={{ fontSize: 13, color: '#c8cbd2', padding: '3px 0' }}>{(reel.meta.totalDurationMs / 1000).toFixed(2)}s</div>
+          <div style={readonlyValue}>{(reel.meta.totalDurationMs / 1000).toFixed(2)}s</div>
         </div>
         <div style={field}>
           <label style={label}>Music</label>
-          <div style={{ ...input, background: '#161719' }}>{reel.tracks.music.source ?? '(none)'} · base {reel.tracks.music.baseVolumeDb}dB</div>
+          <div style={readonlyValue}>{reel.tracks.music.source ?? '(none)'} · base {reel.tracks.music.baseVolumeDb}dB</div>
         </div>
         <div style={{ fontSize: 11, color: '#5f626a', marginTop: 8 }}>
           {reel.tracks.video.length} video · {reel.tracks.overlays.length} overlays · {reel.tracks.audio.length} audio · {reel.tracks.brand.length} brand
@@ -298,7 +300,9 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
               <NumberField
                 lbl="Zoom (1 = fit)"
                 step={0.05}
-                value={1 / ((v.crop as { width?: number } | undefined)?.width ?? 1)}
+                // Round the display — width is stored as 1/zoom, so the round-trip
+                // otherwise shows e.g. 3.0003 instead of 3.
+                value={Math.round((1 / ((v.crop as { width?: number } | undefined)?.width ?? 1)) * 100) / 100}
                 onCommit={(z) =>
                   patchItem('video', id, {
                     crop: z > 1 ? { ...((v.crop as object) ?? {}), width: 1 / z } : undefined,
@@ -398,10 +402,23 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
           <button
             type="button"
             style={linkBtn}
-            title="Bind this bed to the clip under it so they move and trim together."
+            title="Bind this bed to its clip and snap it exactly onto the clip's span."
             onClick={() => {
-              const v = reel.tracks.video.find((x) => x.startMs <= a.startMs && a.startMs < x.endMs);
-              if (v) patchItem('audio', id, { followsVideoId: v.id });
+              // Prefer the clip this bed was named after (seg-002-audio → seg-002),
+              // else the clip under its start. On re-link, SNAP the bed exactly onto
+              // the clip: same start/end, trim shifted by the position deltas so the
+              // audio content rides along.
+              const named = reel.tracks.video.find((x) => x.id === id.replace(/-audio$/, ''));
+              const v = named ?? reel.tracks.video.find((x) => x.startMs <= a.startMs && a.startMs < x.endMs);
+              if (!v) return;
+              const curOut = a.sourceOutMs ?? a.sourceInMs + (a.endMs - a.startMs);
+              patchItem('audio', id, {
+                followsVideoId: v.id,
+                startMs: v.startMs,
+                endMs: v.endMs,
+                sourceInMs: Math.max(0, a.sourceInMs + (v.startMs - a.startMs)),
+                sourceOutMs: curOut + (v.endMs - a.endMs),
+              });
             }}
           >
             ⛓ Independent · Link to clip
