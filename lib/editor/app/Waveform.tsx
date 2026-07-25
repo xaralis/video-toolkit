@@ -8,11 +8,25 @@ export interface WaveformProps {
   /** Visible span of this block (endMs − startMs). */
   spanMs: number;
   color?: string;
+  /**
+   * Timeline zoom in px per second. When given, the waveform renders at this
+   * FIXED horizontal scale and is anchored (see `anchor`) instead of stretching
+   * to the block. This is what makes the samples HOLD IN PLACE while a handle is
+   * dragged: xzdarcy resizes the block live, but a fixed-width, right-anchored
+   * waveform keeps its samples put and lets the trimmed-off front clip past the
+   * block's left edge (the block is overflow:hidden), rather than sliding along.
+   */
+  pxPerSec?: number;
+  /** Which edge the fixed-scale waveform sticks to. Audio uses 'right' so a
+   *  left-handle trim holds; defaults to 'right'. Ignored without `pxPerSec`. */
+  anchor?: 'left' | 'right';
 }
 
-// Draws the waveform slice for a block as vertical bars filling its container
-// (preserveAspectRatio="none" so it stretches to the block width/height).
-export function Waveform({ peaks, sourceInMs = 0, spanMs, color = 'rgba(255,255,255,0.28)' }: WaveformProps) {
+// Draws the waveform slice for a block as vertical bars. Without `pxPerSec` it
+// fills the container (preserveAspectRatio="none", stretches). With `pxPerSec`
+// it renders at a fixed px width anchored to one edge (see the prop docs) so a
+// live trim holds the samples in place instead of sliding them.
+export function Waveform({ peaks, sourceInMs = 0, spanMs, color = 'rgba(255,255,255,0.28)', pxPerSec, anchor = 'right' }: WaveformProps) {
   if (!peaks || peaks.length === 0) return null;
   const startIdx = Math.floor((sourceInMs / 1000) * PEAKS_PER_SEC);
   const count = Math.max(1, Math.round((spanMs / 1000) * PEAKS_PER_SEC));
@@ -27,11 +41,14 @@ export function Waveform({ peaks, sourceInMs = 0, spanMs, color = 'rgba(255,255,
     const h = p * mid;
     d += `M${x.toFixed(1)},${(mid - h).toFixed(1)}L${x.toFixed(1)},${(mid + h).toFixed(1)}`;
   }
+  const layout: React.CSSProperties = pxPerSec
+    ? { top: 0, bottom: 0, width: (spanMs / 1000) * pxPerSec, [anchor]: 0 }
+    : { inset: 0, width: '100%' };
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
       preserveAspectRatio="none"
-      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+      style={{ position: 'absolute', height: '100%', pointerEvents: 'none', ...layout }}
     >
       <path d={d} stroke={color} strokeWidth={1} fill="none" />
     </svg>
