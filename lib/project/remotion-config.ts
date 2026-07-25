@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { resolveToolkitPaths, toolkitAliases } from './paths';
+import { resolveToolkitPaths, toolkitAliases, assertToolkitLib } from './paths';
 
 export { resolveToolkitPaths, toolkitAliases };
 
@@ -25,7 +25,10 @@ export interface ApplyToolkitWebpackOptions {
   resolveZod?: (projectRoot: string) => string;
 }
 
-const defaultResolveZod = (projectRoot: string): string =>
+/** Exported so the test suite can exercise the real resolution path — every
+ *  `applyToolkitWebpack` test injects `resolveZod`, so without a direct test
+ *  this is the one line in the module nothing actually executes. */
+export const defaultResolveZod = (projectRoot: string): string =>
   // Resolve FROM THE PROJECT: the alias exists to pin one zod instance shared
   // with the project's own src/. Resolving from core would create a second one
   // and bring back the "discriminator value for key `type` could not be
@@ -40,12 +43,7 @@ export function applyToolkitWebpack(
   const exists = opts.existsSync ?? fs.existsSync;
   const { toolkitLib, projectNodeModules } = resolveToolkitPaths(projectRoot);
 
-  if (!exists(toolkitLib)) {
-    throw new Error(
-      `toolkit/lib not found at ${toolkitLib} (projectRoot=${projectRoot}). ` +
-        `The alias resolves relative to the working directory, which must be the project root.`,
-    );
-  }
+  assertToolkitLib(toolkitLib, projectRoot, exists);
 
   const zodMain = (opts.resolveZod ?? defaultResolveZod)(projectRoot);
   const aliases = toolkitAliases(projectRoot, { brandLib: opts.brandLib });

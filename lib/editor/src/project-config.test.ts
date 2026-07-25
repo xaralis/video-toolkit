@@ -1,7 +1,10 @@
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   applyToolkitWebpack,
+  defaultResolveZod,
   toolkitAliases,
   resolveToolkitPaths,
 } from '@video-toolkit/lib/project/remotion-config';
@@ -27,8 +30,8 @@ describe('toolkitAliases', () => {
   });
 
   it('omits @brand-lib unless the brand asks for it', () => {
-    // Roost has no brand-lib tier; a dangling alias to a nonexistent directory
-    // is a resolution failure waiting for the first import that touches it.
+    // Not every brand has a brand-lib tier; a dangling alias to a nonexistent
+    // directory is a resolution failure waiting for the first import that touches it.
     expect(toolkitAliases(PROJECT)).not.toHaveProperty('@brand-lib');
     expect(toolkitAliases(PROJECT, { brandLib: true })['@brand-lib']).toBe(path.resolve('/repo/brand-lib'));
   });
@@ -102,18 +105,56 @@ describe('applyToolkitWebpack', () => {
   });
 });
 
+describe('defaultResolveZod', () => {
+  it('resolves zod from the PROJECT, not from core', () => {
+    // Guard against a refactor to require.resolve('zod') or
+    // createRequire(import.meta.url).resolve('zod') — either would resolve
+    // from CORE's own location and silently reintroduce the dual-zod-instance
+    // crash this module exists to prevent (z.discriminatedUnion failing with
+    // "discriminator value for key `type` could not be extracted").
+    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'toolkit-zod-fixture-'));
+    const zodDir = path.join(fixtureRoot, 'node_modules', 'zod');
+    fs.mkdirSync(zodDir, { recursive: true });
+    fs.writeFileSync(path.join(zodDir, 'package.json'), JSON.stringify({ name: 'zod', main: 'index.js' }));
+    fs.writeFileSync(path.join(zodDir, 'index.js'), 'module.exports = {};');
+
+    const resolved = defaultResolveZod(fixtureRoot);
+
+    expect(fs.realpathSync(resolved)).toBe(fs.realpathSync(path.join(zodDir, 'index.js')));
+    expect(resolved).not.toContain(path.join('core', 'node_modules', 'zod'));
+  });
+});
+
 describe('createToolkitVitestConfig', () => {
   it('inlines and dedupes zod so lib and src schemas share one module instance', () => {
     // Without this, z.discriminatedUnion cannot recognise literals defined in the
     // lib half: instanceof ZodLiteral fails across duplicate module instances.
-    const cfg = createToolkitVitestConfig({ projectRoot: PROJECT }) as any;
+    const cfg = createToolkitVitestConfig({ projectRoot: PROJECT, existsSync: () => true }) as any;
     expect(cfg.test.server.deps.inline).toContain('zod');
     expect(cfg.resolve.dedupe).toContain('zod');
   });
 
   it('aliases the core lib and includes only src tests', () => {
-    const cfg = createToolkitVitestConfig({ projectRoot: PROJECT }) as any;
+    const cfg = createToolkitVitestConfig({ projectRoot: PROJECT, existsSync: () => true }) as any;
     expect(cfg.resolve.alias['@video-toolkit/lib']).toBe(path.resolve('/repo/toolkit/lib'));
     expect(cfg.test.include).toEqual(['src/**/*.test.ts', 'src/**/*.test.tsx']);
+  });
+
+  it('appends extraTestInclude without dropping the default src globs', () => {
+    const cfg = createToolkitVitestConfig({
+      projectRoot: PROJECT,
+      existsSync: () => true,
+      extraTestInclude: ['tests/**/*.test.ts'],
+    }) as any;
+    expect(cfg.test.include).toEqual(['src/**/*.test.ts', 'src/**/*.test.tsx', 'tests/**/*.test.ts']);
+  });
+
+  it('throws a diagnosable error when toolkit/lib is not where it should be', () => {
+    // Mirrors applyToolkitWebpack's guard: without it, a layout mismatch
+    // silently produces a wrong alias that only surfaces later as a
+    // confusing import-resolution error, far from the actual cause.
+    expect(() =>
+      createToolkitVitestConfig({ projectRoot: PROJECT, existsSync: () => false }),
+    ).toThrow(/toolkit\/lib not found/);
   });
 });
