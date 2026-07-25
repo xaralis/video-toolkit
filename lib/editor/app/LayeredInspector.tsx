@@ -219,6 +219,7 @@ function EffectEditor({ eff, onPatch }: { eff: Record<string, unknown>; onPatch:
 }
 
 const seekBtn: React.CSSProperties = { ...input, cursor: 'pointer', marginBottom: 10, width: 'auto', padding: '4px 10px' };
+const linkBtn: React.CSSProperties = { ...input, cursor: 'pointer', marginTop: 4, width: '100%', padding: '6px 10px', textAlign: 'left', fontSize: 12 };
 
 export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: LayeredInspectorProps) {
   const patchItem = (lane: LaneId, id: string, patch: Record<string, unknown>) => {
@@ -379,6 +380,30 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
         <Row>
           <NumberField lbl="Volume (dB)" value={a.volumeDb} onCommit={(n) => patchItem('audio', id, { volumeDb: n })} />
         </Row>
+        {/* Linked audio: bound beds follow their clip through every edit; unlink
+            to edit this bed independently. Re-link binds it to the clip under it. */}
+        {a.followsVideoId ? (
+          <button
+            type="button"
+            style={linkBtn}
+            title={`This bed moves and trims with clip ${a.followsVideoId}. Unlink to edit it on its own.`}
+            onClick={() => patchItem('audio', id, { followsVideoId: undefined })}
+          >
+            🔗 Linked to {a.followsVideoId} · Unlink
+          </button>
+        ) : (
+          <button
+            type="button"
+            style={linkBtn}
+            title="Bind this bed to the clip under it so they move and trim together."
+            onClick={() => {
+              const v = reel.tracks.video.find((x) => x.startMs <= a.startMs && a.startMs < x.endMs);
+              if (v) patchItem('audio', id, { followsVideoId: v.id });
+            }}
+          >
+            ⛓ Independent · Link to clip
+          </button>
+        )}
       </div>
     );
   }

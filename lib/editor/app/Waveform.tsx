@@ -79,16 +79,17 @@ export function VolumeLine({
     return Math.round((V_MAX - fy * (V_MAX - V_MIN)) * 10) / 10;
   };
   const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
-  // Inset from the block edges by a bit more than the resize-handle width so the
-  // hit-line never sits under the trim handles (belt-and-suspenders with the
-  // dragging gate above: this keeps the INITIAL click off the handles).
-  const HANDLE_INSET = 12;
+  // Fill the block exactly (width+height 100%) so the line sits at the same y for
+  // a given dB regardless of block width — an SVG with a viewBox but no explicit
+  // height sizes to the viewBox aspect ratio, which made the line drift on wider
+  // blocks. The resize handles sit on top in DOM order and the dragging gate
+  // above stops mid-resize grabs, so no horizontal inset is needed.
   return (
     <svg
       ref={svgRef}
       viewBox="0 0 1000 100"
       preserveAspectRatio="none"
-      style={{ position: 'absolute', top: 0, bottom: 0, left: HANDLE_INSET, right: HANDLE_INSET, pointerEvents: 'none' }}
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
     >
       {onChange && (
         <line

@@ -75,7 +75,7 @@ export function layeredToTimeline(reel: LayeredReel, fps: number): { editorData:
       { id: 'transitions', actions: transitions },
       ...packLane('audio', audio),
       { id: 'music', actions: music },
-      { id: 'brand', actions: brand },
+      ...packLane('brand', brand),
     ],
   };
 }
@@ -270,7 +270,7 @@ export function applyTimelineChange(
 
   if (opts.ripple) {
     const rippled = applyRipple(reel, resolvedVideo, newMs);
-    if (rippled) return rippled;
+    if (rippled) return relinkAudio(reel, rippled);
   }
 
   // Butt adjacent video clips (model B: clips don't overlap). If a clip's start
@@ -281,7 +281,7 @@ export function applyTimelineChange(
     const next = resolvedVideo[i + 1];
     return next && next.startMs > v.startMs && next.startMs < v.endMs ? { ...v, endMs: next.startMs } : v;
   });
-  return {
+  const result: LayeredReel = {
     ...reel,
     tracks: {
       ...reel.tracks,
@@ -295,6 +295,31 @@ export function applyTimelineChange(
       brand: reel.tracks.brand.map((b) => spanApplied(b, newMs('brand', b.id))),
     },
   };
+  return relinkAudio(reel, result);
+}
+
+// Keep every BOUND audio bed (followsVideoId set) locked to its video: NLE-style
+// linked audio. After the edit is applied, any bed whose video moved/trimmed is
+// re-derived from the ORIGINAL bed by the video's exact delta (trim-linked, so
+// the in/out-point rides along). This carries the audio through moves, trims AND
+// ripple shifts in one place. A bed whose video didn't change is left as the
+// pipeline produced it (so a direct audio drag or a ripple shift still stands);
+// an unbound bed (followsVideoId cleared — the explicit unlink) is never touched.
+function relinkAudio(orig: LayeredReel, result: LayeredReel): LayeredReel {
+  const vOrig = new Map(orig.tracks.video.map((v) => [v.id, v]));
+  const vNew = new Map(result.tracks.video.map((v) => [v.id, v]));
+  const audio = result.tracks.audio.map((a, i) => {
+    if (!a.followsVideoId) return a;
+    const o = vOrig.get(a.followsVideoId);
+    const n = vNew.get(a.followsVideoId);
+    if (!o || !n) return a;
+    const dStart = n.startMs - o.startMs;
+    const dEnd = n.endMs - o.endMs;
+    if (dStart === 0 && dEnd === 0) return a; // video unchanged → keep the pipeline result
+    const base = orig.tracks.audio[i]; // re-derive from the original bed, not the pipeline copy
+    return resizeAudioItem(base, { startMs: base.startMs + dStart, endMs: base.endMs + dEnd });
+  });
+  return { ...result, tracks: { ...result.tracks, audio } };
 }
 
 // Delete the selected timeline item. A video clip also removes its bound audio
