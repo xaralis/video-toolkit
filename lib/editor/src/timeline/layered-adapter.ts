@@ -96,20 +96,31 @@ export function clipFootageCapMs(item: VideoItem, decodedMs: number | undefined)
 // action's minStart/maxEnd so the handle HARD-STOPS at the boundary during the
 // drag (instead of overshooting and snapping back on release). Left bound: the
 // source head (startMs - sourceInMs) — you can't reveal footage before frame 0.
-// Right bound: the nearer of the footage end (startMs + cap - sourceInMs) and the
-// next clip's start (clips can't overlap in model B). A broll with no decoded
-// duration (cap undefined) and no next clip has no right bound → extends freely.
-// Returns null for kinds without a single trim source. These bounds are applied
+// Right bound depends on kind:
+//   - CLIP (recorded footage): the nearer of the footage end and the next clip's
+//     start — you can't invent frames, and clips can't overlap.
+//   - BROLL (container): the next clip's start — a broll holds its last frame, so
+//     it extends up to the neighbour (this is how a trimmed broll restores back
+//     to butt the next clip even when its file is a touch shorter than authored).
+//     Only the LAST broll (no next) is bounded by its own footage end.
+// `decodedMs` is the item's real media duration (0/undefined = unknown → no
+// footage bound). Returns null for kinds without a single trim source. Applied
 // ONLY during a resize gesture, never at rest, so they don't constrain moves.
 export function resizeBoundsMs(
   item: VideoItem,
-  footageCapMs: number | undefined,
+  decodedMs: number | undefined,
   nextStartMs: number | undefined,
 ): { minStartMs: number; maxEndMs?: number } | null {
   if (item.kind !== 'clip' && item.kind !== 'broll') return null;
+  const footageEndMs = decodedMs && decodedMs > 0 ? item.startMs + (decodedMs - item.sourceInMs) : undefined;
   const rights: number[] = [];
-  if (footageCapMs !== undefined && footageCapMs > 0) rights.push(item.startMs + (footageCapMs - item.sourceInMs));
-  if (nextStartMs !== undefined) rights.push(nextStartMs);
+  if (item.kind === 'clip') {
+    if (footageEndMs !== undefined) rights.push(footageEndMs);
+    if (nextStartMs !== undefined) rights.push(nextStartMs);
+  } else {
+    if (nextStartMs !== undefined) rights.push(nextStartMs);
+    else if (footageEndMs !== undefined) rights.push(footageEndMs);
+  }
   return { minStartMs: item.startMs - item.sourceInMs, maxEndMs: rights.length ? Math.min(...rights) : undefined };
 }
 
