@@ -1,0 +1,54 @@
+import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
+
+export interface TLAction { id: string; start: number; end: number; effectId: string; movable?: boolean; flexible?: boolean; }
+export interface TLRow { id: string; actions: TLAction[]; }
+
+export const LANES = ['video', 'overlays', 'audio', 'brand'] as const;
+export type LaneId = (typeof LANES)[number];
+const MS = 1000;
+
+export function parseActionId(actionId: string): { lane: LaneId; id: string } {
+  const i = actionId.indexOf(':');
+  return { lane: actionId.slice(0, i) as LaneId, id: actionId.slice(i + 1) };
+}
+
+export function layeredToTimeline(reel: LayeredReel): { editorData: TLRow[] } {
+  const act = (lane: LaneId, id: string, startMs: number, endMs: number, effectId: string): TLAction => ({
+    id: `${lane}:${id}`, start: startMs / MS, end: endMs / MS, effectId,
+  });
+  const video = reel.tracks.video.map((v) => act('video', v.id, v.startMs, v.endMs, `video-${v.kind}`));
+  const overlays = reel.tracks.overlays.map((o) => {
+    const kind = (o.content as { kind?: string }).kind ?? 'overlay';
+    return act('overlays', o.id, o.startMs, o.endMs, `overlay-${kind}`);
+  });
+  const audio = reel.tracks.audio.map((a) => act('audio', a.id, a.startMs, a.endMs, 'audio'));
+  const brand = reel.tracks.brand.map((b) => act('brand', b.id, b.startMs, b.endMs, `brand-${b.kind}`));
+  return {
+    editorData: [
+      { id: 'video', actions: video },
+      { id: 'overlays', actions: overlays },
+      { id: 'audio', actions: audio },
+      { id: 'brand', actions: brand },
+    ],
+  };
+}
+
+export function applyTimelineChange(reel: LayeredReel, rows: TLRow[]): LayeredReel {
+  const byId = new Map<string, TLAction>();
+  for (const r of rows) for (const a of r.actions) byId.set(a.id, a);
+  const patch = <T extends { id: string; startMs: number; endMs: number }>(lane: LaneId, item: T): T => {
+    const a = byId.get(`${lane}:${item.id}`);
+    if (!a) return item;
+    return { ...item, startMs: Math.round(a.start * MS), endMs: Math.round(a.end * MS) };
+  };
+  return {
+    ...reel,
+    tracks: {
+      ...reel.tracks,
+      video: reel.tracks.video.map((v) => patch('video', v)),
+      overlays: reel.tracks.overlays.map((o) => patch('overlays', o)),
+      audio: reel.tracks.audio.map((a) => patch('audio', a)),
+      brand: reel.tracks.brand.map((b) => patch('brand', b)),
+    },
+  };
+}
