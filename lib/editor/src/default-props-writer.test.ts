@@ -586,6 +586,84 @@ export const RemotionRoot = () => {
 };
 `;
 
+const SPREAD_TWO_COMPS = `import { Composition } from 'remotion';
+import { layeredCompositionProps } from '@video-toolkit/lib/render/layered-composition-props';
+export const Root = () => (
+  <>
+    <Composition {...layeredCompositionProps({ id: 'A', component: A, fps: 30, width: 1, height: 1 })} defaultProps={{ topic: 'a' }} />
+    <Composition {...layeredCompositionProps({ id: 'B', component: B, fps: 30, width: 1, height: 1 })} defaultProps={{ topic: 'b' }} />
+  </>
+);
+`;
+
+// The decoy: a spread of an UNRELATED helper (not on the allowlist) that also happens to carry an
+// `id: '…'` property, sitting on the same element as the real `layeredCompositionProps` spread —
+// this is the reviewer's repro for the id-via-spread resolver picking the wrong composition.
+const SPREAD_DECOY_ROOT = `import { Composition } from 'remotion';
+import { layeredCompositionProps } from '@video-toolkit/lib/render/layered-composition-props';
+export const Root = () => (
+  <>
+    <Composition {...analytics({ id: 'B' })} {...layeredCompositionProps({ id: 'A', component: A, fps: 30, width: 1, height: 1 })} defaultProps={{ topic: 'a' }} />
+    <Composition {...layeredCompositionProps({ id: 'B', component: B, fps: 30, width: 1, height: 1 })} defaultProps={{ topic: 'b' }} />
+  </>
+);
+`;
+
+const SPREAD_DUPLICATE_ID_ROOT = `import { Composition } from 'remotion';
+import { layeredCompositionProps } from '@video-toolkit/lib/render/layered-composition-props';
+export const Root = () => (
+  <>
+    <Composition {...layeredCompositionProps({ id: 'B', component: A, fps: 30, width: 1, height: 1 })} defaultProps={{ topic: 'a' }} />
+    <Composition {...layeredCompositionProps({ id: 'B', component: B, fps: 30, width: 1, height: 1 })} defaultProps={{ topic: 'b' }} />
+  </>
+);
+`;
+
+// `{...layeredCompositionProps(OPTS)}` with a hoisted options identifier — no inline object
+// literal to read an `id:` property out of.
+const SPREAD_HOISTED_OPTS_ROOT = `import { Composition } from 'remotion';
+import { layeredCompositionProps } from '@video-toolkit/lib/render/layered-composition-props';
+const OPTS = { id: 'A', component: A, fps: 30, width: 1, height: 1 };
+export const Root = () => (
+  <Composition {...layeredCompositionProps(OPTS)} defaultProps={{ topic: 'a' }} />
+);
+`;
+
+describe('id resolution through a layeredCompositionProps(...) spread', () => {
+  it('disambiguates two spread-form compositions correctly by id', () => {
+    expect(readDefaultProps(SPREAD_TWO_COMPS, { compositionId: 'A' })).toEqual({ topic: 'a' });
+    expect(readDefaultProps(SPREAD_TWO_COMPS, { compositionId: 'B' })).toEqual({ topic: 'b' });
+  });
+
+  it('read: resolves to the RIGHT composition even when a decoy spread on the same element also carries an id', () => {
+    // Regression for the reviewer's repro: an unrelated `{...analytics({ id: 'B' })}` spread must
+    // never be mistaken for the composition's real id, which only `layeredCompositionProps`
+    // (the allowlisted helper) supplies.
+    expect(readDefaultProps(SPREAD_DECOY_ROOT, { compositionId: 'B' })).toEqual({ topic: 'b' });
+    expect(readDefaultProps(SPREAD_DECOY_ROOT, { compositionId: 'A' })).toEqual({ topic: 'a' });
+  });
+
+  it('write: rewrites the RIGHT composition even when a decoy spread on the same element also carries an id', () => {
+    // This is the write side of Save — picking the wrong composition here means silent
+    // cross-composition data loss, which is the damaging half of the bug.
+    const out = rewriteDefaultProps(SPREAD_DECOY_ROOT, { topic: 'b2' }, { compositionId: 'B' });
+    expect(readDefaultProps(out, { compositionId: 'B' })).toEqual({ topic: 'b2' });
+    expect(readDefaultProps(out, { compositionId: 'A' })).toEqual({ topic: 'a' });
+  });
+
+  it('throws when a duplicate id matches more than one composition, naming the id', () => {
+    expect(() =>
+      readDefaultProps(SPREAD_DUPLICATE_ID_ROOT, { compositionId: 'B' }),
+    ).toThrow(/multiple <Composition> elements with id="B"/);
+  });
+
+  it('fails loudly rather than guessing when the spread argument is a hoisted identifier, not an inline object literal', () => {
+    expect(() => readDefaultProps(SPREAD_HOISTED_OPTS_ROOT, { compositionId: 'A' })).toThrow(
+      /no <Composition> with id="A"/,
+    );
+  });
+});
+
 describe('updateDefaultPropsSurgically — adding a new key (superset)', () => {
   it('inserts a new key into an existing object literal, preserving siblings’ comments + as const', () => {
     const current = readDefaultProps(ADD_KEY_ROOT, { compositionId: 'CampaignReel' }) as any;

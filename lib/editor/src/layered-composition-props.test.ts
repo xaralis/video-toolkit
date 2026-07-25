@@ -20,8 +20,9 @@ describe('layeredDurationInFrames', () => {
   });
 
   it('rounds to the nearest frame rather than truncating', () => {
-    // 1234ms @30fps = 37.02 frames
-    expect(layeredDurationInFrames(reel(1234 + 10_000), 30)).toBe(337);
+    // 10_020ms @30fps = 300.6 frames: rounds up to 301, whereas Math.floor would give 300 —
+    // proving this is genuinely Math.round, not truncation wearing a round-looking name.
+    expect(layeredDurationInFrames(reel(10_020), 30)).toBe(301);
   });
 
   it('never returns fewer than 60 frames', () => {

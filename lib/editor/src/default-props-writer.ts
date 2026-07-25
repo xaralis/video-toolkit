@@ -96,6 +96,14 @@ function compositionElements(sf: ReturnType<Project['createSourceFile']>): Compo
   ].filter((el) => el.getTagNameNode().getText() === 'Composition');
 }
 
+// Allowlist of helper functions whose spread onto `<Composition>` is trusted to carry the
+// composition's `id` inside its first argument's object literal. Deliberately NOT "any call that
+// looks like it might return an id" — a spread of an unrelated helper (e.g. `{...analytics({ id:
+// 'B' })}`) sitting next to the real `{...layeredCompositionProps({ id: 'A' })}` on the same
+// element must never be mistaken for the composition's id. Add a new helper here only
+// deliberately, when it is meant to be spread onto `<Composition>` the same way.
+const ID_VIA_SPREAD_CALLEES = new Set(['layeredCompositionProps']);
+
 function idOf(el: CompositionEl): string | undefined {
   const attr = el.getAttributes().find(
     (a): a is JsxAttribute =>
@@ -111,26 +119,30 @@ function idOf(el: CompositionEl): string | undefined {
     const literalId = expr?.asKind(SyntaxKind.StringLiteral)?.getLiteralValue();
     if (literalId !== undefined) return literalId;
   }
-  // `id` may also arrive via a spread, e.g.
+  // `id` may also arrive via a spread of an allowlisted helper, e.g.
   // `{...layeredCompositionProps({ id: 'X', ... })}` (see lib/render/
-  // layered-composition-props.ts) — look for an `id: '…'` property inside any
-  // spread's call-expression argument object literal.
+  // layered-composition-props.ts). Only the FIRST argument is considered — that is the only
+  // argument shape every allowlisted helper uses — and only when the object literal is written
+  // inline: `{...layeredCompositionProps(OPTS)}` with a hoisted `OPTS` identifier has no literal
+  // to read an id out of and is intentionally left unresolved (see the writer's module comment
+  // and lib/render/README.md).
   for (const spread of el.getAttributes()) {
     if (spread.getKind() !== SyntaxKind.JsxSpreadAttribute) continue;
     const spreadExpr = spread.asKindOrThrow(SyntaxKind.JsxSpreadAttribute).getExpression();
     if (!spreadExpr.isKind(SyntaxKind.CallExpression)) continue;
-    for (const arg of spreadExpr.getArguments()) {
-      if (!arg.isKind(SyntaxKind.ObjectLiteralExpression)) continue;
-      const idProp = arg
-        .getProperties()
-        .find(
-          (p): p is PropertyAssignment =>
-            p.isKind(SyntaxKind.PropertyAssignment) && p.getNameNode().getText() === 'id',
-        );
-      const idInit = idProp?.getInitializer();
-      if (idInit?.isKind(SyntaxKind.StringLiteral)) {
-        return idInit.getLiteralValue();
-      }
+    const calleeText = spreadExpr.getExpression().getText();
+    if (!ID_VIA_SPREAD_CALLEES.has(calleeText)) continue;
+    const [firstArg] = spreadExpr.getArguments();
+    if (!firstArg?.isKind(SyntaxKind.ObjectLiteralExpression)) continue;
+    const idProp = firstArg
+      .getProperties()
+      .find(
+        (p): p is PropertyAssignment =>
+          p.isKind(SyntaxKind.PropertyAssignment) && p.getNameNode().getText() === 'id',
+      );
+    const idInit = idProp?.getInitializer();
+    if (idInit?.isKind(SyntaxKind.StringLiteral)) {
+      return idInit.getLiteralValue();
     }
   }
   return undefined;
@@ -147,6 +159,11 @@ function findDefaultPropsAttr(source: string, compositionId?: string): JsxAttrib
     comps = comps.filter((el) => idOf(el) === compositionId);
     if (comps.length === 0) {
       throw new Error(`rewriteDefaultProps: no <Composition> with id="${compositionId}".`);
+    }
+    if (comps.length > 1) {
+      throw new Error(
+        `rewriteDefaultProps: multiple <Composition> elements with id="${compositionId}".`,
+      );
     }
   } else if (comps.length > 1) {
     throw new Error(
