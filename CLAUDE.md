@@ -317,6 +317,8 @@ CLAUDE.md, and `.claude/superpowers/specs/2026-07-18-core-upstreaming-convention
 ## Documentation
 
 - `docs/tools-reference.md` - CLI cheat sheet for every Python tool
+- `docs/zod-version.md` - **The zod pin (`3.22.3`, exact) and why.** Read before changing any
+  `zod` or `remotion` version in core or a brand repo — the mismatch fails silently.
 - `docs/video-timing.md` - Full timing reference (WPM, density tables, TTS drift, audio-anchoring)
 - `docs/remotion-patterns.md` - Toolkit Remotion conventions + transitions
 - `docs/getting-started.md` - First video walkthrough
