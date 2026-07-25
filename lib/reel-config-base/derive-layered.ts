@@ -53,7 +53,7 @@ export interface OldSegment {
   overlay?: OldOverlaySpec; // broll / multi-clip
   // multi-clip
   layout?: string;
-  sources?: Array<{ source: string; trimIn: number; trimOut: number; label?: string }>;
+  sources?: Array<{ source: string; trimIn: number; trimOut: number; label?: string; zoom?: number }>;
   durationMs?: number; // multi-clip / card
   // card
   cardKind?: string;
@@ -159,6 +159,7 @@ function buildVideoItem(seg: OldSegment, startMs: number, endMs: number): VideoI
                 sourceInMs: msFromSec(s.trimIn),
                 sourceOutMs: msFromSec(s.trimOut),
                 ...(s.label !== undefined ? { label: s.label } : {}),
+                ...(s.zoom !== undefined ? { zoom: s.zoom } : {}),
               })),
             }
           : {}),
