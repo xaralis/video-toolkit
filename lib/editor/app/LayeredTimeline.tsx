@@ -14,6 +14,7 @@ import {
 } from '../src/timeline/layered-adapter';
 import { stripAccents } from './accent';
 import { useAudioPeaks } from './useAudioPeaks';
+import { useSourceDurations } from './useSourceDurations';
 import { Waveform, VolumeLine } from './Waveform';
 import { MusicEnvelope } from './MusicEnvelope';
 import { computeMusicEnvelope } from '@video-toolkit/lib/reel-config-base/music-envelope';
@@ -21,6 +22,14 @@ import { computeMusicEnvelope } from '@video-toolkit/lib/reel-config-base/music-
 // Audio sources: bare filenames are broll/clip beds under public/recordings;
 // a path (e.g. audio/bg.mp3, the music) is served from public as-is.
 const audioUrl = (source: string) => (source.includes('/') ? `/${source}` : `/recordings/${source}`);
+
+// Video source URL for a clip/broll (for intrinsic-duration decode → right-edge
+// bound). Clips live under recordings/, broll footage under broll/.
+const videoUrl = (item: { kind: string; source?: string }): string | null => {
+  const src = item.kind === 'clip' || item.kind === 'broll' ? item.source : undefined;
+  if (!src) return null;
+  return src.includes('/') ? `/${src}` : item.kind === 'broll' ? `/broll/${src}` : `/recordings/${src}`;
+};
 
 // Fixed, typed lanes (D4) — the structure comes from the reel, not free-form
 // adding. Order matches the adapter's row order.
@@ -188,6 +197,24 @@ function LayeredTimelineImpl({
   }, [reel]);
   const { peaks } = useAudioPeaks(audioUrls);
 
+  // Decode clip/broll source durations → the right handle can't extend past the
+  // end of the footage (maxEnd on the action). Unknown durations → no bound.
+  const videoUrls = useMemo(
+    () => reel.tracks.video.map(videoUrl).filter((u): u is string => !!u),
+    [reel],
+  );
+  const sourceDurations = useSourceDurations(videoUrls);
+  const maxEndById = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const v of reel.tracks.video) {
+      if (v.kind !== 'clip' && v.kind !== 'broll') continue;
+      const url = videoUrl(v);
+      const durMs = url ? sourceDurations[url] : undefined;
+      if (durMs && durMs > 0) m[`video:${v.id}`] = (v.startMs + (durMs - v.sourceInMs)) / 1000;
+    }
+    return m;
+  }, [reel, sourceDurations]);
+
   // Derived music-volume envelope (same shared fn the composition renders from).
   const envelope = useMemo(() => computeMusicEnvelope(reel, { fps }), [reel, fps]);
   const totalFrames = Math.round((reel.meta.totalDurationMs / 1000) * fps);
@@ -208,9 +235,10 @@ function LayeredTimelineImpl({
           selected: a.id === selectedId,
           flexible: !LOCKED_LANES.has(r.id),
           movable: true,
+          ...(maxEndById[a.id] !== undefined ? { maxEnd: maxEndById[a.id] } : {}),
         })),
       })),
-    [editorData, selectedId],
+    [editorData, selectedId, maxEndById],
   );
 
   const effects: Record<string, TimelineEffect> = useMemo(() => {
