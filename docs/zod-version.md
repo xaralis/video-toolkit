@@ -16,8 +16,14 @@ wrong produces a **silent** failure (a Studio sidebar in which every field reads
 | `examples/layered-minimal/package.json` | `dependencies.zod` | `3.22.3` |
 | every brand repo's `templates/*/package.json` | `dependencies.zod` | `3.22.3` |
 
-Exact, not `^3.22.0`: `@remotion/zod-types@4.0.425` declares
-`peerDependencies: { "zod": "3.22.3" }` — an exact pin. Any other 3.x is a peer conflict.
+Exact, not `^3.22.0`: `@remotion/zod-types@4.0.425` declares an exact peer,
+`peerDependencies: { "zod": "3.22.3" }`. npm does not enforce it — installing zod 4 against
+this exact peer raises no ERESOLVE, and PP's own `^3.22.0` currently resolves to `3.25.76`
+and behaves correctly (see "Status today" below). So the exact pin here is not npm
+enforcing Remotion's peer — it is **us** enforcing it: `3.22.3` is the exact version
+Remotion was tested against, and pinning it exactly is how every install is guaranteed to
+land on that version rather than on whatever `^3.22.0` happens to resolve to on a given
+day.
 
 ## Why one version at all
 
@@ -37,7 +43,7 @@ Core's own code is very nearly major-agnostic (see the next section). Remotion i
 `web-program-intro` pin — is **zod 3 only**:
 
 - `remotion/dist/cjs/Composition.d.ts:3` — `import type { AnyZodObject } from 'zod'`.
-  zod 4 has no `AnyZodObject` export at all.
+  zod 4 has no `AnyZodObject` at its root entry point (only under `zod/v3`).
 - `@remotion/zod-types@4.0.425` — `peerDependencies: { "zod": "3.22.3" }`.
 - `@remotion/studio@4.0.425`, `.../SchemaEditor/ZodSwitch.js:28-109` — dispatches on
   `schema._def.typeName` against `z.ZodFirstPartyTypeKind`. In zod 4 a schema has
@@ -58,6 +64,26 @@ Core's own code is very nearly major-agnostic (see the next section). Remotion i
 So the supported sets are **{3.22.3}** for Remotion 4.0.425 and **{3.x, 4.x}** for
 Remotion 4.0.489. The intersection — the only version that is correct on every template
 the toolkit has today — is **3.22.3**.
+
+## Status today
+
+Nothing is currently broken by its own pin, and the pin below prevents a break rather than
+repairing one:
+
+- **roost is correct today.** Remotion 4.0.489 genuinely supports zod 4, and
+  `roost-reels`'s `src/` imports zod nowhere and passes no `schema=` prop to
+  `<Composition>` — so roost's Remotion-4.0.489-plus-zod-4 combination has nothing to trip
+  over as things stand.
+- **The Studio "(not editable)" failure is scoped to templates that actually pass
+  `schema=`.** The only `schema=` consumers anywhere in the toolkit are
+  `templates/web-program-intro/src/Root.tsx:12` and 5 `pp-program-*` projects — all on
+  Remotion 4.0.425, and all **already on zod 3**. So that failure mode is a guardrail
+  against ever moving PP to zod 4 while it stays on Remotion 4.0.425, not a live defect —
+  and it is not, by itself, an argument for moving roost.
+- **The actual case for moving roost** is uniformity across brands — one exercised zod
+  major running everywhere — plus the `ZodNumber.minValue` divergence in core's own shared
+  schema code (next section): without the move, that divergence is exercised only by
+  roost, on a major core's CI does not run.
 
 ## What core's own code does and does not care about
 
@@ -89,17 +115,17 @@ Compatible with both majors (verified by direct probe on zod 3.22.3 and zod 4.4.
 | zod 3.22.3 | `null` | `1` |
 | zod 4.4.3 | `-Infinity` | `1` |
 
-`defaultValueForField` (`lib/reel-config-base/transition-schema.ts:511`) reads
-`inner.minValue ?? 0`, so under zod 4 a **required, unbounded** number field is seeded
-`-Infinity` instead of `0`. That is what fails
-`lib/editor/app/transitions.test.ts:453`.
+`defaultValueForField` (`lib/reel-config-base/transition-schema.ts:514`) used to read
+`inner.minValue ?? 0`. Under zod 4 that would have seeded a **required, unbounded** number
+field with `-Infinity` instead of `0` the moment a catalog kind added one — no catalog kind
+did at the time this was written, so the failure was latent, caught only by
+`lib/editor/app/transitions.test.ts:453`, which pins the rule ahead of any kind depending
+on it.
 
-Today this is latent: no catalog kind carries a required unbounded number (every numeric
-transition param is either `.optional()` or `.min()`-bounded). The test exists precisely
-because the rule has no kind behind it yet. **It becomes a live bug the moment a kind
-adds one** — the picker would hand the user `-Infinity` on a kind switch. Fixing it is a
-one-line `Number.isFinite` guard, and it is a **prerequisite** for any future move to
-zod 4, not something to do speculatively while the pin is 3.22.3.
+**Fixed.** The guard is now `Number.isFinite(min) ? min : 0`, which is behaviour-identical
+on zod 3 (`null` is not finite, so the result is still `0`) and correct on zod 4. This is
+no longer a zod-4 prerequisite — it is done, and the existing test above covers it
+unchanged (verified by mutation: forcing the fallback to a wrong value fails that test).
 
 ## How the mismatch presents if ignored
 
@@ -127,8 +153,26 @@ point zod 4 becomes viable toolkit-wide. The prerequisites, in order:
 
 1. Upgrade PP's `campaign-reels` and `web-program-intro` (and core's
    `examples/layered-minimal`) from Remotion 4.0.425 to ≥ 4.0.489.
-2. Guard `defaultValueForField` against a non-finite `minValue`, with a test.
+2. ~~Guard `defaultValueForField` against a non-finite `minValue`, with a test.~~ Done —
+   see "The one divergence" above. No longer blocks this move.
 3. Re-run the core suite against zod 4 and expect 561/561.
 4. Flip this document and all four pins together, in one change.
 
 Anything short of all four leaves one template silently editor-less.
+
+## A pin guard, if one gets added later
+
+Nothing today enforces the pin at install or build time (see "How the mismatch presents
+if ignored" above — neither npm nor `tsc` catches it). A cheap fix would be a core-side
+assertion in `applyToolkitWebpack` / `createToolkitVitestConfig` that the resolved zod
+major is 3. **That guard is deliberately not implemented yet, and if it is added, it must
+respect two constraints:**
+
+- **Sequencing: it can only land *after* roost migrates to `3.22.3`.** Added today, it
+  would fire the moment any consuming repo's `toolkit/` submodule pin advances — and the
+  one repo currently running zod 4 is roost, which per "Status today" above is *correct*
+  today. A guard added now would break the one repo that isn't broken.
+- **Warn, not throw.** A hard assertion turns a brand's routine `toolkit/` submodule bump
+  into a hard stop the moment their own `package.json` drifts from the pin, for reasons
+  that may have nothing to do with the bump itself. Log a warning identifying the resolved
+  version and pointing at this document; do not fail the build.
