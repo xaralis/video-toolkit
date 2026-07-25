@@ -71,9 +71,10 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
 
   // ---- overlays ------------------------------------------------------------------
   const renderTrackItem = (item: OverlayItem): React.ReactNode => {
-    const reg = theme.overlayItems?.[overlayKind(item)];
+    const kind = overlayKind(item);
+    const reg = theme.overlayItems?.[kind];
     if (reg?.render) return reg.render(item);
-    if (TEXT_KINDS.has(overlayKind(item))) return <TrackTextOverlay item={item} theme={theme} />;
+    if (TEXT_KINDS.has(kind)) return <TrackTextOverlay item={item} theme={theme} />;
     return null;
   };
   const overlayNodes = track.map((item) => {

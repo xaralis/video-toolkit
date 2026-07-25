@@ -33,7 +33,7 @@ const GENERIC_VIDEO_RENDERERS: Record<FootageVideoKind, VideoRenderer> = {
 export function resolveVideoRenderer(theme: BrandTheme, kind: FootageVideoKind): VideoRenderer;
 export function resolveVideoRenderer(theme: BrandTheme, kind: VideoKind): VideoRenderer | undefined;
 export function resolveVideoRenderer(theme: BrandTheme, kind: VideoKind): VideoRenderer | undefined {
-  return theme.video?.[kind]?.renderer ?? GENERIC_VIDEO_RENDERERS[kind as FootageVideoKind];
+  return theme.video?.[kind]?.renderer ?? GENERIC_VIDEO_RENDERERS[kind as FootageVideoKind]; // non-footage kinds miss the record → undefined, matching the | undefined overload
 }
 
 /** The brand config registered for a kind (undefined when none). */

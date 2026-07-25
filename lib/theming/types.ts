@@ -60,7 +60,10 @@ export interface VideoRenderProps {
   /** Overlay items anchored to this video item whose kind routes 'anchored'
    *  (core-supplied — e.g. campaign's title, whose caption-lift lives in the body). */
   anchoredOverlays?: OverlayItem[];
-  /** The audio item following this video item (captions derive from it). */
+  /** The audio item following this video item, for READ-ONLY use (e.g. deriving
+   *  captions via transcriptWindow). The core composition already mounts every
+   *  audio-track item on the audio track — a renderer must NOT mount this as an
+   *  <Audio> itself, or the voice double-plays. */
   boundAudio?: AudioItem;
 }
 
