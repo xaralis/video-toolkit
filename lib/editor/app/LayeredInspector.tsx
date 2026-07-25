@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import { AccentEditor } from './AccentEditor';
 import { TRANSITION_KINDS, defaultTransition, kindNeedsFrames, subOptionsFor, type Transition } from './transitions';
@@ -34,21 +34,30 @@ const section: React.CSSProperties = { fontSize: 10, color: '#5f626a', textTrans
 
 const Row = ({ children }: { children: ReactNode }) => <div style={{ display: 'flex', gap: 8 }}>{children}</div>;
 
-// Commits LIVE as you type (each valid value) so the preview reflects changes
-// immediately — not only on blur. Controlled local text state resyncs from the
-// external `value` only when it diverges (an edit from elsewhere / undo), so a
-// self-commit never fights the caret mid-type.
-function NumberField({ lbl, value, step = 1, onCommit }: { lbl: string; value: number | undefined; step?: number; onCommit: (n: number) => void }) {
-  const [text, setText] = useState<string>(value === undefined ? '' : String(value));
+// Live-commit field state: controlled local text that commits on every valid
+// keystroke (preview updates immediately, not on blur), and resyncs from the
+// external `value` only while UNFOCUSED (external edit / undo / item switch) so
+// typing never fights the caret and a no-op commit reverts cleanly on blur.
+function useLiveField(external: string) {
+  const [text, setText] = useState<string>(external);
+  const focused = useRef(false);
   useEffect(() => {
-    if (value === undefined) {
-      if (text !== '') setText('');
-    } else if (Number(text) !== value) {
-      setText(String(value));
-    }
-    // resync only on external `value` change — intentionally not keyed on `text`
+    if (!focused.current) setText(external);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
+  }, [external]);
+  return {
+    text,
+    setText,
+    onFocus: () => (focused.current = true),
+    onBlur: () => {
+      focused.current = false;
+      setText(external);
+    },
+  };
+}
+
+function NumberField({ lbl, value, step = 1, onCommit }: { lbl: string; value: number | undefined; step?: number; onCommit: (n: number) => void }) {
+  const f = useLiveField(value === undefined ? '' : String(value));
   return (
     <div style={field}>
       <label style={label}>{lbl}</label>
@@ -56,9 +65,11 @@ function NumberField({ lbl, value, step = 1, onCommit }: { lbl: string; value: n
         style={input}
         type="number"
         step={step}
-        value={text}
+        value={f.text}
+        onFocus={f.onFocus}
+        onBlur={f.onBlur}
         onChange={(e) => {
-          setText(e.target.value);
+          f.setText(e.target.value);
           const raw = e.target.value.trim();
           if (raw === '') return;
           const n = Number(raw);
@@ -70,10 +81,21 @@ function NumberField({ lbl, value, step = 1, onCommit }: { lbl: string; value: n
 }
 
 function TextField({ lbl, value, onCommit }: { lbl: string; value: string | undefined; onCommit: (s: string) => void }) {
+  const f = useLiveField(value ?? '');
   return (
     <div style={field}>
       <label style={label}>{lbl}</label>
-      <input style={input} type="text" defaultValue={value ?? ''} onBlur={(e) => onCommit(e.target.value)} key={value} />
+      <input
+        style={input}
+        type="text"
+        value={f.text}
+        onFocus={f.onFocus}
+        onBlur={f.onBlur}
+        onChange={(e) => {
+          f.setText(e.target.value);
+          onCommit(e.target.value);
+        }}
+      />
     </div>
   );
 }
