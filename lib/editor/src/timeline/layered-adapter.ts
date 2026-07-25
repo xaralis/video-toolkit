@@ -42,9 +42,10 @@ export function layeredToTimeline(reel: LayeredReel, fps: number): { editorData:
     const A = vids[i];
     const t = A.transitionOut as { kind?: string; frames?: number } | undefined;
     if (!t?.kind || t.kind === 'cut' || !t.frames) continue;
+    // start/end are in SECONDS like every other lane (act() divides by MS).
     const cut = A.endMs;
     const halfMs = Math.round((t.frames / 2 / fps) * 1000);
-    transitions.push({ id: `${TRANSITION_PREFIX}${A.id}`, start: Math.max(0, cut - halfMs), end: cut + halfMs, effectId: t.kind });
+    transitions.push({ id: `${TRANSITION_PREFIX}${A.id}`, start: Math.max(0, cut - halfMs) / MS, end: (cut + halfMs) / MS, effectId: t.kind });
   }
   return {
     editorData: [
