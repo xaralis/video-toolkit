@@ -389,6 +389,24 @@ describe('applyTimelineChange — trim edges (clip footage cap, broll free)', ()
     expect(A.startMs).toBe(5367); // unchanged — nothing before the in-point
     expect(A.kind === 'broll' && A.sourceInMs).toBe(0);
   });
+
+  // ---- At full footage: neither edge extends (regardless of side) ----------
+  it('a clip at full footage cannot extend from the RIGHT', () => {
+    // sourceIn 0, sourceOut == footage → whole file used.
+    const reel = videoReel('clip', { startMs: 2000, endMs: 7000, sourceInMs: 0, sourceOutMs: 5000 });
+    const changed = dragEdge(reel, 2, 30); // yank the right edge far out
+    const A = applyTimelineChange(reel, changed, { footageMsById: { A: 5000 } }).tracks.video[0];
+    expect(A.endMs).toBe(7000); // no change — already at the footage end
+    expect(A.kind === 'clip' && A.sourceOutMs).toBe(5000);
+  });
+
+  it('a clip at full footage cannot extend from the LEFT', () => {
+    const reel = videoReel('clip', { startMs: 2000, endMs: 7000, sourceInMs: 0, sourceOutMs: 5000 });
+    const changed = dragEdge(reel, 0, 7); // yank the left edge to time 0
+    const A = applyTimelineChange(reel, changed, { footageMsById: { A: 5000 } }).tracks.video[0];
+    expect(A.startMs).toBe(2000); // no change — nothing before the source start
+    expect(A.kind === 'clip' && A.sourceInMs).toBe(0);
+  });
 });
 
 describe('deleteItem', () => {

@@ -409,16 +409,20 @@ function LayeredTimelineImpl({
                 title={action.id}
               >
                 {(() => {
-                  // Trim grips for clip/broll blocks: visible handles that
-                  // brighten on hover (which edge is active at a butted seam)
-                  // and go muted when that edge can't extend outward.
+                  // Trim grips on every resizable block (overlays, video, audio —
+                  // not the display-only locked lanes). Same style everywhere:
+                  // faint by default, brighten on hover (which edge is active at a
+                  // butted seam). Video clip/broll edges also go muted when they
+                  // can't extend outward (footage limit); overlays/audio have no
+                  // footage bound, so their grips are never muted.
                   const { lane, id } = parseActionId(action.id);
-                  if (lane !== 'video') return null;
-                  const grips = gripState(
-                    reel.tracks.video.find((v) => v.id === id),
-                    footageMsById[id],
-                  );
-                  if (!grips) return null;
+                  if (LOCKED_LANES.has(lane)) return null;
+                  let grips = { left: false, right: false };
+                  if (lane === 'video') {
+                    const gs = gripState(reel.tracks.video.find((v) => v.id === id), footageMsById[id]);
+                    if (!gs) return null; // multi-clip / card / outro: no single-source trim
+                    grips = gs;
+                  }
                   return (
                     <>
                       <div className={`vt-grip vt-grip-left${grips.left ? ' vt-grip-muted' : ''}`} />
@@ -472,13 +476,27 @@ function LayeredTimelineImpl({
           // Block drag/resize on locked lanes (returning false cancels it) while
           // keeping the action clickable/selectable.
           onActionMoving={({ action }) => (LOCKED_LANES.has(parseActionId(action.id).lane) ? false : undefined)}
-          onActionResizing={({ action }) => {
-            // Only lock the display-only lanes. Footage limits are enforced as a
-            // CLAMP in applyTimelineChange (resizeVideoItem), never as a veto
-            // here — a veto misfires when the block's endMs has drifted past its
-            // footage and freezes the whole clip. The handle stops at the media
-            // edge because the clamped result re-renders it there.
-            if (LOCKED_LANES.has(parseActionId(action.id).lane)) return false;
+          onActionResizing={({ action, start, end }) => {
+            const { lane, id } = parseActionId(action.id);
+            if (LOCKED_LANES.has(lane)) return false; // display-only lanes
+            if (lane !== 'video') return undefined; // overlays/audio resize freely
+            const item = reel.tracks.video.find((v) => v.id === id);
+            if (!item || (item.kind !== 'clip' && item.kind !== 'broll')) return undefined;
+            // Drift-safe hard stop: block ONLY the EXTEND direction past the
+            // footage window, so a clip at max length can't be pulled further
+            // from either edge — the handle stops dead at the media boundary
+            // instead of overshooting the cursor and snapping back. Shortening is
+            // never blocked (that's what made the old absolute-maxEnd veto
+            // misfire and freeze drifted clips).
+            const startMs = Math.round(start * 1000);
+            const endMs = Math.round(end * 1000);
+            if (startMs < item.startMs - 1 && item.sourceInMs + (startMs - item.startMs) < 0) {
+              return false; // left edge can't reveal footage before the source start
+            }
+            const cap = footageMsById[id];
+            if (cap !== undefined && endMs > item.endMs + 1 && item.sourceOutMs + (endMs - item.endMs) > cap) {
+              return false; // right edge can't pass the end of the footage
+            }
             return undefined;
           }}
           onClickAction={(_e, { action }) => onSelect(action.id)}
