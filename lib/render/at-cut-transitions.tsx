@@ -11,7 +11,7 @@ import { flip } from '@remotion/transitions/flip';
 import { clockWipe } from '@remotion/transitions/clock-wipe';
 import { iris } from '@remotion/transitions/iris';
 import {
-  glitch, whipPan, zoomThrough, wipe as customWipe, gradientWipe,
+  glitch, whipPan, zoomThrough, wipe as customWipe, gradientWipe, burn,
 } from '../transitions';
 import { useCurrentFrame } from 'remotion';
 import { getTransitionRecord, type TransitionRecord } from './transition-record';
@@ -62,6 +62,13 @@ export function presentationFor(
       }) as AnyPresentation;
     case 'glitch':
       return glitch() as AnyPresentation;
+    case 'burn':
+      return burn({
+        mask: t.mask as string | undefined,
+        glowColor: t.glowColor as string | undefined,
+        edgeContrast: t.edgeContrast as number | undefined,
+        glowBand: t.glowBand as number | undefined,
+      }) as AnyPresentation;
     case 'whip-pan':
       return whipPan({ direction: t.direction as 'left' | 'right' | 'up' | 'down' | undefined }) as AnyPresentation;
     case 'zoom-through':

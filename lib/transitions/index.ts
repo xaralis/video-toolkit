@@ -27,6 +27,8 @@
 // Custom transitions
 export { glitch } from './presentations/glitch';
 export type { GlitchProps } from './presentations/glitch';
+export { burn } from './presentations/burn';
+export type { BurnProps } from './presentations/burn';
 
 export { rgbSplit } from './presentations/rgb-split';
 export type { RgbSplitProps } from './presentations/rgb-split';

@@ -10,8 +10,8 @@ import {
 } from './transitions';
 
 describe('TRANSITION_KINDS', () => {
-  it('lists all 13 kinds with human-readable labels', () => {
-    expect(TRANSITION_KINDS).toHaveLength(13);
+  it('lists all 14 kinds with human-readable labels', () => {
+    expect(TRANSITION_KINDS).toHaveLength(14);
     const byKind = Object.fromEntries(TRANSITION_KINDS.map((k) => [k.kind, k.label]));
     expect(byKind['cut']).toBe('Cut');
     expect(byKind['dissolve']).toBe('Dissolve');
