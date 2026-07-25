@@ -64,7 +64,22 @@ export function deriveMontageLayered(cfg: MontageConfig, opts: MontageOpts = {})
     const startMs = beatToMs(s.beatStart);
     const endMs = beatToMs(s.beatStart + s.beatCount);
     const id = `seg-${String(i + 1).padStart(3, '0')}`;
-    const transitionIn = s.transition === 'fade' ? { transitionIn: { kind: 'fade', frames: 6 } } : {};
+    const hasFadeIn = s.transition === 'fade';
+    // Ownership rule enforced by computeVideoLayout (lib/render/video-track-
+    // layout.ts:44-56): only the FIRST item ever reads its own transitionIn;
+    // every other item's "enter" transition is read from its PREDECESSOR's
+    // transitionOut instead. So a segment's `transition: 'fade'` becomes this
+    // item's own transitionIn only when it's the very first segment (nothing
+    // precedes it to carry the boundary); for every later segment the fade
+    // must instead be written onto the segment BEFORE it — otherwise the
+    // layout engine silently never sees it and the boundary renders as a cut.
+    const transitionIn = hasFadeIn && i === 0 ? { transitionIn: { kind: 'fade', frames: 6 } } : {};
+    if (hasFadeIn && i > 0 && video.length) {
+      video[video.length - 1] = {
+        ...video[video.length - 1],
+        transitionOut: { kind: 'fade', frames: 6 },
+      } as VideoItem;
+    }
     if (s.type === 'photo') {
       const effects: Effect[] = [
         ...(s.kenBurns ? [{ type: 'ken-burns', direction: s.kenBurns.direction } as Effect] : []),
