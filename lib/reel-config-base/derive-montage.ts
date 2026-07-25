@@ -132,7 +132,7 @@ export function deriveMontageLayered(cfg: MontageConfig, opts: MontageOpts = {})
     // brand-read content fields.
     overlays.push({
       id: 'teaser', startMs, endMs: startMs + framesToMs(durF),
-      content: { kind: 'quote-pull', text: cfg.teaser.lines.join('\n'), reveal: cfg.teaser.reveal ?? 'line', fontSize: cfg.teaser.fontSize ?? 96 },
+      content: { kind: 'text', text: cfg.teaser.lines.join('\n'), reveal: cfg.teaser.reveal ?? 'line', fontSize: cfg.teaser.fontSize ?? 96 },
     });
   }
 

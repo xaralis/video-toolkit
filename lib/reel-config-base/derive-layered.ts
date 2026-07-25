@@ -229,11 +229,15 @@ function buildOverlayItems(segId: string, videoItem: VideoItem, raw: CutOverlayS
     // just spans the segment. Default a missing appearAt to 0 (segment start)
     // so the overlay item derives real ms, not NaN.
     const startMs = videoItem.startMs + (appearAt ?? 0);
+    // The cut authoring format still calls the on-screen message overlay
+    // 'quote-pull'; the layered model unifies it to the generic 'text' kind
+    // (rendered per-brand). Other overlay kinds pass through unchanged.
+    const modelKind = kind === 'quote-pull' ? 'text' : kind;
     return {
       id: raw.length === 1 ? `${segId}-ov` : `${segId}-ov-${i}`,
       startMs,
       endMs: startMs + durationMs,
-      content: { kind, ...rest },
+      content: { kind: modelKind, ...rest },
       ...(placement ?? position ? { position: placement ?? position } : {}),
       anchorVideoId: videoItem.id,
     };

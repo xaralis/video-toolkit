@@ -313,7 +313,7 @@ describe('deriveLayered', () => {
     expect(ph.effects?.some((e) => e.type === 'ken-burns')).toBe(true);
     expect(r.tracks.audio).toHaveLength(0); // silent — no audio item
     const anchored = r.tracks.overlays.filter((o) => o.anchorVideoId === 'seg-ph');
-    expect(anchored.map((o) => o.content.kind).sort()).toEqual(['quote-pull', 'title']);
+    expect(anchored.map((o) => o.content.kind).sort()).toEqual(['text', 'title']);
     expect(LayeredReelSchema.parse(r)).toBeTruthy();
   });
 });
