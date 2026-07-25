@@ -6,8 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 **claude-code-video-toolkit** is an AI-native video production workspace. It provides Claude Code with the skills, commands, and tools to create professional videos from concept to final render.
 
-**This repo is the shared core.** It ships templates, shared `lib/` components, Python tools,
-Claude Code skills/commands, and docs — but no brand identity and no video projects of its own
+**This repo is the shared core.** It ships no templates — see "Core ships no templates" below —
+but does ship shared `lib/` components, Python tools, Claude Code skills/commands, and docs, with
+no brand identity and no video projects of its own
 (`brands/` here holds only the `default` scaffold, for local testing/reference). Real brand
 profiles and video projects live in **separate per-brand repos** (one per client/org), each of
 which vendors this repo as a `toolkit/` git submodule and consumes its skills/commands as a
@@ -52,7 +53,8 @@ claude-code-video-toolkit/        # this repo (the core) — also a Claude Code 
 ├── skills/              # Domain knowledge for Claude
 ├── .claude/             # core's own settings (SessionStart hook); no commands/skills here
 ├── video_toolkit/       # Python CLI automation (installable package)
-├── lib/                 # Shared components, transitions, theming, render, reel-config-base, transcripts
+├── lib/                 # Shared components, transitions, theming, render, reel-config-base, transcripts,
+│                        #   plus the brand shell: project/ (build-config presets) + editor/host/ (the reel editor)
 ├── brands/default/      # Neutral scaffold brand (colors, fonts, voice) — real brands live in the consuming brand repo
 ├── examples/            # Curated reference projects (layered-minimal, quick-spot, …)
 ├── showcase/            # Runnable demos (e.g. the transitions gallery)
@@ -66,6 +68,13 @@ claude-code-video-toolkit/        # this repo (the core) — also a Claude Code 
 ROOST's). Core ships the *machinery* they are built from — `lib/` components,
 transitions, `reel-config-base` schemas, the Python tools — plus `examples/` as the
 reference for how it fits together.
+
+Since Phase 2, that machinery includes the template's whole **shell**: the
+`<Composition>` prop bundle (`lib/render/layered-composition-props.ts`), brand font
+loading (`lib/render/load-fonts.ts`), the `remotion.config.ts` / `vitest.config.ts` /
+`tsconfig.json` presets (`lib/project/`), and the reel editor with its Vite dev-server
+plugin (`lib/editor/host/`). A template writes an id, a literal, a theme and ~30 lines
+of configuration — see `docs/creating-templates.md`.
 
 When consumed as a submodule, a brand repo has its own top-level `brands/<brand>/` and
 `projects/` that sit *alongside* `toolkit/` (this repo) — they are never copied into it, and this
@@ -317,6 +326,8 @@ CLAUDE.md, and `.claude/superpowers/specs/2026-07-18-core-upstreaming-convention
 ## Documentation
 
 - `docs/tools-reference.md` - CLI cheat sheet for every Python tool
+- `docs/zod-version.md` - **The zod pin (`3.22.3`, exact) and why.** Read before changing any
+  `zod` or `remotion` version in core or a brand repo — the mismatch fails silently.
 - `docs/video-timing.md` - Full timing reference (WPM, density tables, TTS drift, audio-anchoring)
 - `docs/remotion-patterns.md` - Toolkit Remotion conventions + transitions
 - `docs/getting-started.md` - First video walkthrough

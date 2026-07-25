@@ -1,6 +1,6 @@
 # Handoff — core architecture rework
 
-**Last updated:** 2026-07-25, after Phase 1 merged to `main` (`73bd891`).
+**Last updated:** 2026-07-25, after Phase 2 completed on `refactor/phase2-core-shell`.
 
 This file is the durable record across sessions. The working ledger
 (`.superpowers/sdd/progress.md`) is **gitignored** and will not survive a
@@ -20,9 +20,9 @@ The full audit and phase plan live at
 
 | Phase | What | Status |
 |---|---|---|
-| 0 | Unblock (fast-forward core, pin zod) | ✅ core done; **zod pin still open** |
+| 0 | Unblock (fast-forward core, pin zod) | ✅ closed in Phase 2 — `docs/zod-version.md`; roost's pin is a brand migration |
 | 1 | Subtract — remove drift surfaces | ✅ merged `73bd891` |
-| 2 | Core owns the brand shell (editor host, composition wiring, config, fonts) | ⬜ next |
+| 2 | Core owns the brand shell (editor host, composition wiring, config, fonts) | ✅ `refactor/phase2-core-shell` |
 | 3 | Close the extension contract (registries, effects, generators, captions) | ⬜ |
 | 4 | Tighten the model (real schemas, pre-save validation) | ⬜ |
 | 5 | NLE alignment (effect stack, music track, transition entities, media pool) | ⬜ |
@@ -49,12 +49,64 @@ and editing an array in the editor destroyed authored comments and `as const`.
 
 ---
 
+## Phase 2 outcome
+
+The whole branch, re-derived from `git log`/`git diff --stat` rather than carried forward from an
+earlier count: 18 commits (`bb9a89d..8351451` — every commit since Phase 1 merged, including the
+Phase 2 plan doc's own commit), 40 files, **+4035 / −80**, excluding the 2007-line plan document
+committed at the branch point (`docs/superpowers/plans/2026-07-25-phase2-core-owns-brand-shell.md`);
+including that file, 41 files / **+6042 / −80**. 55 test files /
+**561 tests** green. `tsc --noEmit` in `lib/editor` holds at its 34-error
+pre-existing baseline — verified by diffing error *sets* against a worktree at the
+merge base (`bb9a89d`); the two sets are byte-identical, no line added or removed.
+The brand-leak gate returns exactly its 2 known pre-existing hits (comments in
+`lib/theming/segment/SegmentMedia.tsx` and `lib/transitions/presentations/burn.tsx`).
+
+What landed — five mechanisms that each brand repo had its own copy of:
+
+- **`lib/render/layered-composition-props.ts`** — `layeredCompositionProps` +
+  `layeredDurationInFrames`, replacing every brand `Root.tsx`'s hand-copied
+  `calculateMetadata`, its 60-frame floor and its throwaway `durationInFrames`.
+  This also required teaching `lib/editor/src/default-props-writer.ts` to resolve a
+  composition id arriving through a `{...layeredCompositionProps({ id })}` spread —
+  and hardening it: an allowlisted callee, first-argument-only, and a throw on a
+  duplicate id (which previously picked `comps[0]` silently).
+- **`lib/render/{fonts.ts,load-fonts.ts}`** — one `loadBrandFonts`, with the
+  render-concurrency hardening (`timeoutInMilliseconds: 120_000, retries: 2`) that
+  existed in exactly one of the three brand copies now everyone's default.
+- **`lib/project/{paths,remotion-config,vitest-config}.ts` + `tsconfig.base.json`** —
+  one home for the `zod$` single-instance alias, the webpack `resolve.modules` fix
+  and the `toolkit/lib` `existsSync` guard.
+- **`lib/editor/host/*`** — `EditorHost` + `mountEditorHost` on the browser side,
+  `createEditorPlugin` + `createEditorViteConfig` + `formatWithProjectPrettier` on
+  the Node side, plus the extracted primitives (`framesForReel`,
+  `attachCropGestures`, the toolbar chrome). A brand's `.editor/` drops from ~730 lines
+  across `main.tsx` + `vite.config.mts` + `editor-plugin.mts` to **33 lines (PP) / 29 (roost)**
+  across those same two files (`editor-plugin.mts` is deleted; `index.html`, 12 more lines,
+  is unchanged — **45 / 41** across the three files that remain in `.editor/`).
+- **`docs/zod-version.md`** — the zod contract: exactly `3.22.3`, decided by
+  **Remotion**, not by core. Remotion 4.0.425 (PP + core's example) is zod-3-only;
+  4.0.489 (roost) accepts both; the intersection is one version. Core is nearly
+  major-agnostic (560/561 under zod 4.4.3) — the one divergence, an unbounded
+  `z.number().minValue` reading `-Infinity` instead of `null`, was fixed with a
+  `Number.isFinite` guard in `transition-schema.ts`.
+
+**Paste-ready brand migrations: `docs/superpowers/phase2-migrations.md`.** That file
+carries Phase 1's five pending items forward too, so it alone is enough to move a
+brand repo from its current pin.
+
+---
+
 ## ⚠️ Pending brand migrations — apply when the submodule pin bumps
 
-Phase 1 was deliberately **core-only**. Five migrations are queued. Three are caught
-by `tsc` and announce themselves; **two are silent**. Paste-ready diffs are in the
-per-task reports under `.superpowers/sdd/task-{3,5,6,8}-report.md` — copy them
-somewhere durable before cleaning that directory.
+**→ `docs/superpowers/phase2-migrations.md` is the authoritative, paste-ready
+document.** It has complete before/after file contents per brand repo, the two
+hard-won rules (config files import core by *relative* path; a template's own
+`tsconfig.json` must still declare `@video-toolkit/lib/*`), and a suggested order.
+The summary below is an index, not a substitute.
+
+Phases 1 and 2 were both deliberately **core-only**. Phase 1 queued five migrations;
+Phase 2 queues seven more (A–G in that document) and **retires Phase 1's #4**.
 
 1. **roost — `withTransitionOverrides`** *(tsc-caught)*
    `projects/roost-reel-01/src/LayeredRoostReel.tsx:110` spreads `Transition | undefined`,
@@ -73,13 +125,15 @@ somewhere durable before cleaning that directory.
    absent `endpointKey` now means off. Passing one would switch on an accent rule roost
    disabled and change its rendered captions. PP needs nothing.
 
-4. **All editor hosts — pass `meta`** *(SILENT — no compile error)*
-   **14 call sites**: 12 PP (`templates/campaign-reels/.editor` + 11 `projects/*/.editor`)
-   and 2 roost. `video_toolkit/sync_template.py` mirrors only `templates/<t>/src → projects/<p>/src`,
-   so it does **not** carry `.editor/` — this migration is manual, per file.
-   Un-migrated hosts keep working but lose brand lane colours and labels. Roost also loses
-   its accent buttons — though note it was previously being shown PP's `lime`/`teal`, so
-   that is a fix, not a regression.
+4. **All editor hosts — pass `meta`** — **✅ SUPERSEDED BY PHASE 2. DO NOT HAND-EDIT.**
+   This was **14 call sites**: 12 PP (`templates/campaign-reels/.editor` + 11
+   `projects/pp-*/.editor`) and 2 roost (`templates/roost-reels/.editor` +
+   `projects/roost-reel-01/.editor`) — re-verified against both repos.
+   Core's `EditorHost` passes `meta` to **both** `LayeredTimeline` and
+   `LayeredInspector` itself, so adopting `mountEditorHost` (Phase 2 migration **E**)
+   fulfils this at all 14 sites as a side effect. The 14-file hand-edit is wasted work
+   and would be overwritten. Caveat: passing an *actual* `EditorMeta` still needs the
+   brand to author one — neither brand has a `src/config/editor-meta` module today.
 
 5. **PP web-program-intro — pass the palette** *(SILENT, latent)*
    `projects/pp-program-{klima,obvody,verejny-prostor}/src/WebProgramIntro.tsx:26` calls
@@ -93,24 +147,74 @@ somewhere durable before cleaning that directory.
 
 ## Carried into later phases
 
-**Phase 2 is next.** Its scope, from the plan: a core editor host
-(`createEditorHost` + `createEditorViteConfig` + the dev-server plugin),
-`layeredCompositionProps` owning `calculateMetadata` and the duration floor,
-build-config presets, and `loadBrandFonts`. Feasibility was established during the
-audit: core already ships `EditorShell`/`LayeredTimeline`/`LayeredInspector` as raw
-`.tsx` consumed through the `@video-toolkit/lib` alias and bundled by the brand's own
-Vite, so a host in core is one more file on a proven path — core never needs `remotion`
-installed. The two hosts diverge by **63 diff lines out of 1489**, all configuration.
-Note two files cannot fully leave the brand repo: `vite.config.mts` (it *creates* the
-alias, so it can't be imported through it — shrinks to ~8 lines) and `index.html`.
+**Phase 3 is next** — close the extension contract (registries, effects, generators,
+captions).
 
-**Fix early in Phase 2 or 3, root cause of migration 4:**
-`video_toolkit/sync_template.py:136,141` hardcodes the `src`-only mirror. Teaching it to
-carry `.editor/` collapses a 14-file manual migration to two template edits plus a sync,
-and stops the next editor-host change hitting the same wall.
+**Deliberately NOT done in Phase 2, now a Phase 3 task:**
+`video_toolkit/sync_template.py:136,141` still mirrors only
+`templates/<t>/src → projects/<p>/src`, so it does **not** carry `.editor/`. With the
+host in core, `.editor/` is 45 (PP) / 41 (roost) lines across three files that rarely change, which
+lowers the cost a lot — but the next `.editor/` change still hits **14 directories**
+by hand (12 PP, 2 roost).
+The same gap covers `remotion.config.ts`, `vitest.config.ts`, `tsconfig.json` and
+`package.json`, none of which the mirror carries either.
 
-**Phase 0 leftover:** zod is pinned `^4.3.6` in roost and `^3.22.0` in both PP templates,
-against the same core schema module. Latent break; core should pin it.
+**Phase 0 leftover — decided, half-applied.** `docs/zod-version.md` settles the
+question (exactly `3.22.3`, forced by Remotion 4.0.425). Core and
+`examples/layered-minimal` already carry it. **roost is still on `^4.3.6`** and PP on
+`^3.22.0`; both are Phase 2 migration **G**. Sequenced follow-up: a core-side check
+that the resolved zod major is 3 must land **after** roost migrates (added now it
+would fire on the one repo that is not broken) and must **warn, not throw** — a hard
+assertion turns a routine submodule bump into a hard stop. Recorded in
+`docs/zod-version.md`; no guard code exists yet.
+
+**New in Phase 2, deferred:**
+- **`loadBrandFonts` dedupes on a module-level `handle`**, so a *second* call from a
+  different composition in one JS realm is a silent no-op. This mirrors all three brand
+  originals exactly, so it is not a regression — but Studio can mount several
+  compositions, and two of them wanting different font sets would silently get only the
+  first. No `delayRender` hang path (verified).
+- **`EDITOR_ACCENT` (`lib/editor/host/ui.ts:6`) and `EditorShell.module.css:42`** hold
+  the same colour literal (`#b6ff5a`), and it is not just those two: the literal also appears
+  at `FrameOverlay.module.css:23,25,31`, `AccentEditor.module.css:27,46`, and
+  `LayeredTimeline.tsx:715` — 8 occurrences across 5 files, TS and CSS both, with nothing
+  keeping them in sync.
+- **`lib/project/paths.ts:55`**'s error message says "working directory", but the vitest
+  path passes an explicit `projectRoot` — reword.
+- **`lib/editor/src/project-config.test.ts:115`** creates an `mkdtempSync` fixture that
+  is never cleaned up (a tmpdir leak per run).
+- **`readDefaultProps`'s "first argument only" narrowing** has no dedicated test of its
+  own (it is exercised indirectly by the spread-id cases).
+- **The Save-test rewrite dropped** the old "clicking a disabled Save does not POST"
+  assertion. No mutation-killing power was lost — the replacement drives the real
+  dirty-tracking path — but the disabled-button guard is no longer asserted.
+- ~~`lib/project/README.md` says "these three" and then discusses two.~~ **Fixed in the
+  final fix wave** — reworded to "these two" (`paths.ts` is never imported by a brand
+  config file; only `remotion-config.ts`/`vitest-config.ts` are).
+
+**Closed in the final fix wave (whole-branch review, before merge):**
+- **The spread-form Save spine had zero test coverage.** Every real brand Save goes through
+  `save-endpoint.ts` → `updateDefaultPropsSurgically` + `verifyDefaultProps`, never
+  `rewriteDefaultProps` — but the spread-form fixtures added during Phase 2 only drove
+  `readDefaultProps`/`rewriteDefaultProps`. Closed: `src/default-props-writer.test.ts` now
+  has a `SPREAD_TWO_COMPS_WITH_ARRAY` fixture driven through `updateDefaultPropsSurgically`
+  with an array splice (the one path, `applyArraySpliceToSource`, that re-parses intermediate
+  source and re-resolves the id via `findDefaultPropsAttr` a second time against already-edited
+  spread-form source) plus a `verifyDefaultProps` round-trip. Verified by mutation. No stale
+  risk remains — this was pure missing coverage, not a production bug.
+- **`idOf`'s explicit-`id`-vs-spread-id precedence was inverted relative to JSX.** The resolver
+  preferred an explicit `id="…"` attribute over a `{...layeredCompositionProps({ id })}` spread
+  regardless of source order, but JSX/React apply props in source order — whichever is written
+  LAST wins at runtime. Fixed in `lib/editor/src/default-props-writer.ts`'s `idOf`: it now picks
+  whichever candidate has the higher index in `el.getAttributes()`. Two new tests cover both
+  orderings, each verified by mutation to fail independently. Closed — this was pathological and
+  self-limiting (no real `Root.tsx` writes both `id=` and a `layeredCompositionProps` spread on
+  the same element today) but is now correct either way.
+- **A second 60-frame floor.** `lib/render/layered-composition-props.ts`'s `MIN_FRAMES` is now
+  exported and `lib/editor/host/host-duration.ts`'s `framesForReel` imports it instead of
+  hardcoding its own `60`. Cross-file drift is no longer possible — verified by mutating
+  `MIN_FRAMES` and confirming both `layered-composition-props.test.ts` and
+  `host-duration.test.ts`'s floor assertions fail. Closed.
 
 **Deferred, judged genuinely fine to carry:**
 - The `AccentKey` marker in `transition-schema.ts` patches zod's `describe()` so clones stay
@@ -138,6 +242,19 @@ direction-branching cell clipping, `pixelate`'s opaque black root. Core cannot r
 `remotion`), so this needs a render-parity pass in a brand repo. **Nothing that renders today
 can regress** — every one of those kinds was unreachable before Phase 1.
 
+**Top residual risk on this branch, needs the first brand-side `tsc` to close:**
+`layeredCompositionProps` (`lib/render/layered-composition-props.ts`) has never been
+type-checked against a real Remotion `<Composition>` — core has no `remotion` installed, and
+`examples/` sits inside no tsconfig, so core's own `tsc --noEmit` cannot see this at all.
+Migration item A in `docs/superpowers/phase2-migrations.md` is graded *tsc-caught*, which is
+honest about severity but untested in direction: if the unconstrained `<C>` type parameter on
+`LayeredCompositionOptions<C>['component']` defeats Remotion's own `Props` inference from
+`component`, a brand's `defaultProps` type-check could silently **loosen** instead of erroring —
+the opposite of what "tsc-caught" promises. The first brand-side `npx tsc --noEmit` after the
+submodule pin bumps settles it in seconds (see `phase2-migrations.md`'s "Suggested order" step
+6). Treat any change in `defaultProps` type strictness on `<Composition>` there as a real
+regression to investigate, not noise to dismiss.
+
 ---
 
 ## Working conventions established
@@ -152,5 +269,13 @@ can regress** — every one of those kinds was unreachable before Phase 1.
   `--no-gpg-sign` immediately. (Also recorded in `~/.claude/CLAUDE.md`.)
 - Core has no `remotion` installed, so anything importing it cannot be unit tested here.
   Keep the pure/JSX split documented in `lib/render/README.md`.
+- **`EditorHost`'s verification boundary, named explicitly** (the general rule above is true but
+  too coarse to tell you what's actually unverified): the Focus/Zoom crop-gesture overlay, the
+  `setFocal`/`setZoom` POSITIVE path (a real drag/pinch actually moving a clip's crop), the
+  transport toolbar's play/pause/scrub controls, and Remotion `Player` playback events are all
+  unreachable in jsdom — they need a real timeline selection and a real Player instance, neither
+  of which jsdom provides. These are inspected (rendered, snapshot-checked, prop-shape-checked)
+  by the existing tests, not exercised end-to-end. Same caveat added to
+  `lib/editor/host/README.md`, which otherwise advertises Focus/Zoom with no verification note.
 - The brand-leak gate needs its exclusions or it walks `node_modules` and is permanently red:
   `grep -riE 'lime|teal|roost|progresivn|sand-brown' lib/ --exclude-dir=node_modules --exclude='*.test.*'`

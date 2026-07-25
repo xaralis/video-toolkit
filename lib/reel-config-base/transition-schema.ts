@@ -511,7 +511,10 @@ export type DraftTransition = { kind: string; frames?: number; [key: string]: un
 export function defaultValueForField(field: z.ZodTypeAny): unknown {
   const inner = innerType(field);
   if (inner instanceof z.ZodEnum) return (inner as z.ZodEnum<[string, ...string[]]>).options[0];
-  if (inner instanceof z.ZodNumber) return (inner as z.ZodNumber).minValue ?? 0;
+  if (inner instanceof z.ZodNumber) {
+    const min = (inner as z.ZodNumber).minValue;
+    return Number.isFinite(min) ? min : 0;
+  }
   if (inner instanceof z.ZodBoolean) return false;
   return undefined;
 }

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { rewriteDefaultProps, readDefaultProps, updateDefaultPropsSurgically } from './default-props-writer';
+import {
+  rewriteDefaultProps,
+  readDefaultProps,
+  updateDefaultPropsSurgically,
+  verifyDefaultProps,
+} from './default-props-writer';
 
 const ROOT = `import { Composition } from 'remotion';
 import { CampaignReel } from './CampaignReel';
@@ -585,6 +590,184 @@ export const RemotionRoot = () => {
   );
 };
 `;
+
+const SPREAD_TWO_COMPS = `import { Composition } from 'remotion';
+import { layeredCompositionProps } from '@video-toolkit/lib/render/layered-composition-props';
+export const Root = () => (
+  <>
+    <Composition {...layeredCompositionProps({ id: 'A', component: A, fps: 30, width: 1, height: 1 })} defaultProps={{ topic: 'a' }} />
+    <Composition {...layeredCompositionProps({ id: 'B', component: B, fps: 30, width: 1, height: 1 })} defaultProps={{ topic: 'b' }} />
+  </>
+);
+`;
+
+// The decoy: a spread of an UNRELATED helper (not on the allowlist) that also happens to carry an
+// `id: '…'` property, sitting on the same element as the real `layeredCompositionProps` spread —
+// this is the reviewer's repro for the id-via-spread resolver picking the wrong composition.
+const SPREAD_DECOY_ROOT = `import { Composition } from 'remotion';
+import { layeredCompositionProps } from '@video-toolkit/lib/render/layered-composition-props';
+export const Root = () => (
+  <>
+    <Composition {...analytics({ id: 'B' })} {...layeredCompositionProps({ id: 'A', component: A, fps: 30, width: 1, height: 1 })} defaultProps={{ topic: 'a' }} />
+    <Composition {...layeredCompositionProps({ id: 'B', component: B, fps: 30, width: 1, height: 1 })} defaultProps={{ topic: 'b' }} />
+  </>
+);
+`;
+
+const SPREAD_DUPLICATE_ID_ROOT = `import { Composition } from 'remotion';
+import { layeredCompositionProps } from '@video-toolkit/lib/render/layered-composition-props';
+export const Root = () => (
+  <>
+    <Composition {...layeredCompositionProps({ id: 'B', component: A, fps: 30, width: 1, height: 1 })} defaultProps={{ topic: 'a' }} />
+    <Composition {...layeredCompositionProps({ id: 'B', component: B, fps: 30, width: 1, height: 1 })} defaultProps={{ topic: 'b' }} />
+  </>
+);
+`;
+
+// `{...layeredCompositionProps(OPTS)}` with a hoisted options identifier — no inline object
+// literal to read an `id:` property out of.
+const SPREAD_HOISTED_OPTS_ROOT = `import { Composition } from 'remotion';
+import { layeredCompositionProps } from '@video-toolkit/lib/render/layered-composition-props';
+const OPTS = { id: 'A', component: A, fps: 30, width: 1, height: 1 };
+export const Root = () => (
+  <Composition {...layeredCompositionProps(OPTS)} defaultProps={{ topic: 'a' }} />
+);
+`;
+
+// Pathological but self-limiting: an explicit `id="…"` AND a `{...layeredCompositionProps({ id:
+// '…' })}` on the SAME element. JSX/React (and therefore Remotion) apply props in SOURCE ORDER —
+// whichever is written LAST wins at runtime — so the id resolver must match that, not always
+// prefer the explicit attribute regardless of position.
+const EXPLICIT_ID_FIRST_ROOT = `import { Composition } from 'remotion';
+import { layeredCompositionProps } from '@video-toolkit/lib/render/layered-composition-props';
+export const Root = () => (
+  <Composition id="A" {...layeredCompositionProps({ id: 'B', component: B, fps: 30, width: 1, height: 1 })} defaultProps={{ topic: 'explicit-first' }} />
+);
+`;
+
+const SPREAD_ID_FIRST_ROOT = `import { Composition } from 'remotion';
+import { layeredCompositionProps } from '@video-toolkit/lib/render/layered-composition-props';
+export const Root = () => (
+  <Composition {...layeredCompositionProps({ id: 'B', component: B, fps: 30, width: 1, height: 1 })} id="A" defaultProps={{ topic: 'spread-first' }} />
+);
+`;
+
+describe('id resolution through a layeredCompositionProps(...) spread', () => {
+  it('disambiguates two spread-form compositions correctly by id', () => {
+    expect(readDefaultProps(SPREAD_TWO_COMPS, { compositionId: 'A' })).toEqual({ topic: 'a' });
+    expect(readDefaultProps(SPREAD_TWO_COMPS, { compositionId: 'B' })).toEqual({ topic: 'b' });
+  });
+
+  it('read: resolves to the RIGHT composition even when a decoy spread on the same element also carries an id', () => {
+    // Regression for the reviewer's repro: an unrelated `{...analytics({ id: 'B' })}` spread must
+    // never be mistaken for the composition's real id, which only `layeredCompositionProps`
+    // (the allowlisted helper) supplies.
+    expect(readDefaultProps(SPREAD_DECOY_ROOT, { compositionId: 'B' })).toEqual({ topic: 'b' });
+    expect(readDefaultProps(SPREAD_DECOY_ROOT, { compositionId: 'A' })).toEqual({ topic: 'a' });
+  });
+
+  it('write: rewrites the RIGHT composition even when a decoy spread on the same element also carries an id', () => {
+    // This is the write side of Save — picking the wrong composition here means silent
+    // cross-composition data loss, which is the damaging half of the bug.
+    const out = rewriteDefaultProps(SPREAD_DECOY_ROOT, { topic: 'b2' }, { compositionId: 'B' });
+    expect(readDefaultProps(out, { compositionId: 'B' })).toEqual({ topic: 'b2' });
+    expect(readDefaultProps(out, { compositionId: 'A' })).toEqual({ topic: 'a' });
+  });
+
+  it('throws when a duplicate id matches more than one composition, naming the id', () => {
+    expect(() =>
+      readDefaultProps(SPREAD_DUPLICATE_ID_ROOT, { compositionId: 'B' }),
+    ).toThrow(/multiple <Composition> elements with id="B"/);
+  });
+
+  it('fails loudly rather than guessing when the spread argument is a hoisted identifier, not an inline object literal', () => {
+    expect(() => readDefaultProps(SPREAD_HOISTED_OPTS_ROOT, { compositionId: 'A' })).toThrow(
+      /no <Composition> with id="A"/,
+    );
+  });
+
+  it('resolves to the id written LAST when an explicit id="…" is spread OVER by a later layeredCompositionProps({ id }) — matching JSX/Remotion precedence', () => {
+    // `id="A" {...layeredCompositionProps({ id: 'B', ... })}`: the spread comes after the
+    // explicit attribute in source order, so React/Remotion register this composition as "B" —
+    // the resolver must agree, not blindly prefer the explicit attribute.
+    expect(readDefaultProps(EXPLICIT_ID_FIRST_ROOT, { compositionId: 'B' })).toEqual({
+      topic: 'explicit-first',
+    });
+    expect(() => readDefaultProps(EXPLICIT_ID_FIRST_ROOT, { compositionId: 'A' })).toThrow(
+      /no <Composition> with id="A"/,
+    );
+  });
+
+  it('resolves to the id written LAST when an explicit id="…" comes AFTER the layeredCompositionProps(...) spread', () => {
+    // `{...layeredCompositionProps({ id: 'B', ... })} id="A"`: the explicit attribute is written
+    // after the spread, so it wins — the mirror image of the previous case.
+    expect(readDefaultProps(SPREAD_ID_FIRST_ROOT, { compositionId: 'A' })).toEqual({
+      topic: 'spread-first',
+    });
+    expect(() => readDefaultProps(SPREAD_ID_FIRST_ROOT, { compositionId: 'B' })).toThrow(
+      /no <Composition> with id="B"/,
+    );
+  });
+});
+
+// The real Save spine (`save-endpoint.ts`) drives `updateDefaultPropsSurgically` +
+// `verifyDefaultProps`, never `rewriteDefaultProps` — every fixture above this point only
+// exercises `readDefaultProps`/`rewriteDefaultProps` against spread-form `<Composition>`s, so
+// none of it covers what a real brand Save actually does. This fixture closes that gap: two
+// spread-form compositions (mirroring `SPREAD_TWO_COMPS` above), each with an ARRAY inside
+// `defaultProps`, driven through the surgical writer including an array splice — the one path
+// (`applyArraySpliceToSource`) that re-parses an intermediate string and re-resolves the id via
+// `findDefaultPropsAttr` a second time, against already-edited spread-form source.
+const SPREAD_TWO_COMPS_WITH_ARRAY = `import { Composition } from 'remotion';
+import { layeredCompositionProps } from '@video-toolkit/lib/render/layered-composition-props';
+export const Root = () => (
+  <>
+    <Composition {...layeredCompositionProps({ id: 'A', component: A, fps: 30, width: 1, height: 1 })} defaultProps={{
+      topic: 'a',
+      segments: [
+        // ── seg a1 ──
+        { id: 'a1', type: 'clip', trimIn: 0, trimOut: 3 },
+        { id: 'a2', type: 'broll', trimIn: 0, trimOut: 2 },
+      ],
+    }} />
+    <Composition {...layeredCompositionProps({ id: 'B', component: B, fps: 30, width: 1, height: 1 })} defaultProps={{
+      topic: 'b',
+      segments: [
+        { id: 'b1', type: 'clip', trimIn: 0, trimOut: 3 },
+      ],
+    }} />
+  </>
+);
+`;
+
+describe('updateDefaultPropsSurgically + verifyDefaultProps on a spread-form <Composition> (the real Save spine)', () => {
+  it('surgically splices an array on the spread-form composition matching compositionId, leaving the other composition untouched', () => {
+    const currentA = readDefaultProps(SPREAD_TWO_COMPS_WITH_ARRAY, { compositionId: 'A' }) as any;
+    const currentB = readDefaultProps(SPREAD_TWO_COMPS_WITH_ARRAY, { compositionId: 'B' });
+    const nextA = JSON.parse(JSON.stringify(currentA));
+    // An array splice (insert), not just a leaf edit — this is the sub-case that re-resolves the
+    // id resolver against already-edited source (see `applyArraySpliceToSource`).
+    nextA.segments.splice(1, 0, { id: 'a1b', type: 'card', trimIn: 0, trimOut: 1 });
+
+    const out = updateDefaultPropsSurgically(SPREAD_TWO_COMPS_WITH_ARRAY, nextA, {
+      compositionId: 'A',
+    });
+
+    // The comment on the surviving element at the insertion point must stay attached to IT, not
+    // be swallowed by the newly inserted element — proving the splice actually ran surgically
+    // rather than falling back to a whole-array reserialize.
+    expect(out).toContain('// ── seg a1 ──');
+    expect(out).toContain('"id": "a1b"');
+    expect(readDefaultProps(out, { compositionId: 'A' })).toEqual(nextA);
+    // Composition B — resolved through its OWN spread — must be completely unaffected by A's
+    // splice; picking the wrong composition here would silently corrupt or lose B's data.
+    expect(readDefaultProps(out, { compositionId: 'B' })).toEqual(currentB);
+
+    // The verify-before-write guard that every real Save runs through. It must not throw for a
+    // faithful rewrite, and it is what would catch a corrupt splice before anything hits disk.
+    expect(() => verifyDefaultProps(out, nextA, { compositionId: 'A' })).not.toThrow();
+  });
+});
 
 describe('updateDefaultPropsSurgically — adding a new key (superset)', () => {
   it('inserts a new key into an existing object literal, preserving siblings’ comments + as const', () => {

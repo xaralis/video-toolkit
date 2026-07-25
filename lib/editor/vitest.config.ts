@@ -27,7 +27,7 @@ export default defineConfig({
     // (reel-config-base, theming, transcripts, render) previously sat outside the
     // runner's root and never executed.
     include: [
-      '{app,src}/**/*.test.{ts,tsx}',
+      '{app,src,host}/**/*.test.{ts,tsx}',
       '../{reel-config-base,theming,transcripts,render}/**/*.test.{ts,tsx}',
     ],
     environment: 'jsdom',
