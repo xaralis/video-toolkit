@@ -1,7 +1,6 @@
 /**
- * A brand-declared accent slot key (e.g. `lime`, `teal`, or any brand-defined
- * identifier). Historically only `'lime' | 'teal'` were valid — PP's own
- * slots — but the slot set is now declared per-brand, so this is any string.
+ * A brand-declared accent slot key: whatever identifier the brand's
+ * `accentSlots` declare. Core neither enumerates nor defaults the set.
  */
 export type AccentColor = string;
 export interface Token {
@@ -10,36 +9,29 @@ export interface Token {
 }
 
 /**
- * Apply the brand-signature endpoint `.` rule (#10): any trailing literal `.`
- * outside an accent block becomes an accented `.` in the given brand slot.
- * Authors don't need to remember to wrap the endpoint — they can write
- * natural Czech punctuation and the brand styling is applied automatically.
+ * Apply a brand's endpoint `.` rule: any trailing literal `.` outside an accent
+ * block becomes an accented `.` in the accent slot the CALLER names. Authors
+ * don't need to remember to wrap the endpoint — they write natural punctuation
+ * and the brand styling is applied for them.
+ *
+ * `endpointKey` is a REQUIRED parameter with no default: core owns no accent
+ * slot and must never inject one brand's key into another brand's text. Pass
+ * the key the brand declares for its endpoint, or `undefined`/`''` to disable
+ * the rule (a brand with no endpoint slot).
  *
  * Detection: a string ends with `.` only when the period is NOT inside an
  * accent block (accent blocks close with `}`). So a simple `endsWith('.')`
- * check is sufficient — no regex needed:
- *   - "Bariéra pro lidi."         → "Bariéra pro lidi{teal:.}"   (default slot)
- *   - "Stačí {lime:málo}."        → "Stačí {lime:málo}{teal:.}"
- *   - "{teal:Hello.}"             → unchanged (ends with `}`)
- *   - "Already{teal:.}"           → unchanged (ends with `}`)
- *   - "No period"                 → unchanged
+ * check is sufficient — no regex needed (examples use a brand key `sig`):
+ *   - ("Bariéra pro lidi.", 'sig')  → "Bariéra pro lidi{sig:.}"
+ *   - ("It takes {gold:little}.", 'sig') → "It takes {gold:little}{sig:.}"
+ *   - ("{sig:Hello.}", 'sig')       → unchanged (ends with `}`)
+ *   - ("Already{sig:.}", 'sig')     → unchanged (ends with `}`)
+ *   - ("No period", 'sig')          → unchanged
+ *   - ("Anything.", undefined)      → unchanged (rule disabled)
  *
  * Only `.` is auto-transformed. `!` and `?` are left as authorial signal.
- *
- * `endpointKey` selects which brand slot wraps the endpoint:
- *   - omitted entirely → defaults to `'teal'` (PP's original, back-compat
- *     behavior for every existing single-arg call site).
- *   - passed explicitly as `undefined` or `''` → the rule is DISABLED and the
- *     text is returned unchanged (a brand with no endpoint slot).
- *   - passed as any other string → that key wraps the endpoint instead.
- *
- * The distinction between "omitted" and "explicitly undefined" is made via
- * the rest-tuple parameter (its length reflects the actual call arity), not
- * a plain default value, since JS default parameters can't tell those two
- * cases apart.
  */
-export function applyBrandEndpoint(text: string, ...rest: [endpointKey?: string]): string {
-  const endpointKey = rest.length === 0 ? 'teal' : rest[0];
+export function applyBrandEndpoint(text: string, endpointKey: string | undefined): string {
   if (!endpointKey) return text;
   if (!text.endsWith('.')) return text;
   return text.slice(0, -1) + `{${endpointKey}:.}`;
@@ -48,7 +40,7 @@ export function applyBrandEndpoint(text: string, ...rest: [endpointKey?: string]
 export function parseAccents(input: string): Token[] {
   // Any identifier-like key (letters/digits/underscore/hyphen, starting with
   // a letter) is a valid accent slot — brands declare their own key set, so
-  // the parser no longer hardcodes `lime|teal`.
+  // the parser hardcodes no key names at all.
   const pattern = /\{([A-Za-z][\w-]*):([^}]+)\}/g;
   const tokens: Token[] = [];
   let lastIndex = 0;

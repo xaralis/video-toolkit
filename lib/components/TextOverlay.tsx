@@ -9,12 +9,11 @@ import { resolveAccentColor, type AccentSlot } from '../theming/palette';
 // gating, accent parsing, and splitting the (single- or multi-line) text into
 // lines/tokens — and delegates the ACTUAL look (typography, colours, per-line or
 // per-char reveal, placement) to a brand-supplied `render` prop. Each brand
-// exports a thin QuotePull that extends this with its own rendering (campaign's
-// decoder-scramble pill; roost's stacked cream/brown stroke stack), instead of
+// exports a thin quote-pull that extends this with its own rendering, instead of
 // duplicating the gating/parse plumbing. Lives in core so every brand imports it
 // via @video-toolkit/lib.
 
-/** One accent-parsed run: text + its accent key ('lime' | 'teal' | brand key) or null. */
+/** One accent-parsed run: text + the brand accent-slot key it names, or null when unaccented. */
 export interface TextToken {
   text: string;
   color: string | null;
@@ -38,8 +37,10 @@ export interface TextOverlayBaseProps {
   /** ms from the composition/segment start (the caller mounts it in a Sequence). */
   appearAtMs: number;
   durationMs: number;
-  /** Apply the brand-endpoint accent transform (trailing-punctuation rule). Default true. */
-  applyEndpoint?: boolean;
+  /** The brand accent-slot key that wraps a trailing `.` (the endpoint rule).
+   *  Omit it — the default — to leave the text exactly as authored. Core has no
+   *  accent slot of its own, so there is nothing to fall back to. */
+  endpointKey?: string;
   /** When present, token color KEYS are resolved to hex via this palette; when
    *  absent, tokens keep their raw accent key (back-compat). */
   palette?: readonly AccentSlot[];
@@ -59,14 +60,14 @@ function splitLines(tokens: TextToken[]): TextToken[][] {
   return lines;
 }
 
-export function TextOverlayBase({ text, appearAtMs, durationMs, applyEndpoint = true, palette, render }: TextOverlayBaseProps) {
+export function TextOverlayBase({ text, appearAtMs, durationMs, endpointKey, palette, render }: TextOverlayBaseProps) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const start = Math.round((appearAtMs / 1000) * fps);
   const end = start + Math.round((durationMs / 1000) * fps);
   if (frame < start || frame > end) return null;
 
-  const source = applyEndpoint ? applyBrandEndpoint(text) : text;
+  const source = applyBrandEndpoint(text, endpointKey);
   const parsed = parseAccents(source).map((t) => ({ text: t.text, color: t.color })) as TextToken[];
   const tokens: TextToken[] = palette
     ? parsed.map((t) => ({ text: t.text, color: resolveAccentColor(palette, t.color) }))

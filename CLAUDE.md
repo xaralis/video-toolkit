@@ -52,7 +52,7 @@ claude-code-video-toolkit/        # this repo (the core) — also a Claude Code 
 ├── skills/              # Domain knowledge for Claude
 ├── .claude/             # core's own settings (SessionStart hook); no commands/skills here
 ├── video_toolkit/       # Python CLI automation (installable package)
-├── lib/                 # Shared components, transitions, theme, reel-config-base, transcripts
+├── lib/                 # Shared components, transitions, theming, render, reel-config-base, transcripts
 ├── brands/default/      # Neutral scaffold brand (colors, fonts, voice) — real brands live in the consuming brand repo
 ├── examples/            # Curated reference projects (layered-minimal, quick-spot, …)
 ├── showcase/            # Runnable demos (e.g. the transitions gallery)

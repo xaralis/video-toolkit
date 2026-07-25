@@ -20,7 +20,7 @@ npm run render   # 6s MP4 → out/reel.mp4
 
 | File | What it teaches |
 |------|-----------------|
-| `src/Root.tsx` | The `Composition` **and the reel data**, inline in `defaultProps`. Video / audio / music / overlays / brand tracks on one absolute-millisecond timeline; `durationInFrames` derived from `meta.totalDurationMs`. |
+| `src/Root.tsx` | The `Composition` **and the reel data**, inline in `defaultProps`. Video / audio / music / overlays / brand tracks on one absolute-millisecond timeline; composition length derived from `meta.totalDurationMs` via `calculateMetadata`, so editing the timeline moves it. |
 | `src/MinimalReel.tsx` | The wrapper that binds the theme. `defaultProps` must stay JSON-serializable (Studio and the toolkit editor read and rewrite them), so components and functions are bound in code and only DATA travels through props. |
 | `src/theme.tsx` | The brand: `accentSlots`, `background`, one custom text renderer, and `renderBrandTrack`. Everything except the first two is optional — drop the text renderer and core's `GenericTextOverlay` draws the overlays instead. |
 | `remotion.config.ts` | The `@video-toolkit/lib` alias **and the `resolve.modules` line every consuming project needs** (see `lib/render/README.md`). |
@@ -38,6 +38,8 @@ npm run render   # 6s MP4 → out/reel.mp4
   enumerates a palette — count, keys and colours are the brand's to choose.
 - **Overlays are independent.** Their `[startMs, endMs)` windows are their own;
   they neither follow nor are clipped by the cuts underneath them.
+- **The render is silent.** The audio track is empty and the music bed carries an
+  envelope but no `source`, so the MP4 has no sound. Everything above is picture.
 
 ## Growing it
 

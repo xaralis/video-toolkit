@@ -865,8 +865,8 @@
     }
   },
   "templates": {},
+  "transitionsNote": "`kind` is the transition's name in the ONE catalog (lib/reel-config-base/transition-schema.ts) — what a config writes and what the editor's Kind dropdown offers. Every entry must have one: an entry without a kind is a presentation nothing can reach, which is exactly the state the six below were fixed out of. `options` lists the params the editor exposes as sub-options, which is the kind's schema shape minus kind/frames.",
   "transitions": {
-    "_note": "`kind` is the transition's name in the ONE catalog (lib/reel-config-base/transition-schema.ts) — what a config writes and what the editor's Kind dropdown offers. Every entry must have one: an entry without a kind is a presentation nothing can reach, which is exactly the state the six below were fixed out of. `options` lists the params the editor exposes as sub-options, which is the kind's schema shape minus kind/frames.",
     "glitch": {
       "path": "lib/transitions/presentations/glitch.tsx",
       "kind": "glitch",
@@ -1018,8 +1018,8 @@
       "created": "2026-05-19"
     }
   },
+  "componentsNote": "Stand-alone visual primitives a template can drop into a composition (lib/components). They are NOT the layered rendering contract: the renderers a brand registers, the accent palette and the placement vocabulary live in lib/theming (SegmentMedia, GenericTextOverlay, GenericWatermark), and the assembly in lib/render. The five legacy-theme components (AnimatedBackground, Label, LogoWatermark, SplitScreen, NarratorPiP) were retired with lib/theme/ and examples/hello-world.",
   "components": {
-    "_note": "Stand-alone visual primitives a template can drop into a composition (lib/components). They are NOT the layered rendering contract: the renderers a brand registers, the accent palette and the placement vocabulary live in lib/theming (SegmentMedia, GenericTextOverlay, GenericWatermark), and the assembly in lib/render. The five legacy-theme components (AnimatedBackground, Label, LogoWatermark, SplitScreen, NarratorPiP) were retired with lib/theme/ and examples/hello-world.",
     "SlideTransition": {
       "path": "lib/components/SlideTransition.tsx",
       "description": "Scene transitions (fade, zoom, slide-up, blur-fade)",

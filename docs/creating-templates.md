@@ -157,8 +157,12 @@ And always `<OffthreadVideo>`, never a raw `<video>` element.
 1. In a brand repo, copy an existing template
    (`cp -r templates/campaign-reels templates/my-template`), or start from
    `examples/layered-minimal` when you want the smallest possible base.
-2. Rename it in `package.json` and point `tsconfig.json`'s
-   `@video-toolkit/lib/*` at `../../toolkit/lib/*`.
+2. Rename it in `package.json`, then repoint **both** paths into `lib/` — they are
+   relative to where the copy came from, so a copy that moves resolves to nothing:
+   - `tsconfig.json` → `"@video-toolkit/lib/*": ["../../toolkit/lib/*"]`
+   - `remotion.config.ts` → `path.resolve(process.cwd(), '../../toolkit/lib')`
+     (webpack does not read tsconfig paths, so the two must be kept in sync — this
+     is the one setup line people forget).
 3. Write `src/config/composition-theme.tsx`: accent slots, background, then only
    the renderers your brand genuinely needs.
 4. Keep the reel literal inline in `Root.tsx` `defaultProps` — Studio and the

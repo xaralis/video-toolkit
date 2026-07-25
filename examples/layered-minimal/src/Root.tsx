@@ -13,21 +13,34 @@ import { Composition } from 'remotion';
 import { MinimalReel } from './MinimalReel';
 
 const FPS = 30;
-// Derived from the reel's own timeline below — never a hand-typed frame count.
-const TOTAL_MS = 6000;
 
 export const RemotionRoot: React.FC = () => (
   <Composition
     id="MinimalReel"
     component={MinimalReel}
-    durationInFrames={Math.round((TOTAL_MS / 1000) * FPS)}
+    // The composition's length is DERIVED FROM THE DATA, the way every real
+    // template does it: `calculateMetadata` reads `meta.totalDurationMs` off the
+    // props that are actually rendered, so an edit to the timeline moves the
+    // composition with it. The `durationInFrames` below is only the placeholder
+    // Remotion requires on the element — calculateMetadata always overrides it.
+    // (`meta.totalDurationMs` itself is kept honest by core's
+    // `withTotalDuration` in lib/reel-config-base/total-duration.ts, which the
+    // editor applies on every edit; recompute it with `computeTotalDurationMs`
+    // if you hand-edit the tracks below.)
+    calculateMetadata={({ props }: { props: { reel: { meta: { totalDurationMs: number } } } }) => ({
+      durationInFrames: Math.max(60, Math.round((props.reel.meta.totalDurationMs / 1000) * FPS)),
+    })}
+    durationInFrames={180}
     fps={FPS}
     width={1080}
     height={1920}
     defaultProps={{
       reel: {
         version: 'layered-1',
-        meta: { topic: 'Minimal layered example', totalDurationMs: TOTAL_MS },
+        // Every value in this literal is a literal: `readDefaultProps` (the
+        // editor's reader) accepts only the JSON grammar, so an identifier or a
+        // constant here would make the file unopenable.
+        meta: { topic: 'Minimal layered example', totalDurationMs: 6000 },
         tracks: {
           // ---- video: what fills the frame, back to back -------------------
           // Two `photo` items. `photo`/`clip`/`broll` are the FOOTAGE kinds:
@@ -66,7 +79,11 @@ export const RemotionRoot: React.FC = () => (
           // item per narration take, optionally `followsVideoId`-linked to a clip.
           audio: [],
 
-          // ---- music: one bed with its own envelope --------------------------
+          // ---- music: the envelope of a bed, with no bed ----------------------
+          // This example renders SILENT. There is no `source`, so nothing plays
+          // and the gain/fades below are inert — they are here to show the shape
+          // a real bed takes. Drop an MP3 into `public/music/` and add
+          // `source: 'music/bed.mp3'` to actually hear it.
           music: { baseVolumeDb: -8, fadeInMs: 500, fadeOutMs: 800 },
 
           // ---- overlays: absolutely timed, free of the cuts below them -------
@@ -98,7 +115,7 @@ export const RemotionRoot: React.FC = () => (
               id: 'b-mark',
               kind: 'watermark',
               startMs: 0,
-              endMs: TOTAL_MS,
+              endMs: 6000,
               props: { asset: 'brand/logo.png', corner: 'top-right', sizePx: 96, alpha: 0.85 },
             },
           ],

@@ -24,6 +24,18 @@ npm install
 npm run studio          # or: npm run render
 ```
 
+Both of the copy's paths into `lib/` are relative to `examples/`, so a copy one level
+elsewhere resolves to nothing. Repoint **both** before the first run — the second one is
+the setup line people forget:
+
+- `tsconfig.json` → `"@video-toolkit/lib/*": ["../../lib/*"]` (in a brand repo:
+  `["../../toolkit/lib/*"]`)
+- `remotion.config.ts` → `path.resolve(process.cwd(), '../../lib')` (in a brand repo:
+  `'../../toolkit/lib'`)
+
+The config throws with the resolved path if it is wrong, so a mistake here fails loudly
+rather than at bundle time.
+
 **moviepy examples** (`quick-spot`, `data-viz-chart`) — run in place, no copy needed:
 
 ```bash
