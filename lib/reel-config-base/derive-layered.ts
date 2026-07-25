@@ -260,6 +260,24 @@ export function deriveLayered(config: OldReelConfig, opts: DeriveLayeredOpts): L
         // no previous audio item → treat as silent (no item)
       }
       // 'silent' → no audio item
+    } else if (seg.type === 'multi-clip' && seg.sources && seg.sources.length > 0) {
+      // Multi-clip audio behaves like broll: sound goes to the audio track,
+      // bound to the clip. 'first' → sources[0] only; 'mix' → every source;
+      // 'silent'/unset → none.
+      if (seg.audioMode === 'first') {
+        const s = seg.sources[0];
+        audioItems.push({
+          id: `${seg.id}-audio`, startMs, endMs,
+          source: s.source, sourceInMs: msFromSec(s.trimIn), volumeDb: 0, followsVideoId: seg.id,
+        });
+      } else if (seg.audioMode === 'mix') {
+        seg.sources.forEach((s, i) => {
+          audioItems.push({
+            id: `${seg.id}-audio-${i}`, startMs, endMs,
+            source: s.source, sourceInMs: msFromSec(s.trimIn), volumeDb: 0, followsVideoId: seg.id,
+          });
+        });
+      }
     }
 
     // overlays (clip's overlays[] array; broll/multi-clip's single overlay)
