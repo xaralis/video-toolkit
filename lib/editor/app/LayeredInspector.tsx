@@ -190,8 +190,18 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
         )}
         {(v.kind === 'clip' || v.kind === 'broll') && (
           <Row>
-            <NumberField lbl="Focal X (0–1)" step={0.01} value={v.focalX} onCommit={(n) => patchItem('video', id, { focalX: n })} />
-            <NumberField lbl="Focal Y (0–1)" step={0.01} value={v.focalY} onCommit={(n) => patchItem('video', id, { focalY: n })} />
+            <NumberField
+              lbl="Zoom (1 = fit)"
+              step={0.05}
+              value={1 / ((v.crop as { width?: number } | undefined)?.width ?? 1)}
+              onCommit={(z) =>
+                patchItem('video', id, {
+                  crop: z > 1 ? { ...((v.crop as object) ?? {}), width: 1 / z } : undefined,
+                })
+              }
+            />
+            <NumberField lbl="Focal X" step={0.01} value={v.focalX} onCommit={(n) => patchItem('video', id, { focalX: n })} />
+            <NumberField lbl="Focal Y" step={0.01} value={v.focalY} onCommit={(n) => patchItem('video', id, { focalY: n })} />
           </Row>
         )}
         <NumberField lbl="Music boost (dB)" value={v.musicBoostDb} onCommit={(n) => patchItem('video', id, { musicBoostDb: n })} />
