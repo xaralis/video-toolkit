@@ -54,7 +54,12 @@ describe('deriveMontageLayered', () => {
     expect(wm.startMs).toBe(0);
     expect(wm.endMs).toBe(outro.startMs);
 
-    // guides from kicks (seconds → ms)
+    // outro heartbeat animation needs integer frames
+    const kf = (outro as { props?: { kickFrames?: number[] } }).props?.kickFrames!;
+    expect(kf).toEqual([14, 42, 59]);
+    expect(kf.every(Number.isInteger)).toBe(true);
+
+    // guides from kicks (seconds → ms, precise positions)
     expect(reel.meta.guidesMs).toEqual([459, 1397, 1952]);
   });
 
