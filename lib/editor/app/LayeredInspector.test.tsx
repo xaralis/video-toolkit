@@ -222,6 +222,53 @@ describe('LayeredInspector item props (brand metadata)', () => {
   });
 });
 
+// A declared field with NO `options` and NO value on the item yet has nothing to
+// be typed from. Without `type` it renders as text and commits a STRING into the
+// opaque props bag (`z.record(z.unknown())` accepts it, the renderer coerces) —
+// the config goes type-dirty and only becomes a number field after a reload.
+describe('LayeredInspector declared param type (absent key)', () => {
+  const numMeta = {
+    videoProps: { outro: [{ prop: 'logoDelaySec', label: 'Logo delay (s)', type: 'number' as const }] },
+  };
+  const bare: LayeredReel = {
+    ...outroReel,
+    tracks: { ...outroReel.tracks, video: [{ id: 'o1', kind: 'outro', startMs: 0, endMs: 2000, musicBoostDb: 0, props: {} }] },
+  };
+
+  it('renders a number input for a declared-number prop the item does not carry', () => {
+    render(<LayeredInspector reel={bare} selectedId="video:o1" onChange={() => {}} onSeek={() => {}} fps={30} meta={numMeta} />);
+    const f = screen.getByLabelText('Logo delay (s)') as HTMLInputElement;
+    expect(f.type).toBe('number');
+    expect(f.value).toBe('');
+  });
+
+  it('commits a NUMBER, not a string, for that absent key', () => {
+    const onChange = vi.fn();
+    render(<LayeredInspector reel={bare} selectedId="video:o1" onChange={onChange} onSeek={() => {}} fps={30} meta={numMeta} />);
+    fireEvent.change(screen.getByLabelText('Logo delay (s)'), { target: { value: '0.5' } });
+    const props = (onChange.mock.calls.at(-1)![0] as LayeredReel).tracks.video[0].props as Record<string, unknown>;
+    expect(props.logoDelaySec).toBe(0.5);
+    expect(typeof props.logoDelaySec).toBe('number');
+  });
+
+  it('a declared boolean prop the item lacks renders as a checkbox and commits a boolean', () => {
+    const boolMeta = { videoProps: { outro: [{ prop: 'loop', label: 'Loop', type: 'boolean' as const }] } };
+    const onChange = vi.fn();
+    render(<LayeredInspector reel={bare} selectedId="video:o1" onChange={onChange} onSeek={() => {}} fps={30} meta={boolMeta} />);
+    const box = screen.getByLabelText('Loop') as HTMLInputElement;
+    expect(box.type).toBe('checkbox');
+    expect(box.checked).toBe(false);
+    fireEvent.click(box);
+    const props = (onChange.mock.calls.at(-1)![0] as LayeredReel).tracks.video[0].props as Record<string, unknown>;
+    expect(props.loop).toBe(true);
+  });
+
+  it('a declared type does not stop an already-typed value from rendering', () => {
+    render(<LayeredInspector reel={outroReel} selectedId="video:o1" onChange={() => {}} onSeek={() => {}} fps={30} meta={numMeta} />);
+    expect((screen.getByLabelText('Logo delay (s)') as HTMLInputElement).value).toBe('0.6');
+  });
+});
+
 describe('LayeredInspector effect catalog', () => {
   it('offers only core effects when no brand catalog is supplied', () => {
     const { getByText, queryByText } = render(

@@ -233,7 +233,12 @@ export interface LayeredTimelineProps {
   /** Snap a dragged/resized edge to the nearest `guidesMs` beat (snap-on-release). */
   snapToBeats?: boolean;
   /** Brand-supplied editor vocabulary (lane colours + overlay labels). Optional —
-   *  core's defaults are brand-neutral (see editor-meta.ts). */
+   *  core's defaults are brand-neutral (see editor-meta.ts).
+   *
+   *  PASS A STABLE REFERENCE — a module-level `const editorMeta: EditorMeta = {…}`,
+   *  or `useMemo`. This component is `memo`ized with a shallow compare and it is
+   *  re-rendered on every playhead frame; an inline `meta={{ … }}` literal is a
+   *  fresh object each render and defeats the memo entirely. */
   meta?: EditorMeta;
 }
 

@@ -191,11 +191,26 @@ function ParamFields({
         />
       );
     }
-    if (typeof val === 'number')
-      return <NumberField key={prop} lbl={lbl} step={0.1} value={val} onCommit={(n) => onPatch({ [prop]: n })} />;
-    if (typeof val === 'boolean')
-      return <CheckboxField key={prop} lbl={lbl} value={val} onChange={(b) => onPatch({ [prop]: b })} />;
-    if (typeof val === 'string' || val === undefined || val === null)
+    // A DECLARED type wins over the value's own — it is the only thing that can
+    // type a field whose key the item does not carry yet. Without it an absent
+    // numeric prop falls through to TextField and commits a string ("0.5") into
+    // the bag; the renderer coerces, but the saved config goes type-dirty.
+    const t = field?.type ?? typeof val;
+    if (t === 'number')
+      return (
+        <NumberField
+          key={prop}
+          lbl={lbl}
+          step={0.1}
+          value={typeof val === 'number' ? val : undefined}
+          onCommit={(n) => onPatch({ [prop]: n })}
+        />
+      );
+    if (t === 'boolean')
+      return (
+        <CheckboxField key={prop} lbl={lbl} value={typeof val === 'boolean' ? val : false} onChange={(b) => onPatch({ [prop]: b })} />
+      );
+    if (t === 'string' || val === undefined || val === null)
       return (
         <TextField
           key={prop}
@@ -403,9 +418,9 @@ function AddEffectControl({ meta, onAdd }: { meta?: EditorMeta; onAdd: (effect: 
 }
 
 export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, accentSlots, meta }: LayeredInspectorProps) {
-  // The dedicated prop wins; `meta.accentSlots` lets a host keep ONE metadata
-  // object instead of two props. Either way the values are the brand's.
-  const slots = accentSlots ?? meta?.accentSlots;
+  // The dedicated `accentSlots` prop is the ONE source for the palette —
+  // EditorMeta deliberately does not carry a copy (see editor-meta.ts).
+  const slots = accentSlots;
   const patchItem = (lane: LaneId, id: string, patch: Record<string, unknown>) => {
     const key = lane as keyof LayeredReel['tracks'];
     const arr = reel.tracks[key] as Array<{ id: string }>;

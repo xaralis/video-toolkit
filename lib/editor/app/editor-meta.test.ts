@@ -47,6 +47,34 @@ describe('stableColor', () => {
   it('is deterministic per seed and differs between seeds', () => {
     expect(stableColor('overlay-chevron')).toBe(stableColor('overlay-chevron'));
     expect(stableColor('overlay-chevron')).not.toBe(stableColor('overlay-stat-callout'));
-    expect(stableColor('x')).toMatch(/^hsl\(\d+, 42%, 34%\)$/);
+    expect(stableColor('x')).toMatch(/^hsl\(\d+, \d+%, \d+%\)$/);
+  });
+
+  // `a !== b` passes vacuously on a 6° hue gap — two blocks that a user reads as
+  // the same colour. Assert a real perceptual gap over the kinds a brand has.
+  it('separates every pair of real lane kinds by a visible margin', () => {
+    const kinds = [
+      'overlay-chevron', 'overlay-lottie', 'overlay-update-badge', 'overlay-text',
+      'overlay-title', 'overlay-stat-callout', 'overlay-quote-pull', 'overlay-source-tag',
+      'overlay-party-logos', 'overlay-caption', 'overlay-legal', 'video-photo',
+      'brand-watermark', 'overlay-ticker', 'overlay-cta', 'overlay-lower-third',
+    ];
+    const parse = (seed: string) => {
+      const m = /^hsl\((\d+), (\d+)%, (\d+)%\)$/.exec(stableColor(seed));
+      expect(m, `stableColor(${seed}) shape`).not.toBeNull();
+      return { h: Number(m![1]), s: Number(m![2]), l: Number(m![3]) };
+    };
+    const cols = kinds.map(parse);
+    // Weighted: 1° of hue is the cheapest unit of difference; a lightness step
+    // reads far stronger than a hue step, saturation in between.
+    const dist = (a: typeof cols[0], b: typeof cols[0]) => {
+      const dh = Math.min(Math.abs(a.h - b.h), 360 - Math.abs(a.h - b.h));
+      return dh + 4 * Math.abs(a.l - b.l) + 2 * Math.abs(a.s - b.s);
+    };
+    for (let i = 0; i < cols.length; i += 1) {
+      for (let j = i + 1; j < cols.length; j += 1) {
+        expect(dist(cols[i], cols[j]), `${kinds[i]} vs ${kinds[j]}`).toBeGreaterThanOrEqual(24);
+      }
+    }
   });
 });

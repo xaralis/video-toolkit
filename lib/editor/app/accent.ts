@@ -9,7 +9,10 @@ export interface AccentSelection {
 // Any brand-declared accent key — core declares no accent values of its own, so
 // this must match the same open key grammar the accent parser uses
 // (lib/transcripts/accent-parser.ts), not one brand's slot names.
-const ACCENT_RE = /\{[A-Za-z][\w-]*:([^}]*)\}/g;
+// `([^}]+)`, not `([^}]*)`: the parser treats an EMPTY phrase (`{gold:}`) as
+// plain text and renders the braces literally, so stripping it here would make
+// a timeline label disagree with what is on screen.
+const ACCENT_RE = /\{[A-Za-z][\w-]*:([^}]+)\}/g;
 
 /**
  * wrapAccent — pure reducer for the "wrap selection in an accent" editor

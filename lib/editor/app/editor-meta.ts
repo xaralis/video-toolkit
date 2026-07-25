@@ -9,15 +9,25 @@
 // core effect catalog, a generically-typed editor for any opaque `props`/effect
 // params bag, humanized lane labels, and deterministic lane colours.
 
-import type { AccentSlot } from '../../theming/palette';
+// The brand's accent palette is deliberately NOT here: `LayeredInspector` has a
+// dedicated `accentSlots` prop and that stays the single source of truth — one
+// carrier plus a precedence rule is one too many.
 
 /** One declared, editable field inside an opaque bag (`props`, effect params).
- *  `options` present → a dropdown over exactly those values; otherwise the
- *  field is typed by the value currently held. */
+ *  `options` present → a dropdown over exactly those values; else `type` if
+ *  declared; else the field is typed by the value currently held.
+ *
+ *  Declare `type` for any field whose value the item may not carry yet: with
+ *  neither `options` nor `type`, an absent key has no value to be typed from,
+ *  so it falls back to a text input and would write a STRING into what the
+ *  renderer expects to be a number (e.g. `logoDelaySec: "0.5"`). The opaque bag
+ *  is `z.record(z.unknown())`, so nothing rejects it — the config just goes
+ *  type-dirty until a reload re-types the field from its (now string) value. */
 export interface ParamField {
   prop: string;
   label?: string;
   options?: readonly string[];
+  type?: 'number' | 'string' | 'boolean';
 }
 
 /** One offerable clip effect. `defaults` (merged with `{ type }`) is what gets
@@ -45,9 +55,6 @@ export interface EditorMeta {
   laneColors?: Record<string, string>;
   /** Timeline block label per overlay `content.kind`. Default: humanized kind. */
   overlayLabels?: Record<string, string>;
-  /** Convenience carrier so a host can keep one metadata object; the inspector
-   *  reads its own `accentSlots` prop first (see LayeredInspectorProps). */
-  accentSlots?: readonly AccentSlot[];
 }
 
 /** Core's own effect catalog: ONLY what core itself renders. SegmentMedia (the
@@ -91,9 +98,37 @@ export function humanizeKey(key: string): string {
 
 /** A deterministic, muted block colour for a lane item core has no colour for.
  *  Same seed → same colour, so an unknown brand kind is at least consistently
- *  distinguishable instead of all-grey. */
+ *  distinguishable instead of all-grey.
+ *
+ *  Hue alone is not enough. The old version was `hue = hash % 360` at a fixed
+ *  S/L, and with the ~dozen lane kinds a real brand actually has, two of them
+ *  landing within a few degrees is likely rather than unlucky — `overlay-chevron`
+ *  and `overlay-lottie` came out 6° apart and read as one colour. So: the hash
+ *  is avalanched first (the plain `*31` accumulator has almost no low-bit
+ *  mixing, which is what made neighbouring seeds land near each other), and
+ *  saturation and lightness are two further axes, driven by independent bits of
+ *  the mixed hash. Near-identical hues then still separate by weight.
+ *  `stableColor.test` asserts a minimum separation over the real kind set. */
+const SATURATIONS = [34, 42, 50];
+const LIGHTNESSES = [28, 36, 44, 52];
+
+/** murmur3 fmix32 — avalanche, so one changed input char moves every output bit. */
+function mix32(x: number): number {
+  let h = x >>> 0;
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
 export function stableColor(seed: string): string {
   let h = 0;
-  for (let i = 0; i < seed.length; i += 1) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  return `hsl(${h % 360}, 42%, 34%)`;
+  for (let i = 0; i < seed.length; i += 1) h = (Math.imul(h, 31) + seed.charCodeAt(i)) >>> 0;
+  const m = mix32(h);
+  const hue = m % 360;
+  const sat = SATURATIONS[(m >>> 20) % SATURATIONS.length];
+  const light = LIGHTNESSES[(m >>> 12) % LIGHTNESSES.length];
+  return `hsl(${hue}, ${sat}%, ${light}%)`;
 }
