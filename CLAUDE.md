@@ -142,6 +142,20 @@ Vertical 9:16 (1080x1920) short-form reels for social campaigns. Three-layer com
 /toolkit:sync share                     # short URL of out/reel.mp4 — send to reviewers
 ```
 
+**Footage-first variant (no screenplay authoring).** When the footage already exists and just
+needs gluing together — a phone-shot gig promo, a to-camera announcement — swap the `narrate`
+step for `/toolkit:assemble`, which writes the same `SCREENPLAY.md` automatically (clips at full
+length in filename order, brand outro, optional gentle music bed; dead air is reported for you to
+trim later, never cut silently) and hands off to `/toolkit:cut`, which consumes it like any other
+screenplay:
+
+```
+/toolkit:video → (drop footage into public/recordings) → /toolkit:assemble → /toolkit:cut → /toolkit:cut-tune → /toolkit:render
+```
+
+`/toolkit:narrate` Branch B remains the interactive footage-first path for when the takes need
+curating (choose the strong ones, cut filler, pull quotes) rather than just assembling.
+
 Collaborator joining mid-project:
 
 ```

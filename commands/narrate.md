@@ -40,6 +40,13 @@ Read `projects/<name>/SCREENPLAY.md` if it exists.
 
 If `public/recordings/*` (or `public/broll/*`) contains clips but no `SCREENPLAY.md` exists, the user shot something without a formal screenplay. Offer to *listen to the footage* and propose a screenplay reverse-engineered from the spoken content.
 
+> **Curating vs. just gluing.** This branch is an interactive co-authoring session: pick the
+> strong takes, skip the filler, propose overlay text, iterate per segment. If the user
+> instead wants the footage cut together **as-is** — clips in order, brand outro, maybe a
+> music bed, minimal fuss — that is `/toolkit:assemble`, which writes the same
+> `SCREENPLAY.md` with no curation step. Offer it when the ask sounds like "just slap these
+> together" rather than "help me shape this".
+
 Flow:
 
 1. **Inventory** — list all clips in `public/recordings/` and `public/broll/`. Show the user the count and total raw duration.

@@ -57,13 +57,40 @@ the project was scaffolded won't appear automatically — re-running
 
 For each segment in SCREENPLAY.md:
 
-1. **Auto-match via numbering convention**: regex `^(seg)?0*(\d+)_/i` on
-   each filename. If the captured number matches the segment's ID
-   number (e.g., `seg-001` ↔ `seg01_intro.MP4`), auto-assign.
+0. **Honour a declared `Source:` first.** This applies only to segments that
+   actually take a source — `clip`, `broll`, `multi-clip`. Skip it for `outro`
+   and `card`, which map no footage (an outro's `Source:` line, where a
+   screenplay carries one, names a brand asset such as `brand/outro.mp4` and is
+   informational only — never try to match it against `public/recordings/`).
+
+   For a source-taking segment whose `**Source:**` is anything other than `TBD`:
+   if the named file exists in `public/recordings/` or `public/broll/`, take it
+   as authoritative — assign it and skip the matching rules below for that
+   segment. The screenplay is the source of truth: one written against footage
+   that already existed (`/toolkit:assemble`, or `/toolkit:narrate` Branch B)
+   has already resolved which file backs which segment, and re-deriving that
+   from filenames or file sizes would silently reorder the reel. If the named
+   file is missing, report it and fall through to the rules below.
+
+   A file assigned here counts as assigned for rule 2's "unassigned" pool. One
+   source legitimately backing several segments at different trims is normal
+   (see the example table below) — don't treat reuse as an error.
+
+1. **Auto-match via numbering convention** — for every segment rule 0 did not
+   resolve, which includes both `Source: TBD` and a declared source that turned
+   out to be missing: regex `^(seg)?0*(\d+)_/i` on each filename. If the
+   captured number matches the segment's ID number (e.g., `seg-001` ↔
+   `seg01_intro.MP4`), auto-assign. This is the path that absorbs
+   `seg1_intro.mp4` vs `seg01_intro.MP4` drift, so a stale `Source:` must reach
+   it rather than skipping straight to the size heuristic.
 
 2. **Heuristic match** (if no convention match): for clip segments, propose
    the largest unassigned file in `public/recordings/`. For broll segments,
    propose unassigned files in `public/broll/` in directory-sort order.
+   Ignore pre-bake originals: when both `<name>.mp4` and `<name>_upright.mp4`
+   are present (`video_toolkit.ingest_media` writes the upright sibling beside
+   the original), the `_upright` file is the correct one — never propose the
+   crooked original, and do not list it under "unused source files" in Step 8.
 
 3. **Show the proposed mapping to the user** as a table:
 
@@ -126,7 +153,7 @@ Build the full `defaultProps` object:
 {
   topic: '<from frontmatter>',
   chevron: '<from frontmatter>',
-  audio: { music: 'audio/bg.mp3', musicVolumeDb: -6 }, // if music exists in project public/audio/
+  audio: { music: 'audio/bg.mp3', musicVolumeDb: -6 }, // see the music rules below
   segments: [
     { id: 'seg-001', type: 'clip', source: 'GX010827.MP4', trimIn: 0, trimOut: 5.5, overlays: [...] },
     { id: 'seg-002', type: 'broll', source: 'GX010818.MP4', trimIn: 0, trimOut: 3.0,
@@ -135,6 +162,17 @@ Build the full `defaultProps` object:
   ],
 }
 ```
+
+**Music rules** (the `audio` entry above):
+
+- Include it only when `public/audio/` holds a real track. **Skip
+  `demo.wav`** — it is the template's placeholder test tone, not a bed. If that
+  is the only file present, omit `audio` entirely.
+- `musicVolumeDb` comes from the screenplay's frontmatter when it declares one
+  (`musicVolumeDb:`), else `-6`. A screenplay that deliberately mixed the bed
+  low — a talking-head reel where speech is primary, e.g. `/toolkit:assemble`'s
+  `-18` — must not be overridden by the default.
+- If several real tracks are present, ask which one rather than guessing.
 
 ### Step 6b: Derive the layered model (the source of truth)
 

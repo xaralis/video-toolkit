@@ -156,6 +156,13 @@
       "created": "2026-05-20",
       "updated": "2026-05-20"
     },
+    "assemble": {
+      "path": "commands/assemble.md",
+      "description": "Footage-first, no authoring: turn finished talking-head footage into a cut reel — ingest + rotation bake, best-effort transcription, dead-air detection (reported, never trimmed), auto-written SCREENPLAY.md at full clip length, optional gentle music bed; hands off to /toolkit:cut",
+      "status": "beta",
+      "created": "2026-07-25",
+      "updated": "2026-07-25"
+    },
     "cut": {
       "path": "commands/cut.md",
       "description": "Bridge SCREENPLAY.md + footage into reel config — auto-maps source files, transcribes via Whisper, writes defaultProps in Root.tsx",
