@@ -10,8 +10,8 @@ import {
 } from './transitions';
 
 describe('TRANSITION_KINDS', () => {
-  it('lists all 8 kinds with human-readable labels', () => {
-    expect(TRANSITION_KINDS).toHaveLength(8);
+  it('lists all 13 kinds with human-readable labels', () => {
+    expect(TRANSITION_KINDS).toHaveLength(13);
     const byKind = Object.fromEntries(TRANSITION_KINDS.map((k) => [k.kind, k.label]));
     expect(byKind['cut']).toBe('Cut');
     expect(byKind['dissolve']).toBe('Dissolve');
@@ -21,6 +21,11 @@ describe('TRANSITION_KINDS', () => {
     expect(byKind['zoom-through']).toBe('Zoom');
     expect(byKind['wipe']).toBe('Wipe');
     expect(byKind['gradient-wipe']).toBe('Gradient wipe');
+    expect(byKind['fade']).toBe('Fade');
+    expect(byKind['slide']).toBe('Slide');
+    expect(byKind['flip']).toBe('Flip');
+    expect(byKind['clock-wipe']).toBe('Clock wipe');
+    expect(byKind['iris']).toBe('Iris');
   });
 });
 
@@ -138,6 +143,23 @@ describe('subOptionsFor', () => {
     expect(byProp.softness.kind).toBe('number');
     expect(byProp.softness.options).toBeUndefined();
   });
+
+  it('returns a direction enum with 4 options for slide and flip', () => {
+    for (const kind of ['slide', 'flip']) {
+      const opts = subOptionsFor(kind);
+      expect(opts).toHaveLength(1);
+      expect(opts[0].prop).toBe('direction');
+      expect(opts[0].kind).toBe('enum');
+      expect(opts[0].options).toHaveLength(4);
+      expect(opts[0].options?.map((o) => o.value).sort()).toEqual(['down', 'left', 'right', 'up']);
+    }
+  });
+
+  it('returns no sub-options for fade, clock-wipe, and iris', () => {
+    expect(subOptionsFor('fade')).toEqual([]);
+    expect(subOptionsFor('clock-wipe')).toEqual([]);
+    expect(subOptionsFor('iris')).toEqual([]);
+  });
 });
 
 describe('defaultTransition', () => {
@@ -190,5 +212,24 @@ describe('defaultTransition', () => {
 
   it('ignores a frames override for cut', () => {
     expect(defaultTransition('cut', { frames: 30 })).toEqual({ kind: 'cut' });
+  });
+
+  it('defaults slide and flip to direction left', () => {
+    expect(defaultTransition('slide', { frames: 12 })).toEqual({
+      kind: 'slide',
+      frames: 12,
+      direction: 'left',
+    });
+    expect(defaultTransition('flip', { frames: 12 })).toEqual({
+      kind: 'flip',
+      frames: 12,
+      direction: 'left',
+    });
+  });
+
+  it('defaults fade, clock-wipe, and iris to frames only', () => {
+    expect(defaultTransition('fade', { frames: 12 })).toEqual({ kind: 'fade', frames: 12 });
+    expect(defaultTransition('clock-wipe', { frames: 12 })).toEqual({ kind: 'clock-wipe', frames: 12 });
+    expect(defaultTransition('iris', { frames: 12 })).toEqual({ kind: 'iris', frames: 12 });
   });
 });
