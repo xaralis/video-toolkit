@@ -70,14 +70,37 @@ export function layeredToTimeline(reel: LayeredReel, fps: number): { editorData:
   }
   return {
     editorData: [
-      { id: 'overlays', actions: overlays },
+      ...packLane('overlays', overlays),
       { id: 'video', actions: video },
       { id: 'transitions', actions: transitions },
-      { id: 'audio', actions: audio },
+      ...packLane('audio', audio),
       { id: 'music', actions: music },
       { id: 'brand', actions: brand },
     ],
   };
+}
+
+// The lane a (possibly sub-row) row id belongs to: 'overlays#1' → 'overlays'.
+export function laneOfRow(rowId: string): LaneId {
+  const hash = rowId.indexOf('#');
+  return (hash === -1 ? rowId : rowId.slice(0, hash)) as LaneId;
+}
+
+// Pack a lane's items into as many sub-rows as needed so nothing overlaps within
+// a row (greedy interval partitioning): items that overlap in time land on
+// separate rows instead of hiding each other. The FIRST sub-row keeps the bare
+// lane id (so the header labels it); extras get `${lane}#1`, `${lane}#2`, …
+// Action ids are unchanged (`lane:itemId`), so edits still resolve by lane.
+function packLane(lane: LaneId, actions: TLAction[]): TLRow[] {
+  if (actions.length === 0) return [{ id: lane, actions: [] }];
+  const sorted = [...actions].sort((a, b) => a.start - b.start);
+  const rows: TLAction[][] = [];
+  for (const a of sorted) {
+    const row = rows.find((r) => r[r.length - 1].end <= a.start + 1e-6);
+    if (row) row.push(a);
+    else rows.push([a]);
+  }
+  return rows.map((acts, i) => ({ id: i === 0 ? lane : `${lane}#${i}`, actions: acts }));
 }
 
 // The COMMIT-time footage cap for a video item's RIGHT trim edge, or undefined
