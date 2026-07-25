@@ -268,3 +268,92 @@ When scanning, projects are classified:
 | `blocked` | Missing required assets |
 | `stale` | No updates in 7+ days, not complete |
 | `complete` | Phase is "complete" |
+
+## Build config
+
+Every brand template needs the same webpack alias, the same `zod$` single-instance
+pin, and the same vitest setup — because every template sits two hops below the
+brand repo root, next to a `toolkit/` submodule and (optionally) a `brand-lib/`:
+
+```
+<repo>/toolkit/            ← this repo, vendored as a submodule
+<repo>/brand-lib/          ← optional shared brand components
+<repo>/templates/<name>/   ← a template     (projectRoot)
+<repo>/projects/<name>/    ← a video project (projectRoot)
+```
+
+`paths.ts`, `remotion-config.ts`, and `vitest-config.ts` in this directory are the
+one home for that logic, so the workarounds — the `zod$` alias, the
+`resolve.modules` fix for `@remotion/transitions`, and the `toolkit/lib` existence
+guard — live in one place instead of being copy-pasted (and drifting) across every
+`remotion.config.ts`.
+
+### remotion.config.ts
+
+```ts
+import { Config } from '@remotion/cli/config';
+import { enableTailwind } from '@remotion/tailwind-v4'; // omit if the brand has no Tailwind
+import { applyToolkitWebpack } from '@video-toolkit/lib/project/remotion-config';
+
+applyToolkitWebpack(Config, {
+  projectRoot: process.cwd(),
+  brandLib: true, // omit/false if this brand has no brand-lib tier
+  tailwind: enableTailwind, // omit if the brand has no Tailwind
+});
+Config.setVideoImageFormat('jpeg');
+Config.setOverwriteOutput(true);
+```
+
+### vitest.config.ts
+
+```ts
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { defineConfig } from 'vitest/config';
+import { createToolkitVitestConfig } from '@video-toolkit/lib/project/vitest-config';
+
+export default defineConfig(
+  createToolkitVitestConfig({
+    projectRoot: path.dirname(fileURLToPath(import.meta.url)),
+    brandLib: true, // omit/false if this brand has no brand-lib tier
+  }),
+);
+```
+
+### tsconfig.json
+
+```json
+{
+  "extends": "../../toolkit/lib/project/tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "paths": {
+      "@/*": ["src/*"],
+      "@video-toolkit/lib/*": ["../../toolkit/lib/*"],
+      "@brand-lib/*": ["../../brand-lib/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "out"]
+}
+```
+
+`paths` in an extended config resolve relative to **the file that declares them**
+— i.e. `tsconfig.base.json` itself — so its `@video-toolkit/lib/*` entry
+(`["../*"]`) means `lib/*` of this repo, correctly, no matter where the extending
+template sits.
+
+**`paths` does not merge across `extends`.** TypeScript's `compilerOptions.paths`
+is replaced wholesale, not merged, when the extending config declares its own
+`paths` object (verified against the repo's own TypeScript 5.9.3) — so a
+template's `tsconfig.json` that lists only `@/*` and `@brand-lib/*` would silently
+lose `@video-toolkit/lib/*` for type-checking, even though webpack and vitest
+still resolve it fine (they get their alias from `applyToolkitWebpack` /
+`createToolkitVitestConfig`, not from `tsconfig.json`). A template must therefore
+repeat `@video-toolkit/lib/*` in its own `paths`, exactly as shown above, in
+addition to its brand-relative `@/*` and `@brand-lib/*` (and `outDir`/`include`/
+`exclude`).
