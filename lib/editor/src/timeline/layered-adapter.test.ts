@@ -219,8 +219,6 @@ describe('applyTimelineChange', () => {
       },
     };
     const { editorData } = layeredToTimeline(reel, 30);
-    // The clip carries a minStart = where sourceInMs would hit 0 (2000-1000 = 1s).
-    expect(editorData.find((r) => r.id === 'video')!.actions[0].minStart).toBe(1);
     // Drag A's start way left (to 0.5s) — only 1000ms of footage exists before it.
     const changed = editorData.map((row) =>
       row.id === 'video' ? { ...row, actions: row.actions.map((a) => ({ ...a, start: 0.5, end: 5 })) } : row,

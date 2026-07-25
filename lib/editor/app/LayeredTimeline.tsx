@@ -204,13 +204,20 @@ function LayeredTimelineImpl({
     [reel],
   );
   const sourceDurations = useSourceDurations(videoUrls);
-  const maxEndById = useMemo(() => {
-    const m: Record<string, number> = {};
+  // RESIZE bounds (seconds) per clip/broll: the left handle can't pull the
+  // in-point before the source start, the right can't push the out-point past
+  // the source end. Enforced in onActionResizing (NOT as action minStart/maxEnd,
+  // which would also block moving the clip).
+  const resizeBoundsById = useMemo(() => {
+    const m: Record<string, { minStart: number; maxEnd?: number }> = {};
     for (const v of reel.tracks.video) {
       if (v.kind !== 'clip' && v.kind !== 'broll') continue;
       const url = videoUrl(v);
       const durMs = url ? sourceDurations[url] : undefined;
-      if (durMs && durMs > 0) m[`video:${v.id}`] = (v.startMs + (durMs - v.sourceInMs)) / 1000;
+      m[`video:${v.id}`] = {
+        minStart: Math.max(0, v.startMs - v.sourceInMs) / 1000,
+        maxEnd: durMs && durMs > 0 ? (v.startMs + (durMs - v.sourceInMs)) / 1000 : undefined,
+      };
     }
     return m;
   }, [reel, sourceDurations]);
@@ -235,10 +242,9 @@ function LayeredTimelineImpl({
           selected: a.id === selectedId,
           flexible: !LOCKED_LANES.has(r.id),
           movable: true,
-          ...(maxEndById[a.id] !== undefined ? { maxEnd: maxEndById[a.id] } : {}),
         })),
       })),
-    [editorData, selectedId, maxEndById],
+    [editorData, selectedId],
   );
 
   const effects: Record<string, TimelineEffect> = useMemo(() => {
@@ -419,7 +425,16 @@ function LayeredTimelineImpl({
           // Block drag/resize on locked lanes (returning false cancels it) while
           // keeping the action clickable/selectable.
           onActionMoving={({ action }) => (LOCKED_LANES.has(parseActionId(action.id).lane) ? false : undefined)}
-          onActionResizing={({ action }) => (LOCKED_LANES.has(parseActionId(action.id).lane) ? false : undefined)}
+          onActionResizing={({ action, start, end }) => {
+            if (LOCKED_LANES.has(parseActionId(action.id).lane)) return false;
+            // Bound a clip's edges to its footage (only on RESIZE — moving is free).
+            const b = resizeBoundsById[action.id];
+            if (b) {
+              if (start < b.minStart - 1e-6) return false; // in-point can't pass the source start
+              if (b.maxEnd !== undefined && end > b.maxEnd + 1e-6) return false; // out-point can't pass the source end
+            }
+            return undefined;
+          }}
           onClickAction={(_e, { action }) => onSelect(action.id)}
           onClickTimeArea={(time) => {
             playerRef.current?.seekTo(Math.round(time * fps));
