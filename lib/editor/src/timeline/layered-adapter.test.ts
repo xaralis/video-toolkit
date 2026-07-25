@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
-import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem, duplicateItem } from './layered-adapter';
+import type { LayeredReel, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
+import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem, duplicateItem, clipFootageCapMs } from './layered-adapter';
 
 // Small schema-valid LayeredReel fixture: one item per track.
 const REEL: LayeredReel = {
@@ -256,8 +256,32 @@ describe('applyTimelineChange', () => {
   });
 });
 
-describe('applyTimelineChange — footage clamp (right edge)', () => {
-  const brollReel = (over: Partial<{ sourceOutMs: number; endMs: number }> = {}): LayeredReel => ({
+describe('clipFootageCapMs — clip vs broll policy', () => {
+  const item = (kind: 'clip' | 'broll' | 'multi-clip'): VideoItem =>
+    kind === 'multi-clip'
+      ? { id: 'A', kind, startMs: 0, endMs: 3000, layout: 'split-h', sources: [] }
+      : { id: 'A', kind, startMs: 0, endMs: 3000, source: 's.mp4', sourceInMs: 0, sourceOutMs: 3000 };
+
+  it('caps a clip at its decoded footage duration', () => {
+    expect(clipFootageCapMs(item('clip'), 8042)).toBe(8042);
+  });
+  it('never caps a broll — it is a container that holds its last frame', () => {
+    expect(clipFootageCapMs(item('broll'), 8042)).toBeUndefined();
+  });
+  it('returns undefined when the footage duration is unknown (0 / undefined)', () => {
+    expect(clipFootageCapMs(item('clip'), 0)).toBeUndefined();
+    expect(clipFootageCapMs(item('clip'), undefined)).toBeUndefined();
+  });
+  it('never caps a multi-clip (no single trim source)', () => {
+    expect(clipFootageCapMs(item('multi-clip'), 8042)).toBeUndefined();
+  });
+});
+
+describe('applyTimelineChange — trim edges (clip footage cap, broll free)', () => {
+  const videoReel = (
+    kind: 'clip' | 'broll',
+    over: Partial<{ sourceInMs: number; sourceOutMs: number; startMs: number; endMs: number }> = {},
+  ): LayeredReel => ({
     ...REEL,
     meta: { topic: 'Fixture', totalDurationMs: 20000 },
     tracks: {
@@ -268,20 +292,19 @@ describe('applyTimelineChange — footage clamp (right edge)', () => {
       video: [
         {
           id: 'A',
-          kind: 'broll',
-          startMs: 5367,
+          kind,
+          startMs: over.startMs ?? 5367,
           endMs: over.endMs ?? 15667,
-          source: 'br.mp4',
-          sourceInMs: 0,
+          source: kind === 'broll' ? 'br.mp4' : 'clip.mp4',
+          sourceInMs: over.sourceInMs ?? 0,
           sourceOutMs: over.sourceOutMs ?? 10300,
         },
       ],
     },
   });
 
-  const dragRightEdgeTo = (reel: LayeredReel, endSec: number) => {
+  const dragEdge = (reel: LayeredReel, startSec: number, endSec: number) => {
     const { editorData } = layeredToTimeline(reel, 30);
-    const startSec = reel.tracks.video[0].startMs / 1000;
     return editorData.map((row) =>
       row.id === 'video'
         ? { ...row, actions: row.actions.map((a) => ({ ...a, start: startSec, end: endSec })) }
@@ -289,39 +312,72 @@ describe('applyTimelineChange — footage clamp (right edge)', () => {
     );
   };
 
-  it('clamps a right-edge extend to the real footage duration', () => {
-    const reel = brollReel({ sourceOutMs: 6000, endMs: 11367 }); // uses 6s of footage
-    // Drag the right edge far right (to 30s); only 8042ms of footage exists.
-    const changed = dragRightEdgeTo(reel, 30);
+  // ---- Right edge: clip is footage-capped ---------------------------------
+  it('clamps a CLIP right-edge extend to the real footage duration', () => {
+    const reel = videoReel('clip', { sourceOutMs: 6000, endMs: 11367 }); // uses 6s
+    const changed = dragEdge(reel, 5.367, 30); // yank right; only 8042ms exists
     const A = applyTimelineChange(reel, changed, { footageMsById: { A: 8042 } }).tracks.video[0];
-    expect(A.kind === 'broll' && A.sourceOutMs).toBe(8042); // out-point clamped at footage end
-    expect(A.endMs).toBe(5367 + 8042); // span reflects the clamped out-point
+    expect(A.kind === 'clip' && A.sourceOutMs).toBe(8042);
+    expect(A.endMs).toBe(5367 + 8042);
   });
 
-  it('honors a right-edge extend that stays within footage (no clamp)', () => {
-    const reel = brollReel({ sourceOutMs: 6000, endMs: 11367 });
-    const changed = dragRightEdgeTo(reel, 13.367); // +2s → out-point 8000ms, footage 8042
+  it('honors a CLIP right-edge extend that stays within footage', () => {
+    const reel = videoReel('clip', { sourceOutMs: 6000, endMs: 11367 });
+    const changed = dragEdge(reel, 5.367, 13.367); // +2s → out-point 8000, footage 8042
     const A = applyTimelineChange(reel, changed, { footageMsById: { A: 8042 } }).tracks.video[0];
-    expect(A.kind === 'broll' && A.sourceOutMs).toBe(8000);
+    expect(A.kind === 'clip' && A.sourceOutMs).toBe(8000);
     expect(A.endMs).toBe(13367);
   });
 
-  it('self-heals a block whose config sourceOutMs already overshoots the footage', () => {
-    // The seg-002 case: config claims 10300ms but the file is only 10042ms, so
-    // endMs (15667) sits past the real footage end (15409). A small shorten drag
-    // must clamp the out-point to the footage — never freeze (the old veto bug).
-    const reel = brollReel(); // sourceOutMs 10300, endMs 15667
-    const changed = dragRightEdgeTo(reel, 15.567); // nudge left by 100ms
+  it('self-heals a CLIP whose config sourceOutMs overshoots the footage', () => {
+    const reel = videoReel('clip'); // sourceOutMs 10300, endMs 15667
+    const changed = dragEdge(reel, 5.367, 15.567); // nudge left by 100ms
     const A = applyTimelineChange(reel, changed, { footageMsById: { A: 10042 } }).tracks.video[0];
-    expect(A.kind === 'broll' && A.sourceOutMs).toBe(10042);
-    expect(A.endMs).toBe(5367 + 10042); // 15409 — snapped to real footage end
+    expect(A.kind === 'clip' && A.sourceOutMs).toBe(10042);
+    expect(A.endMs).toBe(5367 + 10042); // snapped to real footage end
   });
 
-  it('leaves the out-point unclamped when the footage duration is unknown', () => {
-    const reel = brollReel({ sourceOutMs: 6000, endMs: 11367 });
-    const changed = dragRightEdgeTo(reel, 30);
-    const A = applyTimelineChange(reel, changed, {}).tracks.video[0]; // no footage map
-    expect(A.kind === 'broll' && A.sourceOutMs).toBe(30000 - 5367); // extends freely (freeze-frame fallback)
+  // ---- Right edge: broll is NEVER capped (container holds last frame) ------
+  it('does NOT cap a BROLL right-edge extend — a container extends freely', () => {
+    // The component omits broll from footageMsById; the broll holds its last
+    // frame, so extending past the source is legitimate (AI viz / hold).
+    const reel = videoReel('broll', { sourceOutMs: 6000, endMs: 11367 });
+    const changed = dragEdge(reel, 5.367, 20); // extend to 20s
+    const A = applyTimelineChange(reel, changed, { footageMsById: {} }).tracks.video[0];
+    expect(A.kind === 'broll' && A.sourceOutMs).toBe(20000 - 5367); // no clamp
+    expect(A.endMs).toBe(20000);
+  });
+
+  it('lets a BROLL restore to its original length after a right-edge trim', () => {
+    // Regression for "trim right, can't return to original": shorten then extend
+    // back to the starting endMs must land exactly there (no footage cap eating it).
+    const reel = videoReel('broll'); // endMs 15667, sourceOutMs 10300
+    const shortened = applyTimelineChange(reel, dragEdge(reel, 5.367, 13), { footageMsById: {} }).tracks.video[0];
+    expect(shortened.endMs).toBe(13000);
+    const restored = applyTimelineChange(
+      { ...reel, tracks: { ...reel.tracks, video: [shortened] } },
+      dragEdge(reel, 5.367, 15.667),
+      { footageMsById: {} },
+    ).tracks.video[0];
+    expect(restored.endMs).toBe(15667); // back to the original — nothing lost
+    expect(restored.kind === 'broll' && restored.sourceOutMs).toBe(10300);
+  });
+
+  // ---- Left edge: trim-in works; extend-left clamped at the source start ----
+  it('trims a BROLL in from the left (in-point advances with the start)', () => {
+    const reel = videoReel('broll'); // startMs 5367, sourceInMs 0
+    const changed = dragEdge(reel, 7, 15.667); // pull the left edge in to 7s
+    const A = applyTimelineChange(reel, changed, { footageMsById: {} }).tracks.video[0];
+    expect(A.startMs).toBe(7000);
+    expect(A.kind === 'broll' && A.sourceInMs).toBe(7000 - 5367); // in-point moved by the same amount
+  });
+
+  it('cannot extend a left edge past the source start (sourceInMs stays >= 0)', () => {
+    const reel = videoReel('broll', { startMs: 5367, sourceInMs: 0 });
+    const changed = dragEdge(reel, 2, 15.667); // try to pull the start way left
+    const A = applyTimelineChange(reel, changed, { footageMsById: {} }).tracks.video[0];
+    expect(A.startMs).toBe(5367); // unchanged — nothing before the in-point
+    expect(A.kind === 'broll' && A.sourceInMs).toBe(0);
   });
 });
 

@@ -80,6 +80,17 @@ export function layeredToTimeline(reel: LayeredReel, fps: number): { editorData:
   };
 }
 
+// The footage cap for a video item's RIGHT trim edge, or undefined for "no cap".
+// A clip is recorded footage — its out-point can't pass the end of the file, so
+// its decoded duration is the cap. A broll is a CONTAINER (AI viz / hold) that
+// legitimately holds its last frame, so it is never capped and extends freely;
+// multi-clip / card / outro have no single trim source. `decodedMs` is the
+// intrinsic media duration (0 / undefined = unknown → no cap).
+export function clipFootageCapMs(item: VideoItem, decodedMs: number | undefined): number | undefined {
+  if (item.kind !== 'clip') return undefined;
+  return decodedMs && decodedMs > 0 ? decodedMs : undefined;
+}
+
 // Time-bearing tracks a ripple edit shifts (music is a single spanning layer;
 // transitions are derived from clip positions).
 const RIPPLE_LANES = ['video', 'overlays', 'audio', 'brand'] as const;
