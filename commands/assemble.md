@@ -160,13 +160,20 @@ With a real track present, offer it:
 
 > Found `audio/<file>`. Lay it under the speech as a music bed?
 
-On yes, remember the choice for the Step 9 summary and set frontmatter `musicVolumeDb: -18` when
-writing — well under speech, because the bed is atmosphere and the talking is the point.
-`/toolkit:cut` reads that frontmatter value (its Step 6 music rules), and core's music envelope
-applies a data-driven 1 s fade-out at the end (`fadeOutMs ?? 1000`), so the bed lands softly with
-no extra plumbing. A fade-in is a one-field tweak in the editor afterwards.
+**Record the answer either way — this is the whole point of asking.** The screenplay's `music:`
+frontmatter key carries the decision, and `/toolkit:cut` honours it instead of scanning
+`public/audio/` itself (its Step 6 music rules):
 
-If several real tracks are present, ask which one rather than guessing.
+- **yes** → `music: audio/<file>` and `musicVolumeDb: -18` — well under speech, because the bed is
+  atmosphere and the talking is the point.
+- **no** → `music: none`. Without this, `cut` would scan the folder, find the track, and add the
+  bed the user just declined — at its own `-6` dB default, louder than the one they said no to.
+
+Core's music envelope applies a data-driven 1 s fade-out at the end (`fadeOutMs ?? 1000`), so the
+bed lands softly with no extra plumbing. A fade-in is a one-field tweak in the editor afterwards.
+
+If several real tracks are present, ask which one rather than guessing — and write that filename
+into `music:`, so `cut` does not ask a second question whose answer could differ from this one.
 
 ### Step 8: Brand rules — evaluate for the summary
 
@@ -212,7 +219,8 @@ chevron:
 brand: <brand>
 brandRulesPath: brands/<brand>/BRAND-RULES.md
 durationTargetSec: <sum of the clip duration targets below — footage only, no outro>
-musicVolumeDb: -18   # only when a bed was chosen in Step 7
+music: audio/<file>  # or `none` — always written, per Step 7
+musicVolumeDb: -18   # only alongside a chosen bed
 ---
 
 # Screenplay — <topic>
@@ -272,10 +280,10 @@ Screenplay written. Next: /toolkit:cut to build the reel config, then
 
 - **What `cut` needs from this command.** `cut` reads the frontmatter (`topic`, `chevron`,
   `brand`, `brandRulesPath`, `musicVolumeDb`), each segment's type marker, `Duration target`
-  and `Source:`. Two behaviours of `cut` are load-bearing here: Step 3 honours a declared
-  `Source:` (so the filename order survives), and Step 6's music rules read frontmatter
-  `musicVolumeDb` and skip the `demo.wav` placeholder (so the −18 dB bed survives). Don't add an
-  assemble-specific path to `cut` beyond those.
+  `Source:`, and the `music:` / `musicVolumeDb` pair. Two behaviours of `cut` are load-bearing
+  here: Step 3 honours a declared `Source:` (so the filename order survives), and Step 6's music
+  rules honour `music:` instead of scanning `public/audio/` (so both the −18 dB bed and a
+  `music: none` decline survive). Don't add an assemble-specific path to `cut` beyond those.
 - **Clip audio is the point.** Talking-head clip audio reaches the reel through the layered
   model's audio track (`audioMode: 'voice'` → an `AudioItem` per clip), which every brand
   template renders via core's shared composition. If a brand's reel comes out silent, that

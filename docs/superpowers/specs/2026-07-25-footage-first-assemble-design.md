@@ -31,8 +31,8 @@ possible interaction, by **auto-generating the standard `SCREENPLAY.md`** so `/t
 consumes it like any other screenplay.
 
 The screenplay stays the durable artifact and the seam between the two commands — exactly as
-with `narrate`. `cut` learns no new input *shape*: the two changes it did need (see below) only
-make it honour fields the format already documented.
+with `narrate`. `cut` needed three fixes (see below); two only make it honour fields the format
+already documented, and the third adds a single optional frontmatter key.
 
 ## Non-goals
 
@@ -42,11 +42,11 @@ make it honour fields the format already documented.
 - Beat-synced montage — `/roost-reel`.
 - Voiceover generation — the footage already carries the voice.
 
-## Two changes to `/toolkit:cut`
+## Changes to `/toolkit:cut`
 
 The first draft of this design assumed `cut` could stay untouched. Review against `cut.md`
-showed that assumption was false in two places, both of which would have silently broken the
-flow, and both of which are genuine `cut` bugs independent of this command:
+showed that assumption was false, in ways that would have silently broken the flow — and each
+is a genuine `cut` bug independent of this command:
 
 1. **`cut` ignored a declared `Source:`.** Step 3 re-derived the source→segment mapping from a
    filename-numbering regex and then "the largest unassigned file". Phone filenames
@@ -56,8 +56,14 @@ flow, and both of which are genuine `cut` bugs independent of this command:
    skips matching for that segment.
 2. **`cut` hardcoded `musicVolumeDb: -6` and could pick the `demo.wav` placeholder.** The
    frontmatter key `musicVolumeDb` was documented in `narrate`'s format but never read. Fixed:
-   Step 6 gained explicit music rules — read the frontmatter value when present, skip
-   `demo.wav`, ask when several real tracks exist.
+   Step 6 gained explicit music rules that read the frontmatter value and skip `demo.wav`.
+3. **A declined music bed came back anyway.** `cut` scanned `public/audio/` unconditionally, so
+   a user offered a bed and saying *no* still got it — at `cut`'s own `-6` dB, louder than the
+   one they declined. The format had no way to record the decision: `musicVolumeDb` carries a
+   volume, never an identity or an opt-out. Fixed by a small format extension — a `music:`
+   frontmatter key (`audio/<file>`, or `none`) that `cut` honours *instead of* scanning; with
+   the key absent, it scans as before, so older screenplays are unaffected. This also removes a
+   double-question: previously both commands asked which track, and the answers could differ.
 
 `cut`'s heuristic also now prefers an `_upright.mp4` bake over its crooked original and stops
 reporting the original as an unused file.
@@ -90,8 +96,8 @@ else ask).
    tool (it authors one from scratch). Report what is there and offer `narrate` to edit it, or
    an explicit confirmation to regenerate.
 2. **Select the brand** — `project.json`, else scan `brands/` and offer. The frontmatter's
-   `brand` + `brandRulesPath` are read by `cut`, and `BRAND-RULES.md` is needed for the Step 7
-   warnings, so this cannot be deferred. A brand's `voice.json` supplies the transcription
+   `brand` + `brandRulesPath` are read by `cut`, and `BRAND-RULES.md` is needed for the step 8
+   warnings that appear in step 9's pre-write summary, so this cannot be deferred. A brand's `voice.json` supplies the transcription
    language.
 3. **Inventory** `public/recordings/`; empty → stop and say where to drop footage.
    `public/broll/` is explicitly **not** assembled — say so when it is non-empty so the user
@@ -128,10 +134,12 @@ else ask).
    - a final `## seg-NNN [outro]`;
    - no Shooting Checklist section (footage exists) and no shooting cards.
 7. **Music bed (optional).** If `public/audio/` holds a real track — ignoring the `demo.wav`
-   placeholder — offer it and set frontmatter `musicVolumeDb: -18` (well under speech; the bed
-   is atmosphere, not a co-star). Core's music envelope already applies a data-driven 1 s
-   fade-out (`fadeOutMs ?? 1000`), so the bed lands softly without extra plumbing; a fade-in is
-   a one-field tweak in the editor. `cut`'s music rules now read this frontmatter value.
+   placeholder — offer it, and **record the answer either way** in the `music:` frontmatter key:
+   `audio/<file>` plus `musicVolumeDb: -18` on yes (well under speech; the bed is atmosphere, not
+   a co-star), `none` on no. Recording the decline is what stops `cut` re-adding the bed at its
+   own default. Core's music envelope already applies a data-driven 1 s fade-out
+   (`fadeOutMs ?? 1000`), so the bed lands softly without extra plumbing; a fade-in is a
+   one-field tweak in the editor.
 8. **Brand rules: report, do not enforce.** Report violations the footage causes (a sub-3 s
    clip, for instance) as warnings **in the pre-write summary**, so they are visible while the
    user still has a choice. The premise of this command is footage as-is; silently reshaping the

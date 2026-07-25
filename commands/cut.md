@@ -165,14 +165,21 @@ Build the full `defaultProps` object:
 
 **Music rules** (the `audio` entry above):
 
-- Include it only when `public/audio/` holds a real track. **Skip
-  `demo.wav`** — it is the template's placeholder test tone, not a bed. If that
-  is the only file present, omit `audio` entirely.
+- **The screenplay decides, when it says so.** If the frontmatter has a `music:`
+  key, honour it and do not scan `public/audio/`:
+  - `music: none` → the author deliberately chose no bed. Omit `audio` entirely.
+    Never re-offer it; adding a bed here would hand the user the very thing they
+    declined, at a volume they never picked.
+  - `music: audio/<file>` → use exactly that track.
+- **Only when the key is absent** (an older screenplay, or one written before the
+  bed was chosen) fall back to scanning `public/audio/`: include a bed when a real
+  track is there, **skip `demo.wav`** (the template's placeholder test tone, not a
+  bed — if it is the only file present, omit `audio`), and ask which one if several
+  real tracks exist.
 - `musicVolumeDb` comes from the screenplay's frontmatter when it declares one
   (`musicVolumeDb:`), else `-6`. A screenplay that deliberately mixed the bed
   low — a talking-head reel where speech is primary, e.g. `/toolkit:assemble`'s
   `-18` — must not be overridden by the default.
-- If several real tracks are present, ask which one rather than guessing.
 
 ### Step 6b: Derive the layered model (the source of truth)
 

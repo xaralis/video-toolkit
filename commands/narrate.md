@@ -113,6 +113,8 @@ brand: <brand-name>
 brandRulesPath: brands/<brand>/BRAND-RULES.md
 durationTargetSec: <number>
 musicPrompt: "<short ACE-Step prompt>" # optional, used by /toolkit:cut if music is desired
+music: audio/<file> # optional: the chosen bed. `none` = deliberately no music.
+                    # Omit the key entirely to let /toolkit:cut pick from public/audio/.
 musicVolumeDb: -6 # optional default
 ---
 
