@@ -131,14 +131,32 @@ This is the concrete meaning of "extend core to support this" — the shared
 timeline/transition machinery becomes core, and each brand renderer is a thin
 adapter that maps `VideoItem.kind` → its own brand segment component.
 
-### 4. Core editor — ruler beat-guides
+### 4. Core editor — ruler beat-guides + effect add/remove
 
-`lib/editor/app/LayeredTimeline.tsx`: a new optional prop
+**Ruler beat-guides.** `lib/editor/app/LayeredTimeline.tsx`: a new optional prop
 `guidesMs?: number[]`. When present, the timeline draws thin vertical tick lines
 at `startLeft + ms/1000·scaleWidth` px across the ruler/track area (an absolutely
 positioned, `pointer-events:none` overlay synced to horizontal scroll + zoom).
 Brand-agnostic; campaign can pass `undefined`. The roost editor host passes
 `reel.meta.guidesMs`.
+
+**Effect add/remove (required for per-clip vintage).**
+`lib/editor/app/LayeredInspector.tsx` today only *modifies* the params of
+effects that already exist on a clip (`EffectEditor` maps over `v.effects`);
+there is no way to **add** a new effect to a clip or **remove** an existing one.
+Per-clip vintage toggling — and the generic clip-effects model in general —
+needs both. Add:
+- an **"Add effect"** control on a selected video item (a small picker of the
+  known effect types — at minimum `vintage`, `ken-burns`; extensible) that
+  appends a new effect object with sensible defaults to the item's `effects`
+  array (creating the array if absent);
+- a **remove** control (✕) on each listed effect that drops it from the array.
+
+The surgical save spine already persists array-length changes (a changed
+`effects` length falls to the documented "whole-array replace" path in
+`default-props-writer.ts`), so this is a **UI-only** change — no save-spine work.
+Brand-agnostic; benefits campaign-reels too (e.g. adding/removing ken-burns or
+blend on a clip).
 
 ### 5. Roost template — the thin renderer + host
 
@@ -200,14 +218,19 @@ carries the beat grid forward as an editing aid only.
   KenBurns, teaser, watermark, outro logo, and (if set) vintage.
 - **Editor guides:** `guidesMs` ticks render at correct px for a known
   bpm/scaleWidth; absent prop → no overlay (campaign unaffected).
+- **Effect add/remove:** adding an effect appends it to `v.effects` (array
+  created when absent) and it persists through Save (whole-array replace);
+  removing an effect drops it and persists; the round-trip survives a
+  read-back of the written `Root.tsx`.
 
 ## Scope / decomposition
 
 Three phases, buildable and verifiable in order (a plan may split them):
 
 - **Phase A — core foundation (no renderer change):** schema fields +
-  `deriveMontageLayered` + ruler guides. Roost can already derive a valid
-  `LayeredReel` and open it in the editor with beat guides.
+  `deriveMontageLayered` + ruler guides + inspector effect add/remove. Roost can
+  already derive a valid `LayeredReel` and open it in the editor with beat guides
+  and per-clip effect editing.
 - **Phase B — shared renderer:** extract the at-cut engine to core, re-express
   `LayeredCampaignReel` on it, prove campaign parity.
 - **Phase C — roost renderer + integration:** `LayeredRoostReel`, roost
