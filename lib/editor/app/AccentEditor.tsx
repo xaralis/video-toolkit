@@ -1,12 +1,11 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import { parseAccents } from '@video-toolkit/lib/transcripts/accent-parser';
 import { runsToString, applyAccentToRange, type Run, type AccentColor } from './accent-runs';
+import type { AccentSlot } from '../../theming/palette';
 import styles from './AccentEditor.module.css';
 
-export interface AccentEditorColor {
-  key: AccentColor;
-  label: string;
-}
+/** The editor's accent palette entry IS a brand accent slot. */
+export type AccentEditorColor = AccentSlot;
 
 export interface AccentEditorProps {
   /** Encoded caption string, e.g. `Řízená {lime:péče}.` */
@@ -23,12 +22,12 @@ export interface AccentEditorProps {
 }
 
 const DEFAULT_COLORS: AccentEditorColor[] = [
-  { key: 'lime', label: 'Lime' },
-  { key: 'teal', label: 'Teal' },
+  { key: 'lime', label: 'Lime', color: '#c6f432' },
+  { key: 'teal', label: 'Teal', color: '#2ad4c5' },
 ];
 
-/** Renders `value` into `root` as text nodes + accent spans (no braces shown). */
-function renderInto(root: HTMLElement, value: string): void {
+/** Renders `value` into `root` as text nodes + accent spans (colored inline). */
+function renderInto(root: HTMLElement, value: string, colorMap: Record<string, string>): void {
   const doc = root.ownerDocument;
   root.textContent = '';
   for (const run of parseAccents(value)) {
@@ -38,7 +37,9 @@ function renderInto(root: HTMLElement, value: string): void {
     } else {
       const span = doc.createElement('span');
       span.setAttribute('data-accent', run.color);
-      span.className = styles[run.color] ?? '';
+      const hex = colorMap[run.color];
+      if (hex) span.style.color = hex;
+      span.style.fontWeight = '600';
       span.textContent = run.text;
       root.appendChild(span);
     }
@@ -133,6 +134,7 @@ function setPlainSelection(root: HTMLElement, start: number, end: number): void 
 export function AccentEditor({ value, onChange, colors = DEFAULT_COLORS, multiline = false }: AccentEditorProps) {
   const ref = useRef<HTMLDivElement>(null);
   const lastValue = useRef<string | null>(null);
+  const colorMap = useMemo(() => Object.fromEntries(colors.map((c) => [c.key, c.color])), [colors]);
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -140,9 +142,9 @@ export function AccentEditor({ value, onChange, colors = DEFAULT_COLORS, multili
     // Only sync when the change came from OUTSIDE (not our own emit), so typing
     // doesn't trigger a DOM rewrite that would reset the caret.
     if (lastValue.current === value) return;
-    renderInto(el, value);
+    renderInto(el, value, colorMap);
     lastValue.current = value;
-  }, [value]);
+  }, [value, colorMap]);
 
   const handleInput = () => {
     const el = ref.current;
@@ -158,7 +160,7 @@ export function AccentEditor({ value, onChange, colors = DEFAULT_COLORS, multili
     const current = runsToString(readRunsFromDom(el));
     const { start, end } = plainSelection(el);
     const next = applyAccentToRange(current, start, end, color);
-    renderInto(el, next);
+    renderInto(el, next, colorMap);
     lastValue.current = next;
     setPlainSelection(el, start, end);
     onChange(next);
@@ -186,6 +188,10 @@ export function AccentEditor({ value, onChange, colors = DEFAULT_COLORS, multili
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => applyColor(c.key)}
           >
+            <span
+              aria-hidden="true"
+              style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: c.color, marginRight: 6, verticalAlign: 'middle' }}
+            />
             {c.label}
           </button>
         ))}

@@ -114,3 +114,35 @@ describe('AccentEditor', () => {
     expect(evt).toBe(false);
   });
 });
+
+describe('AccentEditor brand palette', () => {
+  it('renders one button per supplied slot with its label', () => {
+    render(
+      <AccentEditor
+        value="Kavárna Nota"
+        onChange={() => {}}
+        colors={[
+          { key: 'gold', label: 'Gold', color: '#f6aa1c' },
+          { key: 'rust', label: 'Rust', color: '#7b190a' },
+        ]}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /Gold/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Rust/ })).toBeTruthy();
+    // The PP defaults must NOT appear when a brand palette is supplied.
+    expect(screen.queryByRole('button', { name: /Lime/ })).toBeNull();
+  });
+
+  it('colors an accent span with the slot hex', () => {
+    const { container } = render(
+      <AccentEditor
+        value={'a {gold:b}'}
+        onChange={() => {}}
+        colors={[{ key: 'gold', label: 'Gold', color: '#f6aa1c' }]}
+      />,
+    );
+    const span = container.querySelector('[data-accent="gold"]') as HTMLElement;
+    expect(span).toBeTruthy();
+    expect(span.style.color).toBe('rgb(246, 170, 28)'); // #f6aa1c
+  });
+});
