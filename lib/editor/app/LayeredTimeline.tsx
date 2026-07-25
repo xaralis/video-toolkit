@@ -235,7 +235,18 @@ function LayeredTimelineImpl({
   }, [playerRef, fps]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: '#161719', fontFamily: FONT }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        minHeight: 0,
+        background: '#161719',
+        fontFamily: FONT,
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+      }}
+    >
       <div style={{ display: 'flex', flex: '1 1 auto', minHeight: 0 }}>
       {/* Fixed lane-header column. xzdarcy renders only the track area, so the
           labels live in a parallel scroll container kept in two-way sync with
