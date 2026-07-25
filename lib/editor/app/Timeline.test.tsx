@@ -77,4 +77,98 @@ describe('Timeline', () => {
       '180'
     );
   });
+
+  it('calls onTrim with the dragged block id, edge, and a nonzero deltaFrames', () => {
+    const onTrim = vi.fn();
+    render(
+      <Timeline
+        segments={segments}
+        selectedId="b"
+        onSelect={vi.fn()}
+        onTrim={onTrim}
+        fps={30}
+        outroFrames={180}
+      />
+    );
+
+    const block = screen.getByRole('button', { name: 'broll · 2' });
+
+    // jsdom performs no layout, so getBoundingClientRect() always reports
+    // zeros. Stub the selected block's rect with a known pixel width so the
+    // px-to-frames conversion (durationFrames / widthPx) is deterministic:
+    // at 90 frames over 300px, 1px == 0.3 frames.
+    vi.spyOn(block, 'getBoundingClientRect').mockReturnValue({
+      width: 300,
+      height: 40,
+      top: 0,
+      left: 0,
+      right: 300,
+      bottom: 40,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    } as DOMRect);
+
+    const endHandle = screen.getByTestId('trim-handle-end-b');
+
+    fireEvent.pointerDown(endHandle, { clientX: 100 });
+    fireEvent.pointerMove(window, { clientX: 130 });
+    fireEvent.pointerUp(window, { clientX: 130 });
+
+    expect(onTrim).toHaveBeenCalledTimes(1);
+    const [id, edge, deltaFrames] = onTrim.mock.calls[0];
+    expect(id).toBe('b');
+    expect(edge).toBe('end');
+    expect(deltaFrames).not.toBe(0);
+    expect(deltaFrames).toBeCloseTo(9); // 30px * (90 frames / 300px)
+  });
+
+  it('does not call onSelect when dragging a trim handle', () => {
+    const onSelect = vi.fn();
+    const onTrim = vi.fn();
+    render(
+      <Timeline
+        segments={segments}
+        selectedId="b"
+        onSelect={onSelect}
+        onTrim={onTrim}
+        fps={30}
+        outroFrames={180}
+      />
+    );
+
+    const block = screen.getByRole('button', { name: 'broll · 2' });
+    vi.spyOn(block, 'getBoundingClientRect').mockReturnValue({
+      width: 300,
+      height: 40,
+      top: 0,
+      left: 0,
+      right: 300,
+      bottom: 40,
+      x: 0,
+      y: 0,
+      toJSON: () => {},
+    } as DOMRect);
+
+    const startHandle = screen.getByTestId('trim-handle-start-b');
+    fireEvent.pointerDown(startHandle, { clientX: 50 });
+    fireEvent.pointerUp(window, { clientX: 50 });
+
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('does not render trim handles on unselected blocks', () => {
+    render(
+      <Timeline
+        segments={segments}
+        selectedId="b"
+        onSelect={vi.fn()}
+        onTrim={vi.fn()}
+        fps={30}
+        outroFrames={180}
+      />
+    );
+    expect(screen.queryByTestId('trim-handle-end-a')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('trim-handle-end-b')).toBeInTheDocument();
+  });
 });

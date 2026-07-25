@@ -7,6 +7,7 @@
 }
 
 .block {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -22,6 +23,26 @@
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   cursor: pointer;
   overflow: hidden;
+}
+
+.handleStart,
+.handleEnd {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: #b6ff5a;
+  cursor: ew-resize;
+  touch-action: none;
+  z-index: 1;
+}
+
+.handleStart {
+  left: 0;
+}
+
+.handleEnd {
+  right: 0;
 }
 
 .block:hover {
