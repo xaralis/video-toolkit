@@ -11,7 +11,7 @@ vocabulary.
 import { mountEditorHost } from '@video-toolkit/lib/editor/host/mount';
 import { LayeredCampaignReel } from '../src/LayeredCampaignReel';
 import { brandTheme } from '../src/config/brand-theme';
-import { editorMeta } from '../src/config/editor-meta';
+import { editorMeta } from '../src/config/editor-meta'; // the brand must author this module (or drop this import and the `meta:` line below until it does)
 import { fps, width, height } from '../src/config/reel-config';
 import '../src/styles/global.css';
 
