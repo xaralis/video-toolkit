@@ -277,17 +277,64 @@ describe('updateDefaultPropsSurgically', () => {
     expect(out).toBe(SURGICAL_ROOT);
   });
 
-  it('falls back to replacing the whole array when its length changes (documented limitation)', () => {
+  it('surgically appends a new array element without reserializing the existing elements', () => {
     const current = readDefaultProps(SURGICAL_ROOT, { compositionId: 'CampaignReel' }) as any;
     const next = JSON.parse(JSON.stringify(current));
     next.segments.push({ id: 's3', type: 'card', trimIn: 0, trimOut: 2 });
 
     const out = updateDefaultPropsSurgically(SURGICAL_ROOT, next, { compositionId: 'CampaignReel' });
 
-    // Sibling top-level comments/as const survive; the segments array itself is fully regenerated
-    // (adding/removing elements is not surgically diffable — see function doc comment).
+    // Sibling top-level comments/as const survive, AND (unlike the old whole-array-
+    // replace fallback) the untouched existing elements + the array's own `as const`
+    // wrapper survive too — only the new element is inserted.
     expect(out).toContain('// reel meta');
     expect(out).toContain("topic: 'Klima' as const");
+    expect(out).toContain('// ── Úsek 1 ──');
+    expect(out).toContain("type: 'clip' as const");
+    expect(out).toContain("type: 'broll' as const");
+    expect(out).toContain("kind: 'quote-pull' as const");
+    expect(out).toContain('] as const');
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+
+  it('surgically inserts a new element in the middle of an array, preserving every existing element\'s comments and as const', () => {
+    const current = readDefaultProps(SURGICAL_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    next.segments.splice(1, 0, { id: 's1b', type: 'card', trimIn: 0, trimOut: 1 });
+
+    const out = updateDefaultPropsSurgically(SURGICAL_ROOT, next, { compositionId: 'CampaignReel' });
+
+    // s1 (with its leading comment and nested as-const overlay) is untouched...
+    expect(out).toContain('// ── Úsek 1 ──');
+    expect(out).toContain("type: 'clip' as const");
+    expect(out).toContain("kind: 'quote-pull' as const");
+    expect(out).toContain('A {lime:b}.');
+    // ...s2 (after the insertion point) is untouched...
+    expect(out).toContain("type: 'broll' as const");
+    // ...the array's own `as const` wrapper survives (the array node itself was
+    // never wholesale-replaced)...
+    expect(out).toContain('] as const');
+    // ...and the new element is actually there (freshly serialized as JSON, double-quoted).
+    expect(out).toContain('"id": "s1b"');
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+
+  it('surgically deletes an array element, preserving the surviving elements\' comments and as const', () => {
+    const current = readDefaultProps(SURGICAL_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    next.segments.splice(1, 1); // drop s2, keep s1
+
+    const out = updateDefaultPropsSurgically(SURGICAL_ROOT, next, { compositionId: 'CampaignReel' });
+
+    // The surviving element (s1) — including its leading comment and nested
+    // as-const overlay — is untouched, proving the deletion is surgical rather
+    // than a whole-array reserialize.
+    expect(out).toContain('// ── Úsek 1 ──');
+    expect(out).toContain("type: 'clip' as const");
+    expect(out).toContain("kind: 'quote-pull' as const");
+    expect(out).toContain('A {lime:b}.');
+    expect(out).toContain('] as const');
+    expect(out).not.toContain('s2');
     expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
   });
 

@@ -193,14 +193,57 @@ function deepEqual(a: unknown, b: unknown): boolean {
 /**
  * A single surgical edit to apply to the source AST:
  *  - `replace`: the node at `path` changed value/shape in a way that can't be edited in place
- *    (a genuine scalar difference, a key was REMOVED from an object, an array's length changed,
- *    or a type change) — the whole node at that path is re-serialized from scratch. `path` may be
- *    `[]`, meaning the entire top-level props object is replaced.
+ *    (a genuine scalar difference, a key was REMOVED from an object, or a type change) — the whole
+ *    node at that path is re-serialized from scratch. `path` may be `[]`, meaning the entire
+ *    top-level props object is replaced.
  *  - `add`: `path`'s last segment is a NEW key that didn't exist on the object at the parent path
  *    — every other existing key on that object (and its comments/`as const`) is left untouched;
  *    only a new property is inserted into the existing object literal.
+ *  - `array-splice`: the array at `path` changed length. `start`/`deleteCount` bound the minimal
+ *    contiguous run of elements that differ from the old array (found via a common-prefix/common-
+ *    suffix scan), and `newElements` are the values that replace that run. Every element outside
+ *    the run — including its comments/`as const` — is left byte-untouched; this covers append,
+ *    prepend, insert-in-the-middle, delete, and duplicate without reserializing untouched siblings.
  */
-type DiffOp = { kind: 'replace'; path: PathSegment[] } | { kind: 'add'; path: PathSegment[] };
+type DiffOp =
+  | { kind: 'replace'; path: PathSegment[] }
+  | { kind: 'add'; path: PathSegment[] }
+  | { kind: 'array-splice'; path: PathSegment[]; start: number; deleteCount: number; newElements: unknown[] };
+
+/**
+ * Finds the minimal contiguous "changed" run between `oldArr` and `newArr` by trimming a common
+ * prefix and a common suffix (via `deepEqual`, elementwise) off both ends. Everything in the
+ * prefix/suffix is identical between the two arrays and needs no edit at all; only the run in the
+ * middle — `oldArr[start, start+deleteCount)` — actually differs, and `newElements` is what it
+ * should become. This is what lets a single insert/delete/duplicate at any position be expressed
+ * as one small splice instead of a whole-array replace.
+ */
+function arraySplice(
+  oldArr: unknown[],
+  newArr: unknown[],
+): { start: number; deleteCount: number; newElements: unknown[] } {
+  const oldLen = oldArr.length;
+  const newLen = newArr.length;
+  const maxPrefix = Math.min(oldLen, newLen);
+
+  let prefix = 0;
+  while (prefix < maxPrefix && deepEqual(oldArr[prefix], newArr[prefix])) prefix++;
+
+  let suffix = 0;
+  const maxSuffix = maxPrefix - prefix;
+  while (
+    suffix < maxSuffix &&
+    deepEqual(oldArr[oldLen - 1 - suffix], newArr[newLen - 1 - suffix])
+  ) {
+    suffix++;
+  }
+
+  return {
+    start: prefix,
+    deleteCount: oldLen - prefix - suffix,
+    newElements: newArr.slice(prefix, newLen - suffix),
+  };
+}
 
 /**
  * Walks `oldVal`/`newVal` in parallel and collects the surgical edits needed to turn the former
@@ -213,10 +256,11 @@ type DiffOp = { kind: 'replace'; path: PathSegment[] } | { kind: 'add'; path: Pa
  *  - **Key removed** (regardless of whether keys were also added): there is no source AST node
  *    to surgically delete a property from, so the whole object at this path is replaced instead.
  *
- * Arrays only recurse when the length is unchanged — inserting/removing array elements isn't
- * surgically diffable (segments/overlays cannot yet be added or removed from the editor), so a
- * length change replaces the whole array node instead. This is the "array length change ⇒
- * whole-array replace" limitation documented on `updateDefaultPropsSurgically`.
+ * Arrays recurse element-by-element when the length is unchanged. When the length differs, a
+ * common-prefix/common-suffix scan (`arraySplice`) finds the minimal contiguous run that actually
+ * changed and emits a single `array-splice` op scoped to that run — every element outside it
+ * (including its own comments/`as const`) is left alone. This covers append, prepend, insert-in-
+ * the-middle, delete, and duplicate without reserializing untouched siblings.
  */
 function diffOps(oldVal: unknown, newVal: unknown, path: PathSegment[], out: DiffOp[]): void {
   if (deepEqual(oldVal, newVal)) return;
@@ -244,14 +288,19 @@ function diffOps(oldVal: unknown, newVal: unknown, path: PathSegment[], out: Dif
     return;
   }
 
-  if (Array.isArray(oldVal) && Array.isArray(newVal) && oldVal.length === newVal.length) {
-    for (let i = 0; i < oldVal.length; i++) {
-      diffOps(oldVal[i], newVal[i], [...path, i], out);
+  if (Array.isArray(oldVal) && Array.isArray(newVal)) {
+    if (oldVal.length === newVal.length) {
+      for (let i = 0; i < oldVal.length; i++) {
+        diffOps(oldVal[i], newVal[i], [...path, i], out);
+      }
+      return;
     }
+    const { start, deleteCount, newElements } = arraySplice(oldVal, newVal);
+    out.push({ kind: 'array-splice', path: path.slice(), start, deleteCount, newElements });
     return;
   }
 
-  // Scalar difference, type change, or array length change: replace the whole node at this path.
+  // Scalar difference or type change: replace the whole node at this path.
   out.push({ kind: 'replace', path: path.slice() });
 }
 
@@ -398,6 +447,34 @@ function applyAddKey(topValueNode: Node, path: PathSegment[], newValue: unknown)
   objLit.addPropertyAssignment({ name: propertyNameFor(key), initializer: serialized });
 }
 
+/** Applies a single `array-splice` op: the array at `path` changed length. Removes `deleteCount`
+ * elements starting at `start` from the existing array literal AST node, then inserts
+ * `newElements` (freshly serialized — they have no prior AST to preserve) at that same position.
+ * Every element outside `[start, start + deleteCount)` is never touched, so its comments/`as const`
+ * survive byte-for-byte, and the array literal node itself (and any `as const`/`satisfies` wrapping
+ * it) is never replaced either. */
+function applyArraySplice(
+  topValueNode: Node,
+  path: PathSegment[],
+  start: number,
+  deleteCount: number,
+  newElements: unknown[],
+): void {
+  const containerNode = unwrapValue(navigateToValueNode(topValueNode, path));
+  if (containerNode.getKind() !== SyntaxKind.ArrayLiteralExpression) {
+    throw new Error(
+      `updateDefaultPropsSurgically: expected an array literal at path "${path.join('.')}".`,
+    );
+  }
+  const arrLit = containerNode.asKindOrThrow(SyntaxKind.ArrayLiteralExpression);
+  for (let i = 0; i < deleteCount; i++) {
+    arrLit.removeElement(start);
+  }
+  if (newElements.length > 0) {
+    arrLit.insertElements(start, newElements.map((v) => JSON.stringify(v, null, 2)));
+  }
+}
+
 /**
  * Diff-based, surgical alternative to `rewriteDefaultProps`. Locates the `<Composition>`'s
  * `defaultProps={{…}}` literal, reads the CURRENT props out of it (via `evaluateLiteral`, so
@@ -421,9 +498,12 @@ function applyAddKey(topValueNode: Node, path: PathSegment[], newValue: unknown)
  *    `as const` *inside* that particular object are lost, but everything outside it (siblings,
  *    ancestors) is unaffected.
  *
- * Arrays only recurse when the length is unchanged (existing elements may still change value);
- * inserting/removing array elements surgically isn't supported (the editor does not yet support
- * adding/removing segments or overlays), so a length change replaces the whole array node.
+ * Arrays recurse element-by-element when the length is unchanged (existing elements may still
+ * change value). When the length differs — an element was inserted, deleted, or duplicated — a
+ * common-prefix/common-suffix scan finds the minimal contiguous run that actually changed and
+ * splices only that run into the existing array literal AST node (removing/inserting elements in
+ * place). Every element outside that run, and the array literal node itself (with any `as const`/
+ * `satisfies` wrapping it), is left byte-untouched.
  */
 export function updateDefaultPropsSurgically(
   source: string,
@@ -456,6 +536,8 @@ export function updateDefaultPropsSurgically(
     }
     if (op.kind === 'add') {
       applyAddKey(jsxExpr, op.path, getAtPath(newProps, op.path));
+    } else if (op.kind === 'array-splice') {
+      applyArraySplice(jsxExpr, op.path, op.start, op.deleteCount, op.newElements);
     } else {
       applyLeafChange(jsxExpr, op.path, getAtPath(newProps, op.path));
     }
