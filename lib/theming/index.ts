@@ -1,5 +1,20 @@
 export { paletteMap, resolveAccentColor, type AccentSlot } from './palette';
-export { placementGeometry, DEFAULT_PLACEMENT, type Placement, type PlacementGeometry } from './placement';
+export {
+  placementGeometry,
+  compactPlacementGeometry,
+  DEFAULT_PLACEMENT,
+  type Placement,
+  type PlacementGeometry,
+  type CompactPlacementGeometry,
+} from './placement';
+export {
+  useOverlayEnvelope,
+  overlayEnvelope,
+  DEFAULT_FADE_IN_FRAMES,
+  DEFAULT_FADE_OUT_FRAMES,
+  type OverlayEnvelope,
+  type OverlayEnvelopeOptions,
+} from './envelope';
 export type {
   OverlayRenderProps,
   OverlayRenderer,

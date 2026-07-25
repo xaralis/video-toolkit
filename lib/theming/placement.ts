@@ -60,3 +60,40 @@ const PLACEMENT_ALIASES: Record<string, Placement> = {
 export function placementGeometry(p: Placement): PlacementGeometry {
   return PLACEMENT[p] ?? PLACEMENT[PLACEMENT_ALIASES[p as string]] ?? PLACEMENT[DEFAULT_PLACEMENT];
 }
+
+export interface CompactPlacementGeometry {
+  /** Absolute offsets for a shrink-to-fit box. Never sets left AND right. */
+  containerStyle: CSSProperties;
+  /** True when the box must additionally be pulled back by translateX(-50%). */
+  centered: boolean;
+  textAlign: 'left' | 'right' | 'center';
+}
+
+/** Placement geometry adapted for a COMPACT overlay — a chevron marker, a
+ *  badge, a source tag: something that shrink-wraps its content and carries its
+ *  own background plate.
+ *
+ *  Such a box cannot take `placementGeometry`'s containerStyle verbatim. That
+ *  geometry is written for full-bleed text blocks, so the three bands set both
+ *  `left: 6%` and `right: 6%` — which on a plated box stretches the plate into
+ *  a letterbox bar across the frame. Here the placement's vertical band is kept
+ *  as-is and the horizontal is collapsed to a SINGLE edge: the anchored zones
+ *  keep whichever side they're anchored to, and a band's left+right pair
+ *  becomes a true center (left 50% + the `centered` flag, so the caller can
+ *  fold translateX(-50%) into whatever transform it is already building).
+ *
+ *  Deriving from the same PLACEMENT table is the point: the vocabulary stays
+ *  single-sourced, so a placement added to PLACEMENTS works for compact
+ *  overlays for free. */
+export function compactPlacementGeometry(p: Placement): CompactPlacementGeometry {
+  const { containerStyle, textAlign } = placementGeometry(p);
+  const { top, left, right } = containerStyle;
+  if (left !== undefined && right !== undefined) {
+    return { containerStyle: { top, left: '50%' }, centered: true, textAlign };
+  }
+  return {
+    containerStyle: right !== undefined ? { top, right } : { top, left },
+    centered: false,
+    textAlign,
+  };
+}
