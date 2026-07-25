@@ -39,6 +39,8 @@ export interface InspectorProps {
   chevron: string;
   onReelChange: (patch: { topic?: string; chevron?: string }) => void;
   onSegmentChange: (id: string, patch: Record<string, unknown>) => void;
+  /** Available footage filenames, supplied by the template from the project's public dirs. */
+  sources?: { recordings: string[]; broll: string[] };
 }
 
 /** Allowed `audioMode` values per segment type — mirrors reel-config-base's base-types.ts. */
@@ -103,14 +105,35 @@ function overlayEntriesFor(seg: Segment): OverlayEntry[] {
 }
 
 /**
+ * Resolves the selectable source filenames for a clip/broll segment: the
+ * template-supplied list for its footage kind (recordings for clips, broll
+ * for brolls), plus the segment's current `source` if it isn't already in
+ * that list (so the select never loses the segment's actual footage).
+ * Returns null for segment types that don't carry a source at all.
+ */
+function sourceOptionsFor(
+  seg: Segment,
+  sources?: { recordings: string[]; broll: string[] }
+): string[] | null {
+  if (seg.type !== 'clip' && seg.type !== 'broll') return null;
+  const available = seg.type === 'clip' ? sources?.recordings : sources?.broll;
+  const options = available ? [...available] : [];
+  if (seg.source && !options.includes(seg.source)) {
+    options.push(seg.source);
+  }
+  return options;
+}
+
+/**
  * Inspector — reel-level fields + selected-scene editing for the reel editor.
  *
  * Presentational and controlled: no persisted internal state, only a
  * transient ref used to restore text-input selection after an accent wrap.
  * With no selection, shows a Reel section with Topic/Chevron text inputs
  * bound to `topic`/`chevron`/`onReelChange`. With a selected segment, shows
- * the read-only Scene summary (type, source, timing) plus editable audioMode
- * and overlay text (with Lime/Teal accent buttons) via `onSegmentChange`.
+ * the read-only Scene summary (type, timing) plus editable Source (clip/broll
+ * only, via `sources`), audioMode, and overlay text (with Lime/Teal accent
+ * buttons) via `onSegmentChange`.
  */
 export function Inspector({
   segments,
@@ -119,6 +142,7 @@ export function Inspector({
   chevron,
   onReelChange,
   onSegmentChange,
+  sources,
 }: InspectorProps) {
   const selected = selectedId === null ? undefined : segments.find((s) => s.id === selectedId);
 
@@ -164,6 +188,7 @@ export function Inspector({
   const timing = timingFor(selected);
   const audioOptions = AUDIO_MODE_OPTIONS[selected.type];
   const overlayEntries = overlayEntriesFor(selected);
+  const sourceOptions = sourceOptionsFor(selected, sources);
 
   const handleAccent = (entry: OverlayEntry, color: AccentColor) => {
     const el = inputRefs.current[entry.key];
@@ -181,11 +206,21 @@ export function Inspector({
         <span className={styles.label}>Type</span>
         <span className={styles.value}>{selected.type}</span>
       </div>
-      {selected.source && (
-        <div className={styles.field}>
+      {sourceOptions && sourceOptions.length > 0 && (
+        <label className={styles.field}>
           <span className={styles.label}>Source</span>
-          <span className={styles.value}>{selected.source}</span>
-        </div>
+          <select
+            className={styles.input}
+            value={selected.source ?? sourceOptions[0]}
+            onChange={(e) => onSegmentChange(selected.id, { source: e.target.value })}
+          >
+            {sourceOptions.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        </label>
       )}
       {timing && (
         <div className={styles.field}>
