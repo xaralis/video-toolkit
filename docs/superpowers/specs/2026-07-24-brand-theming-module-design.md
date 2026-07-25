@@ -204,12 +204,25 @@ export interface OverlayRenderProps {
    *  brand tune its renderer (stroke width, decoder timing, fonts) without
    *  core or the reel model knowing about it. */
   config?: unknown;
-  /** Clip-local animation state. */
-  localFrame: number;
-  totalFrames: number;
-  fps: number;
+  /** Timing. The overlay is mounted by the root in a Sequence at the item's
+   *  start, so appearAtMs is typically 0. The renderer derives its clip-local
+   *  frame from Remotion hooks (useCurrentFrame / useVideoConfig) INSIDE the
+   *  Sequence — localFrame/totalFrames/fps are NOT root-passed props, because
+   *  the root builds the tree once, not per frame. */
+  appearAtMs: number;
+  durationMs: number;
 }
 ```
+
+> **Positioning note.** The reel model already carries an item-level
+> `position?: string` on every overlay (`OverlayItemSchema.position`), the
+> inspector already renders a position dropdown for it, and campaign already
+> consumes it (`placement={item.position ?? 'center'}`). This spec therefore
+> **reuses that existing field** rather than adding `content.position` or a new
+> dropdown. The theming module's contribution is the shared `placementGeometry`
+> map (lifted from campaign's local `PLACEMENT`) so the generic renderer and
+> roost can position by the same vocabulary campaign already uses; campaign's
+> local copy is deleted in favor of the core one.
 
 **Root passes config down (not globals).** The brand's root composition
 (`LayeredXReel`) is the single point that reads the brand theme and threads
@@ -268,16 +281,11 @@ This is the zero-config baseline the resolution switch falls back to.
 
 #### Shared content model
 
-The `text` overlay content schema (in `lib/reel-config-base/layered-schema.ts`)
-carries the shared, brand-agnostic props:
-
-```ts
-{ kind: 'text', text: string, position?: Placement,
-  fontSize?: number, reveal?: 'line' | 'all' }
-```
-
-`position` is new and optional (defaults to `DEFAULT_PLACEMENT`). Timing is the
-overlay item's existing `startMs` / `endMs`.
+The `text` overlay content is `{ kind: 'text', text, fontSize?, reveal? }` (the
+`content` field is already a permissive `z.record`, so no schema change).
+**Positioning** uses the overlay item's existing `position?: string` field
+(`OverlayItemSchema.position`) — not a new content field — defaulting to
+`DEFAULT_PLACEMENT` when unset. Timing is the item's existing `startMs`/`endMs`.
 
 #### Brand-custom renderers
 
@@ -337,8 +345,11 @@ passes `theme.accentSlots` to the inspector).
   hardcoded `.lime` / `.teal` classes (removed from `AccentEditor.module.css`).
   Unknown keys fall back to inherited color.
 - **`LayeredInspector.tsx`:** new `accentSlots: AccentSlot[]` prop, threaded to
-  `AccentEditor`. Adds a **placement dropdown** bound to the shared `Placement`
-  enum, editing the overlay's `position`.
+  `AccentEditor`. The overlay **position dropdown already exists**
+  (`OVERLAY_POSITIONS` + `o.position`) and is left as-is — it is shared across
+  overlay kinds with their own position vocabularies (a pre-existing concern out
+  of scope here). `placementGeometry` falls back to `DEFAULT_PLACEMENT` for any
+  value it does not recognize, so no dropdown change is needed for this feature.
 - **Editor hosts (`roost` + `campaign` `.editor/main.tsx`):** import
   `theme.accentSlots` and pass to `LayeredInspector`. Same code path in both;
   brand-driven output. Preview still renders via each host's `LayeredXReel`, so
