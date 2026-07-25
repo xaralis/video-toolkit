@@ -1,5 +1,6 @@
-import { readFile, rename, writeFile } from 'node:fs/promises';
+import { readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { rewriteDefaultProps } from './default-props-writer';
 
 export async function saveDefaultPropsToFile(
@@ -10,9 +11,14 @@ export async function saveDefaultPropsToFile(
   const source = await readFile(filePath, 'utf8');
   const next = rewriteDefaultProps(source, props, opts);
   // Atomic write: write a temp sibling, then rename over the target.
-  const tmp = join(dirname(filePath), `.${Date.now().toString(36)}.Root.tsx.tmp`);
-  await writeFile(tmp, next, 'utf8');
-  await rename(tmp, filePath);
+  const tmp = join(dirname(filePath), `.${randomUUID()}.Root.tsx.tmp`);
+  try {
+    await writeFile(tmp, next, 'utf8');
+    await rename(tmp, filePath);
+  } catch (err) {
+    await unlink(tmp).catch(() => {});
+    throw err;
+  }
 }
 
 export interface SaveRequest {
