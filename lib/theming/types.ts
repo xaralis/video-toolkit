@@ -1,5 +1,6 @@
 import type { AccentSlot } from './palette';
 import type { Placement } from './placement';
+import type { VideoItem } from '../reel-config-base/layered-schema';
 
 /** The static prop bag every text-overlay renderer receives. Frame-derived
  *  values (localFrame/totalFrames/fps) are read from Remotion hooks INSIDE the
@@ -34,4 +35,29 @@ export interface BrandTheme {
   accentSlots: AccentSlot[];
   /** Per-kind brand-custom renderer + config. Absent kind → core generic. */
   overlays?: Partial<Record<OverlayKind, OverlayRegistration>>;
+  /** Per-kind brand-custom video renderer + config. Absent kind → core generic. */
+  video?: Partial<Record<VideoKind, VideoRegistration>>;
+}
+
+/** Video-track item kinds that flow through the theming module (the footage
+ *  kinds every brand's clip/broll/photo renderer composes around SegmentMedia). */
+export type VideoKind = 'clip' | 'broll' | 'photo';
+
+/** The static prop bag every video renderer receives. Frame-derived values
+ *  (localFrame/fps/dims) are read from Remotion hooks INSIDE the renderer,
+ *  not passed here — mirrors OverlayRenderProps. */
+export interface VideoRenderProps {
+  item: VideoItem;
+  /** Extra frames borrowed at each edge for cross-item transitions (0 when none). */
+  handles: { inHalf: number; outHalf: number };
+  /** Opaque brand-level config threaded down by the root from the theme. */
+  config?: unknown;
+}
+
+export type VideoRenderer = React.FC<VideoRenderProps>;
+
+/** One kind's brand registration: its custom renderer + opaque brand config. */
+export interface VideoRegistration {
+  renderer: VideoRenderer;
+  config?: unknown;
 }
