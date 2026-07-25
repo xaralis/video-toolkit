@@ -19,11 +19,18 @@ layered**, the way Remotion Studio and normal NLEs do.
 
 ## Decision & approach (from brainstorming)
 
-- **Track-native layered model, going forward. No forced migration.** Existing projects keep the old
-  segment-centric schema + old composition (versioned) and are untouched. New work uses the layered
-  model. (A derivation for viewing old projects is possible but not required.)
-- The new model is largely a **reshape of numbers that already exist** (segment/overlay/rule timings
-  broken out into explicit layer items), which keeps it tractable.
+- **Track-native layered model** is the target for all projects, reached by a **staged migration**:
+  1. Build a **derivation** (old segment-centric config → new layered model) — the new model is
+     largely a **reshape of numbers that already exist** (segment/overlay/rule timings broken out
+     into explicit layer items), which keeps it tractable.
+  2. **Pilot on `pp-namesti-republiky`** — convert that one real project, validate it renders + edits
+     correctly in the new model, and use it as the reference.
+  3. Once the pilot is OK, **mechanically flip the remaining projects.** This is expected to be
+     mostly-mechanical, and **the result need not be 100 % one-to-one** with the old render —
+     "close" is acceptable.
+- During the transition the **old composition path is kept** so un-migrated projects keep rendering;
+  it can be retired once everything is flipped. **Render/derivation parity is a "close, acceptable
+  drift" bar, not pixel-perfect.**
 
 ## The layered model
 
@@ -74,22 +81,28 @@ become **lint/warnings**, not hard locks.
 - **Slip** — a dedicated handle/toggle on clip and audio items shifts the source window without
   changing the item's slot.
 
-## Model change, render, and `/cut`
+## Model change, render, `/cut`, and migration
 
-- A new **layered Zod schema** (tracks + item types) for new work.
-- The **composition renders from the layered model** (new `CampaignReel` variant) with **render
-  parity** to today's output for equivalent content.
-- **`/cut`** produces the layered model directly (and computes overlay/brand initial alignment +
-  the initial `musicBoost` per clip from the current brand-rule numbers).
-- **Old projects** keep the old schema + old composition path, untouched (versioned).
+- A new **layered Zod schema** (tracks + item types).
+- The **composition renders from the layered model** (new `CampaignReel` variant). Parity target is
+  **"close, acceptable drift"** — not pixel-perfect (per the migration decision).
+- **Derivation tool** `oldConfig → layeredModel`: breaks the existing rule-driven numbers into
+  explicit layer items (overlay absolute times = segment start + `appearAt`; chevron/brand timing
+  from rules; per-clip `musicBoost` from the +6/+10 rules; clip/broll audio items from
+  `audioMode`/`audioSource`/`audioStartSec`). This is the migration engine AND the initializer.
+- **Pilot:** run the derivation on **`pp-namesti-republiky`**, then verify it renders (close enough)
+  and edits correctly in the new editor. This project is the reference cut.
+- **Rollout:** after the pilot passes, apply the derivation to the remaining projects (mechanical;
+  not required to be 1:1). Keep the old composition path until a project is flipped.
+- **`/cut`** (new cuts) produces the layered model directly.
 
 ## Decomposition (three dependent sub-specs)
 
-1. **Layered data model + render** *(foundational)* — the new schema (tracks/items), the new
-   composition rendering from it with render parity, and `/cut` emitting it. Includes the derivation
-   of layer items from the existing rule-driven numbers (overlay absolute times, chevron/brand
-   timing, per-clip `musicBoost` from the +6/+10 rules, clip/broll audio items from
-   `audioMode`/`audioSource`/`audioStartSec`).
+1. **Layered data model + render + derivation + pilot** *(foundational)* — the new schema
+   (tracks/items), the new composition rendering from it ("close" parity), the **derivation tool**
+   (old→layered), `/cut` emitting the layered model, and **piloting the derivation on
+   `pp-namesti-republiky`** (render + edit validation). This sub-spec is done when the pilot project
+   round-trips through the new model + editor acceptably.
 2. **Multi-track timeline editor UI** — render all tracks, drag-timing with snapping (toggle),
    item-select → inspector routing, junction transitions, slip handles.
 3. **Audio subsystem** — clip/broll audio items + independent audio slip, music base + per-clip
@@ -100,11 +113,14 @@ part of the timeline UI). Each gets its own spec → plan → implementation cyc
 
 ## Non-goals (MVP)
 
-- Migrating or re-rendering existing projects into the new model.
+- **Pixel-perfect** render parity with the old model — "close, acceptable drift" is the bar; the
+  full rollout is mechanical and need not be 1:1.
 - Manual keyframe editing of the music base envelope (envelope is derived from clip boosts for MVP;
   static base).
 - Reordering clips by free drag ("slide"); duration changes (resize) + ripple cover time changes for
   MVP.
+- Migrating *all* projects up front — only the **pilot** (`pp-namesti-republiky`) is in scope for
+  sub-spec 1; the rest are a mechanical rollout after the pilot passes.
 
 ## What is reused (not rebuilt)
 
