@@ -256,6 +256,75 @@ describe('applyTimelineChange', () => {
   });
 });
 
+describe('applyTimelineChange — footage clamp (right edge)', () => {
+  const brollReel = (over: Partial<{ sourceOutMs: number; endMs: number }> = {}): LayeredReel => ({
+    ...REEL,
+    meta: { topic: 'Fixture', totalDurationMs: 20000 },
+    tracks: {
+      ...REEL.tracks,
+      overlays: [],
+      audio: [],
+      brand: [],
+      video: [
+        {
+          id: 'A',
+          kind: 'broll',
+          startMs: 5367,
+          endMs: over.endMs ?? 15667,
+          source: 'br.mp4',
+          sourceInMs: 0,
+          sourceOutMs: over.sourceOutMs ?? 10300,
+        },
+      ],
+    },
+  });
+
+  const dragRightEdgeTo = (reel: LayeredReel, endSec: number) => {
+    const { editorData } = layeredToTimeline(reel, 30);
+    const startSec = reel.tracks.video[0].startMs / 1000;
+    return editorData.map((row) =>
+      row.id === 'video'
+        ? { ...row, actions: row.actions.map((a) => ({ ...a, start: startSec, end: endSec })) }
+        : row,
+    );
+  };
+
+  it('clamps a right-edge extend to the real footage duration', () => {
+    const reel = brollReel({ sourceOutMs: 6000, endMs: 11367 }); // uses 6s of footage
+    // Drag the right edge far right (to 30s); only 8042ms of footage exists.
+    const changed = dragRightEdgeTo(reel, 30);
+    const A = applyTimelineChange(reel, changed, { footageMsById: { A: 8042 } }).tracks.video[0];
+    expect(A.kind === 'broll' && A.sourceOutMs).toBe(8042); // out-point clamped at footage end
+    expect(A.endMs).toBe(5367 + 8042); // span reflects the clamped out-point
+  });
+
+  it('honors a right-edge extend that stays within footage (no clamp)', () => {
+    const reel = brollReel({ sourceOutMs: 6000, endMs: 11367 });
+    const changed = dragRightEdgeTo(reel, 13.367); // +2s → out-point 8000ms, footage 8042
+    const A = applyTimelineChange(reel, changed, { footageMsById: { A: 8042 } }).tracks.video[0];
+    expect(A.kind === 'broll' && A.sourceOutMs).toBe(8000);
+    expect(A.endMs).toBe(13367);
+  });
+
+  it('self-heals a block whose config sourceOutMs already overshoots the footage', () => {
+    // The seg-002 case: config claims 10300ms but the file is only 10042ms, so
+    // endMs (15667) sits past the real footage end (15409). A small shorten drag
+    // must clamp the out-point to the footage — never freeze (the old veto bug).
+    const reel = brollReel(); // sourceOutMs 10300, endMs 15667
+    const changed = dragRightEdgeTo(reel, 15.567); // nudge left by 100ms
+    const A = applyTimelineChange(reel, changed, { footageMsById: { A: 10042 } }).tracks.video[0];
+    expect(A.kind === 'broll' && A.sourceOutMs).toBe(10042);
+    expect(A.endMs).toBe(5367 + 10042); // 15409 — snapped to real footage end
+  });
+
+  it('leaves the out-point unclamped when the footage duration is unknown', () => {
+    const reel = brollReel({ sourceOutMs: 6000, endMs: 11367 });
+    const changed = dragRightEdgeTo(reel, 30);
+    const A = applyTimelineChange(reel, changed, {}).tracks.video[0]; // no footage map
+    expect(A.kind === 'broll' && A.sourceOutMs).toBe(30000 - 5367); // extends freely (freeze-frame fallback)
+  });
+});
+
 describe('deleteItem', () => {
   const reel: LayeredReel = {
     ...REEL,
