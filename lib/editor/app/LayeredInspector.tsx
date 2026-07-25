@@ -1,6 +1,7 @@
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import { AccentEditor } from './AccentEditor';
 import { TransitionPicker } from './TransitionPicker';
+import { TRANSITION_KINDS, type Transition } from './transitions';
 import { parseActionId, type LaneId } from '../src/timeline/layered-adapter';
 
 // Routes the selected timeline item (by lane) to its editable properties,
@@ -34,12 +35,15 @@ function NumberField({ lbl, value, step = 1, onCommit }: { lbl: string; value: n
     <div style={field}>
       <label style={label}>{lbl}</label>
       <input
+        key={value}
         style={input}
         type="number"
         step={step}
         defaultValue={value ?? ''}
         onBlur={(e) => {
-          const n = Number(e.target.value);
+          const raw = e.target.value.trim();
+          if (raw === '') return; // cleared field → no-op, don't coerce to 0
+          const n = Number(raw);
           if (!Number.isNaN(n)) onCommit(n);
         }}
       />
@@ -99,7 +103,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
         <button type="button" style={{ ...input, cursor: 'pointer', marginBottom: 12, width: 'auto', padding: '4px 10px' }} onClick={() => onSeek(Math.round((v.startMs / 1000) * fps))}>
           ⇥ seek to start
         </button>
-        {v.source !== undefined && <TextField lbl="Source" value={v.source} onCommit={(s) => patchItem('video', id, { source: s })} />}
+        {v.source !== undefined && <TextField lbl="Source" value={v.source} onCommit={(s) => s.trim() && patchItem('video', id, { source: s })} />}
         {v.sourceInMs !== undefined && (
           <NumberField lbl="Trim in (s)" step={0.05} value={v.sourceInMs / 1000} onCommit={(n) => patchItem('video', id, { sourceInMs: Math.round(n * 1000) })} />
         )}
@@ -123,7 +127,11 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
         <div style={field}>
           <label style={label}>Transition out</label>
           <TransitionPicker
-            value={(v.transitionOut as { kind?: string } | undefined)?.kind ? (v.transitionOut as never) : undefined}
+            value={
+              v.transitionOut && TRANSITION_KINDS.some((k) => k.kind === (v.transitionOut as { kind?: string }).kind)
+                ? (v.transitionOut as unknown as Transition)
+                : undefined
+            }
             fps={fps}
             onChange={(t) => patchItem('video', id, { transitionOut: t })}
           />
@@ -161,7 +169,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps }: La
     return (
       <div style={{ padding: 14 }}>
         <h3 style={heading}>Audio</h3>
-        <TextField lbl="Source" value={a.source} onCommit={(s) => patchItem('audio', id, { source: s })} />
+        <TextField lbl="Source" value={a.source} onCommit={(s) => s.trim() && patchItem('audio', id, { source: s })} />
         <NumberField lbl="In-point (s)" step={0.05} value={a.sourceInMs / 1000} onCommit={(n) => patchItem('audio', id, { sourceInMs: Math.round(n * 1000) })} />
         <NumberField lbl="Volume (dB)" value={a.volumeDb} onCommit={(n) => patchItem('audio', id, { volumeDb: n })} />
       </div>

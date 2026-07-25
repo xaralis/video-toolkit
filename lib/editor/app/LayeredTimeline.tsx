@@ -81,7 +81,13 @@ export function LayeredTimeline({
       editorData.map((r) => ({
         ...r,
         rowHeight: ROW_H,
-        actions: r.actions.map((a) => ({ ...a, selected: a.id === selectedId, flexible: true, movable: true })),
+        // Brand items' span is DERIVED (content-end, hidden during the outro —
+        // see the layered derivation). Lock them so a drag can't silently break
+        // that invariant; the other lanes are freely editable.
+        actions: r.actions.map((a) => {
+          const editable = r.id !== 'brand';
+          return { ...a, selected: a.id === selectedId, flexible: editable, movable: editable };
+        }),
       })),
     [editorData, selectedId],
   );
