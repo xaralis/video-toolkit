@@ -455,7 +455,7 @@ function LayeredTimelineImpl({
           <span style={{ color: '#9a9a95' }}>Double-click it</span> — reset
         </span>
         <span>
-          <span style={{ color: '#9a9a95' }}>S</span> split · <span style={{ color: '#9a9a95' }}>⌫</span> delete · <span style={{ color: '#9a9a95' }}>⌘Z</span> undo
+          <span style={{ color: '#9a9a95' }}>S</span> split · <span style={{ color: '#9a9a95' }}>⌘D</span> duplicate · <span style={{ color: '#9a9a95' }}>⌫</span> delete · <span style={{ color: '#9a9a95' }}>⌘Z</span> undo
         </span>
       </div>
     </div>
