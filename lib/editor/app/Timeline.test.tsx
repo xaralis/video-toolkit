@@ -155,6 +155,20 @@ describe('Timeline', () => {
     fireEvent.pointerUp(window, { clientX: 50 });
 
     expect(onSelect).not.toHaveBeenCalled();
+
+    // jsdom does not synthesize a `click` after pointerDown/pointerUp, so the
+    // assertions above never actually exercise the handle's onClick
+    // stopPropagation guard. Fire a real click on the handle to prove it:
+    // without the guard, this click would bubble to the block button's
+    // onClick and fire onSelect.
+    fireEvent.click(startHandle);
+    expect(onSelect).not.toHaveBeenCalled();
+
+    // Control: clicking the block body (not the handle) DOES call onSelect,
+    // so the assertion above can't pass merely because onSelect never fires.
+    fireEvent.click(block);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith('b');
   });
 
   it('does not render trim handles on unselected blocks', () => {
