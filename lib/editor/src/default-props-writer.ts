@@ -69,6 +69,13 @@ function evaluateLiteral(node: Node): unknown {
     }
     case SyntaxKind.ParenthesizedExpression:
       return evaluateLiteral(node.asKindOrThrow(SyntaxKind.ParenthesizedExpression).getExpression());
+    case SyntaxKind.AsExpression:
+      // `X as const` / `X as SomeType` are type-only at runtime; the value is the inner
+      // expression. Unwrapping and evaluating that is safe — still no code execution.
+      return evaluateLiteral(node.asKindOrThrow(SyntaxKind.AsExpression).getExpression());
+    case SyntaxKind.SatisfiesExpression:
+      // `X satisfies T` is likewise type-only at runtime.
+      return evaluateLiteral(node.asKindOrThrow(SyntaxKind.SatisfiesExpression).getExpression());
     default:
       throw new Error(`readDefaultProps: unsupported expression "${node.getText()}".`);
   }
