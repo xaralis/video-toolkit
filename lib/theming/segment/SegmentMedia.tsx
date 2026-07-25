@@ -2,7 +2,7 @@
 import React from 'react';
 import { Img, OffthreadVideo, staticFile, useCurrentFrame, useVideoConfig, interpolate, Easing } from 'remotion';
 import { cropCoverStyle } from '../../reel-config-base/crop';
-import { gradeFilter } from '../../reel-config-base/grade';
+import { gradeFilter, gradeNeedsWb, gradeWbMatrixValues } from '../../reel-config-base/grade';
 import type { Crop, Grade } from '../../reel-config-base/base-types';
 import type { VideoRenderProps } from '../types';
 
@@ -110,7 +110,21 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({ item, handles }) => {
     }
   }
 
-  const filter = gradeFilter(item.grade as Grade | undefined, `grade-${item.id}`);
+  const grade = item.grade as Grade | undefined;
+  const filter = gradeFilter(grade, `grade-${item.id}`);
+  // Self-contained white-balance (temperature/tint) SVG filter def, so grade
+  // works for every brand without depending on a brand-side <GradeDefs>. Only
+  // rendered when the grade actually needs WB — absent for every clip without
+  // temperature/tint, so existing renders are byte-identical.
+  const wbDef = gradeNeedsWb(grade) ? (
+    <svg style={{ position: 'absolute', width: 0, height: 0 }} aria-hidden="true">
+      <defs>
+        <filter id={`grade-${item.id}`} colorInterpolationFilters="sRGB">
+          <feColorMatrix type="matrix" values={gradeWbMatrixValues(grade!)} />
+        </filter>
+      </defs>
+    </svg>
+  ) : null;
 
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -124,7 +138,14 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({ item, handles }) => {
   };
 
   if (useImg) {
-    return <Img src={src} style={style} />;
+    return wbDef ? (
+      <>
+        {wbDef}
+        <Img src={src} style={style} />
+      </>
+    ) : (
+      <Img src={src} style={style} />
+    );
   }
 
   // clip/broll (and a video-as-photo) all render via OffthreadVideo. Only
@@ -141,5 +162,13 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({ item, handles }) => {
   // (the 1× playback case), so nothing visible changes.
   const endAt = item.kind === 'photo' ? undefined : Math.round((item.sourceOutMs / 1000) * fps) + handles.outHalf;
 
-  return <OffthreadVideo src={src} muted startFrom={startFrom} endAt={endAt} style={style} />;
+  const video = <OffthreadVideo src={src} muted startFrom={startFrom} endAt={endAt} style={style} />;
+  return wbDef ? (
+    <>
+      {wbDef}
+      {video}
+    </>
+  ) : (
+    video
+  );
 };

@@ -43,6 +43,8 @@ export interface EditorShellProps {
   inspector?: ReactNode;
   /** Rendered in the bottom strip. Falls back to a placeholder when omitted. */
   timeline?: ReactNode;
+  /** Prominent render controls (e.g. Preview/Full) shown at the top of the header. */
+  renderControls?: ReactNode;
   /** Undo/redo (multi-step). Buttons show when the handlers are provided. */
   onUndo?: () => void;
   onRedo?: () => void;
@@ -68,6 +70,7 @@ export function EditorShell({
   dirty,
   inspector,
   timeline,
+  renderControls,
   onUndo,
   onRedo,
   canUndo,
@@ -96,6 +99,12 @@ export function EditorShell({
       <header className={styles.header}>
         <span className={styles.projectName}>{projectName}</span>
         <div className={styles.saveGroup}>
+          {renderControls && (
+            <>
+              {renderControls}
+              <span className={styles.divider} />
+            </>
+          )}
           {(onUndo || onRedo) && (
             <>
               <button type="button" className={styles.iconButton} onClick={onUndo} disabled={!canUndo} title="Undo (⌘Z)">
