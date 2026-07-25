@@ -11,10 +11,16 @@ import type { LayeredReel } from '../reel-config-base/layered-schema';
 
 /** Remotion cannot mount a composition of zero frames, and a reel is routinely
  *  opened in Studio before its timing is authored. Two seconds is enough to be
- *  scrubbable without ever being mistaken for real content. */
-const MIN_FRAMES = 60;
+ *  scrubbable without ever being mistaken for real content. Exported so
+ *  `lib/editor/host/host-duration.ts`'s `framesForReel` (the editor's DIFFERENT
+ *  floor — see that file's doc comment for why it isn't `layeredDurationInFrames`)
+ *  shares this one definition instead of hardcoding its own `60`. */
+export const MIN_FRAMES = 60;
 
-/** The authored length of a reel in frames — the ONE definition. */
+/** The authored length of a reel in frames — the ONE definition. Deliberately NOT
+ *  unified with `lib/editor/host/host-duration.ts`'s `framesForReel` — see that
+ *  file's doc comment for why the editor needs a different (max-over-item-ends)
+ *  floor than the render's authored-total floor. */
 export function layeredDurationInFrames(reel: LayeredReel, fps: number): number {
   return Math.max(MIN_FRAMES, Math.round((reel.meta.totalDurationMs / 1000) * fps));
 }

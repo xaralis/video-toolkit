@@ -105,20 +105,24 @@ function compositionElements(sf: ReturnType<Project['createSourceFile']>): Compo
 const ID_VIA_SPREAD_CALLEES = new Set(['layeredCompositionProps']);
 
 function idOf(el: CompositionEl): string | undefined {
-  const attr = el.getAttributes().find(
-    (a): a is JsxAttribute =>
-      a.getKind() === SyntaxKind.JsxAttribute &&
-      (a as JsxAttribute).getNameNode().getText() === 'id',
-  );
-  const init = attr?.getInitializer();
-  if (init) {
+  const attrs = el.getAttributes();
+  let explicitId: { index: number; value: string } | undefined;
+  let spreadId: { index: number; value: string } | undefined;
+
+  attrs.forEach((a, index) => {
+    if (a.getKind() !== SyntaxKind.JsxAttribute) return;
+    if ((a as JsxAttribute).getNameNode().getText() !== 'id') return;
+    const init = (a as JsxAttribute).getInitializer();
+    if (!init) return;
     if (init.getKind() === SyntaxKind.StringLiteral) {
-      return init.asKindOrThrow(SyntaxKind.StringLiteral).getLiteralValue();
+      explicitId = { index, value: init.asKindOrThrow(SyntaxKind.StringLiteral).getLiteralValue() };
+      return;
     }
     const expr = init.asKind(SyntaxKind.JsxExpression)?.getExpression();
     const literalId = expr?.asKind(SyntaxKind.StringLiteral)?.getLiteralValue();
-    if (literalId !== undefined) return literalId;
-  }
+    if (literalId !== undefined) explicitId = { index, value: literalId };
+  });
+
   // `id` may also arrive via a spread of an allowlisted helper, e.g.
   // `{...layeredCompositionProps({ id: 'X', ... })}` (see lib/render/
   // layered-composition-props.ts). Only the FIRST argument is considered — that is the only
@@ -126,14 +130,14 @@ function idOf(el: CompositionEl): string | undefined {
   // inline: `{...layeredCompositionProps(OPTS)}` with a hoisted `OPTS` identifier has no literal
   // to read an id out of and is intentionally left unresolved (see the writer's module comment
   // and lib/render/README.md).
-  for (const spread of el.getAttributes()) {
-    if (spread.getKind() !== SyntaxKind.JsxSpreadAttribute) continue;
+  attrs.forEach((spread, index) => {
+    if (spread.getKind() !== SyntaxKind.JsxSpreadAttribute) return;
     const spreadExpr = spread.asKindOrThrow(SyntaxKind.JsxSpreadAttribute).getExpression();
-    if (!spreadExpr.isKind(SyntaxKind.CallExpression)) continue;
+    if (!spreadExpr.isKind(SyntaxKind.CallExpression)) return;
     const calleeText = spreadExpr.getExpression().getText();
-    if (!ID_VIA_SPREAD_CALLEES.has(calleeText)) continue;
+    if (!ID_VIA_SPREAD_CALLEES.has(calleeText)) return;
     const [firstArg] = spreadExpr.getArguments();
-    if (!firstArg?.isKind(SyntaxKind.ObjectLiteralExpression)) continue;
+    if (!firstArg?.isKind(SyntaxKind.ObjectLiteralExpression)) return;
     const idProp = firstArg
       .getProperties()
       .find(
@@ -142,10 +146,19 @@ function idOf(el: CompositionEl): string | undefined {
       );
     const idInit = idProp?.getInitializer();
     if (idInit?.isKind(SyntaxKind.StringLiteral)) {
-      return idInit.getLiteralValue();
+      spreadId = { index, value: idInit.getLiteralValue() };
     }
+  });
+
+  // JSX attribute precedence follows SOURCE ORDER — whichever of `id="…"` and
+  // `{...layeredCompositionProps({ id: '…' })}` is written LAST wins at runtime (React/Remotion
+  // both apply props left-to-right, later overwriting earlier). If both are present on one
+  // element (pathological — see the module comment), resolve to whichever appears later among
+  // `el.getAttributes()`, so this matches what Remotion actually registers the composition as.
+  if (explicitId && spreadId) {
+    return explicitId.index > spreadId.index ? explicitId.value : spreadId.value;
   }
-  return undefined;
+  return explicitId?.value ?? spreadId?.value;
 }
 
 function findDefaultPropsAttr(source: string, compositionId?: string): JsxAttribute {
