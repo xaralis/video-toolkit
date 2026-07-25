@@ -52,7 +52,7 @@ function kenBurnsStyle(
   focalY: number | undefined,
 ): { transform: string; objectPosition?: string; transformOrigin?: string } {
   if (kb.direction) {
-    const p = interpolate(frame, [0, durationInFrames], [0, 1], { extrapolateRight: 'clamp' });
+    const p = interpolate(frame, [0, Math.max(1, durationInFrames)], [0, 1], { extrapolateRight: 'clamp' });
     const scale = 1.08 + p * (kb.direction === 'in' ? 0.12 : 0.06);
     const x = kb.direction === 'left' ? interpolate(p, [0, 1], [0, -60]) : 0;
     const y = kb.direction === 'up' ? interpolate(p, [0, 1], [0, -60]) : 0;
