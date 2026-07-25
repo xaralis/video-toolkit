@@ -39,24 +39,29 @@ export function Waveform({ peaks, sourceInMs = 0, spanMs, color = 'rgba(255,255,
 }
 
 // A horizontal volume level line over an audio block (its constant volumeDb).
-// dB mapped -24…+6 → bottom…top, clamped. When `onChange` is given, the line is
-// draggable (drag up/down to set volume): only a thick transparent hit-line is
-// interactive, so a click elsewhere on the block still selects it, and pointer
-// events stop propagating so the timeline doesn't start a clip drag.
-const V_MIN = -24;
-const V_MAX = 6;
+// dB mapped [vMin, vMax] → bottom…top, clamped. When `onChange` is given, the
+// line is draggable (drag up/down to set volume): only a thick transparent
+// hit-line is interactive, so a click elsewhere on the block still selects it,
+// and pointer events stop propagating so the timeline doesn't start a clip drag.
 export function VolumeLine({
   volumeDb = 0,
   color = 'rgba(232,232,234,0.85)',
   onChange,
   resetDb = 0,
+  vMin = -24,
+  vMax = 6,
 }: {
   volumeDb?: number;
   color?: string;
   onChange?: (db: number) => void;
   /** Double-click the line to reset to this level. */
   resetDb?: number;
+  /** dB scale bottom / top. Default -24…+6; audio uses a symmetric range so 0dB sits mid-block. */
+  vMin?: number;
+  vMax?: number;
 }) {
+  const V_MIN = vMin;
+  const V_MAX = vMax;
   const svgRef = useRef<SVGSVGElement>(null);
   // Only change the volume for moves that belong to THIS line's own drag. A clip
   // resize is an interactjs drag on the trim handle: as its pointer sweeps across
