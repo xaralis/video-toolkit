@@ -94,3 +94,15 @@ describe('stripAccents', () => {
     expect(stripAccents('{lime:one} and {lime:two}')).toBe('one and two');
   });
 });
+
+// Core declares no accent slots, so stripAccents must not know one brand's:
+// any brand-declared key (the accent-parser's open `{Key:…}` grammar) strips.
+describe('stripAccents is accent-key agnostic', () => {
+  it('strips a key core has never heard of', () => {
+    expect(stripAccents('a {gold:b} c {rust-2:d}')).toBe('a b c d');
+  });
+
+  it('leaves a non-accent brace expression alone', () => {
+    expect(stripAccents('a {1:b}')).toBe('a {1:b}');
+  });
+});

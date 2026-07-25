@@ -17,7 +17,6 @@ import { glitch } from '@video-toolkit/lib/transitions/presentations/glitch';
 import { rgbSplit } from '@video-toolkit/lib/transitions/presentations/rgb-split';
 import { zoomBlur } from '@video-toolkit/lib/transitions/presentations/zoom-blur';
 import { lightLeak } from '@video-toolkit/lib/transitions/presentations/light-leak';
-import { clockWipe } from '@video-toolkit/lib/transitions/presentations/clock-wipe';
 import { pixelate } from '@video-toolkit/lib/transitions/presentations/pixelate';
 import { checkerboard } from '@video-toolkit/lib/transitions/presentations/checkerboard';
 
@@ -31,7 +30,6 @@ const TRANSITION_NOTES: Record<string, string> = {
   'rgbSplit()': 'Chromatic aberration effect',
   'zoomBlur()': 'Radial motion blur',
   'lightLeak()': 'Cinematic lens flare',
-  'clockWipe()': 'Radial sweep reveal',
   'pixelate()': 'Mosaic dissolution',
   'checkerboard()': 'Grid squares reveal',
   'checkerboard(diagonal)': 'Diagonal wave pattern',
@@ -284,7 +282,6 @@ const TRANSITIONS = [
   { name: 'rgbSplit()', presentation: rgbSplit({ direction: 'horizontal' }), duration: 45 },
   { name: 'zoomBlur()', presentation: zoomBlur({ direction: 'in' }), duration: 45 },
   { name: 'lightLeak()', presentation: lightLeak({ temperature: 'warm' }), duration: 60 },
-  { name: 'clockWipe()', presentation: clockWipe({ direction: 'clockwise' }), duration: 50, sceneA: 60, sceneB: 90 },
   { name: 'pixelate()', presentation: pixelate({ maxBlockSize: 50 }), duration: 45 },
   { name: 'checkerboard(diagonal)', presentation: checkerboard({ pattern: 'diagonal', gridSize: 8 }), duration: 50 },
   { name: 'checkerboard(alternating)', presentation: checkerboard({ pattern: 'alternating', gridSize: 8 }), duration: 50 },

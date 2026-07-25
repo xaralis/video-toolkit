@@ -25,13 +25,14 @@ This guide will help you create your first video using the claude-code-video-too
 ## Your First Video in 2 Minutes
 
 ```bash
-cd examples/hello-world
+cd examples/layered-minimal
 npm install
 npm run studio    # Preview in browser
 npm run render    # Export MP4
 ```
 
-No API keys needed. Edit `src/config/sprint-config.ts` to customize content.
+No API keys needed. Edit the reel literal in `src/Root.tsx` to change the timeline,
+and `src/theme.tsx` to change the look.
 
 ## Starting your own brand repo
 

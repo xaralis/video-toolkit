@@ -47,9 +47,11 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
     width,
     height,
     fps,
+    // Lets a transition name a colour by brand accent-slot key (see `wipe`).
+    palette: theme.accentSlots,
     renderItem: (item, handles) => {
       const Renderer = resolveVideoRenderer(theme, item.kind);
-      if (!Renderer) return null; // kind the brand didn't register (e.g. roost multi-clip)
+      if (!Renderer) return null; // a kind this brand didn't register a renderer for
       return (
         <Renderer
           item={item}

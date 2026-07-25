@@ -119,7 +119,7 @@ const PP_NAMESTI_DEFAULT_PROPS = {
           durationMs: 3581,
         },
       ],
-      transitionOut: { kind: 'dissolve', frames: 12 },
+      transitionOut: { kind: 'dissolve' as const, frames: 12 },
     },
     { id: 'seg-008', type: 'outro' },
   ],

@@ -10,17 +10,17 @@ import { parseAccents, applyBrandEndpoint } from '@video-toolkit/lib/transcripts
  * CI coverage under `cd lib/editor && npx vitest run`.
  */
 describe('parseAccents (brand-driven keys)', () => {
-  it('still parses lime/teal unchanged (back-compat)', () => {
-    expect(parseAccents('{lime:DNES} vs {teal:NÁŠ NÁVRH}.')).toEqual([
+  it('parses two different brand-declared keys in one string', () => {
+    expect(parseAccents('{gold:TODAY} vs {sky:OUR PLAN}.')).toEqual([
       { text: '', color: null },
-      { text: 'DNES', color: 'lime' },
+      { text: 'TODAY', color: 'gold' },
       { text: ' vs ', color: null },
-      { text: 'NÁŠ NÁVRH', color: 'teal' },
+      { text: 'OUR PLAN', color: 'sky' },
       { text: '.', color: null },
     ]);
   });
 
-  it('parses a new, non-lime/teal brand-declared key', () => {
+  it('parses any brand-declared key (core enumerates none)', () => {
     expect(parseAccents('Plain {gold:hi}.')).toEqual([
       { text: 'Plain ', color: null },
       { text: 'hi', color: 'gold' },
@@ -29,16 +29,12 @@ describe('parseAccents (brand-driven keys)', () => {
   });
 });
 
-describe('applyBrandEndpoint (parameterized endpoint slot)', () => {
-  it('defaults to teal when called with one arg (back-compat)', () => {
-    expect(applyBrandEndpoint('x.')).toBe('x{teal:.}');
+describe('applyBrandEndpoint (caller-supplied endpoint slot)', () => {
+  it('wraps the endpoint in the brand slot key it is given', () => {
+    expect(applyBrandEndpoint('x.', 'sig')).toBe('x{sig:.}');
   });
 
-  it('wraps the endpoint in an explicitly-given brand slot key', () => {
-    expect(applyBrandEndpoint('x.', 'coal')).toBe('x{coal:.}');
-  });
-
-  it('disables the rule when endpointKey is explicitly undefined', () => {
+  it('disables the rule when endpointKey is undefined — core injects no slot', () => {
     expect(applyBrandEndpoint('x.', undefined)).toBe('x.');
   });
 });

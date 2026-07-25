@@ -12,21 +12,23 @@ description: Toolkit-specific Remotion patterns — custom transitions, shared c
 Reusable video components in `lib/components/`. Import in templates via:
 
 ```tsx
-import { AnimatedBackground, SlideTransition, Label } from '@video-toolkit/lib/components';
+import { SlideTransition, FilmGrain, Vignette } from '@video-toolkit/lib/components';
 ```
 
 | Component | Purpose |
 |-----------|---------|
-| `AnimatedBackground` | Floating shapes background (variants: subtle, tech, warm, dark) |
 | `SlideTransition` | Scene transitions (fade, zoom, slide-up, blur-fade) |
-| `Label` | Floating label badge with optional JIRA reference |
 | `Vignette` | Cinematic edge darkening overlay |
-| `LogoWatermark` | Corner logo branding |
-| `SplitScreen` | Side-by-side video comparison |
-| `NarratorPiP` | Picture-in-picture presenter overlay |
+| `FilmGrain` | SVG noise overlay for film texture |
+| `LottieAnimation` | Frame-synced Lottie overlay |
 | `Envelope` | 3D envelope with opening flap animation |
 | `PointingHand` | Animated hand emoji with slide-in and pulse |
 | `MazeDecoration` | Animated isometric grid decoration for corners |
+
+These are stand-alone visual primitives. The **rendering contract** a brand plugs into is
+elsewhere: `lib/theming` (the `CompositionTheme`, its renderers, the accent palette and the
+placement vocabulary) and `lib/render` (`LayeredReelComposition`, the one assembly every brand
+renders through). See `examples/layered-minimal` and `docs/creating-templates.md`.
 
 ## Custom Transitions
 
@@ -37,7 +39,7 @@ The toolkit includes a transitions library at `lib/transitions/` for scene-to-sc
 ```tsx
 import { TransitionSeries, linearTiming } from '@remotion/transitions';
 // Import custom transitions from lib (adjust path based on your project location)
-import { glitch, lightLeak, clockWipe, checkerboard } from '@video-toolkit/lib/transitions';
+import { glitch, lightLeak, checkerboard } from '@video-toolkit/lib/transitions';
 // Or import from @remotion/transitions for official ones
 import { slide, fade } from '@remotion/transitions/slide';
 
@@ -63,7 +65,6 @@ import { slide, fade } from '@remotion/transitions/slide';
 | `rgbSplit()` | `direction`, `displacement` | Modern tech, energetic transitions |
 | `zoomBlur()` | `direction`, `blurAmount` | CTAs, high-energy moments, impact |
 | `lightLeak()` | `temperature`, `direction` | Celebrations, film aesthetic, warm moments |
-| `clockWipe()` | `startAngle`, `direction`, `segments` | Time-related content, playful reveals |
 | `pixelate()` | `maxBlockSize`, `gridSize`, `scanlines`, `glitchArtifacts`, `randomness` | Retro/gaming, digital transformations |
 | `checkerboard()` | `gridSize`, `pattern`, `stagger`, `squareAnimation` | Playful reveals, structured transitions |
 
@@ -83,9 +84,6 @@ zoomBlur({ direction: 'in', blurAmount: 20 })
 
 // Chromatic aberration
 rgbSplit({ direction: 'diagonal', displacement: 30 })
-
-// Clock sweep reveal
-clockWipe({ direction: 'clockwise', startAngle: 0 })
 
 // Retro pixelation
 pixelate({ maxBlockSize: 50, glitchArtifacts: true })

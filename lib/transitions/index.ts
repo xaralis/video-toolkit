@@ -39,8 +39,11 @@ export type { ZoomBlurProps } from './presentations/zoom-blur';
 export { lightLeak } from './presentations/light-leak';
 export type { LightLeakProps } from './presentations/light-leak';
 
-export { clockWipe } from './presentations/clock-wipe';
-export type { ClockWipeProps } from './presentations/clock-wipe';
+// NB: no `clockWipe` here. The `clock-wipe` transition kind renders via
+// @remotion/transitions/clock-wipe (see lib/render/at-cut-transitions.tsx);
+// this package's own richer implementation (startAngle/segments/counter-
+// clockwise) was never reachable from the schema, the editor or the renderer,
+// so it was deleted rather than kept as a second answer to the same kind.
 
 export { pixelate } from './presentations/pixelate';
 export type { PixelateProps } from './presentations/pixelate';

@@ -1,4 +1,8 @@
-export type AccentColor = string;
+// `AccentColor` has one declaration, in the accent-parser (the module that
+// actually produces/consumes colored tokens for rendering); re-exported here
+// so existing imports of `AccentColor` from this module keep working.
+import type { AccentColor } from '@video-toolkit/lib/transcripts/accent-parser';
+export type { AccentColor };
 
 export interface AccentSelection {
   text: string;
@@ -6,7 +10,13 @@ export interface AccentSelection {
   selEnd: number;
 }
 
-const ACCENT_RE = /\{(?:lime|teal):([^}]*)\}/g;
+// Any brand-declared accent key — core declares no accent values of its own, so
+// this must match the same open key grammar the accent parser uses
+// (lib/transcripts/accent-parser.ts), not one brand's slot names.
+// `([^}]+)`, not `([^}]*)`: the parser treats an EMPTY phrase (`{gold:}`) as
+// plain text and renders the braces literally, so stripping it here would make
+// a timeline label disagree with what is on screen.
+const ACCENT_RE = /\{[A-Za-z][\w-]*:([^}]+)\}/g;
 
 /**
  * wrapAccent — pure reducer for the "wrap selection in an accent" editor
@@ -28,7 +38,7 @@ const ACCENT_RE = /\{(?:lime|teal):([^}]*)\}/g;
  *   no-op: `text` is returned unchanged with the same (clamped) range.
  * - No attempt is made to detect or merge an existing accent already
  *   spanning the selection — the raw selected substring is wrapped as-is,
- *   even if it happens to equal an existing `{lime:...}`/`{teal:...}` span.
+ *   even if it happens to equal an existing `{key:...}` span.
  *   That merge/reconciliation is out of scope for this helper.
  */
 export function wrapAccent(
@@ -61,8 +71,8 @@ export function wrapAccent(
 }
 
 /**
- * stripAccents — removes `{lime:...}`/`{teal:...}` wrapper markup, leaving
- * only the inner phrase. Plain text with no accent markup is returned
+ * stripAccents — removes `{key:...}` wrapper markup for ANY brand-declared
+ * accent key, leaving only the inner phrase. Plain text with no accent markup is returned
  * unchanged.
  */
 export function stripAccents(text: string): string {

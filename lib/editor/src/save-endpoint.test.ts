@@ -49,6 +49,50 @@ export const Root = () => (
   });
 });
 
+describe('saveDefaultPropsToFile — the verify gate is value-aware, not just parse-aware', () => {
+  it('rejects a rewrite that still PARSES but no longer holds the props that were saved', async () => {
+    const file = tmpRoot();
+    const before = readFileSync(file, 'utf8');
+    const next = { topic: 'ok', segments: [{ id: 'a', trimOut: 3 }] };
+
+    await expect(
+      saveDefaultPropsToFile(file, next, {
+        // Simulates a value-corrupting bug in the raw-string surgery: the output is perfectly
+        // valid TSX, so a parse-only gate waves it through.
+        format: (source) => source.replace('"trimOut": 3', '"trimOut": 4'),
+      }),
+    ).rejects.toThrow(/does not match the props that were saved/);
+
+    expect(readFileSync(file, 'utf8')).toBe(before);
+  });
+
+  it('rejects a rewrite with an unbalanced bracket that the error-recovering parser silently accepts', async () => {
+    const file = tmpRoot();
+    const before = readFileSync(file, 'utf8');
+    const next = { topic: 'ok', segments: [{ id: 'a' }, { id: 'b' }] };
+
+    await expect(
+      saveDefaultPropsToFile(file, next, {
+        // The exact shape an off-by-one in the splice `tail` slice produces: the closing `]` is
+        // eaten, so the trailing element is swallowed. TypeScript's parser recovers and returns a
+        // value instead of throwing — only a value comparison catches it.
+        format: (source) => source.replace(/\{\s*"id": "b"\s*\}\s*\]/, ''),
+      }),
+    ).rejects.toThrow(/does not match the props that were saved/);
+
+    expect(readFileSync(file, 'utf8')).toBe(before);
+  });
+
+  it('accepts a formatter that changes only formatting, never values', async () => {
+    const file = tmpRoot();
+    const next = { topic: 'ok', segments: [{ id: 'a', trimOut: 3 }] };
+    await saveDefaultPropsToFile(file, next, {
+      format: (source) => source.replace(/"/g, "'"),
+    });
+    expect(readDefaultProps(readFileSync(file, 'utf8'))).toEqual(next);
+  });
+});
+
 describe('saveDefaultPropsToFile — opts.format hook', () => {
   it('applies a caller-supplied formatter to the surgically-updated source before writing', async () => {
     const file = tmpRoot();

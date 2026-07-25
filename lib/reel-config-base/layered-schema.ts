@@ -10,6 +10,7 @@
 // layered schema stores overlay content as a permissive record and lets the
 // template/derivation supply the concrete union.
 import { z } from 'zod';
+import { TransitionSchema } from './transition-schema';
 
 const OverlayContent = z.record(z.string(), z.unknown()); // { kind, text?, number?, placement?, ... }
 
@@ -45,9 +46,14 @@ const VideoContainerBase = {
   grade: z.record(z.string(), z.unknown()).optional(),
   effects: z.array(EffectSchema).optional(),
   musicBoostDb: z.number().optional(),
-  transitionOut: z.record(z.string(), z.unknown()).optional(),
-  transitionIn: z.record(z.string(), z.unknown()).optional(),
-  // Per-item brand render-hint bag (e.g. roost displayMode; outro style/variant).
+  // The at-the-cut boundary transitions. These carry the SHARED TransitionSchema
+  // (not a permissive record): a typo'd kind or a missing required field used to
+  // parse cleanly and then degrade silently to a hard cut at render time, because
+  // `presentationFor` returns null for anything it doesn't recognise. See
+  // transition-schema.ts for the catalog these validate against.
+  transitionOut: TransitionSchema.optional(),
+  transitionIn: TransitionSchema.optional(),
+  // Per-item brand render-hint bag (e.g. a displayMode; outro style/variant).
   // Generic escape hatch — mirrors BrandLayerItemSchema.props.
   props: z.record(z.string(), z.unknown()).optional(),
 };

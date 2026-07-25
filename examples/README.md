@@ -6,7 +6,7 @@ Small, self-contained projects demonstrating toolkit capabilities.
 
 | Example | Stack | Description | Complexity |
 |---------|-------|-------------|------------|
-| hello-world | Remotion | Minimal 25s video — zero config, renders in 2 minutes | Beginner |
+| layered-minimal | Remotion | The rendering contract end to end: a CompositionTheme, an inline LayeredReel, and LayeredReelComposition. Renders in ~1 minute. | Beginner |
 | quick-spot | moviepy + PIL | 15s ad-style spot with an audio-anchored timeline. Runs with zero external assets. | Beginner |
 | data-viz-chart | moviepy + matplotlib | Animated time-series chart with deterministic title and source attribution. Runs with the included data file. | Beginner |
 
@@ -14,14 +14,27 @@ All three run end-to-end with no API keys.
 
 ## Using Examples
 
-**Remotion example** (`hello-world`) — copy it, then work on it like any project:
+**Remotion example** (`layered-minimal`) — read it first (it is the reference for how a brand
+plugs into core), then copy it if you want the smallest possible base:
 
 ```bash
-cp -r examples/hello-world projects/my-project
+cp -r examples/layered-minimal projects/my-project
 cd projects/my-project
 npm install
 npm run studio          # or: npm run render
 ```
+
+Both of the copy's paths into `lib/` are relative to `examples/`, so a copy one level
+elsewhere resolves to nothing. Repoint **both** before the first run — the second one is
+the setup line people forget:
+
+- `tsconfig.json` → `"@video-toolkit/lib/*": ["../../lib/*"]` (in a brand repo:
+  `["../../toolkit/lib/*"]`)
+- `remotion.config.ts` → `path.resolve(process.cwd(), '../../lib')` (in a brand repo:
+  `'../../toolkit/lib'`)
+
+The config throws with the resolved path if it is wrong, so a mistake here fails loudly
+rather than at bundle time.
 
 **moviepy examples** (`quick-spot`, `data-viz-chart`) — run in place, no copy needed:
 

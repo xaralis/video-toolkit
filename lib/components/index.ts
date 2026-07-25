@@ -1,13 +1,16 @@
 /**
  * Shared video components
  *
- * These components are building blocks for video templates.
- * Import into templates via: import { ComponentName } from '../../../lib/components';
+ * Building blocks a template can drop into a composition. Import via:
+ *   import { FilmGrain } from '@video-toolkit/lib/components';
+ *
+ * NOTE: these are stand-alone visual primitives, not part of the layered
+ * rendering contract — that lives in `lib/theming` (renderers, palette,
+ * placement) and `lib/render` (the assembly). `TextOverlay.tsx` is deliberately
+ * NOT re-exported here: it is imported by path (`.../lib/components/TextOverlay`)
+ * and belongs beside `GenericTextOverlay` in `lib/theming` once the brand repos
+ * are being touched anyway.
  */
-
-// Backgrounds
-export { AnimatedBackground } from './AnimatedBackground';
-export type { AnimatedBackgroundProps, BackgroundVariant } from './AnimatedBackground';
 
 // Decorations
 export { MazeDecoration } from './MazeDecoration';
@@ -20,12 +23,6 @@ export type { VignetteProps } from './Vignette';
 export { FilmGrain } from './FilmGrain';
 export type { FilmGrainProps } from './FilmGrain';
 
-export { LogoWatermark } from './LogoWatermark';
-export type { LogoWatermarkProps } from './LogoWatermark';
-
-export { Label } from './Label';
-export type { LabelProps, LabelPosition, LabelSize } from './Label';
-
 // Motion graphics
 export { LottieAnimation, recolorLottie } from './LottieAnimation';
 export type { LottieAnimationProps } from './LottieAnimation';
@@ -33,14 +30,6 @@ export type { LottieAnimationProps } from './LottieAnimation';
 // Transitions
 export { SlideTransition } from './SlideTransition';
 export type { SlideTransitionProps, TransitionStyle } from './SlideTransition';
-
-// Layouts
-export { SplitScreen } from './SplitScreen';
-export type { SplitScreenProps } from './SplitScreen';
-
-// Narrator (needs refinement - see component docs)
-export { NarratorPiP } from './NarratorPiP';
-export type { NarratorPiPProps } from './NarratorPiP';
 
 // Animations
 export { Envelope } from './Envelope';

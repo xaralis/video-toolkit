@@ -1,25 +1,24 @@
-// The "is this a real transition?" gate + its record type. Pure — no Remotion —
-// so it can be unit-tested in core (which has no Remotion installed). The
-// Remotion presentation mapping lives in ./at-cut-transitions.tsx.
+// The "is this a real transition?" gate. Pure — no Remotion — so it can be
+// unit-tested in core (which has no Remotion installed). The Remotion
+// presentation mapping lives in ./at-cut-transitions.tsx.
 //
-// A transition, loosely typed to match the permissive `z.record(...)` shape
-// `transitionOut`/`transitionIn` carry on the schema (lib/reel-config-base/
-// layered-schema.ts) — mirrors lib/editor/app/transitions.ts's `Transition`.
-export type TransitionRecord = Record<string, unknown> & {
-  kind: string;
-  frames?: number;
-  direction?: string;
-  from?: string;
-  color?: string;
-  softness?: number;
-};
+// This file used to carry its OWN structural copy of the transition shape,
+// "mirroring" lib/editor/app/transitions.ts. It no longer does: the vocabulary
+// has one home (lib/reel-config-base/transition-schema.ts) and this module just
+// narrows it.
+import type { Transition } from '../reel-config-base/transition-schema';
+
+/** A transition that actually renders something — everything except `cut`. */
+export type TransitionRecord = Exclude<Transition, { kind: 'cut' }>;
 
 // A transitionOut/transitionIn field is only a REAL transition when it's
-// present and not `cut` (the schema is permissive, so `undefined` and
-// `{ kind: 'cut' }` both mean "no transition here" — same as today's default).
-export function getTransitionRecord(raw: Record<string, unknown> | undefined): TransitionRecord | undefined {
+// present and not `cut` (`undefined` and `{ kind: 'cut' }` both mean "no
+// transition here" — same as today's default). The parameter stays loose
+// because a rendered literal is not necessarily schema-validated: a project's
+// Root.tsx is hand-edited, so this gate is the last line before the renderer.
+export function getTransitionRecord(raw: Transition | Record<string, unknown> | undefined): TransitionRecord | undefined {
   if (!raw) return undefined;
-  const rec = raw as TransitionRecord;
-  if (!rec.kind || rec.kind === 'cut') return undefined;
-  return rec;
+  const kind = (raw as { kind?: unknown }).kind;
+  if (!kind || kind === 'cut') return undefined;
+  return raw as TransitionRecord;
 }

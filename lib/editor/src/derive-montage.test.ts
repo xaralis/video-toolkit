@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { deriveMontageLayered } from '@video-toolkit/lib/reel-config-base/derive-montage';
 import { LayeredReelSchema } from '@video-toolkit/lib/reel-config-base/layered-schema';
+import { computeVideoLayout } from '@video-toolkit/lib/render/video-track-layout';
 
 const CFG = {
   fps: 30, bpm: 76.015, track: 'audio/boj.wav', vintage: 'film' as const,
@@ -12,7 +13,7 @@ const CFG = {
       beatStart: 3, beatCount: 3, transition: 'fade' as const, inPointSec: 2 },
   ],
   teaser: { lines: ['A', 'B'], appearAtSec: 0, reveal: 'line' as const, fontSize: 96 },
-  outro: { style: 'organic' as const, variant: 'sand-brown' as const, transition: 'dissolve' as const,
+  outro: { style: 'organic' as const, variant: 'warm' as const, transition: 'dissolve' as const,
            logoDelaySec: 0.5, beatStart: 6 },
   watermark: { asset: 'brand/mark.png', corner: 'top-right' as const, variant: 'black' as const },
 };
@@ -36,7 +37,15 @@ describe('deriveMontageLayered', () => {
     const b = reel.tracks.video.find((v) => v.kind === 'broll')!;
     expect(b).toMatchObject({ source: 'media/v1.mp4', startMs: beatMs(3), endMs: beatMs(6), sourceInMs: 2000 });
     expect(b.sourceOutMs).toBe(2000 + (beatMs(6) - beatMs(3)));
-    expect((b as { transitionIn?: { kind?: string } }).transitionIn?.kind).toBe('fade');
+    // Ownership rule (lib/render/video-track-layout.ts:44-56): only the FIRST
+    // item reads its own transitionIn; every other item's "enter" fade is read
+    // from its PREDECESSOR's transitionOut instead. `b` is segment index 1 (not
+    // first), so its `transition: 'fade'` must land on the photo segment's
+    // (index 0) transitionOut, not on `b`'s own transitionIn.
+    expect((b as { transitionIn?: unknown }).transitionIn).toBeUndefined();
+    expect((p as { transitionOut?: { kind?: string; frames?: number } }).transitionOut).toEqual({
+      kind: 'fade', frames: 6,
+    });
     expect(b.effects?.some((e) => e.type === 'vintage')).toBe(true);
     expect(reel.tracks.audio).toHaveLength(0);
 
@@ -92,6 +101,52 @@ describe('deriveMontageLayered', () => {
     expect((outro as { props?: { kickFrames?: number[] } }).props?.kickFrames).toEqual([14, 42, 59]);
   });
 
+  // meta.topic used to be the hardcoded string 'Roost reel' — one brand's name
+  // baked into the shared compiler. It now comes from the config, with a
+  // brand-neutral fallback.
+  describe('meta.topic', () => {
+    it('comes from the config', () => {
+      expect(deriveMontageLayered({ ...CFG, topic: 'Spring campaign' }).meta.topic).toBe('Spring campaign');
+    });
+
+    it('falls back to a brand-neutral label when the config names none', () => {
+      expect(deriveMontageLayered(CFG).meta.topic).toBe('Reel');
+      expect(deriveMontageLayered(CFG).meta.topic).not.toMatch(/roost/i);
+    });
+  });
+
+  // The teaser's reveal→hold→fade seconds used to be module constants copied
+  // out of one brand's TeaserOverlay. They are options now, so a brand whose
+  // teaser component holds for a different beat can say so instead of core
+  // silently mismatching it.
+  describe('teaser timing', () => {
+    const teaserSpanMs = (opts?: Parameters<typeof deriveMontageLayered>[1]) => {
+      const t = deriveMontageLayered(CFG, opts).tracks.overlays.find((o) => o.content.kind === 'text')!;
+      return t.endMs - t.startMs;
+    };
+
+    it('defaults to stagger 0.35s / hold 4.5s / fade 0.6s per revealed line', () => {
+      // 2 lines, reveal 'line' → 1·round(0.35·30) + round(4.5·30) + round(0.6·30)
+      // = 11 + 135 + 18 = 164 frames.
+      expect(teaserSpanMs()).toBe(Math.round((164 * 1000) / 30));
+    });
+
+    it('honours per-brand overrides of stagger, hold and fade', () => {
+      // 1·round(0.5·30) + round(2·30) + round(1·30) = 15 + 60 + 30 = 105 frames.
+      expect(teaserSpanMs({ teaserLineStaggerSec: 0.5, teaserHoldSec: 2, teaserFadeSec: 1 }))
+        .toBe(Math.round((105 * 1000) / 30));
+    });
+
+    it('drops the per-line stagger entirely when reveal is "all"', () => {
+      const reel = deriveMontageLayered(
+        { ...CFG, teaser: { ...CFG.teaser, reveal: 'all' as const } },
+        { teaserLineStaggerSec: 5 },
+      );
+      const t = reel.tracks.overlays.find((o) => o.content.kind === 'text')!;
+      expect(t.endMs - t.startMs).toBe(Math.round(((135 + 18) * 1000) / 30));
+    });
+  });
+
   it('omits vintage effects when cfg.vintage is null', () => {
     const reel = deriveMontageLayered({ ...CFG, vintage: null });
     const footage = reel.tracks.video.filter((v) => v.kind === 'photo' || v.kind === 'broll');
@@ -106,5 +161,45 @@ describe('deriveMontageLayered', () => {
     expect(guides[0]).toBe(0);
     expect(guides.every((ms, i) => i === 0 || ms - guides[i - 1] === 800)).toBe(true); // even beat spacing
     expect(guides.every((ms) => ms <= reel.meta.totalDurationMs)).toBe(true);
+  });
+
+  it('a mid-montage fade boundary (not touching the first or last segment) survives into computeVideoLayout as a real outRecord', () => {
+    // Three content segments before the outro: seg0 --cut--> seg1 --fade--> seg2.
+    // The `fade` is declared on seg2 (i=2, neither first nor last video item once
+    // the outro is appended), so under the ownership rule the derivation must
+    // land it on seg1's (i=1) transitionOut — not on seg2's transitionIn, which
+    // computeVideoLayout would silently ignore since seg2 isn't item 0.
+    const reel = deriveMontageLayered({
+      ...CFG,
+      segments: [
+        { src: 'media/p1.jpg', type: 'photo', displayMode: 'full-bleed',
+          beatStart: 0, beatCount: 3, transition: 'cut' },
+        { src: 'media/p2.jpg', type: 'photo', displayMode: 'full-bleed',
+          beatStart: 3, beatCount: 3, transition: 'cut' },
+        { src: 'media/v1.mp4', type: 'video', displayMode: 'paper-frame',
+          beatStart: 6, beatCount: 3, transition: 'fade', inPointSec: 0 },
+      ],
+      outro: { ...CFG.outro, beatStart: 9 },
+    });
+
+    const contentItems = reel.tracks.video.filter((v) => v.kind !== 'outro');
+    expect(contentItems).toHaveLength(3);
+
+    const layout = computeVideoLayout(
+      reel.tracks.video.map((v) => ({
+        startMs: v.startMs, endMs: v.endMs,
+        transitionIn: (v as { transitionIn?: unknown }).transitionIn,
+        transitionOut: (v as { transitionOut?: unknown }).transitionOut,
+      })),
+      CFG.fps,
+    );
+
+    // seg1 (index 1) is the predecessor at the mid-montage boundary: its
+    // outRecord must be the fade the derivation moved onto it.
+    expect(layout[1].outRecord).toBeDefined();
+    expect(layout[1].outRecord?.kind).toBe('fade');
+    // seg2 (index 2) reads that same boundary as its inRecord.
+    expect(layout[2].inRecord).toBeDefined();
+    expect(layout[2].inRecord?.kind).toBe('fade');
   });
 });

@@ -865,20 +865,30 @@
     }
   },
   "templates": {},
+  "transitionsNote": "`kind` is the transition's name in the ONE catalog (lib/reel-config-base/transition-schema.ts) — what a config writes and what the editor's Kind dropdown offers. Every entry must have one: an entry without a kind is a presentation nothing can reach, which is exactly the state the six below were fixed out of. `options` lists the params the editor exposes as sub-options, which is the kind's schema shape minus kind/frames.",
   "transitions": {
     "glitch": {
       "path": "lib/transitions/presentations/glitch.tsx",
+      "kind": "glitch",
       "description": "Digital distortion with RGB shift and scan lines",
-      "options": [
-        "intensity",
-        "slices",
-        "rgbShift"
-      ],
+      "options": [],
       "bestFor": "Tech demos, edgy reveals, cyberpunk aesthetic",
+      "status": "stable"
+    },
+    "burn": {
+      "path": "lib/transitions/presentations/burn.tsx",
+      "kind": "burn",
+      "description": "Cloud-masked burn-through with a hot glowing edge; brand supplies the mask and glow colour",
+      "options": [
+        "edgeContrast",
+        "glowBand"
+      ],
+      "bestFor": "Organic reveals, warm brand moments, film-like cuts",
       "status": "stable"
     },
     "rgbSplit": {
       "path": "lib/transitions/presentations/rgb-split.tsx",
+      "kind": "rgb-split",
       "description": "Chromatic aberration / color separation effect",
       "options": [
         "direction",
@@ -889,37 +899,33 @@
     },
     "zoomBlur": {
       "path": "lib/transitions/presentations/zoom-blur.tsx",
+      "kind": "zoom-blur",
       "description": "Radial motion blur with scale",
       "options": [
         "direction",
-        "blurAmount"
+        "blurAmount",
+        "scaleAmount",
+        "origin"
       ],
       "bestFor": "CTAs, high-energy moments, impact",
       "status": "stable"
     },
     "lightLeak": {
       "path": "lib/transitions/presentations/light-leak.tsx",
+      "kind": "light-leak",
       "description": "Cinematic lens flare and overexposure",
       "options": [
         "temperature",
-        "direction"
+        "direction",
+        "intensity",
+        "flareArtifacts"
       ],
       "bestFor": "Celebrations, film aesthetic, warm moments",
       "status": "stable"
     },
-    "clockWipe": {
-      "path": "lib/transitions/presentations/clock-wipe.tsx",
-      "description": "Radial sweep reveal like clock hands",
-      "options": [
-        "startAngle",
-        "direction",
-        "segments"
-      ],
-      "bestFor": "Time-related content, playful reveals",
-      "status": "stable"
-    },
     "pixelate": {
       "path": "lib/transitions/presentations/pixelate.tsx",
+      "kind": "pixelate",
       "description": "Digital mosaic dissolution with glitch artifacts",
       "options": [
         "maxBlockSize",
@@ -933,6 +939,7 @@
     },
     "checkerboard": {
       "path": "lib/transitions/presentations/checkerboard.tsx",
+      "kind": "checkerboard",
       "description": "Grid-based reveal with multiple patterns",
       "options": [
         "gridSize",
@@ -956,11 +963,10 @@
     },
     "whipPan": {
       "path": "lib/transitions/presentations/whip-pan.tsx",
+      "kind": "whip-pan",
       "description": "Directional motion blur — fast camera move feel",
       "options": [
-        "direction",
-        "intensity",
-        "speed"
+        "direction"
       ],
       "bestFor": "Energetic cuts, camera movement, fast-paced reels",
       "status": "beta",
@@ -968,11 +974,10 @@
     },
     "zoomThrough": {
       "path": "lib/transitions/presentations/zoom-through.tsx",
+      "kind": "zoom-through",
       "description": "Zoom out of outgoing, zoom into incoming — high energy",
       "options": [
-        "depth",
-        "easing",
-        "rotationAmount"
+        "from"
       ],
       "bestFor": "Dynamic transitions, product reveals, fast-cut edits",
       "status": "beta",
@@ -980,45 +985,44 @@
     },
     "wipe": {
       "path": "lib/transitions/presentations/wipe.tsx",
-      "description": "Directional sweep in a brand color (lime/teal/coal)",
+      "kind": "wipe",
+      "description": "Directional sweep in a brand accent-slot colour (the key resolves via the theme's accentSlots)",
       "options": [
-        "direction",
         "color",
-        "angle"
+        "direction"
       ],
       "bestFor": "Brand-consistent wipes, political reels, directional reveals",
       "status": "beta",
       "created": "2026-05-19"
     },
+    "gradientWipe": {
+      "path": "lib/transitions/presentations/gradient-wipe.tsx",
+      "kind": "gradient-wipe",
+      "description": "Feathered diagonal blend band sweeping corner to corner",
+      "options": [
+        "direction",
+        "softness"
+      ],
+      "bestFor": "Soft corner-to-corner reveals, calm brand moments",
+      "status": "beta"
+    },
     "scanlineGlitch": {
       "path": "lib/transitions/presentations/scanline-glitch.tsx",
+      "kind": "scanline-glitch",
       "description": "Compressed CRT scanline + RGB shift — rhymes with outro stinger",
       "options": [
-        "scanlineHeight",
-        "rgbShift",
-        "glitchIntensity"
+        "rgbShiftPx"
       ],
       "bestFor": "Digital/tech aesthetic, modern edgy reels, retro-futurism",
       "status": "beta",
       "created": "2026-05-19"
     }
   },
+  "componentsNote": "Stand-alone visual primitives a template can drop into a composition (lib/components). They are NOT the layered rendering contract: the renderers a brand registers, the accent palette and the placement vocabulary live in lib/theming (SegmentMedia, GenericTextOverlay, GenericWatermark), and the assembly in lib/render. The five legacy-theme components (AnimatedBackground, Label, LogoWatermark, SplitScreen, NarratorPiP) were retired with lib/theme/ and examples/hello-world.",
   "components": {
-    "AnimatedBackground": {
-      "path": "lib/components/AnimatedBackground.tsx",
-      "description": "Floating shapes background with variants (subtle, tech, warm, dark)",
-      "created": "2025-12-09",
-      "updated": "2025-12-09"
-    },
     "SlideTransition": {
       "path": "lib/components/SlideTransition.tsx",
       "description": "Scene transitions (fade, zoom, slide-up, blur-fade)",
-      "created": "2025-12-09",
-      "updated": "2025-12-09"
-    },
-    "Label": {
-      "path": "lib/components/Label.tsx",
-      "description": "Floating label badge with optional JIRA reference",
       "created": "2025-12-09",
       "updated": "2025-12-09"
     },
@@ -1027,25 +1031,6 @@
       "description": "Cinematic edge darkening overlay",
       "created": "2025-12-09",
       "updated": "2025-12-09"
-    },
-    "LogoWatermark": {
-      "path": "lib/components/LogoWatermark.tsx",
-      "description": "Corner logo branding overlay",
-      "created": "2025-12-09",
-      "updated": "2025-12-09"
-    },
-    "SplitScreen": {
-      "path": "lib/components/SplitScreen.tsx",
-      "description": "Side-by-side video comparison layout",
-      "created": "2025-12-09",
-      "updated": "2025-12-09"
-    },
-    "NarratorPiP": {
-      "path": "lib/components/NarratorPiP.tsx",
-      "description": "Picture-in-picture presenter overlay",
-      "status": "stable",
-      "created": "2025-12-09",
-      "updated": "2026-01-12"
     },
     "Envelope": {
       "path": "lib/components/Envelope.tsx",
@@ -1087,12 +1072,12 @@
     }
   },
   "examples": {
-    "hello-world": {
-      "path": "examples/hello-world/",
-      "description": "Minimal 25s video — zero config, renders in 2 minutes",
-      "template": "sprint-review",
+    "layered-minimal": {
+      "path": "examples/layered-minimal/",
+      "description": "Minimal layered reel — CompositionTheme + inline LayeredReel + LayeredReelComposition; renders from two committed images, no API keys",
+      "template": "none (core contract reference)",
       "complexity": "beginner",
-      "created": "2026-02-24"
+      "created": "2026-07-25"
     },
     "data-viz-chart": {
       "path": "examples/data-viz-chart/",

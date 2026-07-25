@@ -1,15 +1,10 @@
 import { focalObjectPosition } from './focal';
 
-// A static crop / zoom on a cover-fitted source. The output frame aspect is
-// unchanged (reels stay 9:16), so only ONE dimension is needed: `width` is the
-// fraction of the (cover-fitted) source width kept, and the height follows to
-// preserve the frame aspect. `width: 1` = no zoom; `width: 0.5` = middle half
-// → 2× zoom. `x`/`y` pan the zoom centre (0..1). Reusable across any project.
-export interface Crop {
-  width: number;
-  x?: number;
-  y?: number;
-}
+// `Crop`'s one declaration is CropSchema in segment-base-schemas.ts (this
+// module infers from it); re-exported here so existing imports of `Crop`
+// from this module keep working.
+export type { Crop } from './segment-base-schemas';
+import type { Crop } from './segment-base-schemas';
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 

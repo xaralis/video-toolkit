@@ -7,23 +7,23 @@ describe('parseAccents', () => {
       { text: 'Hello world.', color: null }
     ]);
   });
-  it('parses single {lime:phrase}', () => {
-    expect(parseAccents('Postavíme {lime:200 nových bytů} na Dukle.')).toEqual([
-      { text: 'Postavíme ', color: null },
-      { text: '200 nových bytů', color: 'lime' },
-      { text: ' na Dukle.', color: null },
+  it('parses a single {key:phrase} block', () => {
+    expect(parseAccents('We build {gold:200 new homes} downtown.')).toEqual([
+      { text: 'We build ', color: null },
+      { text: '200 new homes', color: 'gold' },
+      { text: ' downtown.', color: null },
     ]);
   });
-  it('parses multiple accents', () => {
-    expect(parseAccents('{lime:DNES} vs {teal:NÁŠ NÁVRH}.')).toEqual([
-      { text: '',          color: null },
-      { text: 'DNES',      color: 'lime' },
-      { text: ' vs ',      color: null },
-      { text: 'NÁŠ NÁVRH', color: 'teal' },
-      { text: '.',         color: null },
+  it('parses multiple accents with different slot keys', () => {
+    expect(parseAccents('{gold:TODAY} vs {sky:OUR PLAN}.')).toEqual([
+      { text: '',         color: null },
+      { text: 'TODAY',    color: 'gold' },
+      { text: ' vs ',     color: null },
+      { text: 'OUR PLAN', color: 'sky' },
+      { text: '.',        color: null },
     ]);
   });
-  it('parses a brand-declared key beyond lime/teal (e.g. a new slot)', () => {
+  it('parses any brand-declared key (the set is never enumerated by core)', () => {
     expect(parseAccents('Plain {gold:hi}.')).toEqual([
       { text: 'Plain ', color: null },
       { text: 'hi', color: 'gold' },
@@ -39,35 +39,31 @@ describe('parseAccents', () => {
 });
 
 describe('applyBrandEndpoint', () => {
-  it('wraps trailing period as teal', () => {
-    expect(applyBrandEndpoint('Bariéra pro lidi.')).toBe('Bariéra pro lidi{teal:.}');
+  it('wraps a trailing period in the caller-supplied slot key', () => {
+    expect(applyBrandEndpoint('A barrier for people.', 'sig')).toBe('A barrier for people{sig:.}');
   });
-  it('wraps trailing period after a lime accent block', () => {
-    expect(applyBrandEndpoint('Stačí {lime:málo}.')).toBe('Stačí {lime:málo}{teal:.}');
+  it('wraps trailing period after an accent block', () => {
+    expect(applyBrandEndpoint('It takes {gold:little}.', 'sig')).toBe('It takes {gold:little}{sig:.}');
   });
   it('leaves text without trailing period unchanged', () => {
-    expect(applyBrandEndpoint('No period at the end')).toBe('No period at the end');
+    expect(applyBrandEndpoint('No period at the end', 'sig')).toBe('No period at the end');
   });
   it('leaves period inside accent block unchanged', () => {
-    expect(applyBrandEndpoint('{teal:Hello.}')).toBe('{teal:Hello.}');
+    expect(applyBrandEndpoint('{sig:Hello.}', 'sig')).toBe('{sig:Hello.}');
   });
   it('leaves already-wrapped endpoint unchanged', () => {
-    expect(applyBrandEndpoint('Hello{teal:.}')).toBe('Hello{teal:.}');
+    expect(applyBrandEndpoint('Hello{sig:.}', 'sig')).toBe('Hello{sig:.}');
   });
   it('leaves trailing `!` and `?` alone (authorial signal)', () => {
-    expect(applyBrandEndpoint('Hello!')).toBe('Hello!');
-    expect(applyBrandEndpoint('Hello?')).toBe('Hello?');
+    expect(applyBrandEndpoint('Hello!', 'sig')).toBe('Hello!');
+    expect(applyBrandEndpoint('Hello?', 'sig')).toBe('Hello?');
   });
 
-  it('wraps the endpoint in an explicitly-given brand slot key', () => {
-    expect(applyBrandEndpoint('x.', 'coal')).toBe('x{coal:.}');
-  });
-
-  it('disables the rule when endpointKey is explicitly undefined', () => {
+  it('disables the rule when endpointKey is undefined (no core default slot)', () => {
     expect(applyBrandEndpoint('x.', undefined)).toBe('x.');
   });
 
-  it('disables the rule when endpointKey is explicitly empty', () => {
+  it('disables the rule when endpointKey is empty', () => {
     expect(applyBrandEndpoint('x.', '')).toBe('x.');
   });
 });

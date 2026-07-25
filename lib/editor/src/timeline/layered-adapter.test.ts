@@ -182,7 +182,7 @@ describe('layeredToTimeline — transitions lane', () => {
             sourceInMs: 0,
             sourceOutMs: 5000,
             transitionIn: { kind: 'dissolve', frames: 12 },
-            transitionOut: { kind: 'whip-pan', frames: 6 },
+            transitionOut: { kind: 'whip-pan', frames: 6, direction: 'left' },
           },
           { id: 'B', kind: 'clip', startMs: 5000, endMs: 9000, source: 'b.mp4', sourceInMs: 0, sourceOutMs: 4000 },
         ],

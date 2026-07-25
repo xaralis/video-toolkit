@@ -3,16 +3,25 @@ import { AbsoluteFill, interpolate } from 'remotion';
 import type { TransitionPresentation, TransitionPresentationComponentProps } from '@remotion/transitions';
 
 export interface WipeProps {
-  color?: 'lime' | 'teal' | 'coal';
+  /** The sweeping sheet's colour, as a CSS colour (hex, rgb(), …). This used to
+   *  be a three-value enum over one brand's palette, with a name→hex map right
+   *  here in the shared presentation; the schema now carries a brand
+   *  ACCENT-SLOT KEY and `lib/render/at-cut-transitions.tsx` resolves it
+   *  against the brand's own palette before calling in. */
+  color?: string;
   direction?: 'left' | 'right';
 }
 
-const COLOR_MAP = { lime: '#c6f432', teal: '#2ad4c5', coal: '#0a0a0a' };
+/** Used when no colour is supplied (or the brand's palette has no slot under
+ *  the configured key). Pure black, not a near-black brand tint: it reads as a
+ *  wipe against almost any footage without asserting a brand colour, and has
+ *  no provenance beyond "black". */
+const DEFAULT_COLOR = '#000';
 
 const Wipe: React.FC<TransitionPresentationComponentProps<WipeProps>> = ({
   children, presentationProgress, passedProps, presentationDirection,
 }) => {
-  const color = COLOR_MAP[passedProps.color ?? 'lime'];
+  const color = passedProps.color ?? DEFAULT_COLOR;
   const dir = passedProps.direction ?? 'left';
   const isExit = presentationDirection === 'exiting';
   // Exit: sheet slides INTO frame, covering the outgoing children.
