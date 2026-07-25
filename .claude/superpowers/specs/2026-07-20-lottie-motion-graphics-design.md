@@ -32,7 +32,7 @@ An **`add-*` command generates or sources a discrete *asset* and places it on th
 | Command | Produces | Backed by | Status |
 |---|---|---|---|
 | `add-music` | background audio track | ACE-Step / `addmusic` | exists |
-| `add-motion-graphic` | Lottie overlay (loader, check, confetti…) | new `lottie` skill + `video_toolkit.lottie` | **this task** |
+| `add-lottie-graphic` | Lottie overlay (loader, check, confetti…) | new `lottie` skill + `video_toolkit.lottie` | **this task** |
 | `add-video-from-text` | AI video clip / b-roll | existing `ltx2` skill + tool | next iteration (not built here) |
 
 **Excluded from the family, deliberately:** animated components (`AnimatedBackground`,
@@ -41,7 +41,9 @@ primitives** composed while cutting/designing (`/toolkit:cut`, `/toolkit:slide-d
 generated assets dropped on the timeline. Keeping them out is what keeps `add-*` meaningful.
 
 **Naming split:** the **skill is `lottie`** (skills are named after the tech — `ltx2`, `acestep`,
-`ffmpeg`); the **command is the accessible verb `add-motion-graphic`** (`/toolkit:add-motion-graphic`).
+`ffmpeg`); the **command carries the accessible action name `add-lottie-graphic`**
+(`/toolkit:add-lottie-graphic`) — consistent with `add-music`, and keeping "lottie" in the name for
+discoverability.
 
 ## Components to build
 
@@ -109,7 +111,7 @@ Pytest coverage in `video_toolkit/tests/test_lottie.py`: catalog loads; `build` 
 slots and emits valid JSON; `colorize` maps values; `info` reports correct metadata; unknown
 template / malformed input error cleanly.
 
-### 5. Command — `commands/add-motion-graphic.md` (`/toolkit:add-motion-graphic`)
+### 5. Command — `commands/add-lottie-graphic.md` (`/toolkit:add-lottie-graphic`)
 
 Workflow doc in the style of `add-music.md` / `slide-design.md`:
 
@@ -134,7 +136,7 @@ Registered in the registry `commands` map with `status: "beta"`.
 
 ### 6. Registry + docs
 
-- `_internal/toolkit-registry.json`: add `skills.lottie`, `commands.add-motion-graphic`,
+- `_internal/toolkit-registry.json`: add `skills.lottie`, `commands.add-lottie-graphic`,
   a `tools` entry for `lottie`, and a `components` entry for `LottieAnimation`. Keep surrounding
   shape/order.
 - `CLAUDE.md`: add `LottieAnimation` to the Shared Components table; add `lottie` to the Python
@@ -160,9 +162,9 @@ The `recolor` prop stays as a convenience for quick, non-destructive tweaks — 
 
 ## Success criteria
 
-- `/toolkit:add-motion-graphic` produces a brand-colored `public/lottie/<name>.json` and places it
+- `/toolkit:add-lottie-graphic` produces a brand-colored `public/lottie/<name>.json` and places it
   as a timeline custom overlay, from either the source or build path.
 - `LottieAnimation` renders a curated template frame-synced in a Remotion composition.
 - `python3 -m video_toolkit.lottie {list,build,colorize,info}` work with `--help`; tests pass.
-- The `lottie` skill and `add-motion-graphic` command are discoverable via the registry and docs;
+- The `lottie` skill and `add-lottie-graphic` command are discoverable via the registry and docs;
   the `add-*` convention is written down for the next iteration to follow.
