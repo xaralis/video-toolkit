@@ -78,8 +78,9 @@ What landed — five mechanisms that each brand repo had its own copy of:
   `createEditorPlugin` + `createEditorViteConfig` + `formatWithProjectPrettier` on
   the Node side, plus the extracted primitives (`framesForReel`,
   `attachCropGestures`, the toolbar chrome). A brand's `.editor/` drops from ~730 lines
-  across `main.tsx` + `vite.config.mts` + `editor-plugin.mts` to ~27 lines across two
-  (`editor-plugin.mts` is deleted; `index.html` is unchanged).
+  across `main.tsx` + `vite.config.mts` + `editor-plugin.mts` to ~30 lines across those same
+  two files (`editor-plugin.mts` is deleted; `index.html`, ~12 more lines, is unchanged —
+  ~43 lines total across the three files that remain in `.editor/`).
 - **`docs/zod-version.md`** — the zod contract: exactly `3.22.3`, decided by
   **Remotion**, not by core. Remotion 4.0.425 (PP + core's example) is zod-3-only;
   4.0.489 (roost) accepts both; the intersection is one version. Core is nearly
@@ -149,7 +150,7 @@ captions).
 **Deliberately NOT done in Phase 2, now a Phase 3 task:**
 `video_toolkit/sync_template.py:136,141` still mirrors only
 `templates/<t>/src → projects/<p>/src`, so it does **not** carry `.editor/`. With the
-host in core, `.editor/` is ~35 lines across three files that rarely change, which
+host in core, `.editor/` is ~43 lines across three files that rarely change, which
 lowers the cost a lot — but the next `.editor/` change still hits **14 directories**
 by hand (12 PP, 2 roost).
 The same gap covers `remotion.config.ts`, `vitest.config.ts`, `tsconfig.json` and
@@ -170,8 +171,11 @@ assertion turns a routine submodule bump into a hard stop. Recorded in
   originals exactly, so it is not a regression — but Studio can mount several
   compositions, and two of them wanting different font sets would silently get only the
   first. No `delayRender` hang path (verified).
-- **`EDITOR_ACCENT` (`lib/editor/host/ui.ts:6`) and `EditorShell.module.css:43`** hold
-  the same colour literal (`#b6ff5a`) in two languages with nothing keeping them in sync.
+- **`EDITOR_ACCENT` (`lib/editor/host/ui.ts:6`) and `EditorShell.module.css:42`** hold
+  the same colour literal (`#b6ff5a`), and it is not just those two: the literal also appears
+  at `FrameOverlay.module.css:23,25,31`, `AccentEditor.module.css:27,46`, and
+  `LayeredTimeline.tsx:715` — 8 occurrences across 5 files, TS and CSS both, with nothing
+  keeping them in sync.
 - **`lib/project/paths.ts:55`**'s error message says "working directory", but the vitest
   path passes an explicit `projectRoot` — reword.
 - **`lib/editor/src/project-config.test.ts:115`** creates an `mkdtempSync` fixture that

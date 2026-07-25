@@ -112,7 +112,7 @@ What Phase 2 landed, and what each brand does about it:
 | B | `lib/render/{fonts,load-fonts}.ts` | `src/lib/load-fonts.ts` (3 copies) | tsc-caught; **one silent behaviour change** |
 | C | `lib/project/{paths,remotion-config,vitest-config}.ts` + `tsconfig.base.json` | `remotion.config.ts`, `vitest.config.ts`, `tsconfig.json` boilerplate | loud |
 | D | — | the duplicate `roostReelDurationInFrames` floor | silent |
-| E | `lib/editor/host/{EditorHost.tsx,mount.tsx}` | `.editor/main.tsx` (489/504 lines → ~12–17) | tsc-caught |
+| E | `lib/editor/host/{EditorHost.tsx,mount.tsx}` | `.editor/main.tsx` (489/504 lines → ~13–16) | loud (bad module path) / silent (mistyped option key) — never tsc-caught |
 | F | `lib/editor/host/{editor-plugin.mts,vite-config.mts,prettier-format.ts}` | `.editor/vite.config.mts` + `.editor/editor-plugin.mts` (deleted) | loud |
 | G | `docs/zod-version.md` | the `zod` version range in `package.json` | **silent** |
 
@@ -131,8 +131,9 @@ directory. It takes items **B**, **C** and **G** only — never **A**, **D**, **
 
 ### A. `src/Root.tsx` → `layeredCompositionProps`
 
-**Applies to:** `templates/campaign-reels/src/Root.tsx` and all 16 `projects/pp-*/src/Root.tsx`
-that declare `id="LayeredCampaignReel"`. **Not** `web-program-intro`.
+**Applies to:** `templates/campaign-reels/src/Root.tsx` and the **11** `projects/pp-*/src/Root.tsx`
+that declare `id="LayeredCampaignReel"` (the same 11 that have `.editor/`). The other 5 projects
+declare `id="WebProgramIntro"` and are **not** in scope for this item.
 
 **Before** (campaign-reels; the projects are identical in these lines):
 
@@ -198,7 +199,9 @@ core's now, in one place (`lib/render/layered-composition-props.ts`).
 > - `const OPTS = { id: 'X', … }; {...layeredCompositionProps(OPTS)}` — hoisted options, no literal to read
 >
 > The failure is **loud**, not silent: `readDefaultProps` throws
-> `no <Composition> with id="LayeredCampaignReel"` and the editor refuses to load. Two
+> `rewriteDefaultProps: no <Composition> with id="LayeredCampaignReel".` (both readers go
+> through `findDefaultPropsAttr`, `lib/editor/src/default-props-writer.ts:161`) and the
+> editor refuses to load. Two
 > `<Composition>` elements sharing an id also throw by name. Pinned by
 > `lib/editor/src/default-props-writer.test.ts` (`SPREAD_HOISTED_OPTS_ROOT`,
 > `SPREAD_DECOY_ROOT`, `SPREAD_DUPLICATE_ID_ROOT`) and by
@@ -290,8 +293,13 @@ export default defineConfig(
 );
 ```
 
-`web-program-intro` also has a top-level `tests/` directory; use `extraTestInclude`, which
-**appends** to the default `['src/**/*.test.ts', 'src/**/*.test.tsx']` rather than replacing it:
+`templates/web-program-intro` and `projects/pp-program-{bydleni,klima,mobilita,obvody,verejny-prostor}`
+each have a top-level `tests/` dir (`tests/reel-config.test.ts` + `tests/schema.test.ts`) and
+today's `vitest.config.ts:17` already lists `'tests/**/*.test.ts'` alongside the `src/**` globs.
+Use `extraTestInclude`, which **appends** to the default `['src/**/*.test.ts',
+'src/**/*.test.tsx']` rather than replacing it — omitting it on any of these six directories
+silently drops both `tests/*.test.ts` files from the run and vitest reports green with fewer
+tests:
 
 ```ts
 export default defineConfig(
@@ -329,6 +337,11 @@ The base supplies `target`, `module`, `moduleResolution`, `jsx`, `strict`, `esMo
 `skipLibCheck`, `forceConsistentCasingInFileNames`, `resolveJsonModule` — exactly the nine
 options every brand tsconfig repeats today, and nothing else.
 
+> **Not a no-op for `pp-05-zastupitelsky-klub`.** Its current `tsconfig.json` has no
+> `@brand-lib/*` path entry, even though `src/config/brand-theme.tsx:3` imports from
+> `@brand-lib/overlays/QuotePullOverlay`. Adding the entry as shown is a real fix (like roost's
+> equivalent gap noted below for `@video-toolkit/lib/*`), not a restatement of the status quo.
+
 `applyToolkitWebpack` and `createToolkitVitestConfig` both throw a diagnosable
 `toolkit/lib not found at …` if the layout is wrong, instead of failing later as a confusing
 "module not found".
@@ -338,7 +351,15 @@ options every brand tsconfig repeats today, and nothing else.
 ### E. `.editor/main.tsx` → `mountEditorHost`
 
 **Applies to:** `templates/campaign-reels/.editor/` and the 11 `projects/pp-*/.editor/`.
-489 lines → 17.
+489 lines → 16.
+
+> **Never tsc-caught.** Every template/project `tsconfig.json` has `"include": ["src/**/*"]`
+> (verified against all 18), so `.editor/` sits outside it and `npx tsc --noEmit` never
+> type-checks `main.tsx` at all — a bad module path (e.g. a typo in the `mount` import) is
+> **loud**: Vite fails to resolve it and the editor refuses to start. A mistyped option key
+> passed to `mountEditorHost` (e.g. `accentSlot:` for `accentSlots:`) is **silent**: Vite/esbuild
+> strip types without checking, the extra/misspelled key is just ignored at runtime, and the
+> editor loads with no palette and nothing says so.
 
 **After** (the whole file):
 
@@ -680,7 +701,12 @@ const totalFrames = layeredDurationInFrames(reel, fps);
 ### E. `.editor/main.tsx` → `mountEditorHost`
 
 **Applies to:** `templates/roost-reels/.editor/` and `projects/roost-reel-01/.editor/`.
-504 lines → 12.
+504 lines → 13.
+
+> **Never tsc-caught** — same caveat as PP's item E above: `.editor/` sits outside every
+> `tsconfig.json`'s `"include": ["src/**/*"]`, so `npx tsc --noEmit` cannot see `main.tsx` at
+> all. A bad module path is loud (Vite fails to resolve it); a mistyped `mountEditorHost` option
+> key is silent (ignored at runtime, no palette, no error).
 
 **After** (the whole file):
 
@@ -793,10 +819,12 @@ Per repo, per directory:
 3. **B** (fonts), **A** (composition props), **D** (roost only).
 4. **F** (`.editor/vite.config.mts`, delete `editor-plugin.mts`), then **E** (`.editor/main.tsx`).
 5. Phase 1's **1**, **2**, **3**, **5** — all small, all independent.
-6. Verify: `npm test`, `npx tsc --noEmit`, `npm run studio` (the reel plays and the timeline
-   loads), `npm run editor` (the editor loads, edits, and **saves** — Save exercises `readDefaultProps`
-   against the new `Root.tsx` spread, which is the one thing that fails loudly if item **A** was
-   spelled wrong), and one `npm run render:preview`.
+6. Verify: `npm test`, `npx tsc --noEmit` (does **not** cover item **E** — `.editor/` sits
+   outside `tsconfig.json`'s `"include": ["src/**/*"]`, so a mistyped `mountEditorHost` option
+   key passes silently; only opening the editor catches it), `npm run studio` (the reel plays
+   and the timeline loads), `npm run editor` (the editor loads, edits, and **saves** — Save
+   exercises `readDefaultProps` against the new `Root.tsx` spread, which is the one thing that
+   fails loudly if item **A** was spelled wrong), and one `npm run render:preview`.
 
 ## Not carried by `sync_template.py`
 

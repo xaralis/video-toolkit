@@ -6,8 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with th
 
 **claude-code-video-toolkit** is an AI-native video production workspace. It provides Claude Code with the skills, commands, and tools to create professional videos from concept to final render.
 
-**This repo is the shared core.** It ships templates, shared `lib/` components, Python tools,
-Claude Code skills/commands, and docs — but no brand identity and no video projects of its own
+**This repo is the shared core.** It ships no templates — see "Core ships no templates" below —
+but does ship shared `lib/` components, Python tools, Claude Code skills/commands, and docs, with
+no brand identity and no video projects of its own
 (`brands/` here holds only the `default` scaffold, for local testing/reference). Real brand
 profiles and video projects live in **separate per-brand repos** (one per client/org), each of
 which vendors this repo as a `toolkit/` git submodule and consumes its skills/commands as a
