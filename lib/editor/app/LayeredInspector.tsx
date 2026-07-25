@@ -6,6 +6,7 @@ import { Collapsible } from './Collapsible';
 import { TRANSITION_KINDS, defaultTransition, kindNeedsFrames, subOptionsFor, type Transition } from './transitions';
 import { parseActionId, type LaneId } from '../src/timeline/layered-adapter';
 import type { AccentSlot } from '../../theming/palette';
+import { PLACEMENTS } from '../../theming/placement';
 
 // Routes the selected timeline item (by lane) to its editable properties,
 // reusing the existing content editors. Edits produce a new LayeredReel via
@@ -183,11 +184,12 @@ function TransitionFields({ t, onChange }: { t: Transition; onChange: (next: Tra
 }
 
 const BLEND_DIRECTIONS = ['tl-br', 'tr-bl', 'bl-tr', 'br-tl'];
-const OVERLAY_POSITIONS = [
-  'upper-left', 'upper-center', 'upper-right',
-  'center-left', 'center', 'center-right',
-  'lower-left', 'lower-center', 'lower-right',
-];
+// The position dropdown offers exactly the canonical placement vocabulary —
+// deriving it (instead of a hand-copied list) is what keeps the dropdown, the
+// Placement type, and the geometry map from drifting apart again. A legacy
+// persisted value outside the list (e.g. `center-left`) still displays via
+// SelectField's unknown-value prepend and renders via PLACEMENT_ALIASES.
+const OVERLAY_POSITIONS: string[] = [...PLACEMENTS];
 
 // Editable params (BODY only — the collapsible header + remove ✕ are supplied by
 // the caller's <Collapsible>) per effect type: Ken Burns motion, blend crossfade,
