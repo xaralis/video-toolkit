@@ -10,7 +10,7 @@ export interface CropGestureTarget {
   setFocal: (x: number, y: number) => void;
 }
 
-const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+const clamp01 = (n: number) => (Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0.5);
 
 /**
  * Trackpad + mouse crop control over the preview.
@@ -23,7 +23,10 @@ const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
  * listeners stay attached but do nothing, so no drag is ever dropped mid-gesture
  * by a re-attach.
  *
- * Returns a cleanup function; call it from the effect that attached this.
+ * Returns a cleanup function; call it from the effect that attached this. The
+ * element must already exist — on a caller's first render the reel/preview may
+ * not be mounted yet, so key the calling effect on preview mount rather than a
+ * bare `[]`, or nothing ever attaches and it never retries.
  */
 export function attachCropGestures(el: HTMLElement, read: () => CropGestureTarget | undefined): () => void {
   // A wheel burst carries only deltas, so a pan run is accumulated here and
