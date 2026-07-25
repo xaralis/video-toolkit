@@ -104,15 +104,14 @@ function packLane(lane: LaneId, actions: TLAction[]): TLRow[] {
 }
 
 // The COMMIT-time footage cap for a video item's RIGHT trim edge, or undefined
-// for "no cap". Only a CLIP is capped here: recorded footage can't be trimmed
-// past the end of its file, so a right-edge trim clamps to its decoded duration.
-// A BROLL is a container that holds its last frame — it is bounded at DRAG time
-// by the next clip (resizeBoundsMs), not footage, so it must NOT be clamped to
-// footage on commit (that would stop it restoring back to the neighbour when its
-// file is a touch shorter than authored — the seg-002 drift). multi-clip / card
-// / outro have no single trim source. `decodedMs` 0/undefined = unknown → no cap.
+// for "no cap". A single-source video (clip OR broll) can't be trimmed past the
+// end of its real file — its decoded duration is the cap. (A config sourceOutMs
+// that overshoots the real file is DRIFT, not extra footage: ffprobe is the
+// truth, so we cap at the decoded duration for both.) Only sources with no
+// intrinsic duration (a still image / generated broll) decode to 0 and are
+// naturally uncapped. multi-clip / card / outro have no single trim source.
 export function clipFootageCapMs(item: VideoItem, decodedMs: number | undefined): number | undefined {
-  if (item.kind !== 'clip') return undefined;
+  if (item.kind !== 'clip' && item.kind !== 'broll') return undefined;
   return decodedMs && decodedMs > 0 ? decodedMs : undefined;
 }
 
@@ -120,16 +119,11 @@ export function clipFootageCapMs(item: VideoItem, decodedMs: number | undefined)
 // action's minStart/maxEnd so the handle HARD-STOPS at the boundary during the
 // drag (instead of overshooting and snapping back on release). Left bound: the
 // source head (startMs - sourceInMs) — you can't reveal footage before frame 0.
-// Right bound depends on kind:
-//   - CLIP (recorded footage): the nearer of the footage end and the next clip's
-//     start — you can't invent frames, and clips can't overlap.
-//   - BROLL (container): the next clip's start — a broll holds its last frame, so
-//     it extends up to the neighbour (this is how a trimmed broll restores back
-//     to butt the next clip even when its file is a touch shorter than authored).
-//     Only the LAST broll (no next) is bounded by its own footage end.
-// `decodedMs` is the item's real media duration (0/undefined = unknown → no
-// footage bound). Returns null for kinds without a single trim source. Applied
-// ONLY during a resize gesture, never at rest, so they don't constrain moves.
+// Right bound: the nearer of the real footage end and the next clip's start —
+// you can't invent frames past the file, and clips can't overlap. Clip and broll
+// are treated identically: a broll's max length is its footage, same as a clip.
+// A source with no decoded duration (a still image) has no footage bound → it's
+// limited only by the next clip (or unbounded when it's the last item).
 export function resizeBoundsMs(
   item: VideoItem,
   decodedMs: number | undefined,
@@ -138,13 +132,8 @@ export function resizeBoundsMs(
   if (item.kind !== 'clip' && item.kind !== 'broll') return null;
   const footageEndMs = decodedMs && decodedMs > 0 ? item.startMs + (decodedMs - item.sourceInMs) : undefined;
   const rights: number[] = [];
-  if (item.kind === 'clip') {
-    if (footageEndMs !== undefined) rights.push(footageEndMs);
-    if (nextStartMs !== undefined) rights.push(nextStartMs);
-  } else {
-    if (nextStartMs !== undefined) rights.push(nextStartMs);
-    else if (footageEndMs !== undefined) rights.push(footageEndMs);
-  }
+  if (footageEndMs !== undefined) rights.push(footageEndMs);
+  if (nextStartMs !== undefined) rights.push(nextStartMs);
   return { minStartMs: item.startMs - item.sourceInMs, maxEndMs: rights.length ? Math.min(...rights) : undefined };
 }
 
