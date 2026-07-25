@@ -78,9 +78,9 @@ What landed — five mechanisms that each brand repo had its own copy of:
   `createEditorPlugin` + `createEditorViteConfig` + `formatWithProjectPrettier` on
   the Node side, plus the extracted primitives (`framesForReel`,
   `attachCropGestures`, the toolbar chrome). A brand's `.editor/` drops from ~730 lines
-  across `main.tsx` + `vite.config.mts` + `editor-plugin.mts` to ~30 lines across those same
-  two files (`editor-plugin.mts` is deleted; `index.html`, ~12 more lines, is unchanged —
-  ~43 lines total across the three files that remain in `.editor/`).
+  across `main.tsx` + `vite.config.mts` + `editor-plugin.mts` to **33 lines (PP) / 29 (roost)**
+  across those same two files (`editor-plugin.mts` is deleted; `index.html`, 12 more lines,
+  is unchanged — **45 / 41** across the three files that remain in `.editor/`).
 - **`docs/zod-version.md`** — the zod contract: exactly `3.22.3`, decided by
   **Remotion**, not by core. Remotion 4.0.425 (PP + core's example) is zod-3-only;
   4.0.489 (roost) accepts both; the intersection is one version. Core is nearly
@@ -150,7 +150,7 @@ captions).
 **Deliberately NOT done in Phase 2, now a Phase 3 task:**
 `video_toolkit/sync_template.py:136,141` still mirrors only
 `templates/<t>/src → projects/<p>/src`, so it does **not** carry `.editor/`. With the
-host in core, `.editor/` is ~43 lines across three files that rarely change, which
+host in core, `.editor/` is 45 (PP) / 41 (roost) lines across three files that rarely change, which
 lowers the cost a lot — but the next `.editor/` change still hits **14 directories**
 by hand (12 PP, 2 roost).
 The same gap covers `remotion.config.ts`, `vitest.config.ts`, `tsconfig.json` and
