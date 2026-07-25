@@ -177,6 +177,23 @@ export function LayeredTimeline({
   const stateRef = useRef<TimelineState>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
+  // SHIFT+drag on a video clip is a SLIP edit: the clip stays put, its source
+  // window (sourceInMs/sourceOutMs) shifts by the drag delta. We track Shift and
+  // the clip's original position/trim at move-start, let the clip move for
+  // feedback, then reinterpret the drop as a slip in the onChange handler.
+  const shiftHeldRef = useRef(false);
+  const slipRef = useRef<{ id: string; origStartMs: number; origInMs: number; origOutMs: number } | null>(null);
+  useEffect(() => {
+    const kd = (e: KeyboardEvent) => e.key === 'Shift' && (shiftHeldRef.current = true);
+    const ku = (e: KeyboardEvent) => e.key === 'Shift' && (shiftHeldRef.current = false);
+    window.addEventListener('keydown', kd);
+    window.addEventListener('keyup', ku);
+    return () => {
+      window.removeEventListener('keydown', kd);
+      window.removeEventListener('keyup', ku);
+    };
+  }, []);
+
   const editorData = useMemo(() => layeredToTimeline(reel, fps).editorData, [reel, fps]);
 
   // Decode waveform peaks for the audio beds + the music source.
@@ -346,7 +363,41 @@ export function LayeredTimeline({
               </div>
             );
           }}
+          onActionMoveStart={({ action }) => {
+            const { lane, id } = parseActionId(action.id);
+            slipRef.current = null;
+            if (shiftHeldRef.current && lane === 'video') {
+              const v = reel.tracks.video.find((x) => x.id === id);
+              // Slip only applies to single-source clips (clip/broll) — multi-clip
+              // sources / card / outro have no single trim window.
+              if (v && (v.kind === 'clip' || v.kind === 'broll')) {
+                slipRef.current = { id, origStartMs: v.startMs, origInMs: v.sourceInMs, origOutMs: v.sourceOutMs };
+              }
+            }
+          }}
           onChange={(d) => {
+            const slip = slipRef.current;
+            if (slip) {
+              slipRef.current = null;
+              const act = (d as TimelineRow[]).flatMap((r) => r.actions).find((a) => a.id === `video:${slip.id}`);
+              if (act) {
+                // SLIP: keep the clip's position, shift its source window by the
+                // dragged delta so it shows a different part of the source.
+                const deltaMs = Math.round(act.start * 1000) - slip.origStartMs;
+                const newIn = Math.max(0, slip.origInMs + deltaMs);
+                const newOut = newIn + (slip.origOutMs - slip.origInMs); // preserve duration
+                onChange({
+                  ...reel,
+                  tracks: {
+                    ...reel.tracks,
+                    video: reel.tracks.video.map((v) =>
+                      v.id === slip.id && (v.kind === 'clip' || v.kind === 'broll') ? { ...v, sourceInMs: newIn, sourceOutMs: newOut } : v,
+                    ),
+                  },
+                });
+              }
+              return false;
+            }
             onChange(applyTimelineChange(reel, d as TimelineRow[]));
             return false; // we drive rendering via the Remotion Player, skip xzdarcy's engine sync
           }}
