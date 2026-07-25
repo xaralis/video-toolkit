@@ -54,7 +54,7 @@ claude-code-video-toolkit/        # this repo (the core) — also a Claude Code 
 ├── video_toolkit/       # Python CLI automation (installable package)
 ├── lib/                 # Shared components, transitions, theme, reel-config-base, transcripts
 ├── brands/default/      # Neutral scaffold brand (colors, fonts, voice) — real brands live in the consuming brand repo
-├── examples/            # Curated reference projects (hello-world, quick-spot, …)
+├── examples/            # Curated reference projects (layered-minimal, quick-spot, …)
 ├── showcase/            # Runnable demos (e.g. the transitions gallery)
 ├── assets/              # Shared assets (voices, images)
 ├── docs/                # Documentation
@@ -192,7 +192,7 @@ out of another brand's view. See `docs/creating-brands.md` for how to create one
 Reusable video components in `lib/components/`. See registry `components` section for the full list with descriptions. Import in templates via:
 
 ```tsx
-import { AnimatedBackground, SlideTransition, Label, LottieAnimation } from '@video-toolkit/lib/components';
+import { SlideTransition, FilmGrain, Vignette, LottieAnimation } from '@video-toolkit/lib/components';
 ```
 
 | Component | Purpose |

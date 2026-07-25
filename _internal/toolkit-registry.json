@@ -986,7 +986,7 @@
     "wipe": {
       "path": "lib/transitions/presentations/wipe.tsx",
       "kind": "wipe",
-      "description": "Directional sweep in a brand color (lime/teal/coal)",
+      "description": "Directional sweep in a brand accent-slot colour (the key resolves via the theme's accentSlots)",
       "options": [
         "color",
         "direction"
@@ -1019,21 +1019,10 @@
     }
   },
   "components": {
-    "AnimatedBackground": {
-      "path": "lib/components/AnimatedBackground.tsx",
-      "description": "Floating shapes background with variants (subtle, tech, warm, dark)",
-      "created": "2025-12-09",
-      "updated": "2025-12-09"
-    },
+    "_note": "Stand-alone visual primitives a template can drop into a composition (lib/components). They are NOT the layered rendering contract: the renderers a brand registers, the accent palette and the placement vocabulary live in lib/theming (SegmentMedia, GenericTextOverlay, GenericWatermark), and the assembly in lib/render. The five legacy-theme components (AnimatedBackground, Label, LogoWatermark, SplitScreen, NarratorPiP) were retired with lib/theme/ and examples/hello-world.",
     "SlideTransition": {
       "path": "lib/components/SlideTransition.tsx",
       "description": "Scene transitions (fade, zoom, slide-up, blur-fade)",
-      "created": "2025-12-09",
-      "updated": "2025-12-09"
-    },
-    "Label": {
-      "path": "lib/components/Label.tsx",
-      "description": "Floating label badge with optional JIRA reference",
       "created": "2025-12-09",
       "updated": "2025-12-09"
     },
@@ -1042,25 +1031,6 @@
       "description": "Cinematic edge darkening overlay",
       "created": "2025-12-09",
       "updated": "2025-12-09"
-    },
-    "LogoWatermark": {
-      "path": "lib/components/LogoWatermark.tsx",
-      "description": "Corner logo branding overlay",
-      "created": "2025-12-09",
-      "updated": "2025-12-09"
-    },
-    "SplitScreen": {
-      "path": "lib/components/SplitScreen.tsx",
-      "description": "Side-by-side video comparison layout",
-      "created": "2025-12-09",
-      "updated": "2025-12-09"
-    },
-    "NarratorPiP": {
-      "path": "lib/components/NarratorPiP.tsx",
-      "description": "Picture-in-picture presenter overlay",
-      "status": "stable",
-      "created": "2025-12-09",
-      "updated": "2026-01-12"
     },
     "Envelope": {
       "path": "lib/components/Envelope.tsx",
@@ -1102,12 +1072,12 @@
     }
   },
   "examples": {
-    "hello-world": {
-      "path": "examples/hello-world/",
-      "description": "Minimal 25s video — zero config, renders in 2 minutes",
-      "template": "sprint-review",
+    "layered-minimal": {
+      "path": "examples/layered-minimal/",
+      "description": "Minimal layered reel — CompositionTheme + inline LayeredReel + LayeredReelComposition; renders from two committed images, no API keys",
+      "template": "none (core contract reference)",
       "complexity": "beginner",
-      "created": "2026-02-24"
+      "created": "2026-07-25"
     },
     "data-viz-chart": {
       "path": "examples/data-viz-chart/",

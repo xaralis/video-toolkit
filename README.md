@@ -107,7 +107,7 @@ python3 scripts/migrate_to_codex.py --reset
 
 > **Want to skip setup and just render something?**
 > ```bash
-> cd examples/hello-world && npm install && npm run render
+> cd examples/layered-minimal && npm install && npm run render
 > ```
 > No API keys needed — outputs an MP4 immediately.
 
@@ -155,7 +155,8 @@ Templates are brand-shaped and live in each brand repo, not in core — for exam
 
 Core ships the machinery they are built from (`lib/` components + transitions,
 `reel-config-base` schemas, the Python tools). See `examples/` for runnable reference
-projects — `hello-world`, `quick-spot`, `data-viz-chart`, and more.
+projects — `layered-minimal` (the rendering contract end to end), `quick-spot`, and
+`data-viz-chart`.
 
 ### Scene Transitions
 
@@ -296,10 +297,12 @@ claude-code-video-toolkit/
 ├── commands/            # Slash commands (/toolkit:video, /toolkit:setup, /toolkit:brand, …)
 ├── skills/              # Domain knowledge for Claude
 ├── scripts/bootstrap/   # `npx github:xaralis/video-toolkit init` — scaffolds a new brand repo
-├── lib/                 # Shared components, theme system, utilities
-│   ├── components/      # Reusable video components
-│   ├── transitions/     # Scene transition effects (7 custom + 4 official)
-│   ├── theme/           # ThemeProvider, useTheme
+├── lib/                 # Shared rendering core, components, utilities
+│   ├── render/          # LayeredReelComposition — the one assembly every brand renders through
+│   ├── theming/         # CompositionTheme contract: renderers, accent palette, placement
+│   ├── reel-config-base/# LayeredReel schema + the transition catalog
+│   ├── components/      # Stand-alone visual primitives
+│   ├── transitions/     # Scene transition presentations
 │   └── project/         # Multi-session project system
 ├── video_toolkit/       # Python CLI tools (installable package)
 ├── docker/              # Cloud GPU images (Modal apps + RunPod Dockerfiles)

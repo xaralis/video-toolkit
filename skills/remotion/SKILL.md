@@ -12,21 +12,23 @@ description: Toolkit-specific Remotion patterns — custom transitions, shared c
 Reusable video components in `lib/components/`. Import in templates via:
 
 ```tsx
-import { AnimatedBackground, SlideTransition, Label } from '@video-toolkit/lib/components';
+import { SlideTransition, FilmGrain, Vignette } from '@video-toolkit/lib/components';
 ```
 
 | Component | Purpose |
 |-----------|---------|
-| `AnimatedBackground` | Floating shapes background (variants: subtle, tech, warm, dark) |
 | `SlideTransition` | Scene transitions (fade, zoom, slide-up, blur-fade) |
-| `Label` | Floating label badge with optional JIRA reference |
 | `Vignette` | Cinematic edge darkening overlay |
-| `LogoWatermark` | Corner logo branding |
-| `SplitScreen` | Side-by-side video comparison |
-| `NarratorPiP` | Picture-in-picture presenter overlay |
+| `FilmGrain` | SVG noise overlay for film texture |
+| `LottieAnimation` | Frame-synced Lottie overlay |
 | `Envelope` | 3D envelope with opening flap animation |
 | `PointingHand` | Animated hand emoji with slide-in and pulse |
 | `MazeDecoration` | Animated isometric grid decoration for corners |
+
+These are stand-alone visual primitives. The **rendering contract** a brand plugs into is
+elsewhere: `lib/theming` (the `CompositionTheme`, its renderers, the accent palette and the
+placement vocabulary) and `lib/render` (`LayeredReelComposition`, the one assembly every brand
+renders through). See `examples/layered-minimal` and `docs/creating-templates.md`.
 
 ## Custom Transitions
 
