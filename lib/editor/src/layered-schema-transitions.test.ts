@@ -53,11 +53,26 @@ describe('layered video item transitions are schema-typed', () => {
 
   it('rejects a bad enum value on a sub-option', () => {
     expect(
-      VideoItemSchema.safeParse({ ...clip, transitionOut: { kind: 'wipe', frames: 15, color: 'purple', direction: 'left' } }).success,
+      VideoItemSchema.safeParse({ ...clip, transitionOut: { kind: 'wipe', frames: 15, color: 'x', direction: 'sideways' } }).success,
     ).toBe(false);
     expect(
       VideoItemSchema.safeParse({ ...clip, transitionOut: { kind: 'slide', frames: 15, direction: 'sideways' } }).success,
     ).toBe(false);
+  });
+
+  // wipe's `color` is a BRAND accent-slot key, so the schema can't enumerate
+  // it — the brand owns the vocabulary, and core validating against one brand's
+  // slot names is exactly the coupling this field was changed to remove. It is
+  // also optional: unset means "the presentation's own neutral sweep".
+  it('accepts any brand accent key — or none — for wipe’s colour', () => {
+    for (const color of ['gold', 'rust', 'ochre']) {
+      expect(
+        VideoItemSchema.safeParse({ ...clip, transitionOut: { kind: 'wipe', frames: 15, color, direction: 'left' } }).success,
+      ).toBe(true);
+    }
+    expect(
+      VideoItemSchema.safeParse({ ...clip, transitionOut: { kind: 'wipe', frames: 15, direction: 'left' } }).success,
+    ).toBe(true);
   });
 
   it('rejects a direction-bearing kind missing its direction', () => {

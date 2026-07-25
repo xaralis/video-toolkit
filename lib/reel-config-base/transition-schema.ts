@@ -43,6 +43,25 @@ export const TransitionFrames = z
 
 const Direction4 = z.enum(['left', 'right', 'up', 'down']);
 
+/**
+ * A BRAND accent-slot key — the brand-neutral way for a core schema to name a
+ * colour. To zod it is just a string, because the vocabulary belongs to the
+ * brand: `lib/theming/palette.ts` `AccentSlot` declares the keys, and
+ * `resolveAccentColor` turns one into a hex at render time. Core cannot
+ * enumerate the options (this field used to be a fixed three-value enum over
+ * one brand's palette, sitting in the shared schema), so it validates the
+ * shape and leaves the values to the brand.
+ *
+ * This is a SINGLE SHARED INSTANCE on purpose: `subOptionForField` recognises
+ * an accent field by identity, since nothing in a plain `z.string()` shape
+ * distinguishes "a palette key" from burn's `mask` file path. Always reference
+ * this constant (`.optional()` is fine — the unwrapping in `innerType` gets
+ * back to it); never re-declare an equivalent `z.string()`.
+ */
+export const AccentKey = z
+  .string()
+  .describe('Brand accent-slot key (see the brand theme’s accentSlots); resolved to a hex at render time.');
+
 /** One entry in the catalog: the kind's zod member plus the presentation
  *  metadata the zod schema cannot express (a human label, and the seed values
  *  `defaultTransition` uses where "first enum option" is the wrong choice). */
@@ -74,6 +93,12 @@ const CATALOG = catalog(
   { schema: z.object({ kind: z.literal('cut') }), label: 'Cut' },
   { schema: z.object({ kind: z.literal('dissolve'), frames: TransitionFrames }), label: 'Dissolve' },
   { schema: z.object({ kind: z.literal('fade'), frames: TransitionFrames }), label: 'Fade' },
+  // NAME NOTE: `fade-coal` is a leftover from one brand's colour vocabulary
+  // ("coal" was its near-black). Behaviourally it is brand-neutral — it is a
+  // plain fade, and what shows through is whatever `theme.background` is — and
+  // its editor label already says "Fade to black". Renaming the KIND would
+  // change every baked `Root.tsx` literal that uses it, so it stands; if it is
+  // ever renamed, that is a render-affecting brand migration, not a cleanup.
   { schema: z.object({ kind: z.literal('fade-coal'), frames: TransitionFrames }), label: 'Fade to black' },
   { schema: z.object({ kind: z.literal('glitch'), frames: TransitionFrames }), label: 'Glitch' },
   {
@@ -190,13 +215,18 @@ const CATALOG = catalog(
     schema: z.object({
       kind: z.literal('wipe'),
       frames: TransitionFrames,
-      color: z.enum(['lime', 'teal', 'coal']).describe('Wipe sweep colour.'),
+      // The sweep's colour, as a BRAND accent-slot key rather than a fixed
+      // enum — this field used to be a fixed three-value enum naming one
+      // brand's palette colours, sitting in the shared schema and inherited by
+      // every other brand. Optional: unset means the presentation's own
+      // neutral sweep, which is the only honest default core can offer for a
+      // vocabulary it doesn't own.
+      color: AccentKey.optional().describe('Wipe sweep colour, as a brand accent-slot key.'),
       direction: z.enum(['left', 'right']),
     }),
     label: 'Wipe',
-    // Teal, not the enum's first option (lime): the sweep reads as a wipe
-    // rather than a flash-frame against most footage.
-    defaults: { color: 'teal' },
+    // No `color` seed: the keys are brand-defined, so core has none to name.
+    // The accent control renders "—" for unset, which reads correctly.
   },
   {
     schema: z.object({
@@ -332,12 +362,16 @@ export interface SubOptionChoice {
 
 /** Describes one contextual control a transition kind needs beyond `frames`.
  *  `enum` → dropdown (see `options`), `number` → numeric field, `boolean` →
- *  checkbox. Anything else in a member's shape gets no control (see
- *  `subOptionsFor`). */
+ *  checkbox, `accent` → dropdown over the BRAND's accent slots. Anything else
+ *  in a member's shape gets no control (see `subOptionsFor`).
+ *
+ *  `accent` is the one kind that carries no `options`: core doesn't know the
+ *  brand's palette, so the editor fills the choices from the accentSlots it
+ *  was handed. */
 export interface SubOption {
   prop: string;
   label: string;
-  kind: 'enum' | 'number' | 'boolean';
+  kind: 'enum' | 'number' | 'boolean' | 'accent';
   options?: SubOptionChoice[];
 }
 
@@ -388,6 +422,9 @@ const VALUE_LABELS: Record<string, string> = {
 export function subOptionForField(prop: string, field: z.ZodTypeAny): SubOption | null {
   const t = innerType(field);
   const label = PROP_LABELS[prop] ?? humanize(prop);
+  // Identity, not shape: an accent key IS a string, and so is burn's `mask`.
+  // Only the shared `AccentKey` instance means "pick one of the brand's slots".
+  if (t === AccentKey) return { prop, label, kind: 'accent' };
   if (t instanceof z.ZodEnum) {
     const values = (t as z.ZodEnum<[string, ...string[]]>).options;
     return {
@@ -425,8 +462,8 @@ export const DEFAULT_TRANSITION_FRAMES = 15;
 
 /** A transition mid-edit. An editor writes one field at a time, so between
  *  keystrokes the object is legitimately not yet a valid `Transition` (a kind
- *  just switched to `wipe` has no `color` for an instant). UI code works in
- *  this permissive shape; `TransitionSchema` decides whether the settled
+ *  just switched to `slide` has no `direction` for an instant). UI code works
+ *  in this permissive shape; `TransitionSchema` decides whether the settled
  *  result is real. */
 export type DraftTransition = { kind: string; frames?: number; [key: string]: unknown };
 

@@ -1,6 +1,6 @@
 // The shared "at-the-cut" transition engine — lifted verbatim (see
-// lib/render/README.md) from campaign-reels' LayeredCampaignReel.tsx so both
-// the campaign renderer and a future roost renderer consume one copy. The
+// lib/render/README.md) from campaign-reels' LayeredCampaignReel.tsx so that
+// every brand's renderer consumes one copy of it. The
 // pure "is this a real transition?" gate lives in ./transition-record (no
 // Remotion import there, so it can be unit-tested in core); this module adds
 // the Remotion presentation mapping + the components that drive it off
@@ -16,6 +16,7 @@ import {
 } from '../transitions';
 import { useCurrentFrame } from 'remotion';
 import { getTransitionRecord, type TransitionRecord } from './transition-record';
+import { resolveAccentColor, type AccentSlot } from '../theming/palette';
 import type { Transition, TransitionKind } from '../reel-config-base/transition-schema';
 
 export { getTransitionRecord, type TransitionRecord };
@@ -26,7 +27,12 @@ export const DIRECTION_4WAY: Record<string, 'from-left' | 'from-right' | 'from-t
   left: 'from-left', right: 'from-right', up: 'from-top', down: 'from-bottom',
 };
 
-type Dims = { width: number; height: number };
+/** What a presentation may need beyond the transition itself: the composition's
+ *  pixel size, and the BRAND's accent palette — the only place a core schema's
+ *  colour KEY (see `AccentKey`) can become an actual hex. `palette` is optional
+ *  so a renderer that has no theme in scope still composes; a colour key that
+ *  can't be resolved simply falls back to the presentation's own neutral. */
+type Dims = { width: number; height: number; palette?: readonly AccentSlot[] };
 
 // One renderer per transition kind, keyed by TransitionKind — so the COMPILER
 // demands an entry for every kind in the catalog (lib/reel-config-base/
@@ -39,8 +45,8 @@ type Dims = { width: number; height: number };
 //
 // `wipe` maps to the toolkit's OWN custom wipe (color + 2-way direction) — NOT
 // @remotion/transitions/wipe (4-way, colourless) — because that's what the
-// schema's `wipe` member describes and what pp-05's CampaignReel.tsx already
-// renders for this kind; the official package backs every OTHER official kind.
+// schema's `wipe` member describes (a brand accent-slot key + a 2-way
+// direction); the official package backs every OTHER official kind.
 type Renderer<K extends TransitionKind> = (t: Extract<Transition, { kind: K }>, dims: Dims) => AnyPresentation | null;
 
 const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
@@ -49,8 +55,10 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   'cut': () => null,
   'fade': () => fade() as AnyPresentation,
   'dissolve': () => fade() as AnyPresentation,
-  // Coal shows through simply because opacity<1 reveals the composition's own
-  // coal-coloured background — no tinting needed.
+  // A plain fade IS the "fade to background" look: opacity<1 reveals the
+  // composition's own background colour (theme.background), whatever the brand
+  // set it to — no tinting needed. See the note on the kind's name in
+  // transition-schema.ts.
   'fade-coal': () => fade() as AnyPresentation,
   'glitch': () => glitch() as AnyPresentation,
   'burn': (t) => burn({ mask: t.mask, glowColor: t.glowColor, edgeContrast: t.edgeContrast, glowBand: t.glowBand }) as AnyPresentation,
@@ -60,7 +68,13 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   'zoom-through': (t) => zoomThrough({ direction: t.from }) as AnyPresentation,
   'clock-wipe': (_t, dims) => clockWipe({ width: dims.width, height: dims.height }) as AnyPresentation,
   'iris': (_t, dims) => iris({ width: dims.width, height: dims.height }) as AnyPresentation,
-  'wipe': (t) => customWipe({ color: t.color, direction: t.direction }) as AnyPresentation,
+  // `t.color` is a brand accent-slot KEY, not a colour: resolve it here, where
+  // the palette is in scope. Unknown/unset → undefined → the presentation's own
+  // neutral sweep.
+  'wipe': (t, dims) => customWipe({
+    color: resolveAccentColor(dims.palette ?? [], t.color ?? null) ?? undefined,
+    direction: t.direction,
+  }) as AnyPresentation,
   'gradient-wipe': (t) => gradientWipe({ direction: t.direction, softness: t.softness }) as AnyPresentation,
   // Every param below is optional on both sides: the schema member makes it
   // optional, and the presentation destructures it with its own default — so

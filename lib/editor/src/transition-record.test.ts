@@ -9,6 +9,6 @@ describe('getTransitionRecord', () => {
   });
   it('passes through a real transition record', () => {
     expect(getTransitionRecord({ kind: 'fade', frames: 12 })).toEqual({ kind: 'fade', frames: 12 });
-    expect(getTransitionRecord({ kind: 'wipe', direction: 'left', color: 'lime' })?.kind).toBe('wipe');
+    expect(getTransitionRecord({ kind: 'wipe', direction: 'left', color: 'gold' })?.kind).toBe('wipe');
   });
 });

@@ -39,12 +39,12 @@ describe('withTransitionOverrides', () => {
   });
 
   it('produces something TransitionSchema still accepts', () => {
-    const t = withTransitionOverrides<Transition>({ kind: 'wipe', frames: 15, color: 'teal', direction: 'left' }, {
-      color: 'coal',
+    const t = withTransitionOverrides<Transition>({ kind: 'wipe', frames: 15, color: 'gold', direction: 'left' }, {
+      color: 'rust',
     });
     const parsed = TransitionSchema.safeParse(t);
     expect(parsed.success).toBe(true);
-    expect(parsed.success && parsed.data).toEqual({ kind: 'wipe', frames: 15, color: 'coal', direction: 'left' });
+    expect(parsed.success && parsed.data).toEqual({ kind: 'wipe', frames: 15, color: 'rust', direction: 'left' });
   });
 
   // THE roost case: LayeredRoostReel injects its own brand-owned burn look

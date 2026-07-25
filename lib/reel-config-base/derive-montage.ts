@@ -1,8 +1,12 @@
-// deriveMontageLayered — the roost beat-montage compiler: reshapes a
-// beat-synced montage config (photo/video segments placed on musical beats)
-// into the track-native LayeredReel model. Beats are consumed here (beat → ms)
-// and survive only as meta.guidesMs ruler markers — see the layered spec.
+// deriveMontageLayered — the beat-montage compiler: reshapes a beat-synced
+// montage config (photo/video segments placed on musical beats) into the
+// track-native LayeredReel model. Beats are consumed here (beat → ms) and
+// survive only as meta.guidesMs ruler markers — see the layered spec.
 // Sibling to deriveLayered (different input shape, same output).
+//
+// Brand-neutral by construction: everything brand-shaped that this compiler
+// once knew (a reel title, a teaser component's on-screen timing) is now an
+// input, not a constant. Nothing here may name a specific brand.
 import type { LayeredReel, VideoItem, OverlayItem, BrandLayerItem, Effect } from './layered-schema';
 import type { Transition, FramesOnlyTransitionKind } from './transition-schema';
 
@@ -21,6 +25,9 @@ export interface MontageConfig {
   fps: number;
   bpm: number;
   track: string;
+  /** What this reel is about — lands in `meta.topic`. Defaults to
+   *  `DEFAULT_TOPIC`; this used to be a hardcoded brand name. */
+  topic?: string;
   vintage?: 'film' | 'vhs' | null;
   kicks?: string;
   segments: MontageSegment[];
@@ -29,9 +36,9 @@ export interface MontageConfig {
     // The outro's entrance is emitted below as `{ kind, frames }` on the last
     // content clip, so only the kinds that ARE `{ kind, frames }` may be named
     // here — `dissolve`, `burn`, `glitch`, … but not `slide`/`wipe`/
-    // `zoom-through`, which need a direction/colour/from this config has no
-    // place to carry. Naming one of those used to compile (behind an `as
-    // Transition`) and produce an invalid transition.
+    // `zoom-through`, which need a direction/from this config has no place to
+    // carry. Naming one of those used to compile (behind an `as Transition`)
+    // and produce an invalid transition.
     style: string; variant: string; transition: FramesOnlyTransitionKind; logoDelaySec?: number; beatStart: number;
   };
   watermark: { asset: string; corner: string; variant?: string };
@@ -41,17 +48,40 @@ export interface MontageOpts {
   transitionFrames?: number; // outro enter crossfade
   logoRevealFrames?: number;
   logoHoldFrames?: number;
+  // --- teaser on-screen timing (see TEASER_TIMING) -------------------------
+  /** Delay between successive lines appearing, when `reveal: 'line'`. */
+  teaserLineStaggerSec?: number;
+  /** How long the fully-revealed teaser holds before it starts fading. */
+  teaserHoldSec?: number;
+  /** Length of the teaser's fade-out. */
+  teaserFadeSec?: number;
 }
 
-// Teaser on-screen frames (reveal → hold → fade), mirrored from roost's
-// TeaserOverlay.teaserDurationInFrames so the derived overlay span matches.
-const LINE_STAGGER_SEC = 0.35;
-const TEASER_HOLD_SEC = 4.5;
-const TEASER_FADE_SEC = 0.6;
-function teaserFrames(numLines: number, reveal: 'line' | 'all', fps: number): number {
-  const stagger = reveal === 'line' ? Math.round(LINE_STAGGER_SEC * fps) : 0;
+/** Neutral fallback for `meta.topic` when a config names none. */
+export const DEFAULT_TOPIC = 'Reel';
+
+/**
+ * Default teaser on-screen timing (reveal → hold → fade), in seconds.
+ *
+ * These were module constants copied out of ONE brand's TeaserOverlay so the
+ * derived overlay span would match that component's internal
+ * `teaserDurationInFrames`. A shared compiler mirroring a brand component's
+ * internals is a drift the brand can't see and core can't verify — so they are
+ * now merely the defaults, and any brand whose teaser holds for a different
+ * beat passes its own via `MontageOpts`. The numbers themselves carry no brand
+ * meaning; they are simply a reasonable short-form reveal.
+ */
+export const TEASER_TIMING = { lineStaggerSec: 0.35, holdSec: 4.5, fadeSec: 0.6 } as const;
+
+function teaserFrames(
+  numLines: number,
+  reveal: 'line' | 'all',
+  fps: number,
+  timing: { lineStaggerSec: number; holdSec: number; fadeSec: number },
+): number {
+  const stagger = reveal === 'line' ? Math.round(timing.lineStaggerSec * fps) : 0;
   const lastLineStart = Math.max(0, numLines - 1) * stagger;
-  return lastLineStart + Math.round(TEASER_HOLD_SEC * fps) + Math.round(TEASER_FADE_SEC * fps);
+  return lastLineStart + Math.round(timing.holdSec * fps) + Math.round(timing.fadeSec * fps);
 }
 
 export function deriveMontageLayered(cfg: MontageConfig, opts: MontageOpts = {}): LayeredReel {
@@ -109,7 +139,7 @@ export function deriveMontageLayered(cfg: MontageConfig, opts: MontageOpts = {})
     }
   });
 
-  // Reel length (frames, to match RoostReel.reelDurationInFrames exactly), then → ms.
+  // Reel length in frames (the brand composition's durationInFrames), then → ms.
   const lastSeg = cfg.segments[cfg.segments.length - 1];
   const contentEndF = lastSeg ? (lastSeg.beatStart + lastSeg.beatCount) * fpb : 0;
   const outroFromF = cfg.outro.beatStart * fpb;
@@ -165,11 +195,15 @@ export function deriveMontageLayered(cfg: MontageConfig, opts: MontageOpts = {})
   const overlays: OverlayItem[] = [];
   if (cfg.teaser?.lines?.length) {
     const startMs = Math.round((cfg.teaser.appearAtSec ?? 0) * 1000);
-    const durF = teaserFrames(cfg.teaser.lines.length, cfg.teaser.reveal ?? 'line', fps);
-    // The teaser is a QUOTE-PULL overlay (the generic kind), rendered per-brand —
-    // roost renders it as its cream/brown stacked stack. Multi-line text lives as
-    // '\n'-joined text (the quote-pull convention); reveal/fontSize ride along as
-    // brand-read content fields.
+    const durF = teaserFrames(cfg.teaser.lines.length, cfg.teaser.reveal ?? 'line', fps, {
+      lineStaggerSec: opts.teaserLineStaggerSec ?? TEASER_TIMING.lineStaggerSec,
+      holdSec: opts.teaserHoldSec ?? TEASER_TIMING.holdSec,
+      fadeSec: opts.teaserFadeSec ?? TEASER_TIMING.fadeSec,
+    });
+    // The teaser is a TEXT overlay (the generic kind), rendered per-brand — the
+    // brand's own text renderer decides how the stack looks. Multi-line text
+    // lives as '\n'-joined text (the text-overlay convention); reveal/fontSize
+    // ride along as brand-read content fields.
     overlays.push({
       id: 'teaser', startMs, endMs: startMs + framesToMs(durF),
       content: { kind: 'text', text: cfg.teaser.lines.join('\n'), reveal: cfg.teaser.reveal ?? 'line', fontSize: cfg.teaser.fontSize ?? 96 },
@@ -191,7 +225,7 @@ export function deriveMontageLayered(cfg: MontageConfig, opts: MontageOpts = {})
 
   return {
     version: 'layered-1',
-    meta: { topic: 'Roost reel', totalDurationMs: totalMs, guidesMs },
+    meta: { topic: cfg.topic ?? DEFAULT_TOPIC, totalDurationMs: totalMs, guidesMs },
     tracks: {
       video, audio: [], music: { source: cfg.track, baseVolumeDb: -8 }, overlays, brand,
     },

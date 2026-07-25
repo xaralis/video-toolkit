@@ -14,6 +14,7 @@ import {
 } from './transitions';
 import {
   TransitionSchema,
+  AccentKey,
   subOptionForField,
   defaultValueForField,
 } from '@video-toolkit/lib/reel-config-base/transition-schema';
@@ -267,10 +268,15 @@ describe('subOptionsFor', () => {
     expect(opts[0].options?.map((o) => o.value).sort()).toEqual(['in', 'out']);
   });
 
-  it('returns color + direction enums for wipe', () => {
+  // wipe's colour is a BRAND accent-slot key, not a fixed palette: core no
+  // longer names one brand's colours, so the control is an 'accent' picker
+  // whose options come from the brand's own accentSlots at edit time.
+  it('returns an accent colour picker + a direction enum for wipe', () => {
     const opts = subOptionsFor('wipe');
     const byProp = Object.fromEntries(opts.map((o) => [o.prop, o]));
-    expect(byProp.color.options?.map((o) => o.value).sort()).toEqual(['coal', 'lime', 'teal']);
+    expect(byProp.color.kind).toBe('accent');
+    expect(byProp.color.options).toBeUndefined();
+    expect(byProp.direction.kind).toBe('enum');
     expect(byProp.direction.options?.map((o) => o.value).sort()).toEqual(['left', 'right']);
   });
 
@@ -405,6 +411,20 @@ describe('subOptionForField', () => {
     expect(subOptionForField('mask', z.string())).toBeNull();
     expect(subOptionForField('bag', z.record(z.string(), z.unknown()))).toBeNull();
   });
+
+  // AccentKey is a plain string to zod, so it is recognised by IDENTITY, not by
+  // shape — that is exactly what distinguishes "a brand accent-slot key" from
+  // burn's `mask` path, which is also a string and must stay uncontrolled.
+  it('maps an AccentKey field to an accent picker, options left to the brand', () => {
+    expect(subOptionForField('color', AccentKey)).toEqual({
+      prop: 'color',
+      label: 'Color',
+      kind: 'accent',
+    });
+    expect(subOptionForField('color', AccentKey.optional())?.kind).toBe('accent');
+    // A look-alike plain string is still uncontrolled.
+    expect(subOptionForField('color', z.string().optional())).toBeNull();
+  });
 });
 
 describe('defaultValueForField', () => {
@@ -462,9 +482,11 @@ describe('defaultTransition', () => {
     });
   });
 
-  it('defaults wipe to 15 frames, color teal, direction left', () => {
+  // No `color`: the accent key is optional and brand-defined, so core has no
+  // honest seed for it. Unset = "the presentation's neutral sweep".
+  it('defaults wipe to 15 frames, direction left, and NO colour key', () => {
     const t = defaultTransition('wipe');
-    expect(t).toEqual({ kind: 'wipe', frames: 15, color: 'teal', direction: 'left' });
+    expect(t).toEqual({ kind: 'wipe', frames: 15, direction: 'left' });
   });
 
   it('defaults gradient-wipe to 15 frames, direction tl-br, softness 40', () => {
@@ -479,7 +501,7 @@ describe('defaultTransition', () => {
     });
     const wipe = defaultTransition('wipe', { frames: 8 });
     expect(wipe.frames).toBe(8);
-    expect(wipe.color).toBe('teal');
+    expect(wipe.color).toBeUndefined();
     expect(wipe.direction).toBe('left');
   });
 

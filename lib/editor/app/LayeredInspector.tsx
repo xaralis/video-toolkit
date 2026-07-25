@@ -158,9 +158,22 @@ const TRANSITION_LABEL: Record<string, string> = Object.fromEntries(TRANSITION_K
 // depending on `edge`), so the two never diverge again.
 // `t` is a DraftTransition, not the strict `Transition` union: the picker
 // writes one field at a time, so mid-edit the object is legitimately not yet
-// a valid member (a kind just switched to `wipe` has no `color` for an
+// a valid member (a kind just switched to `slide` has no `direction` for an
 // instant). TransitionSchema is what judges the settled result.
-function TransitionFields({ t, onChange }: { t: DraftTransition; onChange: (next: DraftTransition) => void }) {
+//
+// `accentSlots` is the BRAND's palette, and it is what fills an `accent`
+// sub-option's dropdown — core's schema names the field but not its values
+// (see AccentKey in transition-schema.ts), so the choices can only come from
+// here.
+function TransitionFields({
+  t,
+  onChange,
+  accentSlots,
+}: {
+  t: DraftTransition;
+  onChange: (next: DraftTransition) => void;
+  accentSlots?: readonly AccentSlot[];
+}) {
   const kind = t.kind ?? 'cut';
   return (
     <>
@@ -175,6 +188,24 @@ function TransitionFields({ t, onChange }: { t: DraftTransition; onChange: (next
           enum-or-else-number) so a kind added to SubOption without a control
           here renders nothing visible instead of a wrong-typed field. */}
       {subOptionsFor(kind).map((opt) => {
+        // A brand-palette dropdown: the schema supplies no `options` for an
+        // accent field, so the brand's slots are the option list. With no
+        // brand palette in scope there is nothing to choose from, so the
+        // control is omitted rather than shown empty.
+        if (opt.kind === 'accent') {
+          const slots = accentSlots ?? [];
+          if (!slots.length) return null;
+          return (
+            <SelectField
+              key={opt.prop}
+              lbl={opt.label}
+              value={t[opt.prop] as string | undefined}
+              options={slots.map((s) => s.key)}
+              optionLabel={(v) => slots.find((s) => s.key === v)?.label ?? v}
+              onChange={(s) => onChange({ ...t, [opt.prop]: s })}
+            />
+          );
+        }
         if (opt.kind === 'enum')
           return (
             <SelectField
@@ -360,7 +391,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
         <h3 style={heading}>
           Transition {edge === 'in' ? 'in' : 'out'} · {TRANSITION_LABEL[kind] ?? kind}
         </h3>
-        <TransitionFields t={t} onChange={(next) => patchItem('video', id, { [edgeField]: next })} />
+        <TransitionFields t={t} accentSlots={accentSlots} onChange={(next) => patchItem('video', id, { [edgeField]: next })} />
       </div>
     );
   }
@@ -480,7 +511,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           return (
             <>
               <div style={section}>Transition out</div>
-              <TransitionFields t={t} onChange={(next) => patchItem('video', id, { transitionOut: next })} />
+              <TransitionFields t={t} accentSlots={accentSlots} onChange={(next) => patchItem('video', id, { transitionOut: next })} />
             </>
           );
         })()}

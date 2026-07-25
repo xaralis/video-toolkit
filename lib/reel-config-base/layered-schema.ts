@@ -53,7 +53,7 @@ const VideoContainerBase = {
   // transition-schema.ts for the catalog these validate against.
   transitionOut: TransitionSchema.optional(),
   transitionIn: TransitionSchema.optional(),
-  // Per-item brand render-hint bag (e.g. roost displayMode; outro style/variant).
+  // Per-item brand render-hint bag (e.g. a displayMode; outro style/variant).
   // Generic escape hatch — mirrors BrandLayerItemSchema.props.
   props: z.record(z.string(), z.unknown()).optional(),
 };

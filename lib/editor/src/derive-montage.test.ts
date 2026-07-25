@@ -13,7 +13,7 @@ const CFG = {
       beatStart: 3, beatCount: 3, transition: 'fade' as const, inPointSec: 2 },
   ],
   teaser: { lines: ['A', 'B'], appearAtSec: 0, reveal: 'line' as const, fontSize: 96 },
-  outro: { style: 'organic' as const, variant: 'sand-brown' as const, transition: 'dissolve' as const,
+  outro: { style: 'organic' as const, variant: 'warm' as const, transition: 'dissolve' as const,
            logoDelaySec: 0.5, beatStart: 6 },
   watermark: { asset: 'brand/mark.png', corner: 'top-right' as const, variant: 'black' as const },
 };
@@ -99,6 +99,52 @@ describe('deriveMontageLayered', () => {
     expect(reel.meta.guidesMs).toEqual([0, 800, 1600, 2400, 3200, 4000, 4800, 5600, 6400, 7200, 8000, 8800]);
     // kick onsets are NOT the guides; they drive the outro heartbeat instead.
     expect((outro as { props?: { kickFrames?: number[] } }).props?.kickFrames).toEqual([14, 42, 59]);
+  });
+
+  // meta.topic used to be the hardcoded string 'Roost reel' — one brand's name
+  // baked into the shared compiler. It now comes from the config, with a
+  // brand-neutral fallback.
+  describe('meta.topic', () => {
+    it('comes from the config', () => {
+      expect(deriveMontageLayered({ ...CFG, topic: 'Spring campaign' }).meta.topic).toBe('Spring campaign');
+    });
+
+    it('falls back to a brand-neutral label when the config names none', () => {
+      expect(deriveMontageLayered(CFG).meta.topic).toBe('Reel');
+      expect(deriveMontageLayered(CFG).meta.topic).not.toMatch(/roost/i);
+    });
+  });
+
+  // The teaser's reveal→hold→fade seconds used to be module constants copied
+  // out of one brand's TeaserOverlay. They are options now, so a brand whose
+  // teaser component holds for a different beat can say so instead of core
+  // silently mismatching it.
+  describe('teaser timing', () => {
+    const teaserSpanMs = (opts?: Parameters<typeof deriveMontageLayered>[1]) => {
+      const t = deriveMontageLayered(CFG, opts).tracks.overlays.find((o) => o.content.kind === 'text')!;
+      return t.endMs - t.startMs;
+    };
+
+    it('defaults to stagger 0.35s / hold 4.5s / fade 0.6s per revealed line', () => {
+      // 2 lines, reveal 'line' → 1·round(0.35·30) + round(4.5·30) + round(0.6·30)
+      // = 11 + 135 + 18 = 164 frames.
+      expect(teaserSpanMs()).toBe(Math.round((164 * 1000) / 30));
+    });
+
+    it('honours per-brand overrides of stagger, hold and fade', () => {
+      // 1·round(0.5·30) + round(2·30) + round(1·30) = 15 + 60 + 30 = 105 frames.
+      expect(teaserSpanMs({ teaserLineStaggerSec: 0.5, teaserHoldSec: 2, teaserFadeSec: 1 }))
+        .toBe(Math.round((105 * 1000) / 30));
+    });
+
+    it('drops the per-line stagger entirely when reveal is "all"', () => {
+      const reel = deriveMontageLayered(
+        { ...CFG, teaser: { ...CFG.teaser, reveal: 'all' as const } },
+        { teaserLineStaggerSec: 5 },
+      );
+      const t = reel.tracks.overlays.find((o) => o.content.kind === 'text')!;
+      expect(t.endMs - t.startMs).toBe(Math.round(((135 + 18) * 1000) / 30));
+    });
   });
 
   it('omits vintage effects when cfg.vintage is null', () => {
