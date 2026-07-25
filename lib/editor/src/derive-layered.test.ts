@@ -281,4 +281,39 @@ describe('deriveLayered', () => {
     expect(Number.isNaN(logos.startMs)).toBe(false);
     expect(logos.anchorVideoId).toBe('seg-p');
   });
+
+  // A photo segment (still image or AI i2v clip): authors `src` + durationMs,
+  // is silent (no audio item, +6 music boost), Ken Burns rides on effects, and
+  // its overlays[] land on the overlay track like a clip's.
+  const PHOTO = {
+    topic: 'Photo',
+    audio: { music: 'audio/bg.mp3', musicVolumeDb: -8 },
+    segments: [
+      {
+        id: 'seg-ph',
+        type: 'photo',
+        src: 'broll/sauna.mp4',
+        durationMs: 4000,
+        aiGenerated: true,
+        kenBurns: { fromScale: 1, toScale: 1.1, fromX: 0.4, toX: 0.6 },
+        overlays: [
+          { kind: 'title', text: '{lime:Sauna}.', appearAt: 0, durationMs: 3000 },
+          { kind: 'quote-pull', text: 'Co vy na to{teal:?}', placement: 'upper-center', appearAt: 1000, durationMs: 3000 },
+        ],
+        transitionOut: { kind: 'dissolve', frames: 12 },
+      },
+      { id: 'seg-z', type: 'outro' },
+    ],
+  };
+  it('derives a photo item: source from src, silent (+6, no audio), ken-burns effect, overlays on track', () => {
+    const r = deriveLayered(PHOTO, OPTS);
+    const ph = r.tracks.video.find((v) => v.id === 'seg-ph')!;
+    expect(ph.kind).toBe('photo');
+    expect(ph).toMatchObject({ source: 'broll/sauna.mp4', startMs: 0, endMs: 4000, aiGenerated: true, musicBoostDb: 6 });
+    expect(ph.effects?.some((e) => e.type === 'ken-burns')).toBe(true);
+    expect(r.tracks.audio).toHaveLength(0); // silent — no audio item
+    const anchored = r.tracks.overlays.filter((o) => o.anchorVideoId === 'seg-ph');
+    expect(anchored.map((o) => o.content.kind).sort()).toEqual(['quote-pull', 'title']);
+    expect(LayeredReelSchema.parse(r)).toBeTruthy();
+  });
 });

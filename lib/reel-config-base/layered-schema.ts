@@ -54,6 +54,9 @@ export const VideoItemSchema = z.discriminatedUnion('kind', [
   z.object({ ...VideoContainerBase, kind: z.literal('broll'), source: z.string(), sourceInMs: Ms, sourceOutMs: Ms, aiGenerated: z.boolean().optional() }),
   z.object({ ...VideoContainerBase, kind: z.literal('multi-clip'), layout: z.enum(['split-h', 'split-v', 'pip', 'quad']), sources: z.array(SubSource) }),
   z.object({ ...VideoContainerBase, kind: z.literal('card'), cardKind: z.string(), cardProps: z.record(z.string(), z.unknown()).optional(), pattern: z.string().optional() }),
+  // photo: a still image OR an AI i2v clip held for its own span (no trims).
+  // Ken Burns rides on `effects` like broll; durationMs = endMs − startMs.
+  z.object({ ...VideoContainerBase, kind: z.literal('photo'), source: z.string(), aiGenerated: z.boolean().optional() }),
   z.object({ ...VideoContainerBase, kind: z.literal('outro') }),
 ]);
 
