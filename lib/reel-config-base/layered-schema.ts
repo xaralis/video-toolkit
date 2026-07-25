@@ -71,6 +71,8 @@ export const AudioItemSchema = z.object({
   sourceOutMs: Ms.optional(), // out-point into the audio source (trim tail); absent = sourceInMs + span
   volumeDb: z.number().optional(),
   mute: z.boolean().optional(),
+  fadeInMs: Ms.optional(), // linear gain ramp from item start
+  fadeOutMs: Ms.optional(), // linear gain ramp into item end
   followsVideoId: z.string().optional(), // the video item this bed was derived from (for alignment; editing may detach)
 });
 
@@ -97,6 +99,10 @@ export const MusicLayerSchema = z.object({
   // total duration counts it like any other track end — the reel is always as
   // long as the furthest-reaching track (see computeTotalDurationMs).
   endMs: Ms.optional(),
+  // Fades are first-class data (same semantics as AudioItem's) so the editor
+  // can edit them and render reads them instead of hardcoded constants.
+  fadeInMs: Ms.optional(),
+  fadeOutMs: Ms.optional(),
 });
 
 export const LayeredReelSchema = z.object({
