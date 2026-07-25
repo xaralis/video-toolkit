@@ -1,0 +1,3 @@
+# lib/render
+
+Shared "at-the-cut" transition engine for layered-model reel renderers (campaign-reels today, roost-reels next), split into two files because core has no `remotion`/`@remotion/transitions` installed: `transition-record.ts` is the pure, Remotion-free "is this a real transition?" gate (`TransitionRecord`, `getTransitionRecord`) and is unit-tested here in core (`lib/editor/src/transition-record.test.ts`); `at-cut-transitions.tsx` is the Remotion engine (`presentationFor`, `TransitionLayer`, `AtCutTransition`, plus a re-export of the pure gate so consumers can import everything from one path) and, since it can't be imported without Remotion installed, is instead verified by render parity in the consuming templates.
