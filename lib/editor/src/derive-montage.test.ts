@@ -68,4 +68,12 @@ describe('deriveMontageLayered', () => {
     const footage = reel.tracks.video.filter((v) => v.kind === 'photo' || v.kind === 'broll');
     expect(footage.every((v) => !v.effects?.some((e) => e.type === 'vintage'))).toBe(true);
   });
+
+  it('falls back to the uniform beat grid for guides when kicks is empty (no mark past the reel end)', () => {
+    const reel = deriveMontageLayered({ ...CFG, kicks: '' });
+    const guides = reel.meta.guidesMs!;
+    expect(guides.length).toBeGreaterThan(0);
+    expect(guides[0]).toBe(0);
+    expect(guides.every((ms) => ms <= reel.meta.totalDurationMs)).toBe(true);
+  });
 });
