@@ -115,7 +115,7 @@ Compatible with both majors (verified by direct probe on zod 3.22.3 and zod 4.4.
 | zod 3.22.3 | `null` | `1` |
 | zod 4.4.3 | `-Infinity` | `1` |
 
-`defaultValueForField` (`lib/reel-config-base/transition-schema.ts:514`) used to read
+`defaultValueForField` (`lib/reel-config-base/transition-schema.ts:515`) used to read
 `inner.minValue ?? 0`. Under zod 4 that would have seeded a **required, unbounded** number
 field with `-Infinity` instead of `0` the moment a catalog kind added one — no catalog kind
 did at the time this was written, so the failure was latent, caught only by
