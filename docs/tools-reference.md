@@ -81,6 +81,23 @@ python3 -m video_toolkit.sync_timing --voiceover-json vo.json # Use voiceover.py
 python3 -m video_toolkit.sync_timing --json                   # Machine-readable output
 ```
 
+## Lottie Motion Graphics
+
+```bash
+# List curated templates and their color/value slots
+python3 -m video_toolkit.lottie list
+
+# Inspect a Lottie file (metadata + validate; --colors lists fill/stroke colors)
+python3 -m video_toolkit.lottie info animation.json --colors
+
+# Build a brand-colored Lottie from a template
+python3 -m video_toolkit.lottie build spinner --brand brands/<brand>/brand.json -o public/lottie/spinner.json
+python3 -m video_toolkit.lottie build progress --set value=60 --color accent=#1d4ed8 -o out.json
+
+# Recolor a sourced Lottie to brand (map old hex → new hex)
+python3 -m video_toolkit.lottie colorize sourced.json --map "#ff0000=#ea580c" -o branded.json
+```
+
 ## Qwen3-TTS (Standalone)
 
 ```bash
