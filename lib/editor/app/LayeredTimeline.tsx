@@ -14,7 +14,7 @@ import {
 } from '../src/timeline/layered-adapter';
 import { stripAccents } from './accent';
 import { useAudioPeaks } from './useAudioPeaks';
-import { Waveform } from './Waveform';
+import { Waveform, VolumeLine } from './Waveform';
 import { MusicEnvelope } from './MusicEnvelope';
 import { computeMusicEnvelope } from '@video-toolkit/lib/reel-config-base/music-envelope';
 
@@ -53,19 +53,61 @@ const EFFECT_COLOR: Record<string, string> = {
 };
 const colorFor = (effectId: string) => EFFECT_COLOR[effectId] ?? '#5a5c64';
 
-// Block label. Overlays show the start of their text (accent markup stripped)
-// so a quote-pull/title reads as its content, not an opaque id; other lanes
-// show the item id.
-function actionLabel(action: TimelineAction, reel: LayeredReel): string {
+// ---- Per-type timeline label ----------------------------------------------
+// Each lane/item type generates its own readable label (source filename, or the
+// start of an overlay's text) instead of an opaque id.
+const basename = (s: string | undefined) => (s ? s.split('/').pop() ?? s : '');
+const snippet = (s: string, n = 22) => {
+  const plain = stripAccents(s).trim();
+  return plain.length > n ? `${plain.slice(0, n).trimEnd()}…` : plain;
+};
+const OVERLAY_KIND_LABEL: Record<string, string> = {
+  'quote-pull': 'QuotePull',
+  chevron: 'Chevron',
+  title: 'Title',
+  'stat-callout': 'Stat',
+  'update-badge': 'Badge',
+  'source-tag': 'Source',
+  'party-logos': 'Logos',
+};
+const VIDEO_KIND_LABEL: Record<string, string> = {
+  clip: 'Clip',
+  broll: 'Broll',
+  'multi-clip': 'Multi',
+  card: 'Card',
+  outro: 'Outro',
+};
+
+function timelineLabel(action: TimelineAction, reel: LayeredReel): string {
   const { lane, id } = parseActionId(action.id);
   if (lane === 'overlays') {
-    const ov = reel.tracks.overlays.find((o) => o.id === id);
-    const text = (ov?.content as { text?: string } | undefined)?.text;
-    if (text && text.trim()) {
-      const plain = stripAccents(text).trim();
-      return plain.length > 24 ? `${plain.slice(0, 24).trimEnd()}…` : plain;
-    }
+    const o = reel.tracks.overlays.find((x) => x.id === id);
+    const c = o?.content as { kind?: string; text?: string } | undefined;
+    const kind = OVERLAY_KIND_LABEL[c?.kind ?? ''] ?? (c?.kind ?? 'Overlay');
+    const text = c?.text?.trim();
+    return text ? `${kind}: ${snippet(text)}` : kind;
   }
+  if (lane === 'video') {
+    const v = reel.tracks.video.find((x) => x.id === id);
+    if (!v) return id;
+    const kind = VIDEO_KIND_LABEL[v.kind] ?? v.kind;
+    const src = basename(v.source);
+    return src ? `${kind} ${v.id}: ${src}` : `${kind} ${v.id}`;
+  }
+  if (lane === 'audio') {
+    const a = reel.tracks.audio.find((x) => x.id === id);
+    const seg = id.replace(/-audio$/, '');
+    return a?.source ? `${seg}: ${basename(a.source)}` : seg;
+  }
+  if (lane === 'music') {
+    const src = basename(reel.tracks.music.source);
+    return src ? `Music: ${src}` : 'Music';
+  }
+  // brand
+  const b = reel.tracks.brand.find((x) => x.id === id);
+  const asset = basename((b?.props as { asset?: string } | undefined)?.asset);
+  if (b?.kind === 'watermark') return asset ? `Logo: ${asset}` : 'Logo';
+  if (b?.kind === 'disclaimer') return 'Disclaimer';
   return id;
 }
 
@@ -244,9 +286,12 @@ export function LayeredTimeline({
                 title={action.id}
               >
                 {wf && <Waveform peaks={wf.peaks} sourceInMs={wf.sourceInMs} spanMs={wf.spanMs} />}
+                {action.id.startsWith('audio:') && (
+                  <VolumeLine volumeDb={reel.tracks.audio.find((a) => `audio:${a.id}` === action.id)?.volumeDb} />
+                )}
                 {action.id.startsWith('music:') && <MusicEnvelope points={envelope.points} totalFrames={totalFrames} />}
                 <span style={{ position: 'relative', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {actionLabel(action, reel)}
+                  {timelineLabel(action, reel)}
                 </span>
               </div>
             );
