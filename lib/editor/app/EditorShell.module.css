@@ -25,6 +25,19 @@
   letter-spacing: 0.01em;
 }
 
+.saveGroup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.unsavedIndicator {
+  font-size: 12px;
+  font-weight: 500;
+  color: #ffb454;
+  letter-spacing: 0.01em;
+}
+
 .saveButton {
   background: #b6ff5a;
   color: #17181c;
@@ -34,6 +47,12 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.saveButtonClean {
+  background: #26282f;
+  color: #6b6f78;
+  cursor: default;
 }
 
 .saveButton:disabled {

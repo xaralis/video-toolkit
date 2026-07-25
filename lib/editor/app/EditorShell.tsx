@@ -10,6 +10,8 @@ export interface EditorShellProps {
   onSave?: () => void;
   /** Disables the Save button while a save is in flight. */
   saving?: boolean;
+  /** Whether there are unsaved edits. Shows an "unsaved" indicator and makes Save look actionable. */
+  dirty?: boolean;
   /** Rendered in the right panel. Falls back to a placeholder when omitted. */
   inspector?: ReactNode;
   /** Rendered in the bottom strip. Falls back to a placeholder when omitted. */
@@ -30,6 +32,7 @@ export function EditorShell({
   projectName,
   onSave,
   saving,
+  dirty,
   inspector,
   timeline,
 }: EditorShellProps) {
@@ -37,14 +40,17 @@ export function EditorShell({
     <div className={styles.shell}>
       <header className={styles.header}>
         <span className={styles.projectName}>{projectName}</span>
-        <button
-          type="button"
-          className={styles.saveButton}
-          onClick={onSave}
-          disabled={saving}
-        >
-          Save
-        </button>
+        <div className={styles.saveGroup}>
+          {dirty && <span className={styles.unsavedIndicator}>● Unsaved changes</span>}
+          <button
+            type="button"
+            className={dirty ? styles.saveButton : `${styles.saveButton} ${styles.saveButtonClean}`}
+            onClick={onSave}
+            disabled={saving}
+          >
+            Save
+          </button>
+        </div>
       </header>
 
       <div className={styles.main}>
