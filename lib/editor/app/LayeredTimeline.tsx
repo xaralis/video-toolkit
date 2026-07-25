@@ -197,6 +197,8 @@ const RULER_H = 32;
 const EDIT_AREA_MARGIN = 10;
 const HEADER_OFFSET = RULER_H + EDIT_AREA_MARGIN; // 42
 const ROW_H = 34;
+// Beat-snap catch radius in screen px (converted to ms via scaleWidth per zoom).
+const SNAP_PX = 8;
 // Transitions are markers at the cut, not full clips — a thinner row keeps
 // the lane visually distinct from the video/audio blocks above and below it.
 const TRANSITIONS_ROW_H = 18;
@@ -225,6 +227,8 @@ export interface LayeredTimelineProps {
    * restored to it (even when the file is a touch shorter, i.e. it holds a frame). */
   savedReel?: LayeredReel | null;
   guidesMs?: number[]; // vertical ruler guide markers (e.g. roost beat onsets)
+  /** Snap a dragged/resized edge to the nearest `guidesMs` beat (snap-on-release). */
+  snapToBeats?: boolean;
 }
 
 function LayeredTimelineImpl({
@@ -240,6 +244,7 @@ function LayeredTimelineImpl({
   onZoom,
   savedReel,
   guidesMs,
+  snapToBeats = false,
 }: LayeredTimelineProps) {
   const stateRef = useRef<TimelineState>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -591,7 +596,16 @@ function LayeredTimelineImpl({
             // Ripple mode: a resize shifts everything beyond the clip so the
             // timeline stays butted (end → right, start → left). Off: plain move.
             // capMsById clamps a right-edge trim at the clip's total length.
-            onChange(applyTimelineChange(reel, d as TimelineRow[], { ripple, footageMsById: capMsById }));
+            // Snap-to-beats: on release, snap the dragged edge to the nearest
+            // beat guide within SNAP_PX screen px (converted to ms via the zoom).
+            onChange(
+              applyTimelineChange(reel, d as TimelineRow[], {
+                ripple,
+                footageMsById: capMsById,
+                snapMs: snapToBeats ? reel.meta.guidesMs : undefined,
+                snapThresholdMs: (SNAP_PX / scaleWidth) * 1000,
+              }),
+            );
             return false; // we drive rendering via the Remotion Player, skip xzdarcy's engine sync
           }}
           // Block drag/resize on locked lanes (returning false cancels it) while

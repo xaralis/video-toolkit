@@ -288,6 +288,54 @@ describe('applyTimelineChange', () => {
   });
 });
 
+describe('applyTimelineChange — snap to beats', () => {
+  const clip = (startMs: number, endMs: number): VideoItem => ({
+    id: 'A', kind: 'clip', startMs, endMs, source: 'a.mp4', sourceInMs: 0, sourceOutMs: endMs - startMs,
+  });
+  const reelWith = (v: VideoItem): LayeredReel => ({
+    ...REEL,
+    meta: { topic: 'x', totalDurationMs: 8000 },
+    tracks: { ...REEL.tracks, video: [v], audio: [], overlays: [], brand: [] },
+  });
+  const dragVideo = (reel: LayeredReel, id: string, startS: number, endS: number) => {
+    const { editorData } = layeredToTimeline(reel, 30);
+    return editorData.map((row) =>
+      row.id === 'video'
+        ? { ...row, actions: row.actions.map((a) => (a.id === `video:${id}` ? { ...a, start: startS, end: endS } : a)) }
+        : row,
+    );
+  };
+
+  it('snaps a MOVE to the nearest beat and preserves span', () => {
+    const reel = reelWith(clip(0, 3000)); // span 3000
+    const rows = dragVideo(reel, 'A', 0.9, 3.9); // move +900 → raw 900..3900
+    const A = applyTimelineChange(reel, rows, { snapMs: [1000], snapThresholdMs: 200 }).tracks.video[0];
+    expect(A).toMatchObject({ startMs: 1000, endMs: 4000 }); // start 900→1000, span kept
+  });
+
+  it('snaps a right-edge TRIM to the nearest beat', () => {
+    const reel = reelWith(clip(0, 3000));
+    const rows = dragVideo(reel, 'A', 0, 4.9); // right trim → raw end 4900
+    const A = applyTimelineChange(reel, rows, { snapMs: [5000], snapThresholdMs: 200 }).tracks.video[0];
+    expect(A.startMs).toBe(0);
+    expect(A.endMs).toBe(5000);
+  });
+
+  it('does not snap when the nearest beat is beyond the threshold', () => {
+    const reel = reelWith(clip(0, 3000));
+    const rows = dragVideo(reel, 'A', 0, 4.5); // raw end 4500, beat 5000 is 500 away
+    const A = applyTimelineChange(reel, rows, { snapMs: [5000], snapThresholdMs: 200 }).tracks.video[0];
+    expect(A.endMs).toBe(4500);
+  });
+
+  it('does not snap when no snapMs is provided (unchanged behavior)', () => {
+    const reel = reelWith(clip(0, 3000));
+    const rows = dragVideo(reel, 'A', 0.9, 3.9);
+    const A = applyTimelineChange(reel, rows).tracks.video[0];
+    expect(A).toMatchObject({ startMs: 900, endMs: 3900 });
+  });
+});
+
 describe('clipFootageCapMs — clip vs broll policy', () => {
   const item = (kind: 'clip' | 'broll' | 'multi-clip'): VideoItem =>
     kind === 'multi-clip'

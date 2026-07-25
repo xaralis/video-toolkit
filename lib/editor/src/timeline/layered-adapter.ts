@@ -275,16 +275,79 @@ function rippleReorder(reel: LayeredReel, movedId: string, newStartMs: number): 
   return { ...reel, tracks: { ...reel.tracks, video } };
 }
 
+// Snap a dragged item's edges to the nearest beat guide within `thresholdMs`.
+// A MOVE (both edges shifted by the same delta) snaps whichever edge lands
+// closest to a beat and preserves the span; a TRIM snaps only the edge that
+// actually moved. Returns `raw` unchanged when nothing is within range — this is
+// snap-ON-RELEASE (the commit seam), since xzdarcy can't take custom live snap
+// points. `beats`/`thresholdMs` empty/absent → caller passes no snapMs → no-op.
+export function snapEdgesToBeats(
+  orig: { startMs: number; endMs: number },
+  raw: { startMs: number; endMs: number },
+  beats: number[],
+  thresholdMs: number,
+): { startMs: number; endMs: number } {
+  if (beats.length === 0 || thresholdMs <= 0) return raw;
+  const nearest = (ms: number): number | null => {
+    let best: number | null = null;
+    let bestD = thresholdMs;
+    for (const b of beats) {
+      const d = Math.abs(b - ms);
+      if (d <= bestD) {
+        bestD = d;
+        best = b;
+      }
+    }
+    return best;
+  };
+  const startMoved = raw.startMs !== orig.startMs;
+  const endMoved = raw.endMs !== orig.endMs;
+  const isMove = startMoved && endMoved && raw.startMs - orig.startMs === raw.endMs - orig.endMs;
+  if (isMove) {
+    const span = raw.endMs - raw.startMs;
+    const snapS = nearest(raw.startMs);
+    const snapE = nearest(raw.endMs);
+    const dS = snapS === null ? Infinity : Math.abs(snapS - raw.startMs);
+    const dE = snapE === null ? Infinity : Math.abs(snapE - raw.endMs);
+    if (dS === Infinity && dE === Infinity) return raw;
+    return dS <= dE ? { startMs: snapS!, endMs: snapS! + span } : { startMs: snapE! - span, endMs: snapE! };
+  }
+  // Trim: snap only the edge that moved.
+  let s = raw.startMs;
+  let e = raw.endMs;
+  if (startMoved) {
+    const b = nearest(raw.startMs);
+    if (b !== null) s = b;
+  }
+  if (endMoved) {
+    const b = nearest(raw.endMs);
+    if (b !== null) e = b;
+  }
+  return { startMs: s, endMs: e };
+}
+
 export function applyTimelineChange(
   reel: LayeredReel,
   rows: TLRow[],
-  opts: { ripple?: boolean; footageMsById?: Record<string, number> } = {},
+  opts: { ripple?: boolean; footageMsById?: Record<string, number>; snapMs?: number[]; snapThresholdMs?: number } = {},
 ): LayeredReel {
   const byId = new Map<string, TLAction>();
   for (const r of rows) for (const a of r.actions) byId.set(a.id, a);
+  // Original edges per action, so a drag/resize can be snapped to the beat grid
+  // (needs to know which edge moved, and the pre-drag span).
+  const origById = new Map<string, { startMs: number; endMs: number }>();
+  for (const v of reel.tracks.video) origById.set(`video:${v.id}`, { startMs: v.startMs, endMs: v.endMs });
+  for (const a of reel.tracks.audio) origById.set(`audio:${a.id}`, { startMs: a.startMs, endMs: a.endMs });
+  for (const o of reel.tracks.overlays) origById.set(`overlays:${o.id}`, { startMs: o.startMs, endMs: o.endMs });
+  for (const b of reel.tracks.brand) origById.set(`brand:${b.id}`, { startMs: b.startMs, endMs: b.endMs });
+  const snap = opts.snapMs && opts.snapMs.length > 0 && (opts.snapThresholdMs ?? 0) > 0;
   const newMs: NewMs = (lane, id) => {
     const a = byId.get(`${lane}:${id}`);
-    return a ? { startMs: Math.round(a.start * MS), endMs: Math.round(a.end * MS) } : null;
+    if (!a) return null;
+    const raw = { startMs: Math.round(a.start * MS), endMs: Math.round(a.end * MS) };
+    if (!snap) return raw;
+    const orig = origById.get(`${lane}:${id}`);
+    return orig ? snapEdgesToBeats(orig, raw, opts.snapMs!, opts.snapThresholdMs!) : raw;
   };
 
   // Trim-linked resize: a clip's left edge reveals earlier footage (clamped at
