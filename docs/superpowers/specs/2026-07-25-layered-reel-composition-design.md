@@ -74,8 +74,13 @@ cover the whole assembly:
   - `anchored` — NOT rendered on the track; delivered to the owning video
     item's renderer via `VideoRenderProps.anchoredOverlays` (campaign `title`,
     whose caption-lift logic lives inside the footage body).
-  - `singleton` — mounted once, outside any per-item Sequence (campaign
-    `chevron`).
+  - `singleton` — mounted once, outside any per-item Sequence; a kind routed
+    this way yields at most one node (the first item of that kind).
+    **No brand currently uses this mode.** It was introduced for campaign's
+    `chevron`, but a reel may legitimately carry several chevrons at different
+    points on the timeline, so chevron routes on the `track` instead (each item
+    gets its own Sequence and animates in its own window). Kept for genuinely
+    once-per-reel chrome; a candidate for removal under YAGNI if nothing adopts it.
   Core knows the *modes*, never the kind names — a brand declares which of its
   kinds routes which way.
 - `renderBrandTrack?: (items: BrandLayerItem[]) => ReactNode` — one hook, the
