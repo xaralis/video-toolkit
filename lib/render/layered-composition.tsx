@@ -100,8 +100,13 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
       {musicSource && (
         <Audio src={musicSource.startsWith('http') ? musicSource : staticFile(musicSource)} volume={volumeAt} />
       )}
-      {overlayNodes}
+      {/* Singletons paint UNDER the overlay track: a singleton is an ambient,
+          once-per-reel marker (e.g. a category chevron), while track overlays are
+          content callouts that must win an overlap. This order is the reference
+          campaign composition's (chevron before overlayNodes) — keeping it makes
+          parity structural instead of a coincidence of current placement geometry. */}
       {singletonNodes}
+      {overlayNodes}
       {theme.renderBrandTrack ? theme.renderBrandTrack(reel.tracks.brand) : null}
     </AbsoluteFill>
   );
