@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rewriteDefaultProps, readDefaultProps } from './default-props-writer';
+import { rewriteDefaultProps, readDefaultProps, updateDefaultPropsSurgically } from './default-props-writer';
 
 const ROOT = `import { Composition } from 'remotion';
 import { CampaignReel } from './CampaignReel';
@@ -76,6 +76,93 @@ describe('rewriteDefaultProps disambiguation & errors', () => {
   });
 });
 
+const AS_CONST_ROOT = `import { Composition } from 'remotion';
+import { CampaignReel } from './CampaignReel';
+
+export const RemotionRoot = () => {
+  return (
+    <Composition
+      id="CampaignReel"
+      component={CampaignReel}
+      defaultProps={{
+        topic: 'Demo',
+        audioMode: 'silent' as const,
+        segments: [
+          { id: 's1', type: 'clip', trimIn: 0, trimOut: 3 },
+        ] as const,
+      }}
+      fps={30}
+      width={1080}
+      height={1920}
+    />
+  );
+};
+`;
+
+const AS_CONST_WHOLE_OBJECT_ROOT = `import { Composition } from 'remotion';
+import { CampaignReel } from './CampaignReel';
+
+export const RemotionRoot = () => {
+  return (
+    <Composition
+      id="CampaignReel"
+      component={CampaignReel}
+      defaultProps={{
+        topic: 'Demo',
+        audioMode: 'silent',
+      } as const}
+      fps={30}
+      width={1080}
+      height={1920}
+    />
+  );
+};
+`;
+
+const SATISFIES_ROOT = `import { Composition } from 'remotion';
+import { CampaignReel } from './CampaignReel';
+
+export const RemotionRoot = () => {
+  return (
+    <Composition
+      id="CampaignReel"
+      component={CampaignReel}
+      defaultProps={{
+        topic: 'Demo',
+        audioMode: 'silent',
+      } satisfies Record<string, unknown>}
+      fps={30}
+      width={1080}
+      height={1920}
+    />
+  );
+};
+`;
+
+describe('readDefaultProps with TypeScript type-assertion wrappers', () => {
+  it('unwraps a scalar "as const" (audioMode) and a "as const" array (segments)', () => {
+    expect(readDefaultProps(AS_CONST_ROOT, { compositionId: 'CampaignReel' })).toEqual({
+      topic: 'Demo',
+      audioMode: 'silent',
+      segments: [{ id: 's1', type: 'clip', trimIn: 0, trimOut: 3 }],
+    });
+  });
+
+  it('unwraps a whole-object "as const" wrapping the entire defaultProps literal', () => {
+    expect(readDefaultProps(AS_CONST_WHOLE_OBJECT_ROOT, { compositionId: 'CampaignReel' })).toEqual({
+      topic: 'Demo',
+      audioMode: 'silent',
+    });
+  });
+
+  it('unwraps a "satisfies" expression', () => {
+    expect(readDefaultProps(SATISFIES_ROOT, { compositionId: 'CampaignReel' })).toEqual({
+      topic: 'Demo',
+      audioMode: 'silent',
+    });
+  });
+});
+
 const COMPUTED_KEY = `import { Composition } from 'remotion';
 export const Root = () => (
   <Composition id="A" component={A} defaultProps={{ [k]: 'x' }} fps={30} width={1} height={1} />
@@ -102,5 +189,224 @@ describe('evaluateLiteral safety', () => {
     // The result's actual prototype must remain Object.prototype — not reassigned to `1`.
     expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
     expect(result).toEqual(withProto);
+  });
+});
+
+const SURGICAL_ROOT = `import { Composition } from 'remotion';
+import { CampaignReel } from './CampaignReel';
+
+export const RemotionRoot = () => {
+  return (
+    <Composition
+      id="CampaignReel"
+      component={CampaignReel}
+      defaultProps={{
+        // reel meta
+        topic: 'Klima' as const,
+        chevron: 'KLIMA' as const,
+        segments: [
+          // ── Úsek 1 ──
+          { id: 's1', type: 'clip' as const, trimIn: 0, trimOut: 3, overlays: [ { kind: 'quote-pull' as const, text: 'A {lime:b}.' } ] },
+          { id: 's2', type: 'broll' as const, trimIn: 0, trimOut: 4 },
+        ] as const,
+      }}
+      fps={30}
+      width={1080}
+      height={1920}
+    />
+  );
+};
+`;
+
+describe('updateDefaultPropsSurgically', () => {
+  it('changes only chevron, preserving comments and as const elsewhere', () => {
+    const current = readDefaultProps(SURGICAL_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = { ...current, chevron: 'DOPRAVA' };
+
+    const out = updateDefaultPropsSurgically(SURGICAL_ROOT, next, { compositionId: 'CampaignReel' });
+
+    expect(out).toContain('// reel meta');
+    expect(out).toContain('// ── Úsek 1 ──');
+    expect(out).toContain("topic: 'Klima' as const");
+    expect(out).toContain('] as const');
+    expect(out).toContain("type: 'clip' as const");
+    expect(out).toContain("type: 'broll' as const");
+    expect(out).toContain('"DOPRAVA" as const');
+    expect(out).not.toContain('KLIMA');
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+
+  it('changes only segments[0].trimOut, preserving comments and as const elsewhere', () => {
+    const current = readDefaultProps(SURGICAL_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    next.segments[0].trimOut = 5;
+
+    const out = updateDefaultPropsSurgically(SURGICAL_ROOT, next, { compositionId: 'CampaignReel' });
+
+    expect(out).toContain('// reel meta');
+    expect(out).toContain('// ── Úsek 1 ──');
+    expect(out).toContain("topic: 'Klima' as const");
+    expect(out).toContain("chevron: 'KLIMA' as const");
+    expect(out).toContain("type: 'clip' as const");
+    expect(out).toContain('trimOut: 5');
+    expect(out).not.toContain('trimOut: 3');
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+
+  it('changes only segments[0].overlays[0].text, preserving comments and as const elsewhere', () => {
+    const current = readDefaultProps(SURGICAL_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    next.segments[0].overlays[0].text = 'X {teal:y}.';
+
+    const out = updateDefaultPropsSurgically(SURGICAL_ROOT, next, { compositionId: 'CampaignReel' });
+
+    expect(out).toContain('// reel meta');
+    expect(out).toContain('// ── Úsek 1 ──');
+    expect(out).toContain("kind: 'quote-pull' as const");
+    expect(out).toContain('X {teal:y}.');
+    expect(out).not.toContain('A {lime:b}.');
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+
+  it('returns the source unchanged when newProps is deep-equal to current props (no-op)', () => {
+    const current = readDefaultProps(SURGICAL_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+
+    const out = updateDefaultPropsSurgically(SURGICAL_ROOT, next, { compositionId: 'CampaignReel' });
+
+    expect(out).toBe(SURGICAL_ROOT);
+  });
+
+  it('falls back to replacing the whole array when its length changes (documented limitation)', () => {
+    const current = readDefaultProps(SURGICAL_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    next.segments.push({ id: 's3', type: 'card', trimIn: 0, trimOut: 2 });
+
+    const out = updateDefaultPropsSurgically(SURGICAL_ROOT, next, { compositionId: 'CampaignReel' });
+
+    // Sibling top-level comments/as const survive; the segments array itself is fully regenerated
+    // (adding/removing elements is not surgically diffable — see function doc comment).
+    expect(out).toContain('// reel meta');
+    expect(out).toContain("topic: 'Klima' as const");
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+
+  it('round-trips through readDefaultProps on a plain (non-as-const) fixture', () => {
+    const current = readDefaultProps(ROOT, { compositionId: undefined }) as any;
+    const next = { ...current, topic: 'Nájmy' };
+
+    const out = updateDefaultPropsSurgically(ROOT, next);
+
+    expect(out).toContain("import { CampaignReel } from './CampaignReel'");
+    expect(out).toContain('calculateMetadata');
+    expect(readDefaultProps(out)).toEqual(next);
+  });
+});
+
+const ADD_KEY_ROOT = `import { Composition } from 'remotion';
+import { CampaignReel } from './CampaignReel';
+
+export const RemotionRoot = () => {
+  return (
+    <Composition
+      id="CampaignReel"
+      component={CampaignReel}
+      defaultProps={{
+        topic: 'Klima' as const,
+        segments: [
+          // ── Úsek 1 ──
+          { id: 's1', type: 'clip' as const, trimIn: 0, trimOut: 3, focalX: 0.85, audioMode: 'voice' as const },
+          { id: 's2', type: 'broll' as const, trimIn: 0, trimOut: 4 },
+        ] as const,
+      }}
+      fps={30}
+      width={1080}
+      height={1920}
+    />
+  );
+};
+`;
+
+const NESTED_ADD_KEY_ROOT = `import { Composition } from 'remotion';
+import { CampaignReel } from './CampaignReel';
+
+export const RemotionRoot = () => {
+  return (
+    <Composition
+      id="CampaignReel"
+      component={CampaignReel}
+      defaultProps={{
+        topic: 'Klima' as const,
+        segments: [
+          // ── Úsek 1 ──
+          { id: 's1', type: 'clip' as const, trimIn: 0, trimOut: 3, crop: { x: 0.1 }, audioMode: 'voice' as const },
+        ] as const,
+      }}
+      fps={30}
+      width={1080}
+      height={1920}
+    />
+  );
+};
+`;
+
+describe('updateDefaultPropsSurgically — adding a new key (superset)', () => {
+  it('inserts a new key into an existing object literal, preserving siblings’ comments + as const', () => {
+    const current = readDefaultProps(ADD_KEY_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    next.segments[0].focalY = 0.3;
+
+    const out = updateDefaultPropsSurgically(ADD_KEY_ROOT, next, { compositionId: 'CampaignReel' });
+
+    expect(out).toContain('focalY: 0.3');
+    expect(out).toContain("type: 'clip' as const");
+    expect(out).toContain("audioMode: 'voice' as const");
+    expect(out).toContain('// ── Úsek 1 ──');
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+
+  it('applies a value change AND a new key in the same object in one call, both surgically', () => {
+    const current = readDefaultProps(ADD_KEY_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    next.segments[0].trimOut = 5;
+    next.segments[0].focalY = 0.3;
+
+    const out = updateDefaultPropsSurgically(ADD_KEY_ROOT, next, { compositionId: 'CampaignReel' });
+
+    expect(out).toContain('trimOut: 5');
+    expect(out).not.toContain('trimOut: 3');
+    expect(out).toContain('focalY: 0.3');
+    expect(out).toContain("type: 'clip' as const");
+    expect(out).toContain("audioMode: 'voice' as const");
+    expect(out).toContain('// ── Úsek 1 ──');
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+
+  it('inserts a new key into a nested object literal (crop.y), preserving outer as const/comments', () => {
+    const current = readDefaultProps(NESTED_ADD_KEY_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    next.segments[0].crop.y = 0.2;
+
+    const out = updateDefaultPropsSurgically(NESTED_ADD_KEY_ROOT, next, { compositionId: 'CampaignReel' });
+
+    expect(out).toContain('y: 0.2');
+    expect(out).toContain('x: 0.1');
+    expect(out).toContain("type: 'clip' as const");
+    expect(out).toContain("audioMode: 'voice' as const");
+    expect(out).toContain('// ── Úsek 1 ──');
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
+  });
+
+  it('still falls back to whole-node replace when a key is removed (value-wise correct)', () => {
+    const current = readDefaultProps(ADD_KEY_ROOT, { compositionId: 'CampaignReel' }) as any;
+    const next = JSON.parse(JSON.stringify(current));
+    delete next.segments[0].focalX;
+
+    const out = updateDefaultPropsSurgically(ADD_KEY_ROOT, next, { compositionId: 'CampaignReel' });
+
+    // Whole-node replace only touches s1; sibling top-level props/comments still survive.
+    expect(out).toContain("topic: 'Klima' as const");
+    expect(out).toContain('// ── Úsek 1 ──');
+    expect(readDefaultProps(out, { compositionId: 'CampaignReel' })).toEqual(next);
   });
 });

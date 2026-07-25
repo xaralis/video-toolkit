@@ -45,6 +45,22 @@ We build a **purpose-built browser editor** on the free `@remotion/player`, over
 
 ## Architecture
 
+### App-hosting decision (resolved by Plan 2 spike, 2026-07-20)
+
+A browser-verified spike mounted the real `campaign-reels` composition in `@remotion/player`
+end-to-end (real fonts, Tailwind v4, brand-lib overlays, real footage, outro stinger). Result:
+**the editor app is template-hosted.** Core (`lib/editor`) ships the reusable UI components + logic
+(the save spine, and the future React editor UI); the **template carries a thin Vite host** — an
+entry + `vite.config.mts` — that imports core's editor UI and its own composition. The Vite host
+needs a near-1:1 port of `remotion.config.ts`'s existing webpack wiring: manual `resolve.alias` for
+`@video-toolkit/lib` / `@brand-lib` / `zod$` (tsconfig-paths auto-discovery does NOT work — brand-lib
+imports toolkit-lib from outside any project's `src/` include glob), `@tailwindcss/vite` for Tailwind
+v4, `import` of `global.css`, and `publicDir` → the project's `public/` (fonts load at runtime via
+`staticFile()`, needing no bundler config). The config file must be `.mts` (the template's
+`package.json` has no `"type": "module"`, and the Vite plugins are ESM-only). A core-hosted app was
+rejected: it needs all the same wiring but dynamic/parameterized per project, i.e. strictly more
+moving parts for the same result. This concretizes decision #1 below ("running in project context").
+
 ### Two load-bearing decisions (resolved)
 
 1. **Editor UI lives in core; it runs in the context of a project.** The editor is reusable

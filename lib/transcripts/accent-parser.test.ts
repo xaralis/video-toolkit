@@ -23,9 +23,17 @@ describe('parseAccents', () => {
       { text: '.',         color: null },
     ]);
   });
-  it('ignores unknown color names — kept as literal', () => {
-    expect(parseAccents('Plain {purple:bad}.')).toEqual([
-      { text: 'Plain {purple:bad}.', color: null },
+  it('parses a brand-declared key beyond lime/teal (e.g. a new slot)', () => {
+    expect(parseAccents('Plain {gold:hi}.')).toEqual([
+      { text: 'Plain ', color: null },
+      { text: 'hi', color: 'gold' },
+      { text: '.', color: null },
+    ]);
+  });
+
+  it('does not match a key that does not start with a letter', () => {
+    expect(parseAccents('Plain {1nvalid:bad}.')).toEqual([
+      { text: 'Plain {1nvalid:bad}.', color: null },
     ]);
   });
 });
@@ -49,5 +57,17 @@ describe('applyBrandEndpoint', () => {
   it('leaves trailing `!` and `?` alone (authorial signal)', () => {
     expect(applyBrandEndpoint('Hello!')).toBe('Hello!');
     expect(applyBrandEndpoint('Hello?')).toBe('Hello?');
+  });
+
+  it('wraps the endpoint in an explicitly-given brand slot key', () => {
+    expect(applyBrandEndpoint('x.', 'coal')).toBe('x{coal:.}');
+  });
+
+  it('disables the rule when endpointKey is explicitly undefined', () => {
+    expect(applyBrandEndpoint('x.', undefined)).toBe('x.');
+  });
+
+  it('disables the rule when endpointKey is explicitly empty', () => {
+    expect(applyBrandEndpoint('x.', '')).toBe('x.');
   });
 });

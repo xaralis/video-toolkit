@@ -6,17 +6,34 @@ export const TransitionFrames = z
   .number()
   .min(1)
   .max(60)
-  .describe('Transition length in FRAMES (30fps reel → 30 frames = 1 sec). Adjacent segments overlap by this many frames.');
+  .describe('Transition length in FRAMES (30fps reel → 30 frames = 1 sec). Rendered at the cut using handle frames from both sides.');
+
+const Direction4 = z.enum(['left', 'right', 'up', 'down']);
 
 export const TransitionSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('cut') }),
+  z.object({ kind: z.literal('fade'), frames: TransitionFrames }),
   z.object({ kind: z.literal('dissolve'), frames: TransitionFrames }),
   z.object({ kind: z.literal('fade-coal'), frames: TransitionFrames }),
   z.object({ kind: z.literal('glitch'), frames: TransitionFrames }),
   z.object({
+    kind: z.literal('burn'),
+    frames: TransitionFrames,
+    // Optional brand-supplied look: cloud mask image, hot-edge glow colour, and
+    // burn-edge shaping. Absent mask → plain opacity reveal.
+    mask: z.string().optional().describe('Cloud-texture mask image (staticFile path).'),
+    glowColor: z.string().optional().describe('Hot burn-edge glow colour (hex).'),
+    edgeContrast: z.number().optional().describe('Burn-edge hardness. Default 14.'),
+    glowBand: z.number().optional().describe('Glow lead distance in luma. Default 0.1.'),
+  }),
+  z.object({ kind: z.literal('clock-wipe'), frames: TransitionFrames }),
+  z.object({ kind: z.literal('iris'), frames: TransitionFrames }),
+  z.object({ kind: z.literal('slide'), frames: TransitionFrames, direction: Direction4 }),
+  z.object({ kind: z.literal('flip'), frames: TransitionFrames, direction: Direction4 }),
+  z.object({
     kind: z.literal('whip-pan'),
     frames: TransitionFrames,
-    direction: z.enum(['left', 'right', 'up', 'down']),
+    direction: Direction4,
   }),
   z.object({
     kind: z.literal('zoom-through'),

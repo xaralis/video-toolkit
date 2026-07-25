@@ -1,14 +1,12 @@
 // Base TS types matching the BASE schemas (no caption, no overlays, no aiGenerated).
 // Templates extend with their own per-template additions.
+import type { z } from 'zod';
+import type { TransitionSchema } from './transition-schema';
 
-export type Transition =
-  | { kind: 'cut' }
-  | { kind: 'dissolve'; frames: number }
-  | { kind: 'fade-coal'; frames: number }
-  | { kind: 'glitch'; frames: number }
-  | { kind: 'whip-pan'; frames: number; direction: 'left' | 'right' | 'up' | 'down' }
-  | { kind: 'zoom-through'; frames: number; from: 'in' | 'out' }
-  | { kind: 'wipe'; frames: number; color: 'lime' | 'teal' | 'coal'; direction: 'left' | 'right' };
+// Derived from the zod schema so the two can never drift (the hand-written
+// union used to lag behind TransitionSchema's kinds — fade/clock-wipe/iris/
+// slide/flip/gradient-wipe were missing, breaking segment transitionOut types).
+export type Transition = z.infer<typeof TransitionSchema>;
 
 export interface Crop {
   width: number;
