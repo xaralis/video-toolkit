@@ -10,7 +10,10 @@ export interface OverlayRenderProps {
   text: string;
   placement: Placement;
   fontSize?: number;
-  reveal?: 'line' | 'all';
+  /** Appear animation. 'none' = shown instantly (no reveal). */
+  reveal?: 'line' | 'all' | 'none';
+  /** Disappear animation. 'fade' = fade out at the end; 'none' = cut (no hide). */
+  hide?: 'fade' | 'none';
   /** Brand palette; renderers resolve keys→hex via paletteMap/resolveAccentColor. */
   palette: AccentSlot[];
   /** Opaque brand-level config threaded down by the root from the theme. */
