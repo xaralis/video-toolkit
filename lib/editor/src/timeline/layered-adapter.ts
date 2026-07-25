@@ -202,3 +202,77 @@ export function applyTimelineChange(reel: LayeredReel, rows: TLRow[], opts: { ri
     },
   };
 }
+
+// Delete the selected timeline item. A video clip also removes its bound audio
+// item; a transition marker just clears the clip's transitionOut/In (→ cut). In
+// ripple mode the gap is closed (items after the removed clip shift left by its
+// duration); otherwise a gap is left. Returns the reel unchanged if not found.
+export function deleteItem(reel: LayeredReel, selectedId: string, opts: { ripple?: boolean } = {}): LayeredReel {
+  const { lane, id, edge } = parseActionId(selectedId);
+
+  if (lane === 'transitions') {
+    const field = edge === 'in' ? 'transitionIn' : 'transitionOut';
+    return {
+      ...reel,
+      tracks: { ...reel.tracks, video: reel.tracks.video.map((v) => (v.id === id ? { ...v, [field]: { kind: 'cut' } } : v)) },
+    };
+  }
+  if (lane === 'music') return reel; // the single music bed isn't deletable
+
+  const track = reel.tracks[lane] as ReadonlyArray<{ id: string; startMs: number; endMs: number }>;
+  const item = track.find((x) => x.id === id);
+  if (!item) return reel;
+  const gap = item.endMs - item.startMs;
+
+  const removeIds = new Set<string>([id]);
+  if (lane === 'video') for (const a of reel.tracks.audio) if (a.followsVideoId === id) removeIds.add(a.id);
+
+  const prune = <T extends { id: string; startMs: number; endMs: number }>(arr: T[]): T[] =>
+    arr
+      .filter((x) => !removeIds.has(x.id))
+      .map((x) => (opts.ripple && x.startMs >= item.endMs ? { ...x, startMs: x.startMs - gap, endMs: x.endMs - gap } : x));
+
+  const tracks = {
+    ...reel.tracks,
+    video: prune(reel.tracks.video),
+    overlays: prune(reel.tracks.overlays),
+    audio: prune(reel.tracks.audio),
+    brand: prune(reel.tracks.brand),
+  };
+  const totalMs = Math.max(0, ...tracks.video.map((v) => v.endMs));
+  return { ...reel, meta: { ...reel.meta, totalDurationMs: totalMs }, tracks };
+}
+
+// Split (razor) a clip/broll at the playhead into two butted pieces, each with
+// its own trim window. The bound audio item is split at the same point. The
+// right piece inherits the outgoing transition (the left gets a hard cut at the
+// split); the opening transitionIn stays on the left. No-op if the playhead
+// isn't inside the clip, or the item isn't a single-source clip/broll.
+export function splitItem(reel: LayeredReel, selectedId: string, atFrame: number, fps: number): LayeredReel {
+  const { lane, id } = parseActionId(selectedId);
+  if (lane !== 'video') return reel;
+  const idx = reel.tracks.video.findIndex((v) => v.id === id);
+  if (idx < 0) return reel;
+  const v = reel.tracks.video[idx];
+  if (v.kind !== 'clip' && v.kind !== 'broll') return reel;
+  const atMs = Math.round((atFrame / fps) * 1000);
+  if (atMs <= v.startMs + 1 || atMs >= v.endMs - 1) return reel; // playhead not inside
+  const leftDur = atMs - v.startMs;
+  const rightId = `${v.id}-b`;
+  const cut = v.sourceInMs + leftDur;
+
+  const left: VideoItem = { ...v, endMs: atMs, sourceOutMs: cut, transitionOut: { kind: 'cut' } };
+  const right: VideoItem = { ...v, id: rightId, startMs: atMs, sourceInMs: cut, transitionIn: undefined };
+
+  const video = [...reel.tracks.video.slice(0, idx), left, right, ...reel.tracks.video.slice(idx + 1)];
+
+  const audio = reel.tracks.audio.flatMap((a) => {
+    if (a.followsVideoId !== id || atMs <= a.startMs || atMs >= a.endMs) return [a];
+    return [
+      { ...a, endMs: atMs },
+      { ...a, id: `${a.id}-b`, startMs: atMs, sourceInMs: a.sourceInMs + (atMs - a.startMs), followsVideoId: rightId },
+    ];
+  });
+
+  return { ...reel, tracks: { ...reel.tracks, video, audio } };
+}

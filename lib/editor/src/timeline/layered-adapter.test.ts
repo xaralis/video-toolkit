@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
-import { layeredToTimeline, applyTimelineChange, parseActionId } from './layered-adapter';
+import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem } from './layered-adapter';
 
 // Small schema-valid LayeredReel fixture: one item per track.
 const REEL: LayeredReel = {
@@ -255,6 +255,66 @@ describe('applyTimelineChange', () => {
     expect(result.tracks.video.find((v) => v.id === 'B')!.startMs).toBe(4000);
     // A is trimmed to butt against B — it really ends earlier, no overlap.
     expect(result.tracks.video.find((v) => v.id === 'A')!.endMs).toBe(4000);
+  });
+});
+
+describe('deleteItem', () => {
+  const reel: LayeredReel = {
+    ...REEL,
+    meta: { topic: 'x', totalDurationMs: 9000 },
+    tracks: {
+      ...REEL.tracks,
+      video: [
+        { id: 'A', kind: 'clip', startMs: 0, endMs: 5000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 5000 },
+        { id: 'B', kind: 'clip', startMs: 5000, endMs: 9000, source: 'b.mp4', sourceInMs: 0, sourceOutMs: 4000 },
+      ],
+      audio: [{ id: 'A-audio', startMs: 0, endMs: 5000, source: 'a.mp4', sourceInMs: 0, followsVideoId: 'A' }],
+    },
+  };
+  it('removes the clip + its bound audio, leaving a gap (ripple off)', () => {
+    const r = deleteItem(reel, 'video:A');
+    expect(r.tracks.video.map((v) => v.id)).toEqual(['B']);
+    expect(r.tracks.audio).toHaveLength(0);
+    expect(r.tracks.video[0].startMs).toBe(5000); // B unchanged → gap left
+  });
+  it('ripple closes the gap after the removed clip', () => {
+    const r = deleteItem(reel, 'video:A', { ripple: true });
+    expect(r.tracks.video[0]).toMatchObject({ id: 'B', startMs: 0, endMs: 4000 });
+    expect(r.meta.totalDurationMs).toBe(4000);
+  });
+  it('deleting a transition marker clears the clip transition (→ cut)', () => {
+    const reelT: LayeredReel = {
+      ...reel,
+      tracks: { ...reel.tracks, video: [{ ...reel.tracks.video[0], transitionOut: { kind: 'dissolve', frames: 12 } }, reel.tracks.video[1]] },
+    };
+    const r = deleteItem(reelT, 'transition:A');
+    expect((r.tracks.video[0].transitionOut as { kind?: string }).kind).toBe('cut');
+  });
+});
+
+describe('splitItem', () => {
+  const reel: LayeredReel = {
+    ...REEL,
+    meta: { topic: 'x', totalDurationMs: 6000 },
+    tracks: {
+      ...REEL.tracks,
+      video: [{ id: 'A', kind: 'clip', startMs: 0, endMs: 6000, source: 'a.mp4', sourceInMs: 1000, sourceOutMs: 7000 }],
+      audio: [{ id: 'A-audio', startMs: 0, endMs: 6000, source: 'a.mp4', sourceInMs: 1000, followsVideoId: 'A' }],
+    },
+  };
+  it('splits a clip at the playhead into two butted pieces, each with its own trim', () => {
+    const r = splitItem(reel, 'video:A', 60, 30); // frame 60 @ 30fps = 2000ms
+    const [l, right] = r.tracks.video;
+    expect(l).toMatchObject({ id: 'A', startMs: 0, endMs: 2000 });
+    expect(l.kind === 'clip' && l.sourceOutMs).toBe(3000); // 1000 + 2000
+    expect(right).toMatchObject({ id: 'A-b', startMs: 2000, endMs: 6000 });
+    expect(right.kind === 'clip' && right.sourceInMs).toBe(3000);
+    // bound audio split too
+    expect(r.tracks.audio.map((a) => a.id)).toEqual(['A-audio', 'A-audio-b']);
+    expect(r.tracks.audio[1]).toMatchObject({ startMs: 2000, sourceInMs: 3000, followsVideoId: 'A-b' });
+  });
+  it('is a no-op when the playhead is outside the clip', () => {
+    expect(splitItem(reel, 'video:A', 300, 30).tracks.video).toHaveLength(1); // frame 300 = 10s, past the clip
   });
 });
 
