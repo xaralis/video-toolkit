@@ -62,8 +62,12 @@ describe('deriveMontageLayered', () => {
     expect(kf).toEqual([14, 42, 59]);
     expect(kf.every(Number.isInteger)).toBe(true);
 
-    // guides from kicks (seconds → ms, precise positions)
-    expect(reel.meta.guidesMs).toEqual([459, 1397, 1952]);
+    // guides = the BEAT GRID (every fpb=24 frames → 800ms), matching where the
+    // montage cuts clips — NOT the irregular kick onsets. fpb = round(30·60/76.015)
+    // = 24; totalF = 252 → k·24 frames for k=0..10 → k·800 ms.
+    expect(reel.meta.guidesMs).toEqual([0, 800, 1600, 2400, 3200, 4000, 4800, 5600, 6400, 7200, 8000]);
+    // kick onsets are NOT the guides; they drive the outro heartbeat instead.
+    expect((outro as { props?: { kickFrames?: number[] } }).props?.kickFrames).toEqual([14, 42, 59]);
   });
 
   it('omits vintage effects when cfg.vintage is null', () => {
@@ -72,11 +76,13 @@ describe('deriveMontageLayered', () => {
     expect(footage.every((v) => !v.effects?.some((e) => e.type === 'vintage'))).toBe(true);
   });
 
-  it('falls back to the uniform beat grid for guides when kicks is empty (no mark past the reel end)', () => {
+  it('guides are the beat grid regardless of kicks, and never mark past the reel end', () => {
     const reel = deriveMontageLayered({ ...CFG, kicks: '' });
     const guides = reel.meta.guidesMs!;
-    expect(guides.length).toBeGreaterThan(0);
+    const withKicks = deriveMontageLayered(CFG).meta.guidesMs!;
+    expect(guides).toEqual(withKicks); // kicks don't change the guide grid
     expect(guides[0]).toBe(0);
+    expect(guides.every((ms, i) => i === 0 || ms - guides[i - 1] === 800)).toBe(true); // even beat spacing
     expect(guides.every((ms) => ms <= reel.meta.totalDurationMs)).toBe(true);
   });
 });
