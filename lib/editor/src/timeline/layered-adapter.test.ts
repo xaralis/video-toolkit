@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { LayeredReel, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
-import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem, duplicateItem, clipFootageCapMs } from './layered-adapter';
+import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem, duplicateItem, clipFootageCapMs, resizeBoundsMs } from './layered-adapter';
 
 // Small schema-valid LayeredReel fixture: one item per track.
 const REEL: LayeredReel = {
@@ -276,6 +276,50 @@ describe('clipFootageCapMs — clip vs broll policy', () => {
   });
   it('never caps a multi-clip (no single trim source)', () => {
     expect(clipFootageCapMs(item('multi-clip'), 8042)).toBeUndefined();
+  });
+});
+
+describe('resizeBoundsMs — real-time drag bounds', () => {
+  const clip = (over: Partial<{ startMs: number; sourceInMs: number }> = {}): VideoItem => ({
+    id: 'A', kind: 'clip', startMs: over.startMs ?? 5000, endMs: 10000, source: 's.mp4',
+    sourceInMs: over.sourceInMs ?? 0, sourceOutMs: 5000,
+  });
+
+  it('left bound is the source head (start - sourceIn)', () => {
+    const b = resizeBoundsMs(clip({ startMs: 5000, sourceInMs: 1200 }), 20000, undefined);
+    expect(b!.minStartMs).toBe(3800); // 5000 - 1200 → can reveal 1200ms of earlier footage
+  });
+
+  it('right bound is the footage end when no next clip', () => {
+    const b = resizeBoundsMs(clip({ startMs: 5000, sourceInMs: 0 }), 8000, undefined);
+    expect(b!.maxEndMs).toBe(13000); // 5000 + (8000 - 0)
+  });
+
+  it('right bound is the NEARER of footage end and the next clip start', () => {
+    const nearNext = resizeBoundsMs(clip({ startMs: 5000, sourceInMs: 0 }), 8000, 11000);
+    expect(nearNext!.maxEndMs).toBe(11000); // next clip wall is closer than footage end (13000)
+    const nearFootage = resizeBoundsMs(clip({ startMs: 5000, sourceInMs: 0 }), 8000, 20000);
+    expect(nearFootage!.maxEndMs).toBe(13000); // footage end is closer than the far next clip
+  });
+
+  it('a drift clip (sourceOut past the real file) gets a right bound below its current end', () => {
+    // seg-002: startMs 5367, sourceIn 0, real footage 10042 → maxEnd 15409 < end 15667.
+    const b = resizeBoundsMs(
+      { id: 'A', kind: 'broll', startMs: 5367, endMs: 15667, source: 'br.mp4', sourceInMs: 0, sourceOutMs: 10300 },
+      10042,
+      undefined,
+    );
+    expect(b!.maxEndMs).toBe(15409); // handle snaps here on first touch → can't extend into phantom
+  });
+
+  it('has no right bound when footage is unknown and there is no next clip', () => {
+    const b = resizeBoundsMs(clip({ startMs: 5000 }), undefined, undefined);
+    expect(b!.maxEndMs).toBeUndefined(); // still/generated broll extends freely
+  });
+
+  it('returns null for kinds without a single trim source', () => {
+    const multi: VideoItem = { id: 'A', kind: 'multi-clip', startMs: 0, endMs: 3000, layout: 'split-h', sources: [] };
+    expect(resizeBoundsMs(multi, 8000, undefined)).toBeNull();
   });
 });
 
