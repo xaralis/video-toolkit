@@ -1,5 +1,8 @@
+// Explicit React import: files under lib/components are transformed with the classic JSX runtime under the editor's Vitest config, so `React` must be in scope.
+import React from 'react';
 import { useCurrentFrame, useVideoConfig } from 'remotion';
 import { parseAccents, applyBrandEndpoint } from '../transcripts/accent-parser';
+import { resolveAccentColor, type AccentSlot } from '../theming/palette';
 
 // TextOverlayBase — the shared, brand-agnostic skeleton for a quote-pull overlay.
 // It owns the parts every brand's quote-pull needs identically — appear/duration
@@ -37,6 +40,9 @@ export interface TextOverlayBaseProps {
   durationMs: number;
   /** Apply the brand-endpoint accent transform (trailing-punctuation rule). Default true. */
   applyEndpoint?: boolean;
+  /** When present, token color KEYS are resolved to hex via this palette; when
+   *  absent, tokens keep their raw accent key (back-compat). */
+  palette?: AccentSlot[];
   render: (ctx: TextRenderCtx) => React.ReactNode;
 }
 
@@ -53,7 +59,7 @@ function splitLines(tokens: TextToken[]): TextToken[][] {
   return lines;
 }
 
-export function TextOverlayBase({ text, appearAtMs, durationMs, applyEndpoint = true, render }: TextOverlayBaseProps) {
+export function TextOverlayBase({ text, appearAtMs, durationMs, applyEndpoint = true, palette, render }: TextOverlayBaseProps) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const start = Math.round((appearAtMs / 1000) * fps);
@@ -61,6 +67,9 @@ export function TextOverlayBase({ text, appearAtMs, durationMs, applyEndpoint = 
   if (frame < start || frame > end) return null;
 
   const source = applyEndpoint ? applyBrandEndpoint(text) : text;
-  const tokens = parseAccents(source).map((t) => ({ text: t.text, color: t.color })) as TextToken[];
+  const parsed = parseAccents(source).map((t) => ({ text: t.text, color: t.color })) as TextToken[];
+  const tokens: TextToken[] = palette
+    ? parsed.map((t) => ({ text: t.text, color: resolveAccentColor(palette, t.color) }))
+    : parsed;
   return <>{render({ tokens, lines: splitLines(tokens), text: source, localFrame: frame - start, totalFrames: end - start, fps })}</>;
 }
