@@ -25,6 +25,8 @@ class FakeFontFace {
 
 const load = async () => (await import('@video-toolkit/lib/render/load-fonts')).loadBrandFonts;
 
+let fontsAdd: ReturnType<typeof vi.fn>;
+
 beforeEach(() => {
   vi.resetModules();
   delayRender.mockClear();
@@ -32,7 +34,8 @@ beforeEach(() => {
   FakeFontFace.made = [];
   FakeFontFace.mode = 'resolve';
   vi.stubGlobal('FontFace', FakeFontFace);
-  vi.stubGlobal('document', { ...document, fonts: { add: vi.fn() } });
+  fontsAdd = vi.fn();
+  vi.stubGlobal('document', { ...document, fonts: { add: fontsAdd } });
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -68,6 +71,8 @@ describe('loadBrandFonts', () => {
     const fn = await load();
     fn(FONTS);
     await vi.waitFor(() => expect(continueRender).toHaveBeenCalledWith(42));
+    expect(fontsAdd).toHaveBeenCalledTimes(1);
+    expect(fontsAdd.mock.calls[0][0]).toMatchObject({ family: 'Geist' });
   });
 
   it('ALWAYS clears the handle, even when a font fails to load', async () => {

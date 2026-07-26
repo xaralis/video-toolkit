@@ -20,7 +20,11 @@ over `lib/render/` and `lib/transitions/`, which today have **zero** type covera
 ## Global Constraints
 
 - **Test baseline: 55 files / 564 tests.** Never finish below it; new tests only add.
-- **`tsc --noEmit` in `lib/editor`: 34 pre-existing errors.** Add none.
+- **`tsc --noEmit` in `lib/editor`: 29 pre-existing errors** (recorded after Task 1's
+  follow-up fix pass added a `paths` entry for the out-of-tree `remotion` bare specifier
+  and `DOM.Iterable` to `lib`; see `lib/editor/tsconfig.json`. Originally 34, briefly rose
+  to 36 when `remotion` became reachable through `load-fonts.test.ts`, then dropped to 29
+  once both fixes landed). Add none.
 - **Brand-leak gate** must keep returning exactly its 2 known pre-existing hits (comments
   in `lib/theming/segment/SegmentMedia.tsx`, `lib/transitions/presentations/burn.tsx`):
   `grep -riE 'lime|teal|roost|progresivn|sand-brown' lib/ --exclude-dir=node_modules --exclude='*.test.*'`
@@ -482,7 +486,7 @@ git add docs CLAUDE.md && git commit --no-gpg-sign -m "docs: correct the 'core h
 | Gate | Command | Expected |
 |---|---|---|
 | Tests | `cd lib/editor && npx vitest run` | ≥ 564, all green |
-| Editor types | `cd lib/editor && npx tsc --noEmit` | 34, the pre-existing baseline |
+| Editor types | `cd lib/editor && npx tsc --noEmit` | 29, the pre-existing baseline |
 | **Render/transition types (new)** | `cd examples/layered-minimal && npm run typecheck` | the Task 2 baseline; `src/` at zero |
 | Brand leak | the `grep -riE` above | exactly the 2 known hits |
 | Brand repos untouched | `git status --short` in both | empty |

@@ -1,5 +1,6 @@
-// Brand font loading. Imports `remotion`, so it is NOT unit-tested in core (no
-// remotion installed here) — everything decidable lives in ./fonts.ts, which is.
+// Brand font loading. Imports `remotion`, unit-tested here against a mocked
+// `remotion` (lib/editor/src/load-fonts.test.ts) — everything decidable without a
+// mock also lives in ./fonts.ts, which is unit-tested directly.
 import { continueRender, delayRender, staticFile } from 'remotion';
 import { fontFaceDescriptors, type FontSpec } from './fonts';
 

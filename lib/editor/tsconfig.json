@@ -9,10 +9,16 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
-    "lib": ["ES2022", "DOM"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "baseUrl": ".",
     "paths": {
-      "@video-toolkit/lib/*": ["../*"]
+      "@video-toolkit/lib/*": ["../*"],
+      // Out-of-tree lib/render and lib/theming files import the bare specifier
+      // "remotion"; tsc resolves bare specifiers by walking up node_modules from the
+      // importing file, which never reaches this package's node_modules for files
+      // that live outside it. Do not delete this as redundant with the ambient
+      // resolution — it is the only thing that makes those 6 occurrences resolve.
+      "remotion": ["./node_modules/remotion"]
     }
   },
   "include": ["src", "app", "host", "../theming"]
