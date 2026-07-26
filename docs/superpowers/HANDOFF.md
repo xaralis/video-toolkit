@@ -1,15 +1,18 @@
 # Handoff — core architecture rework
 
-**Last updated:** 2026-07-26, at the end of **Phase 2.5** — the brand migration, which was also
-the first end-to-end validation that Phases 1–2 actually work. Phase 2 completed on
-`refactor/phase2-core-shell` (2026-07-25); `fix/core-has-remotion` corrected it the same week.
+**Last updated:** 2026-07-26, at the end of **Phase 3** — close the extension contract.
+Phase 2.5 (the brand migration, and the first end-to-end validation that Phases 1–2 work)
+preceded it; Phase 2 completed on `refactor/phase2-core-shell` (2026-07-25) and
+`fix/core-has-remotion` corrected it the same week.
 
-**Next up is Phase 3 — close the extension contract.** Read "Phase 2.5 outcome" immediately
-below (it changed Phase 3's starting state and left three carried items), then "Phase 3 — scope
-and starting state", then the working conventions. Everything else is history.
+**Next up is Phase 3.5 — apply the Phase 3 brand migrations.** Read "Phase 3 outcome"
+immediately below, then `docs/superpowers/phase3-migrations.md` (the adoption list) and
+`docs/superpowers/phase3-extension-contract.md` (the contract itself), then the working
+conventions. Everything else is history.
 
-**The twelve brand migrations are APPLIED.** `docs/superpowers/phase2-migrations.md` is now a
-record and a reference for the next brand repo, not pending work.
+**The twelve Phase 2 brand migrations are APPLIED.** `docs/superpowers/phase2-migrations.md` is
+now a record and a reference for the next brand repo, not pending work. **The sixteen Phase 3
+migrations are NOT** — `phase3-migrations.md` is pending work, and it says so at the top.
 
 This file is the durable record across sessions. The working ledger
 (`.superpowers/sdd/progress.md`) is **gitignored** and will not survive a
@@ -33,7 +36,8 @@ The full audit and phase plan live at
 | 1 | Subtract — remove drift surfaces | ✅ merged `73bd891` |
 | 2 | Core owns the brand shell (editor host, composition wiring, config, fonts) | ✅ `refactor/phase2-core-shell` |
 | 2.5 | Apply the brand migrations — the validation of 1–2 | ✅ both brand repos green, 2026-07-26 |
-| 3 | Close the extension contract (registries, effects, generators, captions) | ⬜ **next** |
+| 3 | Close the extension contract (registries, effects, generators, captions) | ✅ core-side, `refactor/phase3-extension-contract` |
+| 3.5 | Apply the Phase 3 brand migrations — the validation of 3 | ⬜ **next**, `docs/superpowers/phase3-migrations.md` |
 | 4 | Tighten the model (real schemas, pre-save validation) | ⬜ |
 | 5 | NLE alignment (effect stack, music track, transition entities, media pool) | ⬜ |
 | 6 | `brand.json` becomes the theming contract | ⬜ |
@@ -280,7 +284,11 @@ as running them.
 
 - **The two brand branches are unmerged, awaiting review** — `chore/phase2.5-toolkit-migration`
   in each repo. Their pins are fine (`59d4b30`, on `origin/main`); merging them is a review
-  decision, not a blocker.
+  decision, not a blocker. **Still open after Phase 3, and PP's state has moved:** PP's `HEAD` is
+  now **`ffcc442` on `main`** (a merge commit, "adopt core's brand shell (Phase 2.5 migration)"),
+  while `chore/phase2.5-toolkit-migration` sits behind at **`04fd0d1`** — so PP is effectively
+  merged even though the branch is still there. roost's `chore/phase2.5-toolkit-migration` is at
+  **`aecf1b9`** and roost is *not* checked out on it (see the moving-target warning below).
 - **3 PP projects were edited but never installed or verified** — `pp-cyklostezka-chrudimka`,
   `pp-druzstevni-parkovani`, `pp-plovarna-napojeni` (no `node_modules`, by explicit decision).
   Their `package.json` now says `zod: 3.22.3` while their lockfile still records `^3.22.0` as the
@@ -294,13 +302,189 @@ as running them.
   its git status, overstated about its contents, and nobody had opened it. roost now has one
   project, `roost-reel-01`.
 - **Finding 5** (8 PP editors missing devDependencies) and **finding 3** (WPI literal errors) are
-  both unfixed and both pre-existing.
+  both unfixed and both pre-existing. **Still open after Phase 3**, with two corrections:
+  finding 3 is **18** `TS2322`s, not 4 — measured per tree in Task 11 as 1 / 1 / 9 / 7 / 0 / 0
+  across the WPI template and its five projects; still pre-existing, still not a bump regression.
+  And finding 5 is now *fixable* — `sync_template` merges `package.json`, so one sync carries the
+  template's editor devDependencies to every project — but **fixing it is a brand-repo action**,
+  which Phase 3 was forbidden. It stays open.
 - The **zod guard** is done — `b02669c`, `lib/project/zod-guard.ts`. It warns and never throws, and
   it landed only after both brand repos moved off zod 4, as sequenced.
 
 ---
 
-## Phase 3 — scope and starting state
+## ✅ Phase 3 outcome — the extension contract is closed in core, and unproven in a brand
+
+**Branch:** `refactor/phase3-extension-contract`, merge base `d6e9482`.
+Re-derived from `git log` / `git diff --stat` against the merge base rather than carried forward
+from running totals — that is how Phase 2's counts drifted: **21 commits** (`3b0d347..66fff5f`,
+including the plan document's own commit), **67 files, +10165 / −688**. Excluding the 1751-line
+plan document (`docs/superpowers/plans/2026-07-26-phase3-extension-contract.md`): 66 files,
+**+8414 / −688**.
+
+### Gates, measured fresh at the end of the branch (2026-07-26)
+
+| Gate | Command | Value |
+|---|---|---|
+| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | **70 files / 905 tests** green — **4** of them are `it.fails` known-defect pins, so "all passed" is *not* full green |
+| Editor types | `cd lib/editor && npx tsc --noEmit` | **3** errors, exit code 2 (tsc ran; it did not crash) |
+| Render/transition types | `cd examples/layered-minimal && npm run typecheck` | **0**, coverage guard ok (render 9 / transitions 14 / theming 23 / reel-config-base 8 / transcripts 1) |
+| Brand leak | the `grep -riE` under Working conventions | exactly **2** known hits |
+
+The editor `tsc` baseline moved **4 → 3** during Task 7, legitimately: one of the two `hide`
+errors existed only because its *expression* was the value-presence branch condition
+`content.hide !== undefined`, which the additive fix necessarily replaced with a well-typed
+`bag[k] !== undefined` over `Record<string, unknown>`. Nothing was fixed to chase the number.
+The remaining three are `LayeredInspector.tsx:679` (`hide`), `derive-layered.test.ts:277`, and
+`../theming/envelope.test.ts:1` (`Cannot find module 'vitest'`). **Treat 3 as the baseline.**
+
+### What landed — seams 1–7, each a core registry with a generic beneath it
+
+1. **One overlay registry.** `Registration<P>` / `Registry<P>` / `resolveRegistered`
+   (`lib/theming/registry.ts`) is now the single resolution rule for every extension axis. The
+   two live registries (`BrandTheme.overlays` closed on `OverlayKind = 'text'`, and
+   `CompositionTheme.overlayItems` open-keyed) collapsed into one open-keyed registry with the
+   core text adapter as the default renderer, so existing brand registrations keep working.
+   `Registration<P>` deliberately carries **no index signature** — excess-property checking is
+   what catches a typo'd `rendererr`.
+2. **An effect registry** (`lib/theming/effects/`) plus core generic `grain`, `scanlines`,
+   `vignette`, `grade`, `transform`. `ken-burns` was extracted verbatim into
+   `lib/theming/effects/ken-burns.ts`, pinned by a parity test whose literals carry full IEEE
+   noise (derived by running, not hand-computed). `applyEffects` is wired at
+   `renderVideoItemNode` (`lib/render/layered-composition.tsx`), not inside `SegmentMedia`, and
+   covers every video kind.
+3. **Core generics for `outro`, `multi-clip` and `card`** (`GenericOutro`, `GenericMultiClip`
+   with its four layouts, `GenericCard`), plus `ThemeTokens` reaching renderers through
+   `BrandTheme.tokens` → `VideoRenderProps.tokens`. A brand's procedural outro now registers as
+   an override — which is the point of the contract.
+4. **A brand-layer registry** replacing the `renderBrandTrack` hook, with
+   `defaultRenderBrandTrack(items)`, a `disclaimer` kind, and `GenericWatermark` extended with
+   the PNG-as-alpha-mask tint.
+5. **`GenericCaptions`** in core, parameterized by a new `CaptionTokens`.
+6. **`resolveMediaSource(item, role)`** — one media-path rule consumed by the renderers *and*
+   by the editor timeline, so the editor stops knowing folder names. Roost registers no source
+   resolver at all and renders core's `LayeredReelComposition` directly, so core's rule is now
+   the only thing standing between roost and broken paths.
+7. **A schema-driven inspector** — `editorMetaFromTheme` derives the inspector vocabulary from
+   each registration's `params`, so a brand's own registered kind is editable without touching
+   core UI. `ParamField` was deliberately duplicated in Task 1 and collapsed into
+   `registry.ts` here.
+
+Alongside those: `sync_template.py` grew from an `src`-only mirror to the full vendored surface
+(`.editor/`, `remotion.config.ts`, `vitest.config.ts`, `tsconfig.json`, `tailwind.config.ts`,
+`.prettierrc.json`, a merging `package.json`) **and** got a data-loss fix (below); the
+`TransitionGallery` fork was resolved; and all 20 at-cut transition kinds got visual
+confirmation.
+
+### What Phase 3 did NOT do — and why a Phase 3.5 is required
+
+**Seam 8 is enabled and documented, but NOT applied.** Dissolving PP's `brand-lib/` tier and
+migrating `web-program-intro` onto `LayeredReelComposition` are *brand-repo* edits, and Phase 3
+was core-only by constraint. More generally: **every one of the sixteen items in
+`docs/superpowers/phase3-migrations.md` is pending.** Core now ships a generic for every kind a
+reel can contain, and **not one brand has adopted any of them.**
+
+So Phase 3 closes the contract without proving it end-to-end — exactly the position Phase 2 was
+in before Phase 2.5 validated it. **A Phase 3.5 will be needed, and it will find things.** Phase
+2.5 found five, two of them real regressions, in a document that had been carefully checked
+against the real repos. `phase3-migrations.md` was written the same careful way and had to
+correct **nine** claims supplied to it as measured; assume it is still wrong somewhere. Read its
+own warning at the top before pasting anything from it.
+
+Four of its sixteen items are graded **deliberate look change**, not refactor — they move
+pixels on purpose and need the user's agreement on the result:
+
+- adopting a core effect on PP changes what the effect *covers* (PP draws its title inside the
+  renderer, so a core `grade`/`grain` also tints the title text);
+- `GenericMultiClip` renders no overlay, so adopting it **deletes an anchored title** from
+  `pp-05-zastupitelsky-klub`'s live multi-clip;
+- PP's disclaimer padding (`6px 40px 4px`) has no core equivalent (`paddingX` only), shifting
+  the line ~4 px;
+- roost's watermark migration silently loses `variant` (core's `GenericWatermark` has
+  `mode`/`color`, no `variant`).
+
+And one item is explicitly **not migrated**: roost's `vintage` **stays brand-registered**.
+`film` uses `HtmlInCanvas` + `@remotion/effects` — a different rendering mechanism, not a harder
+filter — and `vhs` needs hue-rotate, a 1-in-4 scanline duty cycle, a scrolled PNG grain tile and
+a tracking band. Only `vignette` maps exactly. Migrating it would be a deliberate look change,
+not a refactor. **That outcome is what the registry is for**, and recording it as "stays a brand
+effect" is a success of the contract, not a gap in it.
+
+### The one thing on this branch that was a live data-loss bug
+
+`sync_template.py` **destroyed project-authored work**, and had done so silently for as long as
+it existed. `PROJECT_OWNED` protected only `{Root.tsx, config/demo.config.json}`; everything
+else under `src/` was content-hash mirrored. A dry run against the real PP repo with **no
+flags** reported:
+
+```
+updated    src/segments/OutroSegment.tsx  (content differs)
+```
+
+That is `pp-mov-koalice`'s 83-line project-authored coalition outro, sitting at the exact path
+where the template ships a 10-line default. Reported as a routine `updated`, with no flag and no
+warning.
+
+**Fixed in `66fff5f` by a provenance manifest**, `.template-sync.json`, mapping each path to the
+hash *this tool* wrote there. A file that differs from its record, or has **no** record, is
+treated as project-authored → `PROTECTED`, never written. Unknown reads as authored
+deliberately: the cost of guessing wrong is destroying client work. `--strict` only deletes
+files the manifest says the tool placed and the project has not touched. Legacy projects
+self-bootstrap — files already identical to the template are provably safe and get recorded on
+first run. `--force` is the only way to lose content.
+
+A longer `PROJECT_OWNED` could **not** have fixed this: no path-based rule can distinguish an
+83-line authored file from a 10-line template default at the same path.
+
+### Carried out of Phase 3
+
+**Closed by this branch:** the `sync_template` gap (and its data-loss bug), the
+`TransitionGallery` fork, the at-cut visual-confirmation pass and its two named suspects.
+
+**Open, and needing the user:**
+
+- **`wipe` renders as an accent flash, and `MinimalReel` uses it at its first cut.** A look
+  decision, not a bug fix — see the at-cut entry below.
+- **Expect `PROTECTED` on the first sync of every existing project.** Measured 2026-07-26: PP has
+  **16** vendored `src/` trees and roost **1**, and **not one of them has a
+  `.template-sync.json` manifest** (`find … -name '.template-sync.json'` → 0 in both repos). No
+  manifest means unknown provenance, and unknown provenance reads as project-authored, so the
+  first run on each project will report several `PROTECTED` files. **That is correct and safe** —
+  it is the fix working — but someone has to *expect* it rather than reach for `--force`. The
+  right response is to look at each `PROTECTED` file, confirm whether it really is project work,
+  and only then decide. `--force` is the only way to lose content, and it is never the first move.
+
+**Open, unchanged by this branch (all pre-existing):**
+
+- **WPI's `TS2322`s — 18 of them**, not the 4 recorded in Phase 2.5. Pre-existing, not a bump
+  regression; the authored literal is not ours to edit. Item 14 of `phase3-migrations.md` scopes
+  WPI's migration as needing its own plan and its own session.
+- **3 PP projects edited but never installed** (`pp-cyklostezka-chrudimka`,
+  `pp-druzstevni-parkovani`, `pp-plovarna-napojeni`) — `npm ci` still fails there.
+- **8 PP project editors missing devDependencies.** Now *fixable* by one `sync_template` run;
+  running it is a brand-repo action.
+- **The two brand `chore/phase2.5-toolkit-migration` branches** — see the note under "Carried
+  out of Phase 2.5" for how PP's state has moved since.
+
+**⚠️ The roost repo is a moving target — re-verify before applying anything to it.** During
+Phase 3 it was checked out on **`claude/exciting-hellman-35e25a`**, not the reviewed
+`chore/phase2.5-toolkit-migration`, with concurrent work from another session: its log carries
+`bump toolkit -> core e84473f9 / 1b4dd491 / edd43d3a`, core SHAs that **do not exist in this
+repo's history**, and files moved mid-flight (`templates/roost-reels/src/lib/resolve-video-source.ts`
+existed at the start of the session that surveyed it and was gone by the end). Every roost item in
+`phase3-migrations.md` is therefore written against the **documented baseline** —
+`chore/phase2.5-toolkit-migration` @ `aecf1b9`, toolkit pinned at core `59d4b30` — read with
+`git show <branch>:<path>`, not from the working tree. **Re-verify every roost item, line numbers
+especially, against the branch you are actually on before applying it.**
+
+---
+
+## Phase 3 — scope and starting state (historical: what Phase 3 set out to do)
+
+> The four factual corrections this section needed are made **in place** below, not appended —
+> the same reason `fix/core-has-remotion` rewrote the false `remotion` premise rather than
+> footnoting it. A future reader must not re-inherit a claim this programme has already
+> disproved.
 
 **Phase 2.5 is done** — both brand repos are migrated and green. Read its outcome above before
 scoping: it changed the numbers below, it fixed a Phase 2 regression that Phase 3 can repeat, and
@@ -354,9 +538,14 @@ Each is verified present in core today, not quoted from the plan:
 2. **No effect registry.** `resolveEffectRenderer` does not exist; `SegmentMedia` understands
    only `ken-burns` (`lib/theming/segment/SegmentMedia.tsx:21,32`). So a brand's `vintage` and
    `blend` are ad-hoc pipelines, and PP's `video-item-renderers.tsx` (270 LOC) exists purely to
-   reverse `effects[]` back into legacy prop bags and hand-apply a `frameOffsetSec` correction at
-   four call sites. Add the registry plus core generic `grain`, `scanlines`, `vignette`, `grade`,
-   `transform` primitives; the brand keeps only its tuning constants.
+   reverse `effects[]` back into legacy prop bags and hand-apply a `frameOffsetSec` correction.
+   **Corrected (Task 11, re-measured in Task 12):** `frameOffsetSec` is *computed* in **4**
+   renderers (`templates/campaign-reels/src/config/video-item-renderers.tsx:129,163,203,236`,
+   each `handles.inHalf / fps`) but **applied at 8 sites** (`:136,143,155,171,184,195,228,248`).
+   An earlier draft of this list said "four call sites", conflating the computations with the
+   applications — a migrator who moves 4 of the 8 leaves the reel half-corrected. Add the
+   registry plus core generic `grain`, `scanlines`, `vignette`, `grade`, `transform`
+   primitives; the brand keeps only its tuning constants.
 3. **`card` / `outro` / `multi-clip` have no core generic.** `VideoKind` covers all six, but
    `LayeredReelComposition` does `if (!Renderer) return null`, so a brand must still register
    them. Ship the generic asset-outro (`props: {video, audio}`) and the four multi-clip layouts;
@@ -366,10 +555,26 @@ Each is verified present in core today, not quoted from the plan:
    implementations of corner anchoring exist. Replace with a registry +
    `defaultRenderBrandTrack(items)`, extend `GenericWatermark` with the PNG-as-alpha-mask tint
    technique (generic trick; brand colours stay in the theme) and add a `disclaimer` kind.
+   **Attribution, corrected (an earlier draft left it unattributed):** the alpha-mask tint is
+   **roost's**, at `templates/roost-reels/src/overlays/Watermark.tsx` — a `WebkitMaskImage` /
+   `maskImage` of `url(staticFile(asset))` over a coloured fill. **PP has no such technique at
+   all**; PP's watermark is a plain `<Img>` with `opacity`. So this is not a shared trick being
+   hoisted — it is one brand's technique being generalized, and PP's adoption of
+   `GenericWatermark` is a separate question. (Related measured fact: PP's watermark PNG is
+   **256×256, square**, so adopting `GenericWatermark` with `height: 'auto'` is a *pure refactor*
+   for PP, not a look change.)
 5. **Captions are entirely brand-side.** `brand-lib/overlays/CaptionStrip.tsx` (293 LOC) admits
    in-file that it is hardcoded to one brand. Core exposes `transcript-window.ts` but no caption
-   renderer. Bring `GenericCaptions` into core, parameterized by `theme.tokens.caption`, which
-   already exists brand-side.
+   renderer. Bring `GenericCaptions` into core, parameterized by a **new** `CaptionTokens`.
+   **Corrected:** an earlier draft said "parameterized by `theme.tokens.caption`, which already
+   exists brand-side". **It never existed.** What existed was *three disagreeing sources*:
+   (a) `CaptionStrip.tsx`'s own module constants — authoritative, because they are what renders;
+   (b) a **dead** `caption` block at `templates/campaign-reels/src/config/theme.ts:36-45`,
+   claiming `bottomPct: 0.28`, read by nothing (adopting it would move captions 8 % of frame
+   height); and (c) a **dead** `reels.caption` in `brand.json`, whose *vocabulary* is what
+   `CaptionTokens` now borrows — note `verticalPosition` is **not** `bottomPct` semantically,
+   so confirm before mapping. Core took the module constants, i.e. what actually rendered.
+   Deleting (b) and (c) is item 10 of `phase3-migrations.md`.
 6. **Media paths are hardcoded in three places.** `resolveAudioSource` exists as a theme hook;
    the video side hardcodes `recordings/`+`broll/` prefixes brand-side while another brand uses
    full `media/…` paths — and core's own editor hardcodes the same convention again in
@@ -386,14 +591,17 @@ Each is verified present in core today, not quoted from the plan:
 
 Read these before scoping — they are decided or half-decided, not open questions:
 
-- `video_toolkit/sync_template.py:136,141` still mirrors only `src`, so `.editor/`,
-  `remotion.config.ts`, `vitest.config.ts`, `tsconfig.json` and `package.json` are hand-carried
-  to 14 directories.
+- ~~`video_toolkit/sync_template.py:136,141` still mirrors only `src`~~ — **✅ closed, and then
+  some.** It now carries the full vendored surface, and a Critical data-loss bug found on the way
+  is fixed (see "the one thing on this branch that was a live data-loss bug", above).
 - The **zod guard**, sequenced: it must land *after* roost migrates, and must warn, not throw.
-- The **`TransitionGallery` fork** decision (two divergent copies; only the showcase one runs).
-- The **two `it.fails` defects** (`checkerboard` exiting no-op, `pixelate` opaque root) and the
-  **at-cut visual confirmation pass**, which this programme established is now possible *in core*
-  rather than blocked on a brand repo.
+  ✅ closed in Phase 2.5 (`b02669c`).
+- ~~The **`TransitionGallery` fork** decision~~ — **✅ closed** (`9368f38`). Option (b) was taken:
+  the `lib/` copy is now canonical (with `checkerboard`, the notes block and the richer layout
+  merged in), and `showcase/transitions/src/Root.tsx` imports it. The duplicate is deleted, so
+  the type-check gate now covers a file that actually renders.
+- ~~The **two `it.fails` defects** and the **at-cut visual confirmation pass**~~ — **✅ closed**
+  in Task 10; see the (now-closed) at-cut risk entry below. There are **4** pins now.
 - The smaller deferred items under "New in Phase 2, deferred".
 
 ### Two things Phase 3 must not repeat
@@ -410,10 +618,16 @@ Read these before scoping — they are decided or half-decided, not open questio
 
 ## Carried into later phases
 
-**Phase 3 is next** — close the extension contract (registries, effects, generators,
-captions). Its scope is the section above.
+**Phase 3.5 is next** — apply the sixteen brand migrations in
+`docs/superpowers/phase3-migrations.md`, which is the validation of Phase 3 the way Phase 2.5 was
+the validation of Phases 1–2. Phase 3's own outcome is recorded above; the section immediately
+above this one is its historical scope.
 
-**Deliberately NOT done in Phase 2, now a Phase 3 task — and Phase 2.5 raised its priority:**
+**Deliberately NOT done in Phase 2, ✅ DONE in Phase 3 (`3e3b4a6`, `49647bd`, `66fff5f`) — the
+description below is the problem as it stood, kept for the record.** `sync_template` now mirrors
+the full vendored surface (`.editor/`, `remotion.config.ts`, `vitest.config.ts`, `tsconfig.json`,
+`tailwind.config.ts`, `.prettierrc.json`, a merging `package.json`) and no longer overwrites
+project-authored work. The historical statement:
 `video_toolkit/sync_template.py:136,141` still mirrors only
 `templates/<t>/src → projects/<p>/src`, so it does **not** carry `.editor/`. With the
 host in core, `.editor/` is 45 (PP) / 41 (roost) lines across three files that rarely change, which
@@ -432,7 +646,17 @@ rewrote was a hand-edit for exactly this reason.
 It **warns, never throws**, for the reason recorded all along: a hard assertion turns a routine
 submodule bump into a hard stop on a repo that still renders fine.
 
-**New in the fix-pass-2 re-review, now a Phase 3 candidate:**
+**New in the fix-pass-2 re-review, ✅ RESOLVED in Phase 3 (`9368f38`).** Option (b) below was
+taken: the `lib/` copy is canonical — `checkerboard`, `TRANSITION_NOTES` and the richer layout
+were merged into it, the `glitch` mis-typing was not reintroduced, and
+`showcase/transitions/src/Root.tsx` now imports it. `showcase/transitions/src/TransitionGallery.tsx`
+is deleted, so the type-check gate covers a file that actually renders. Two notes from the merge:
+the gallery's timings now come from the showcase copy (90-frame scenes, 40–60-frame transitions,
+vs the lib copy's 45/20–35), which changes `transitionMap.*.duration` — no in-repo consumer, so
+flagged rather than buried. And the move broke **webpack** (`Can't resolve '@remotion/transitions'
+in .../lib/transitions`), the **third** toolchain hit by the bare-specifier recurrence; fixed with
+the same `resolve.modules` line `layered-minimal` already carries. The original analysis follows,
+for the record:
 - **`lib/transitions/TransitionGallery.tsx` and `showcase/transitions/src/TransitionGallery.tsx`
   are a divergent fork, and only the second one runs.** `showcase/transitions/src/Root.tsx` (and
   therefore `npm run render` in that project) imports the showcase copy exclusively; the lib copy
@@ -557,14 +781,37 @@ submodule bump into a hard stop on a repo that still renders fine.
 - Test fixtures still speak PP's `{lime:…}`/`{teal:…}` vocabulary. Mechanical rename — worth
   doing because that very vocabulary is what hid the `ACCENT_RE` leak Phase 1 found in
   production code.
-- `LayeredTimeline.tsx:25-32` media-path conventions (`/recordings/`, `/broll/`) → Phase 3's
-  `resolveMediaSource`. Deliberately not half-solved in Phase 1.
+- ~~`LayeredTimeline.tsx:25-32` media-path conventions (`/recordings/`, `/broll/`) → Phase 3's
+  `resolveMediaSource`.~~ **✅ closed in Phase 3, Task 6** (`8a34956`) — the timeline consumes
+  `resolveMediaSource` and no longer knows folder names.
 - From the writer rework: inline arrays reflow on insert; `lcsAnchors` allocates n×m; one
   asymmetric filter typing. All bounded, reels are tens of items.
 - `fade-coal` is a brand-derived **kind name**. Renaming touches every baked `Root.tsx`, so it
   is deliberately kept — see the NAME NOTE on its catalog entry.
 
-**Open risk, actionable in core (no longer blocked on a brand repo):** 11 transition kinds have
+**✅ CLOSED in Phase 3, Task 10 — the at-cut visual pass ran.** All **20** catalog kinds were
+rendered at a cut in **both** directions: **310 stills**, all reviewed. Result: 16 kinds correct
+at a cut, 3 defective, 1 (`cut`) not a transition. Across the 40 kind×direction cells: 26
+correct, 4 defective, 1 ambiguous, 7 no-op-by-design, 2 n/a. The findings — per kind, with the
+contact sheets' evidence — are in **`docs/superpowers/at-cut-transition-findings.md`**. The pass
+also produced a caveat worth carrying: **7 kinds are complete no-ops in the exiting direction**,
+so a last item's `transitionOut` does nothing, contradicting `video-track-layout.ts`'s "the
+reel's trailing edge fade" comment.
+
+**There are now 4 `it.fails` known-defect pins, not 2** — `scanline-glitch` and `wipe` joined
+`checkerboard` and `pixelate`. Both new ones paint **opaquely at entering progress 0**, so at a
+cut they *replace* the outgoing clip instead of dissolving into it, ~10 frames before the
+authored cut. Recorded, not fixed, for the same reason as the original two: what a transition
+renders is a look decision.
+
+> ⚠️ **`wipe` needs the user's look decision, and it is not an at-cut-specific defect.** Its two
+> beats (cover, then uncover) are *designed* sequential but run **simultaneously** in every
+> compositing model available here, so it renders as an accent flash. **`MinimalReel` itself uses
+> `wipe` at its first cut**, so that flash is what core's own example currently renders.
+> `showcase/transitions` would **not** have caught it: the gallery imports Remotion's official
+> `wipe`, never the toolkit's presentation.
+
+The original risk statement, kept for the record: 11 transition kinds have
 **no at-cut visual confirmation** — the six newly wired ones plus `wipe`, `glitch`, `whip-pan`,
 `zoom-through`, `gradient-wipe`, which were previously marked verified only by inference from the
 `TransitionSeries` path. Only `burn` is at-cut confirmed. At-cut composites differently
@@ -618,11 +865,15 @@ normal `it` the day it is addressed and the runner shouts if it starts passing:
   content and no background — so a `checkerboard` used as a `transitionOut` plays as a hard cut.
   Only the entering direction reveals cell by cell.
 - **`pixelate` paints its root `AbsoluteFill` opaque black unconditionally**, including at
-  progress 0. Bounded under `TransitionSeries` — it lasts only the transition's length and reads
-  as a dip to black, since the presentation only exists for the transition's length and composites
-  over the outgoing sequence; *not* bounded at a cut, where the wrapper is mounted for the item's
-  whole sequence and the neighbouring clip sits beneath it in a sibling `Sequence` — so the black
-  root hides the neighbour for the entire clip instead of blending with it.
+  progress 0, so at a cut it hides the neighbouring clip instead of blending with it.
+  **The mechanism is CONFIRMED; the *extent* claimed here was REFUTED by Task 10's still
+  renders and is corrected in place.** An earlier draft said the black root "hides the neighbour
+  for the entire clip". It does not: `AtCutTransition` clamps progress
+  (`lib/render/at-cut-transitions.tsx:153,159`), so the blackout is bounded to the **transition
+  window**, not the whole shot. Rendered, frame 50 is pure black and the outgoing clip vanishes
+  — it reads as one full-black frame at the cut, not a whole-shot occlusion. Still a defect,
+  still pinned, but a much smaller one than the text used to say. The `it.fails` pin's comment
+  has been corrected in the code too.
 
 **Nothing that renders today can regress** — every one of those kinds was unreachable before
 Phase 1.
@@ -702,21 +953,34 @@ now ordinary migration verification, not risk closure.
   `lib/editor/host/README.md`, which otherwise advertises Focus/Zoom with no verification note.
 - The brand-leak gate needs its exclusions or it walks `node_modules` and is permanently red:
   `grep -riE 'lime|teal|roost|progresivn|sand-brown' lib/ --exclude-dir=node_modules --exclude='*.test.*'`
-- **Current gate numbers, measured at the end of Phase 2.5 (2026-07-26).** Any figure
-  quoted elsewhere in this file from Phase 1, Phase 2 or `fix/core-has-remotion` is historical;
-  these are live:
+- **Current gate numbers, measured fresh at the end of Phase 3 (2026-07-26).** Any figure
+  quoted elsewhere in this file from Phase 1, Phase 2, `fix/core-has-remotion` or Phase 2.5 is
+  historical; these are live:
   | Gate | Command | Now |
   |---|---|---|
-  | Editor tests | `cd lib/editor && npx vitest run` | **58 files / 669 tests**, green (2 of them are `it.fails` known-defect pins — `at-cut-transitions.test.tsx:289,307` — see the at-cut risk entry) |
-  | Editor types | `cd lib/editor && npx tsc --noEmit` | **4** errors |
+  | Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | **70 files / 905 tests**, green — **4** of them are `it.fails` known-defect pins (`at-cut-transitions.test.tsx:289,316,370,388`), so "all passed" is not full green |
+  | Editor types | `cd lib/editor && npx tsc --noEmit` | **3** errors (`LayeredInspector.tsx:679`, `derive-layered.test.ts:277`, `../theming/envelope.test.ts:1`) |
   | Render/transition types | `cd examples/layered-minimal && npm run typecheck` | **0**, coverage guard ok |
+  | Brand leak | the `grep -riE` above | exactly **2** hits — `lib/theming/effects/ken-burns.ts` and `lib/transitions/presentations/burn.tsx` |
 
-  The editor `tsc` baseline was **34** through Phase 2 and briefly **29**; this branch took it
-  to **4** in two steps, without touching any of the code the errors were about — a `paths`
-  entry mapping the out-of-tree bare specifiers `remotion`, `react` and `@remotion/transitions`
-  into `lib/editor/node_modules`, plus `DOM.Iterable` in `lib`, resolved 29 errors that were
-  pure module-resolution noise rather than real type defects. Treat **4** as the baseline from
-  here on; if you read 29 or 34 in a doc, that doc is stale.
+  The editor `tsc` baseline was **34** through Phase 2 and briefly **29**; `fix/core-has-remotion`
+  took it to **4** in two steps, without touching any of the code the errors were about — a
+  `paths` entry mapping the out-of-tree bare specifiers `remotion`, `react` and
+  `@remotion/transitions` into `lib/editor/node_modules`, plus `DOM.Iterable` in `lib`, resolved
+  29 errors that were pure module-resolution noise rather than real type defects. Phase 3 Task 7
+  took it **4 → 3** as a genuine side effect of a typed rewrite, not by chasing the number.
+  Treat **3** as the baseline from here on; if you read 4, 29 or 34 in a doc, that doc is stale.
+- **For each capability a task CLAIMS to add, name the line that implements it and mutate THAT
+  line.** This recurred in **all twelve** Phase 3 tasks, without exception: the mutation testing
+  initially exercised what the change *preserved* rather than what it *added*, and a genuinely-new
+  capability sat unpinned until review caught it. Preserving old behaviour is the easy half and
+  the existing suite already covers it; the new capability is the half nobody wrote a test for.
+  Concretely: before writing the mutation, point at the specific line (file:line) that is the
+  reason the task exists, break *that*, and require a red test.
+- **Python mutation testing in this repo needs `__pycache__` cleared before every run.** A
+  mutation that swaps two statements produces a byte-length-identical file, and CPython's
+  `(mtime, size)` `.pyc` invalidation then happily reuses the **mutated** bytecode after the
+  source is restored — silently reporting the wrong colour. Cost a real chase in Task 8.
 - **`examples/layered-minimal` is also a type-check gate**, over `lib/render` and
   `lib/transitions` (`cd examples/layered-minimal && npm run typecheck`, baseline 0) — the
   surface `lib/editor`'s own `tsc --noEmit` doesn't reach. See
@@ -728,14 +992,19 @@ now ordinary migration verification, not risk closure.
   and applying it still found six miscounts and one outright false negative ("PP needs nothing",
   which cost a rendering regression). Every one of them needed the code to actually run. When a
   future phase queues brand migrations, treat the document as a hypothesis, not an inventory.
-- **Moving core code out of the project tree breaks bare-specifier resolution, twice.**
+- **Moving core code out of the project tree breaks bare-specifier resolution — three toolchains
+  so far.**
   Phase 2 moved the editor host into `lib/editor/host/`; the files there import `remotion`,
   `@remotion/player`, `react` by bare specifier, and every resolver that walks up `node_modules`
   from the *importing* file then fails — it climbs to the brand repo root and stops. This bit
   **tsc** (~160 phantom errors per brand directory, fixed with `paths`) and **Vite** (the editor
-  silently never mounted, fixed with a `resolveId` hook, `cb51d4d`) independently. Phase 3 moves
-  more code into core: assume it recurs, and check both toolchains, not just the one that
-  complains.
+  silently never mounted, fixed with a `resolveId` hook, `cb51d4d`) independently. Phase 2.5
+  predicted it would recur in Phase 3, and it did: moving `TransitionGallery.tsx` into
+  `lib/transitions/` broke **webpack** in `showcase/transitions` (`Can't resolve
+  '@remotion/transitions'`), confirmed caused by the move via stash/pop rather than pre-existing,
+  and fixed with `resolve.modules`. **Three toolchains, three different fixes, same root cause.**
+  Assume the fourth exists; check every toolchain that touches the moved file, not just the one
+  that complains.
 - **A parity claim needs a render, not a test.** "Rendering an existing baked literal is frozen"
   was asserted through Phases 1 and 2 and was **false** — `applyBrandEndpoint`'s dropped default
   changed every PP caption. No test caught it; comparing `remotion still` hashes before and after

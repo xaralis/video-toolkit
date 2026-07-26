@@ -305,13 +305,21 @@ Run these before considering `lib/` or `examples/` work done. All are manual —
 there is no CI in this repo that runs them (`.github/workflows/` only builds
 Docker images, cuts releases, and syncs the Remotion skill from upstream).
 
-| Gate | Command | Covers |
-|---|---|---|
-| Editor tests | `cd lib/editor && npx vitest run` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports |
-| Editor types | `cd lib/editor && npx tsc --noEmit` | Same surface as above, plus all of `lib/render` (declared directly in `lib/editor/tsconfig.json`'s `include`, or reached transitively) and `lib/transitions` minus `TransitionGallery.tsx` |
-| Render/transitions types | `cd examples/layered-minimal && npm run typecheck` | `lib/render` and `lib/transitions` (including their `.tsx` components), via the example that actually imports them — see `docs/superpowers/core-typecheck-gate.md` |
+| Gate | Command | Covers | Baseline (measured 2026-07-26) |
+|---|---|---|---|
+| Editor tests | `cd lib/editor && npx vitest run` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **70 files / 905 tests** |
+| Editor types | `cd lib/editor && npx tsc --noEmit` | Same surface as above, plus all of `lib/render` (declared directly in `lib/editor/tsconfig.json`'s `include`, or reached transitively) and `lib/transitions` including `TransitionGallery.tsx` | **3** pre-existing errors |
+| Render/transitions types | `cd examples/layered-minimal && npm run typecheck` | `lib/render` and `lib/transitions` (including their `.tsx` components), via the example that actually imports them — see `docs/superpowers/core-typecheck-gate.md` | **0**, plus a coverage guard |
 
-The brand-leak gate (`grep -riE 'lime|teal|roost|progresivn|sand-brown' lib/ --exclude-dir=node_modules --exclude='*.test.*'`) must keep returning exactly its **2** known pre-existing hits: `lib/theming/segment/SegmentMedia.tsx:18` and `lib/transitions/presentations/burn.tsx:8`.
+**"All passed" is not full green.** Four of those tests are `it.fails` known-defect pins
+(`lib/editor/src/at-cut-transitions.test.tsx` — `checkerboard`, `pixelate`, `scanline-glitch`,
+`wipe`), and vitest counts an `it.fails` as a pass. The defects they record are real and
+deliberately unfixed; see `docs/superpowers/at-cut-transition-findings.md`.
+
+**Check `tsc`'s exit code, not just the error count** — `npx tsc --noEmit | grep -c 'error TS'`
+returns `0` when tsc *crashes*. This has bitten twice.
+
+The brand-leak gate is **count-based**: `grep -riE 'lime|teal|roost|progresivn|sand-brown' lib/ --exclude-dir=node_modules --exclude='*.test.*'` must keep returning exactly **2** hits. They are both prose in comments, and the *files* move as code is refactored — today they are `lib/theming/effects/ken-burns.ts` and `lib/transitions/presentations/burn.tsx`. Treat a change in the count as the signal; a change in which file carries a hit is only worth a look.
 
 ## Toolkit vs Project Work
 

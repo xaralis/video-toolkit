@@ -7,7 +7,7 @@
 **What this is.** Core now ships a generic for every kind a reel can contain, plus the registry
 that lets a brand override any of them (see `phase3-extension-contract.md` for the contract
 itself). Every one of those generics is worthless until a brand adopts it. This file is the
-adoption list: 15 items, each with verified paths, a paste-ready replacement, a **parity grade**,
+adoption list: 16 items, each with verified paths, a paste-ready replacement, a **parity grade**,
 and a verification command.
 
 **This document is a hypothesis, not an inventory.** Its predecessor,
@@ -37,8 +37,11 @@ history, and files have already moved mid-flight —
 wrote this and is gone now. **Every roost item must be re-verified against the branch you are
 actually on before it is applied.** Line numbers especially.
 
-PP (`~/Workspace/progpce/video-toolkit`, branch `chore/phase2.5-toolkit-migration`, `ffcc442`)
-is stable and clean, and its items were read from the working tree.
+PP (`~/Workspace/progpce/video-toolkit`) is stable and clean, and its items were read from the
+working tree. **Its branch, re-verified 2026-07-26: `ffcc442` is on `main`, not on
+`chore/phase2.5-toolkit-migration`** — that branch sits behind at `04fd0d1`. The SHA an earlier
+draft gave was right; the branch name was wrong. Check out `main` (or just confirm you are at
+`ffcc442`) before pasting any PP item.
 
 ### The PP projects are STALE, so item 15 runs FIRST
 
@@ -98,7 +101,8 @@ Grades, used throughout:
 
 ### 15. `sync_template` the vendored project copies — **DO THIS FIRST**
 
-**Grade: parity-preserving in intent, but NOT mechanical — it overwrites project-authored work.**
+**Grade: parity-preserving in intent, and no longer destructive — but NOT mechanical. Expect
+`PROTECTED` output on every project, and read it.**
 
 **Where.** 16 vendored `src/` trees: 11 campaign-shaped (`pp-05-zastupitelsky-klub`,
 `pp-cyklostezka-chrudimka`, `pp-druzstevni-parkovani`, `pp-mov-koalice`,
@@ -112,23 +116,40 @@ neither WPI's template nor its projects ship one.
 `remotion.config.ts`, `vitest.config.ts`, `tsconfig.json`, `tailwind.config.ts`,
 `.prettierrc.json`, and a **merging** `package.json`.
 
-**Four hazards, all verified by diffing:**
+**What changed, and what you must still expect.** This document originally listed four hazards,
+because at the time `PROJECT_OWNED = frozenset({"Root.tsx", "config/demo.config.json"})` was the
+*entire* protected set under `src/` — a dry run against the real PP repo with **no flags**
+reported `updated  src/segments/OutroSegment.tsx` for `pp-mov-koalice`, i.e. it would have
+silently destroyed 83 lines of client work sitting at the template's exact path. **That is fixed
+in core (`66fff5f`)** by a `.template-sync.json` provenance manifest: the tool records the hash it
+wrote at each path, and any file that differs from its record — **or has no record at all** — is
+treated as project-authored and reported `PROTECTED`, never written. `--strict` only deletes files
+the manifest says the tool placed and the project has not touched. `--force` is the only way to
+lose content, and it is never the first move.
 
-1. **`PROJECT_OWNED = frozenset({"Root.tsx", "config/demo.config.json"})`**
-   (`video_toolkit/sync_template.py:50`). That is the *entire* protected set under `src/`.
-2. **`projects/pp-mov-koalice/src/segments/OutroSegment.tsx` would be OVERWRITTEN** — even
-   without `--strict`. It is a project-authored 83-line coalition outro that draws a Noví
-   lidovci partner logo over the PP stinger; the template's is 10 lines. Losing it is a visible
-   regression in a delivered reel. **Convert it to a registered `outro` renderer first** (see
-   item 5's note), or exclude that project.
-3. **Three project-authored trees under `src/` that `--strict` would DELETE:**
-   `pp-05-zastupitelsky-klub/src/lib/`, `pp-paro-2026/src/segments/plates/LinkPlate.tsx`,
-   `pp-program-klima-reel/src/graphics/`. Do **not** run `--strict` on those three.
-4. **`--strict` inside `.editor/` deletes a project-authored file outright** (that mirror passes
-   `protected=frozenset()`). Every `.editor/` in both repos was diffed against its template and
-   carries zero extra files today, so the risk is currently nil — but it is a rule, not an
-   observation, and the project *root* is unreachable (`_mirror_file` has no delete path), so
-   `CLAUDE.md` / `project.json` / `public/` survive regardless.
+**Consequence you must plan for: every existing project will report `PROTECTED` files on its
+first sync.** Measured 2026-07-26: PP has **16** vendored `src/` trees and roost **1**, and **not
+one of them carries a `.template-sync.json`** (`find . -name '.template-sync.json' -not -path
+'*/node_modules/*'` → 0 in both repos). No manifest means unknown provenance, and unknown
+provenance deliberately reads as *authored*. So the first run on each project prints several
+`PROTECTED` lines. **This is correct and safe — it is the fix working, not a failure.** Legacy
+projects self-bootstrap: files already byte-identical to the template are provably safe and get
+recorded on that first run, so the second run is quiet. Read every `PROTECTED` line, confirm
+whether it really is project work, and only then decide. **Do not reach for `--force`.**
+
+The four specific files that were the original hazards are exactly the ones you should expect to
+see reported, and each is genuinely project-authored:
+
+1. `pp-mov-koalice/src/segments/OutroSegment.tsx` — an 83-line coalition outro drawing a Noví
+   lidovci partner logo over the PP stinger (the template's is 10 lines). The right long-term fix
+   is to convert it to a **registered `outro` renderer** (see item 5's note); until then,
+   `PROTECTED` is the correct outcome.
+2. `pp-05-zastupitelsky-klub/src/lib/`, `pp-paro-2026/src/segments/plates/LinkPlate.tsx`,
+   `pp-program-klima-reel/src/graphics/` — project-authored trees that `--strict` would once have
+   deleted. The manifest now refuses to delete what it cannot prove it placed.
+3. Still true, and still a rule rather than an observation: the project **root** is unreachable to
+   deletion (`_mirror_file` has no delete path), so `CLAUDE.md` / `project.json` / `public/`
+   survive regardless of flags.
 
 **Also fixed here (a prerequisite, not a nicety):** `--template` defaults to `project.json`'s
 `template` field. `projects/pp-ricni-sauna/` has **no `project.json`**, and roost's
@@ -167,8 +188,10 @@ for p in pp-05-zastupitelsky-klub pp-cyklostezka-chrudimka pp-druzstevni-parkova
 done
 ```
 
-Read every `updated` line before dropping `--dry-run`. `updated` is the safety valve: divergence
-is reported before it is destroyed.
+Read every `updated` **and** every `PROTECTED` line before dropping `--dry-run`. `updated` means
+the tool can prove it placed that file and the project has not touched it. `PROTECTED` means it
+cannot prove that, so it is leaving the file alone — expect a handful per project on the first
+run (see above), and treat each one as a question to answer, not noise to suppress.
 
 **Verify:**
 ```bash
@@ -945,8 +968,9 @@ no render path.
 
 ## Suggested order
 
-1. **15** (`sync_template`, dry-run first, `pp-mov-koalice` excluded) — everything else assumes
-   the projects match the template.
+1. **15** (`sync_template`, dry-run first; `pp-mov-koalice` no longer needs excluding — its outro
+   is reported `PROTECTED` rather than overwritten) — everything else assumes the projects match
+   the template.
 2. **12**, **11**, **10** — the three clean parity items, one repo each. Cheap confidence.
 3. **1**, **5**, **8** — structural, small, well-understood. Item 8 carries the one 4 px delta.
 4. **9** then **13** (partial) — captions move to core, `brand-lib` sheds two files.
