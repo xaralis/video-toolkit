@@ -57,9 +57,23 @@ export const RemotionRoot: React.FC = () => (
               effects: [{ type: 'ken-burns', fromScale: 1.0, toScale: 1.14 }],
               // The transition is declared ONCE, by the item LEAVING the cut.
               // The next item borrows handle frames from this side
-              // automatically, so the wipe really plays across both clips
-              // instead of degrading to a fade. `color` names a brand ACCENT
-              // SLOT key, never a hex — core does not own the palette.
+              // automatically, so a transition really plays ACROSS both clips
+              // instead of degrading to a fade on one of them. `color` names a
+              // brand ACCENT SLOT key, never a hex — core does not own the
+              // palette.
+              //
+              // WHAT THIS ACTUALLY RENDERS TODAY, since a comment claiming
+              // otherwise is worse than none: `wipe` is a KNOWN DEFECT. Its
+              // entering sheet already covers the frame at progress 0, so the
+              // cut below reads as a hard flash to the accent colour rather
+              // than a sweep, and the outgoing clip's own half of the wipe is
+              // never seen. The handle-borrow machinery this comment describes
+              // is working correctly — the defect is in the presentation, and
+              // fixing it is an open look decision. Measured, with stills, in
+              // docs/superpowers/at-cut-transition-findings.md; pinned as an
+              // `it.fails` in lib/editor/src/at-cut-transitions.test.tsx.
+              // Left as-is deliberately: this literal is also the frame-45
+              // still gate's fixture.
               transitionOut: { kind: 'wipe', frames: 20, direction: 'left', color: 'accent' },
             },
             {

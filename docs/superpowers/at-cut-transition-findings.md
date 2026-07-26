@@ -65,7 +65,7 @@ what the composite does, which is what a reel actually renders.
 | `scanline-glitch` | **DEFECTIVE** — never transparent | **ambiguous** — scanline/RGB shimmer, but no fade-out | **DEFECTIVE** — hard cut, landing early |
 | `burn` | **correct** — plain opacity reveal with no `mask` (the catalog seeds none) | **no-op** | **correct** crossfade; the masked look was already confirmed in a brand repo |
 | `light-leak` | **correct** — over-exposure + coloured leak, fades in | **correct** — blooms out | **correct** |
-| `slide` | **correct** — pushes in from the left | **correct** — pushes out to the left | **correct** push |
+| `slide` | **correct** — pushes in from the left | **correct** — pushes out to the right | **correct** push — clip 2 enters leftward, clip 1 leaves rightward, one coherent shove |
 | `flip` | **correct** — rotates in over the second half | **correct** — rotates away over the first half | **correct**; background shows at the edge-on midpoint, as a flip should |
 | `whip-pan` | **correct** — motion-blurred pan in | **correct** — pan out | **correct** |
 | `zoom-through` | **correct** — scales down from oversize while fading in | **correct** — fades/darkens | **correct**, though the fade completes by ~progress 0.5 and the tail is static |
@@ -77,9 +77,13 @@ what the composite does, which is what a reel actually renders.
 | `pixelate` | **DEFECTIVE** — opaque black at progress 0 | **correct** — pixel-dissolves to black | **DEFECTIVE** — one full-black frame at the cut |
 | `checkerboard` | **correct** — reveals cell by cell | **DEFECTIVE** — no effect at all | **correct** (the entering half carries the composite; the defect is invisible *at a cut*) |
 
-**Tally, 40 kind × direction cells:** 30 correct, 4 defective, 1 ambiguous,
-3 no-op-by-design counted separately below (7 `no-op` cells), 2 `n/a` (`cut`).
-By kind: **16 correct at a cut, 3 defective, 1 (`cut`) not a transition.**
+**Tally, 40 kind × direction cells** (counted off the table above, column by
+column): **26 correct** — 16 entering, 10 exiting — plus 4 defective,
+1 ambiguous, 7 no-op-by-design (see "the trailing-edge caveat") and 2 `n/a`
+(`cut`, which is the absence of a transition). 26 + 4 + 1 + 7 + 2 = 40.
+
+By kind, judged on the composite a reel actually renders: **16 correct at a
+cut, 3 defective, 1 (`cut`) not a transition.**
 
 ## The two predictions
 
@@ -112,10 +116,17 @@ black through the pixel grid.
 
 Refuted: **not** for the whole shot. `AtCutTransition` clamps progress to `[0,1]`,
 and at progress 1 `pixelate` paints nothing — frames 70, 75, 90 and 119 are the
-clean incoming clip. The blackout is bounded to the transition window. Also, the
-black is **entering-only**: the exiting layer is transparent at progress 0, which
-is why the *outgoing* clip is not blacked out for the 50 frames before its
-window opens.
+clean incoming clip. The blackout is bounded to the transition window.
+
+Also, the blackout is **entering-only** — and the reason is not that the exiting
+layer is transparent. `pixelate` paints the same opaque black root in both
+directions; what differs is what sits *on top of it*. In the exiting direction
+the layer's own children are the outgoing clip itself, drawn at full opacity
+over that black root, so the root is never seen and the outgoing clip survives
+the 50 frames before its window opens. In the entering direction the children
+are the incoming clip, which the presentation holds at zero opacity at progress
+0 — leaving the black root exposed, over the neighbouring clip's sibling
+`Sequence` beneath it.
 
 So the defect is real and is a hard black flash at the cut — but it is one
 transition long, not one clip long. The `it.fails` pin's comment has been
