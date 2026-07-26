@@ -321,10 +321,20 @@ as running them.
 
 **Branch:** `refactor/phase3-extension-contract`, merge base `d6e9482`.
 Re-derived from `git log` / `git diff --stat` against the merge base rather than carried forward
-from running totals — that is how Phase 2's counts drifted: **21 commits** (`3b0d347..66fff5f`,
-including the plan document's own commit), **67 files, +10165 / −688**. Excluding the 1751-line
-plan document (`docs/superpowers/plans/2026-07-26-phase3-extension-contract.md`): 66 files,
-**+8414 / −688**.
+from running totals — that is how Phase 2's counts drifted. Measured over
+**`d6e9482..e40fc53`**: **23 commits** (including the plan document's own commit), **70 files,
++10935 / −752**. Excluding the 1751-line plan document
+(`docs/superpowers/plans/2026-07-26-phase3-extension-contract.md`): 69 files, **+9184 / −752**.
+
+> **The range stops one commit short of the branch tip, deliberately.** A commit cannot state its
+> own diffstat, and the previous version of this paragraph was stale for exactly that reason — it
+> named a range that excluded the commit carrying the text, without saying so. `e40fc53` is the
+> last commit before the one recording these numbers; the tip adds this paragraph and nothing
+> else. Re-derive rather than trust it after any further commit:
+> ```bash
+> git log --oneline $(git merge-base main HEAD)..HEAD | wc -l
+> git diff --stat $(git merge-base main HEAD)..HEAD | tail -1
+> ```
 
 ### Gates, measured fresh at the end of the branch (2026-07-26)
 
