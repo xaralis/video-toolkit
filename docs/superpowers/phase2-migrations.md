@@ -680,7 +680,9 @@ by reading; deleting the export removes that world.
 **1. `templates/roost-reels/src/LayeredRoostReel.tsx:15`** — the export has **no consumer**
 anywhere in the template (re-verified: `roostReelDurationInFrames` appears in roost only at
 `templates/roost-reels/src/LayeredRoostReel.tsx:15`,
-`projects/roost-reel-01/src/LayeredRoostReel.tsx:68` and `:141`). Delete it and its two-line
+`projects/roost-reel-01/src/LayeredRoostReel.tsx:68` and `:141`, as far as tracked files show —
+before relying on this list, re-run `grep -rn roostReelDurationInFrames` in the roost repo
+yourself rather than trusting it verbatim; it can go stale). Delete it and its two-line
 comment outright; nothing replaces it here:
 
 ```ts

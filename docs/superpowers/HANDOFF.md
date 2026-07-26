@@ -291,9 +291,9 @@ assertion turns a routine submodule bump into a hard stop. Recorded in
 - `fade-coal` is a brand-derived **kind name**. Renaming touches every baked `Root.tsx`, so it
   is deliberately kept — see the NAME NOTE on its catalog entry.
 
-**Open risk, needs a brand repo to close:** 11 transition kinds have **no at-cut visual
-confirmation** — the six newly wired ones plus `wipe`, `glitch`, `whip-pan`, `zoom-through`,
-`gradient-wipe`, which were previously marked verified only by inference from the
+**Open risk, actionable in core (no longer blocked on a brand repo):** 11 transition kinds have
+**no at-cut visual confirmation** — the six newly wired ones plus `wipe`, `glitch`, `whip-pan`,
+`zoom-through`, `gradient-wipe`, which were previously marked verified only by inference from the
 `TransitionSeries` path. Only `burn` is at-cut confirmed. At-cut composites differently
 (handle-borrowed overlap, not a shrinking sequence), so a presentation that looks right in
 `showcase/transitions` can still misbehave at a cut.
@@ -303,10 +303,27 @@ confirmation** — the six newly wired ones plus `wipe`, `glitch`, `whip-pan`, `
 **wiring** coverage: it resolves to a presentation, mounts in both directions at progress 0/0.5/1
 without throwing, and receives its authored params under the key the presentation reads (plus
 accent-key→hex resolution through a brand palette, and `AtCutTransition`'s own progress ramps and
-compositing order). That is the whole of what core can settle. **The visual risk is unchanged:
-none of the 11 has at-cut *appearance* confirmation, and a wiring test cannot give it** — core has
-no render pipeline, only jsdom, so "does this look right at a cut" still needs a render-parity
-pass in a brand repo. `burn` remains the only at-cut confirmed kind.
+compositing order). That is the whole of what a wiring test (jsdom, no pixels) can settle. **The
+visual risk is unchanged: none of the 11 has at-cut *appearance* confirmation, and a wiring test
+cannot give it** — but closing it no longer needs a brand repo.
+
+*Update (fix/core-has-remotion, Task 4).* **Core can render.**
+`examples/layered-minimal` is a complete, installed Remotion project — `@remotion/cli`,
+`@remotion/renderer`, `@remotion/compositor-darwin-arm64` and `@remotion/web-renderer` are all
+present in its `node_modules`, and its `package.json` has `render`/`still` scripts. Measured
+directly: `cd examples/layered-minimal && npx remotion still src/index.ts MinimalReel
+out/probe.png --frame=45` bundles, prints `Rendered 1/1`, exits 0, and produces a real ~130 KB
+PNG (`out/` is gitignored; delete probes after checking them). A first run on a cold machine may
+need to fetch a headless-browser shell, which is the only external dependency involved.
+
+That makes closing this risk a **concrete core task**: author a reel literal in
+`examples/layered-minimal` exercising each of the 11 unconfirmed kinds at a cut (both directions,
+as `transitionIn` and `transitionOut`), and render stills at a few progress points to eyeball the
+composite. It is sizeable enough to be its own piece of work — a Phase 3 candidate, not something
+folded into this task. Two known suspects make it concrete rather than speculative: Task 3 found
+`checkerboard` a no-op when exiting (see below) and `pixelate`'s opaque root occluding the
+neighbouring clip at a cut — a still render of either would confirm or refute the defect
+directly, in core, without a brand repo.
 
 Both named suspects turned out to be real, and are **recorded, not fixed** (what a transition
 renders is a look decision, and neither kind has ever had its at-cut appearance confirmed, so a
@@ -381,13 +398,19 @@ now ordinary migration verification, not risk closure.
     Five test files do this today — `segment-media`, `generic-watermark`, `text-overlay-base`,
     `load-fonts`, and `at-cut-transitions`. `lib/editor/vitest.config.ts:51` documents the
     resolution detail that makes it work.
-  - **What core still cannot do is RENDER.** There is no render pipeline here, only jsdom.
-    "Does this look right at a cut / on screen" is the one question core genuinely cannot
-    answer; it needs a brand repo. That is the real and only limit.
+  - **Core CAN render.** `examples/layered-minimal` is a complete, installed Remotion project
+    (`@remotion/cli`, `@remotion/renderer`, a platform compositor, `@remotion/web-renderer` all
+    present) — `cd examples/layered-minimal && npx remotion still src/index.ts MinimalReel
+    out/probe.png --frame=45` bundles, renders, and exits 0 with a real PNG (`out/` is
+    gitignored). This was also asserted false and unmeasured; see the at-cut visual-confirmation
+    risk entry above, which this fact reopens as a core-doable task. What `lib/editor`'s own
+    `vitest` suite genuinely cannot do is drive a real `Player` instance or real pointer gestures
+    — that's jsdom's limit, not core's; see the next bullet.
   Keep the pure/JSX split documented in `lib/render/README.md` — it is still worth having,
   because a pure module needs no mock at all. It is a convenience, not a necessity.
-- **`EditorHost`'s verification boundary, named explicitly** ("core cannot render, only jsdom"
-  is true but too coarse to tell you what's actually unverified): the Focus/Zoom crop-gesture overlay, the
+- **`EditorHost`'s verification boundary, named explicitly** (`lib/editor`'s `vitest` suite runs
+  under jsdom, which has no real `Player` instance or real pointer/gesture pipeline — a
+  narrower limit than "core cannot render," which is no longer true): the Focus/Zoom crop-gesture overlay, the
   `setFocal`/`setZoom` POSITIVE path (a real drag/pinch actually moving a clip's crop), the
   transport toolbar's play/pause/scrub controls, and Remotion `Player` playback events are all
   unreachable in jsdom — they need a real timeline selection and a real Player instance, neither
@@ -416,3 +439,13 @@ now ordinary migration verification, not risk closure.
   `docs/superpowers/core-typecheck-gate.md` and the `CLAUDE.md` "Quality Gates" table. No CI
   runs any of these three gates; they are manual and easy to forget — run them before calling
   render/transitions work in `lib/` done.
+- **Capability claims must carry the command that demonstrates them, or not be written down.**
+  This branch exists because "core has no `remotion`, so anything importing it can't be
+  unit-tested" was written into this file unmeasured and false. The same pattern recurred twice
+  more on this same branch before it was caught: "core cannot render, only jsdom" (also
+  unmeasured, also false — `examples/layered-minimal` renders real stills today) shaped both a
+  stale `lib/editor` tsc baseline left uncorrected in a second doc and an open risk parked as
+  "needs a brand repo." Each time, the false absence was cheap to assert and expensive to
+  unwind once decisions were built on it. Going forward: don't write "core cannot X" (or "core
+  has no Y") without the command you ran to check, in the same sentence or the one after it. If
+  you haven't run it, say "unverified," not "cannot."

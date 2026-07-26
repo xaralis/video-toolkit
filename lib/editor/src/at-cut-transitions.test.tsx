@@ -1,8 +1,10 @@
 // WIRING coverage for lib/render/at-cut-transitions.tsx.
 //
-// READ THIS BEFORE TRUSTING A GREEN RUN. Core cannot render: there is no
-// Remotion render pipeline here, only jsdom. So this file settles the wiring
-// and NOTHING about how a transition LOOKS at a cut:
+// READ THIS BEFORE TRUSTING A GREEN RUN. This suite runs under jsdom, which
+// has no Player and renders no pixels — core itself CAN render (see
+// examples/layered-minimal, a real Remotion project with working `still`/
+// `render`), but this file doesn't exercise that path. So this file settles
+// the wiring and NOTHING about how a transition LOOKS at a cut:
 //
 //   covered here — every catalog kind resolves to a presentation; every
 //     presentation mounts in both directions across the progress range without
@@ -13,7 +15,8 @@
 //     differently from TransitionSeries (handle-borrowed overlap, not a
 //     shrinking sequence), so a presentation that reads fine in
 //     showcase/transitions can still misbehave at a cut. That stays a render
-//     check in a consuming brand repo. See docs/superpowers/HANDOFF.md.
+//     check — now doable in core via examples/layered-minimal, not a brand
+//     repo. See docs/superpowers/HANDOFF.md.
 //
 // The kind list is DERIVED from the catalog on purpose: a hardcoded list stops
 // covering new kinds the day someone adds one, which is the exact failure the

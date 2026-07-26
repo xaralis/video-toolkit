@@ -63,8 +63,14 @@ the same as being wired up. `Series` means it renders correctly when hand-driven
 old "✅ Validated" column meant, back when hand-driving was the only integration path. **No
 kind is yet visually confirmed through the at-cut engine**, which composites differently
 (handle-borrowed overlap rather than a shrinking sequence), so a presentation that looks right
-in the gallery can still misbehave at a cut. Closing that gap needs a render-parity pass in a
-brand repo; core cannot render (no `remotion` installed here).
+in the gallery can still misbehave at a cut. **Core can render** —
+`examples/layered-minimal` is a complete, installed Remotion project (`npx remotion still
+src/index.ts MinimalReel out/probe.png --frame=45` bundles and renders a real PNG there, exit
+0; `out/` is gitignored). Closing this gap is therefore a concrete core task, not something
+that needs a brand repo: author a reel literal in `examples/layered-minimal` that exercises
+each of the 11 unconfirmed kinds at a cut and render stills. See the risk entry in
+`docs/superpowers/HANDOFF.md` for the full picture, including two defects a still render would
+directly confirm or refute.
 
 | Transition | Kind | Seen | Description | Best For |
 |------------|------|------|-------------|----------|

@@ -22,7 +22,7 @@ Core has two type-check surfaces, and until now they left a hole:
 
 | Surface | Covers | Does **not** cover |
 |---|---|---|
-| `lib/editor` (`cd lib/editor && npx tsc --noEmit`, baseline **29**) | `src`, `app`, `host`, `../theming`, plus 7 `lib/render` modules its own tests pull in: `audio-gain.ts`, `transition-record.ts`, `video-track-layout.ts`, `fonts.ts`, `layered-composition-props.ts`, `load-fonts.ts`, `overlay-routing.ts` | The render `.tsx` components (`at-cut-transitions.tsx`, `audio-track.tsx`, `layered-composition.tsx`, `video-track.tsx`) and all of `lib/transitions/` |
+| `lib/editor` (`cd lib/editor && npx tsc --noEmit`, baseline **4**) | `src`, `app`, `host`, `../theming`, plus 7 `lib/render` modules its own tests pull in: `audio-gain.ts`, `transition-record.ts`, `video-track-layout.ts`, `fonts.ts`, `layered-composition-props.ts`, `load-fonts.ts`, `overlay-routing.ts` | The render `.tsx` components (`at-cut-transitions.tsx`, `audio-track.tsx`, `layered-composition.tsx`, `video-track.tsx`) and all of `lib/transitions/` |
 | `examples/layered-minimal` (this gate, baseline **0**) | its own `src`, plus every `lib/**` file the render actually pulls in — `lib/render` (9 files, including the 4 `.tsx` components above), `lib/transitions` (14 files — every presentation, `index.ts`, and `TransitionGallery.tsx`; see below), `lib/theming` (9), `lib/reel-config-base` (8), `lib/transcripts` (1) | anything no reel imports (editor UI, host) |
 
 Before this, the entire render surface — including ~1900 lines of transition
@@ -107,7 +107,7 @@ reason (it was worth 5 errors there, taking it from 34 to 29).
 The runtime `react` package ships no declarations. Point `paths` at it and every
 consumer becomes implicitly `any` — the type coverage this gate exists to add is
 silently deleted while the error count *looks* good. Verified twice: in
-`lib/editor`, mapping `react` to the JS package took its count from 29 to 101;
+`lib/editor`, mapping `react` to the JS package took its count from then-29 to 101;
 here it hollows out the whole render surface. Always map to `@types/react`.
 
 If you want to confirm the gate is real rather than `any`-ed, append a deliberate
