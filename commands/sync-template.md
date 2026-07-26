@@ -63,10 +63,10 @@ default. Nothing about the path distinguishes it from a stale vendored copy. Onl
 every file that already matches the template is recorded on the first run, so only genuinely
 diverged files need a human decision, and the next template fix flows normally.
 
-> **`--force` is the only way to lose content — and it can.** It overwrites diverged files and, with
-> `--strict`, deletes unmanaged ones. Use it only after reading a `--dry-run` and deciding
-> file-by-file that nothing listed as `PROTECTED` matters. `Root.tsx` and `config/demo.config.json`
-> survive even `--force`.
+> **`--force` is the only way to lose content — and it can.** It overwrites diverged files,
+> rewrites dependency pins the project set itself, and with `--strict` deletes unmanaged files. Use
+> it only after reading a `--dry-run` and deciding line-by-line that nothing listed as `PROTECTED`
+> matters. `Root.tsx` and `config/demo.config.json` survive even `--force`.
 
 > **`--strict` blast radius.** `--strict` deletes files the template no longer has **from every
 > mirrored tree, which includes `.editor/`**. It only removes files the manifest says this tool
@@ -103,15 +103,25 @@ the safety mechanism — that is provenance, which needs no list and cannot go s
 `package.json` is the one file that is merged rather than mirrored, because it is half the
 template's and half the project's:
 
-- **`dependencies` / `devDependencies`** — every template entry is applied. Missing → added; present
-  at a **different version** → updated to the template's, since the template is the source of truth
-  for the toolchain. A dependency only the project has is left alone.
+- **`dependencies` / `devDependencies`** — a package the project **lacks** is added from the
+  template. A package it has at a **different version** is decided by the same provenance rule as a
+  file: if the manifest records that this tool wrote the version currently there, it is a stale
+  vendored pin and is updated; otherwise the project pinned it itself and it is reported
+  `PROTECTED` and **left alone**. A dependency only the project has is left alone.
 - **`scripts`** — a script the project doesn't define is added (this is how `editor` arrives); one it
   does define is **kept**, and reported as `pkg keep` so you can see the divergence.
 - **`name` / `version`** — never written.
 
-Every merged key is printed (`pkg add` / `pkg update` / `pkg keep`), so the report tells you exactly
-what changed. Run `npm install` in the project afterwards if anything was added or updated.
+> **Why a pin is not the template's to take.** A version that differs may be a stale vendored copy
+> *or* a deliberate project decision, and the version string cannot tell you which — the same
+> argument that makes a path list useless for files. The stakes here are higher, not lower: a
+> zod/remotion mismatch in this toolkit **fails silently** (`docs/zod-version.md`), so a silently
+> rewritten pin produces a wrong render with nothing to notice. `--force` takes the template's
+> version, and is the only way to lose the project's.
+
+Every merged key is printed (`pkg add` / `pkg update` / `pkg keep` / `PROTECTED`), so the report
+tells you exactly what changed. Run `npm install` in the project afterwards if anything was added
+or updated.
 
 ## When to run it
 

@@ -21,6 +21,12 @@
 // brand-layer renderer as `BrandRenderProps.tokens` by
 // `defaultRenderBrandTrack`. Deliberately ONE narrow typed field in both
 // cases, not the whole theme — neither prop bag carries a `CompositionTheme`.
+//
+// THOSE ARE THE ONLY TWO AXES THAT THREAD ANYTHING. `caption` is on neither, so
+// it is the one field below that core does not deliver to its generic for you —
+// see its declaration on `ThemeTokens` for what a brand has to do instead. Read
+// that before adding a field here: a token nothing threads is a promise the
+// module cannot keep.
 
 /** Look constants for {@link GenericMultiClip}. */
 export interface MultiClipTokens {
@@ -191,5 +197,22 @@ export interface ThemeTokens {
   card?: CardTokens;
   watermark?: WatermarkTokens;
   disclaimer?: DisclaimerTokens;
+  /** UNLIKE EVERY OTHER FIELD HERE, core threads this NOWHERE. Captions are on
+   *  neither token axis — not `VideoRenderProps.tokens` (captions are not a
+   *  video kind) and not `BrandRenderProps.tokens` (not a brand-layer kind) —
+   *  and core has no mount site for {@link GenericCaptions} at all. Setting
+   *  `theme.tokens.caption` on its own therefore changes nothing.
+   *
+   *  It is declared anyway because it is the typed, reviewed vocabulary for
+   *  that look, and a brand mounting `GenericCaptions` from its OWN renderer
+   *  passes it straight through:
+   *
+   *  ```tsx
+   *  <GenericCaptions words={words} tokens={theme.tokens?.caption} />
+   *  ```
+   *
+   *  Routing captions through a core axis is a real design decision (which
+   *  tier owns them, how they interact with anchored overlays) and has not been
+   *  made. When it is, this comment goes. */
   caption?: CaptionTokens;
 }

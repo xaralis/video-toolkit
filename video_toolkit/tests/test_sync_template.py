@@ -8,6 +8,7 @@ from video_toolkit.sync_template import (
     PROJECT_OWNED,
     check_identity_preserved,
     load_vendored,
+    load_vendored_deps,
     merge_package_json,
     resolve_template,
     save_vendored,
@@ -498,8 +499,9 @@ def test_extras_strict_prunes_only_the_mirrored_dir(tmp_path):
 # --- package.json: merged, NEVER overwritten -----------------------------------------------------
 
 
-def test_package_json_merge_keeps_project_identity_and_takes_the_toolchain(tmp_path):
-    """Overwriting package.json would rename every project. Merge instead."""
+def test_package_json_merge_keeps_project_identity_and_adds_the_missing_toolchain(tmp_path):
+    """Overwriting package.json would rename every project. Merge instead — and merging means
+    ADDING what the project lacks, not overruling what it decided."""
     tpl = _make_template_dir(tmp_path)
     proj = _make_project_dir(
         tmp_path,
@@ -528,9 +530,11 @@ def test_package_json_merge_keeps_project_identity_and_takes_the_toolchain(tmp_p
     assert merged["devDependencies"]["@vitejs/plugin-react"] == "^4.7.0"
     assert "devDependencies.vite@^5.4.21" in report["added"]
 
-    # a version the project pinned differently resolves to the TEMPLATE's, and is reported
-    assert merged["devDependencies"]["typescript"] == "^5.0.0"
-    assert "devDependencies.typescript: ^4.9.0 -> ^5.0.0" in report["updated"]
+    # a version the project pinned differently is PROTECTED, not silently rewritten: the tool has
+    # no record of writing ^4.9.0 there, so as far as it knows the project chose it.
+    assert merged["devDependencies"]["typescript"] == "^4.9.0"
+    assert "devDependencies.typescript: project has ^4.9.0, template has ^5.0.0" in report["diverged"]
+    assert not any("typescript" in e for e in report["updated"])
 
     # a dependency only the project has is left alone
     assert merged["devDependencies"]["prettier"] == "^3.0.0"
@@ -540,6 +544,145 @@ def test_package_json_merge_keeps_project_identity_and_takes_the_toolchain(tmp_p
     assert "scripts.editor" in report["added"]
     assert merged["scripts"]["test"] == "node node_modules/vitest/dist/cli.js run"
     assert any(e.startswith("scripts.test") for e in report["kept"])
+
+
+def test_a_pin_this_tool_wrote_is_carried_forward_but_one_the_project_changed_is_not(tmp_path):
+    """The dependency half of provenance, both branches in one story.
+
+    `typescript` is at the version the manifest records this tool wrote -> stale vendored pin ->
+    updated. `zod` is at a version the manifest does NOT record -> the project's own decision ->
+    protected. Nothing distinguishes the two by looking at the version string alone, which is the
+    whole reason the manifest exists."""
+    tpl = _make_template_dir(tmp_path)
+    proj = _make_project_dir(
+        tmp_path,
+        pkg={
+            "name": "pp-ricni-sauna",
+            "version": "0.2.0",
+            "dependencies": {"zod": "3.22.3"},
+            "devDependencies": {"typescript": "^4.9.0"},
+        },
+    )
+    tpl_pkg = json.loads((tpl / "package.json").read_text())
+    tpl_pkg["dependencies"]["zod"] = "4.0.0"
+    (tpl / "package.json").write_text(json.dumps(tpl_pkg, indent=2) + "\n")
+
+    deps = {"devDependencies": {"typescript": "^4.9.0"}}  # we wrote this one; we know nothing of zod
+
+    report = merge_package_json(tpl, proj, deps=deps)
+    merged = json.loads((proj / "package.json").read_text())
+
+    assert merged["devDependencies"]["typescript"] == "^5.0.0"
+    assert "devDependencies.typescript: ^4.9.0 -> ^5.0.0" in report["updated"]
+
+    # the pin docs/zod-version.md says fails SILENTLY if it moves — untouched, and named
+    assert merged["dependencies"]["zod"] == "3.22.3"
+    assert "dependencies.zod: project has 3.22.3, template has 4.0.0" in report["diverged"]
+
+    # and the record now reflects what is actually there
+    assert deps["devDependencies"]["typescript"] == "^5.0.0"
+    assert "zod" not in deps.get("dependencies", {})
+
+
+def test_force_is_the_only_way_to_lose_a_project_pin(tmp_path):
+    """Same as for files: divergence is never destroyed except deliberately."""
+    tpl = _make_template_dir(tmp_path)
+    proj = _make_project_dir(
+        tmp_path,
+        pkg={"name": "p1", "version": "1.0.0", "devDependencies": {"typescript": "^4.9.0"}},
+    )
+
+    report = merge_package_json(tpl, proj, deps={}, force=True)
+
+    assert json.loads((proj / "package.json").read_text())["devDependencies"]["typescript"] == "^5.0.0"
+    assert "devDependencies.typescript: ^4.9.0 -> ^5.0.0" in report["updated"]
+    assert report["diverged"] == []
+
+
+def test_dependency_divergence_is_sticky_and_a_dry_run_still_protects(tmp_path):
+    """A second run must not quietly decide the pin is now ours. And a dry run writes nothing
+    while still reporting the same protection."""
+    tpl = _make_template_dir(tmp_path)
+    proj = _make_project_dir(
+        tmp_path,
+        pkg={"name": "p1", "version": "1.0.0", "devDependencies": {"typescript": "^4.9.0"}},
+    )
+    deps: dict = {}
+
+    dry = merge_package_json(tpl, proj, dry_run=True, deps=dict(deps))
+    assert any("typescript" in e for e in dry["diverged"])
+    assert json.loads((proj / "package.json").read_text())["devDependencies"]["typescript"] == "^4.9.0"
+
+    for _ in range(2):
+        report = merge_package_json(tpl, proj, deps=deps)
+        assert any("typescript" in e for e in report["diverged"])
+        assert json.loads((proj / "package.json").read_text())["devDependencies"]["typescript"] == "^4.9.0"
+
+
+def test_a_pin_that_already_agrees_bootstraps_the_record(tmp_path):
+    """How a legacy project (no manifest) gets dependency provenance without a --force run: every
+    version that already matches the template is provably safe to manage from then on."""
+    tpl = _make_template_dir(tmp_path)
+    proj = _make_project_dir(
+        tmp_path,
+        pkg={"name": "p1", "version": "1.0.0", "devDependencies": {"typescript": "^5.0.0"}},
+    )
+    deps: dict = {}
+
+    report = merge_package_json(tpl, proj, deps=deps)
+
+    assert not any("typescript" in e for e in report["updated"] + report["diverged"])
+    assert deps["devDependencies"]["typescript"] == "^5.0.0"
+
+    # now the template moves on — and the update flows, because we know the project never touched it
+    tpl_pkg = json.loads((tpl / "package.json").read_text())
+    tpl_pkg["devDependencies"]["typescript"] = "^5.6.0"
+    (tpl / "package.json").write_text(json.dumps(tpl_pkg, indent=2) + "\n")
+
+    report = merge_package_json(tpl, proj, deps=deps)
+    assert "devDependencies.typescript: ^5.0.0 -> ^5.6.0" in report["updated"]
+
+
+def test_deps_manifest_round_trips_and_is_carried_forward(tmp_path):
+    """`deps=None` must not silently erase the recorded pins — a caller that only has file hashes
+    would otherwise downgrade every pin to `diverged` on the next run."""
+    proj = tmp_path / "projects" / "p1"
+
+    assert load_vendored_deps(proj) == {}                     # absent -> nothing is ours
+    save_vendored(proj, {"src/Comp.tsx": "abc"}, deps={"dependencies": {"zod": "3.22.3"}})
+    assert load_vendored_deps(proj) == {"dependencies": {"zod": "3.22.3"}}
+
+    save_vendored(proj, {"src/Comp.tsx": "def"})              # deps omitted -> carried forward
+    assert load_vendored_deps(proj) == {"dependencies": {"zod": "3.22.3"}}
+    assert load_vendored(proj) == {"src/Comp.tsx": "def"}
+
+    (proj / MANIFEST_NAME).write_text("{ not json")
+    assert load_vendored_deps(proj) == {}                     # corrupt -> protect everything
+
+    # a v1 manifest (files only, no `deps`) also reads as "nothing is ours"
+    (proj / MANIFEST_NAME).write_text(json.dumps({"version": 1, "files": {}}))
+    assert load_vendored_deps(proj) == {}
+
+
+def test_a_project_born_from_the_template_owns_no_pins_of_its_own(tmp_path):
+    """The created-from-scratch branch: every version came from the template, so all of it is
+    recorded — otherwise the very next run would report the whole toolchain as diverged."""
+    tpl = _make_template_dir(tmp_path)
+    proj = _make_project_dir(tmp_path)
+    deps: dict = {}
+
+    merge_package_json(tpl, proj, deps=deps)
+
+    assert deps["dependencies"] == TEMPLATE_PKG["dependencies"]
+    assert deps["devDependencies"] == TEMPLATE_PKG["devDependencies"]
+
+    tpl_pkg = json.loads((tpl / "package.json").read_text())
+    tpl_pkg["dependencies"]["remotion"] = "4.0.500"
+    (tpl / "package.json").write_text(json.dumps(tpl_pkg, indent=2) + "\n")
+
+    report = merge_package_json(tpl, proj, deps=deps)
+    assert "dependencies.remotion: 4.0.425 -> 4.0.500" in report["updated"]
+    assert report["diverged"] == []
 
 
 def test_package_json_merge_is_idempotent_and_dry_run_writes_nothing(tmp_path):

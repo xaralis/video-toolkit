@@ -7,7 +7,7 @@
 **What this is.** Core now ships a generic for every kind a reel can contain, plus the registry
 that lets a brand override any of them (see `phase3-extension-contract.md` for the contract
 itself). Every one of those generics is worthless until a brand adopts it. This file is the
-adoption list: 16 items, each with verified paths, a paste-ready replacement, a **parity grade**,
+adoption list: 17 items, each with verified paths, a paste-ready replacement, a **parity grade**,
 and a verification command.
 
 **This document is a hypothesis, not an inventory.** Its predecessor,
@@ -20,7 +20,34 @@ too, and check before you paste.
 
 ---
 
-## Two things to read before item 1
+## Three things to read before item 1
+
+### EVERY core video generic silently drops anchored overlays
+
+Read this once and it applies to items 5, 6, 17 and any future adoption of a core video renderer.
+
+`lib/render/layered-composition.tsx:121` collects each item's anchored overlays and passes them
+into `renderVideoItemNode` as `VideoRenderProps.anchoredOverlays` (`lib/theming/types.ts:94`). A
+brand renderer is expected to draw them — PP's `MultiClipSegment` does. **All four of core's video
+generics reference the prop zero times:**
+
+```bash
+grep -c anchoredOverlays lib/theming/segment/SegmentMedia.tsx \
+  lib/theming/generic/{GenericMultiClip,GenericCard,GenericOutro}.tsx   # 0 0 0 0
+```
+
+So adopting **any** core video generic deletes every overlay anchored to that item from the frame,
+with **no error, no warning, and no type change** — the prop is optional and ignoring it compiles.
+This is not a Phase 3 regression (the same was true before), but Phase 3 is what makes brands
+adopt these renderers, which is what turns a latent gap into a live one.
+
+**Before adopting a generic for a kind, grep the cut for overlays anchored to items of that kind**
+(`anchorVideoId` in `Root.tsx`), and require a still render at a frame inside each one. Item 6
+documents the case where this actually bites today (`pp-05-zastupitelsky-klub` `seg-001`, an
+anchored title that disappears); it is listed there as an example, not as the only place it can
+happen.
+
+## Two more things to read before item 1
 
 ### The roost baseline is FROZEN and the working tree is NOT it
 
@@ -966,6 +993,91 @@ no render path.
 
 ---
 
+### 17. PP — `CardSegment` + `ClaimPlate` + `PatternBg` → `GenericCard`
+
+**Grade: parity-preserving for the `claim-plate` path once the tokens below are set — and a
+DELIBERATE LOOK CHANGE for the one card item PP actually ships, which is not a `claim-plate` at
+all. Read the second half before adopting.**
+
+**Where** (all verified on PP `main` @ `ffcc442`, the branch §0 names):
+`templates/campaign-reels/src/segments/CardSegment.tsx` (23 lines),
+`.../src/segments/plates/ClaimPlate.tsx` (44), `.../src/segments/plates/PatternBg.tsx` (39),
+rendered by `CardItem` (`src/config/video-item-renderers.tsx:257-268`) and registered at
+`composition-theme.tsx:170`. `md5` across the **12** copies (template + the same 11 campaign
+projects as item 15): **all three files byte-identical everywhere** — no `pp-mov-koalice`-style
+counterexample here.
+
+**The token mapping is complete** — every literal in the three files maps, enumerated against
+them:
+
+```ts
+// templates/campaign-reels/src/config/composition-theme.tsx
+  tokens: {
+    card: {
+      background: '#0a0a0a',                       // PatternBg.tsx:9, 35
+      pattern: { color: '#f5f5f0',                 // PatternBg.tsx:25, 29 (grid, diagonals)
+                 accentColor: '#c6f432',           // PatternBg.tsx:17, 21 (pixels, dots)
+                 opacity: 0.36 },                  // ClaimPlate.tsx:15 intensity 0.6
+                                                   //   × PatternBg.tsx:36 `op * 0.6` = 0.36
+      text: { fontFamily: 'Geist, sans-serif', fontWeight: 700, fontSize: 120,
+              color: '#f5f5f0', lineHeight: 1.05, letterSpacing: '-0.02em',
+              paddingX: 80 },                      // ClaimPlate.tsx:20, 28-32, 19
+      endpoint: { text: '.', color: '#2ad4c5' },   // ClaimPlate.tsx:37 — PP's `endpoint`
+                                                   //   defaults TRUE, core's is opt-in
+    },
+  },
+```
+
+Core's `stagger` defaults (`6` / `12` / `40`) already equal PP's `ClaimPlate.tsx:23-25` and need
+no entry. `backgroundSize: 'auto'` for `diagonals` (`PatternBg.tsx:30`) is the CSS initial value,
+which core omits — no difference.
+
+**Two real divergences. Neither is a token.**
+
+1. **An absent `pattern` draws nothing in core, `pixels` in PP.** `CardSegment.tsx:13` passes
+   `segment.pattern ?? 'pixels'`, and `ClaimPlate.tsx:10` defaults it again the same way; core's
+   `patternLayer` returns `null` for `undefined` (`GenericCard.tsx:50`, the `default:` arm) and
+   draws a plain background. Any card item whose `pattern` a cut left unset loses its pixel field.
+   Fix by writing `pattern: 'pixels'` explicitly on those items, not by changing core — a default
+   of one brand's texture is exactly what core must not own.
+2. **PP's ONE LIVE CARD ITEM IS NOT A `claim-plate`, and the frame changes.**
+   `projects/pp-paro-2026/src/Root.tsx:112-119` is the only `kind: 'card'` in either the template
+   or the 11 projects, and it carries **`cardKind: ''`** with `pattern: 'pixels'` and no
+   `cardProps`. Under PP that empty string fails `CardSegment.tsx:9`'s `=== 'claim-plate'` test,
+   so `plate` stays `null` and the segment renders a **bare `AbsoluteFill` — no background, no
+   pattern, nothing**; whatever is beneath shows through. Under `GenericCard` the same item draws
+   the coal background *and* the pixel field, because core paints the background before dispatching
+   the plate (`GenericCard.tsx:147-149`). **`seg-008` of `pp-paro-2026` will look different.**
+   Decide what it should be — an empty 3 s hold is more likely a bug in that cut than an intent —
+   and say so before adopting.
+
+Then delete the registration and the three files:
+
+```diff
+ // templates/campaign-reels/src/config/composition-theme.tsx
+   video: {
+     clip: { renderer: ClipItem },
+     broll: { renderer: BrollItem },
+     'multi-clip': { renderer: MultiClipItem },
+     photo: { renderer: PhotoItem },
+-    card: { renderer: CardItem },
+   },
+```
+…then `CardItem` (`video-item-renderers.tsx:257-268`), its `CardSegment` import (line 20), and
+`src/segments/{CardSegment.tsx,plates/ClaimPlate.tsx,plates/PatternBg.tsx}`. Note `CardItem` is
+also where `cardKind` is defaulted to `'claim-plate'` — core does not re-default it, which is the
+other half of divergence 2.
+
+**Verify:**
+```bash
+cd projects/pp-paro-2026 && npx tsc --noEmit
+npx remotion still src/index.ts <comp> out/card.png --frame=920   # inside seg-008 (30268-33268 ms)
+# compare against the same frame rendered before the change — they will DIFFER; confirm the new
+# one is what you want, then re-render the other 10 projects and require byte-identity there
+```
+
+---
+
 ## Suggested order
 
 1. **15** (`sync_template`, dry-run first; `pp-mov-koalice` no longer needs excluding — its outro
@@ -975,7 +1087,7 @@ no render path.
 3. **1**, **5**, **8** — structural, small, well-understood. Item 8 carries the one 4 px delta.
 4. **9** then **13** (partial) — captions move to core, `brand-lib` sheds two files.
 5. **7**, **4** — roost's two items. 4 is declarative only.
-6. **2**, **6** — the two that need real still renders and a look decision.
+6. **2**, **6**, **17** — the three that need real still renders and a look decision.
 7. **16** — after registrations carry `params`.
 8. **14** — its own plan, its own session.
 9. **15** again, to propagate.

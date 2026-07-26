@@ -49,7 +49,8 @@ The full audit and phase plan live at
 18 commits, 116 files, **+4197 / −6998 (net −2801)**. 47 test files / **485 tests**
 green. `tsc --noEmit` held at its then-34-error pre-existing baseline — verified by
 diffing error *sets* against a worktree at the branch point, not by comparing counts.
-(That 34 is **historical**. The live baseline is 4 — see "Working conventions" below.)
+(That 34 is **historical** — what Phase 1 measured, not the repo's current baseline.
+For that, read "Current gate numbers" under "Working conventions established" below.)
 
 What landed: the retired segment-era editor and the entire legacy theming system
 deleted; four definitions of a transition collapsed into one `CATALOG` in
@@ -74,10 +75,13 @@ including that file, 41 files / **+6042 / −80**. 55 test files /
 **561 tests** green. `tsc --noEmit` in `lib/editor` held at its then-34-error
 pre-existing baseline — verified by diffing error *sets* against a worktree at the
 merge base (`bb9a89d`); the two sets were byte-identical, no line added or removed.
-(Both figures are **historical**: the live numbers are 57 files / 650 tests and a
-4-error `tsc` baseline — see "Working conventions" below.)
-The brand-leak gate returns exactly its 2 known pre-existing hits (comments in
-`lib/theming/segment/SegmentMedia.tsx` and `lib/transitions/presentations/burn.tsx`).
+(Both figures are **historical** — what Phase 2 measured, not what the repo
+measures now. For the current numbers read "Current gate numbers" under
+"Working conventions established" below; never carry a figure forward from
+this paragraph.)
+The brand-leak gate returned exactly its 2 known pre-existing hits — also
+**historical**: the count is the gate, and the *files* carrying the two comments
+move as code is refactored, so the pair named here is not the pair you will find.
 
 What landed — five mechanisms that each brand repo had its own copy of:
 

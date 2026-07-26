@@ -23,9 +23,12 @@ are skipped, so re-running is free and drift shows up as `updated`.
 (`.editor/`) and the build config (`remotion.config.ts`, `vitest.config.ts`, `tsconfig.json`), and
 those are mirrored the same way. `package.json` is MERGED, never overwritten: `dependencies`,
 `devDependencies` and any script the project does not already define come from the template (the
-template is the source of truth for the toolchain, so a dependency pinned at a different version is
-updated to the template's), while `name`, `version` and existing scripts are the project's and are
-left alone. Every merged key is reported.
+template is the source of truth for the toolchain), while `name`, `version` and existing scripts
+are the project's and are left alone. Every merged key is reported.
+
+A dependency version is under THE SAME PROVENANCE GUARD as a file: a pin the project changed from
+what this tool last wrote is reported `diverged` and left alone, not rewritten. Adding a dependency
+the project lacks is still free. See DEPENDENCY PROVENANCE below MANIFEST_NAME.
 
 Usage:
     python3 -m video_toolkit.sync_template <project>                   # sync
@@ -80,6 +83,29 @@ PROJECT_OWNED = frozenset({"Root.tsx", "config/demo.config.json"})
 # and is the only way to lose content — deliberately, and named in the report first.
 MANIFEST_NAME = ".template-sync.json"
 
+# --- DEPENDENCY PROVENANCE: the same argument, one level down ------------------------------------
+#
+# `merge_package_json` originally rewrote ANY project dependency whose version differed from the
+# template's, on the reasoning that "the template owns the toolchain". That reasoning is exactly the
+# reasoning a path list makes about files, and it fails the same way: a version that differs may be
+# a stale vendored pin (update it) or a deliberate project decision (NEVER touch it), and the
+# version string cannot tell you which.
+#
+# The stakes are not lower than for files, they are higher, because the failure is quieter.
+# `docs/zod-version.md` documents that a zod/remotion version mismatch in this toolkit **fails
+# silently** — no error, wrong render. Silently rewriting a project's pin is therefore the same
+# hazard class as silently overwriting 83 lines of client work, minus the diff that would reveal it.
+#
+# So the manifest records dependency versions too, under `deps`, and the merge reads them:
+#
+#   project version == template's        -> already agrees             -> record it, nothing to do
+#   dependency absent from the project   -> nothing of the project's to lose -> ADD it, record it
+#   project version == recorded version  -> unchanged since we wrote it -> safe to update
+#   anything else (incl. no record)      -> the project's own pin       -> `diverged`, left alone
+#
+# `--force` overrides, and — as with files — is the only way to lose the project's decision.
+MANIFEST_DEPS_KEY = "deps"
+
 # Vendored directories beyond src/ that are mirrored wholesale. The reel editor lives here; a
 # project whose .editor/ drifted behind the template's cannot start at all.
 MIRROR_DIRS = (".editor",)
@@ -100,7 +126,8 @@ MIRROR_FILES = (
 )
 
 # package.json sections merged key-by-key from the template. The template owns the toolchain, so a
-# version mismatch resolves to the template's.
+# package the project LACKS is added from it — but a version mismatch is decided by provenance, not
+# by the template winning. See DEPENDENCY PROVENANCE above.
 MERGED_DEP_SECTIONS = ("dependencies", "devDependencies")
 
 # package.json keys that are the PROJECT's identity and are never written.
@@ -133,11 +160,54 @@ def load_vendored(project_dir: Path) -> dict[str, str]:
     return {str(k): str(v) for k, v in files.items()} if isinstance(files, dict) else {}
 
 
-def save_vendored(project_dir: Path, vendored: dict[str, str], dry_run: bool = False) -> None:
+def load_vendored_deps(project_dir: Path) -> dict[str, dict[str, str]]:
+    """Dependency provenance: section -> package name -> the version THIS TOOL last wrote there.
+
+    Same fail-safe as {@link load_vendored}: absent, corrupt, or written by an older version of
+    this tool all read as empty, which means "no dependency is known to be ours" — so every
+    version the project holds is treated as the project's own and protected.
+    """
+    path = project_dir / MANIFEST_NAME
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return {}
+    deps = data.get(MANIFEST_DEPS_KEY)
+    if not isinstance(deps, dict):
+        return {}
+    return {
+        str(section): {str(k): str(v) for k, v in body.items()}
+        for section, body in deps.items()
+        if isinstance(body, dict)
+    }
+
+
+def save_vendored(
+    project_dir: Path,
+    vendored: dict[str, str],
+    dry_run: bool = False,
+    deps: dict[str, dict[str, str]] | None = None,
+) -> None:
+    """Persist both halves of the manifest.
+
+    `deps=None` means "I have nothing to say about dependencies" and CARRIES FORWARD whatever is
+    already recorded — dropping it would silently downgrade every recorded pin to `diverged` on
+    the next run. Protective either way, but needlessly noisy.
+    """
     if dry_run:
         return
     project_dir.mkdir(parents=True, exist_ok=True)
-    payload = {"version": 1, "files": dict(sorted(vendored.items()))}
+    if deps is None:
+        deps = load_vendored_deps(project_dir)
+    payload = {
+        "version": 2,
+        "files": dict(sorted(vendored.items())),
+        MANIFEST_DEPS_KEY: {
+            section: dict(sorted(body.items())) for section, body in sorted(deps.items()) if body
+        },
+    }
     (project_dir / MANIFEST_NAME).write_text(json.dumps(payload, indent=2) + "\n")
 
 
@@ -347,22 +417,34 @@ def merge_package_json(
     template_dir: Path,
     project_dir: Path,
     dry_run: bool = False,
+    deps: dict[str, dict[str, str]] | None = None,
+    force: bool = False,
 ) -> dict[str, list[str]]:
     """Merge the template's package.json into the project's. NEVER overwrites it.
 
-    The template owns the toolchain; the project owns its identity:
+    The template owns the toolchain; the project owns its identity AND its own decisions:
 
-    * `dependencies` / `devDependencies` — every template key is applied. Missing -> added; present
-      at a different version -> updated to the template's; identical -> untouched. A dependency only
-      the project has is left alone (a project may legitimately add one).
+    * `dependencies` / `devDependencies` — a package the project lacks is ADDED. A package it has
+      at a different version is only rewritten when provenance proves the current value is what
+      this tool last wrote (or under `force`); otherwise it is reported `diverged` and LEFT ALONE.
+      See DEPENDENCY PROVENANCE at the top of the module — a silently rewritten pin is the failure
+      `docs/zod-version.md` warns about. A dependency only the project has is left alone.
     * `scripts` — a script the project does not define is added; one it does define is KEPT, however
       it differs (projects tune e.g. `test` for their own node layout).
     * `name` / `version` — never written. Overwriting `name` would rename every project.
 
     A project with no package.json gets the template's, with `name` set to the project directory
     name so it is not born carrying the template's identity.
+
+    `deps` is MUTATED in place with the versions this call is responsible for, so the caller can
+    persist it in the same manifest as the file hashes. Passing none means "nothing is known to be
+    ours" — the protective default, matching `sync_template`'s `vendored`.
     """
-    report: dict[str, list[str]] = {"added": [], "updated": [], "kept": [], "created": []}
+    report: dict[str, list[str]] = {
+        "added": [], "updated": [], "kept": [], "created": [], "diverged": []
+    }
+    if deps is None:
+        deps = {}
     template_pkg = template_dir / "package.json"
     if not template_pkg.is_file():
         return report
@@ -374,6 +456,10 @@ def merge_package_json(
         merged = dict(template_data)
         merged["name"] = project_dir.name
         report["created"].append(f"package.json  (name={project_dir.name})")
+        # Everything in it came from the template, so all of it is provably ours.
+        for section in MERGED_DEP_SECTIONS:
+            for key, version in (template_data.get(section) or {}).items():
+                deps.setdefault(section, {})[key] = version
         if not dry_run:
             project_dir.mkdir(parents=True, exist_ok=True)
             project_pkg.write_text(json.dumps(merged, indent=2, ensure_ascii=False) + "\n")
@@ -388,15 +474,28 @@ def merge_package_json(
         if not template_section:
             continue
         project_section = project_data.setdefault(section, {})
+        recorded = deps.setdefault(section, {})
         for key, version in template_section.items():
             if key not in project_section:
                 project_section[key] = version
                 report["added"].append(f"{section}.{key}@{version}")
+                recorded[key] = version
                 changed = True
-            elif project_section[key] != version:
+            elif project_section[key] == version:
+                # Already agrees. Provably safe to manage from here on, whoever wrote it — this is
+                # how a legacy project bootstraps its dependency provenance on the first run.
+                recorded[key] = version
+            elif force or recorded.get(key) == project_section[key]:
                 report["updated"].append(f"{section}.{key}: {project_section[key]} -> {version}")
                 project_section[key] = version
+                recorded[key] = version
                 changed = True
+            else:
+                # The project pinned this itself, or we have no record. Could be the zod pin.
+                report["diverged"].append(
+                    f"{section}.{key}: project has {project_section[key]}, "
+                    f"template has {version}"
+                )
 
     template_scripts = template_data.get("scripts") or {}
     if template_scripts:
@@ -432,7 +531,8 @@ def main() -> int:
         "--force",
         action="store_true",
         help="DESTRUCTIVE: overwrite (and with --strict, delete) files the project authored or "
-        "edited. Without this, such files are reported as `diverged` and left alone.",
+        "edited, and rewrite dependency pins the project set itself. Without this, both are "
+        "reported as `diverged` and left alone.",
     )
     args = ap.parse_args()
 
@@ -462,6 +562,7 @@ def main() -> int:
 
     dst = proj / "src"
     vendored = load_vendored(proj)
+    deps = load_vendored_deps(proj)
     report = sync_template(
         src, dst, dry_run=args.dry_run, strict=args.strict,
         vendored=vendored, prefix="src/", force=args.force,
@@ -469,15 +570,17 @@ def main() -> int:
 
     if args.src_only:
         extras = _empty_report()
-        pkg = {"added": [], "updated": [], "kept": [], "created": []}
+        pkg = {"added": [], "updated": [], "kept": [], "created": [], "diverged": []}
     else:
         extras = sync_extras(
             template_dir, proj, dry_run=args.dry_run, strict=args.strict,
             vendored=vendored, force=args.force,
         )
-        pkg = merge_package_json(template_dir, proj, dry_run=args.dry_run)
+        pkg = merge_package_json(
+            template_dir, proj, dry_run=args.dry_run, deps=deps, force=args.force,
+        )
 
-    save_vendored(proj, vendored, dry_run=args.dry_run)
+    save_vendored(proj, vendored, dry_run=args.dry_run, deps=deps)
 
     # src entries are src-relative; extras are project-relative. Print everything project-relative.
     for key in report:
@@ -516,6 +619,8 @@ def main() -> int:
         print(f"   pkg update {entry}")
     for entry in pkg["kept"]:
         print(f"   pkg keep   {entry}")
+    for entry in pkg["diverged"]:
+        print(f"   PROTECTED  {entry}  (project's own pin — NOT rewritten)")
     print(
         f"-> {len(copied)} copied, {len(updated)} updated, {len(removed)} removed, "
         f"{len(skipped)} unchanged, {len(preserved) + len(diverged) + len(unmanaged)} protected"
@@ -523,7 +628,8 @@ def main() -> int:
             ""
             if args.src_only
             else f"; package.json: {len(pkg['added'])} added, {len(pkg['updated'])} updated, "
-            f"{len(pkg['kept'])} kept (name/version never touched)"
+            f"{len(pkg['kept'])} kept, {len(pkg['diverged'])} pins protected "
+            f"(name/version never touched)"
         )
         + (" [DRY RUN]" if args.dry_run else "")
     )
@@ -531,6 +637,13 @@ def main() -> int:
         print(
             f"!! {len(diverged) + len(unmanaged)} file(s) the project appears to own were left "
             f"untouched. Review them; --force overrides and CAN DESTROY authored work.",
+            file=sys.stderr,
+        )
+    if pkg["diverged"]:
+        print(
+            f"!! {len(pkg['diverged'])} dependency pin(s) the project set itself were left "
+            f"untouched. A version mismatch here can fail SILENTLY (see docs/zod-version.md), so "
+            f"decide each one deliberately; --force takes the template's.",
             file=sys.stderr,
         )
     return 0
