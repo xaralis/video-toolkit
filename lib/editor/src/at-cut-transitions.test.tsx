@@ -277,27 +277,50 @@ describe('direction-branching suspects', () => {
   // cells carry no content and no background. So a `checkerboard` used as a
   // transitionOut has no visible effect at all: the clip simply plays and
   // cuts. Only the entering direction reveals cell by cell.
-  it.fails('checkerboard clips the outgoing content into its cells when EXITING', () => {
-    const p = presentationFor({ kind: 'checkerboard', frames: 15, gridSize: 3 } as TransitionRecord, DIMS)!;
-    const { container, unmount } = mount(p, 'exiting', 0.5);
-    expect(container.querySelectorAll('[data-testid="content"]')).toHaveLength(9);
-    unmount();
-  });
+  // This assertion assumes a specific fix shape: content re-drawn into all 9
+  // cells on exit, mirroring the entering direction. A legitimate fix that
+  // instead keeps the single base-layer copy and gives the cells an
+  // occluding background (rather than duplicating content into each cell)
+  // would leave this test red even though the defect is fixed — that's the
+  // safe direction (no false green), just don't be surprised by it.
+  it.fails(
+    'KNOWN DEFECT: checkerboard does NOT clip the outgoing content into its cells when EXITING — see docs/superpowers/HANDOFF.md',
+    () => {
+      const p = presentationFor({ kind: 'checkerboard', frames: 15, gridSize: 3 } as TransitionRecord, DIMS)!;
+      const { container, unmount } = mount(p, 'exiting', 0.5);
+      expect(container.querySelectorAll('[data-testid="content"]')).toHaveLength(9);
+      unmount();
+    },
+  );
 
   // DEFECT: pixelate's root AbsoluteFill is painted opaque black unconditionally,
-  // including at progress 0. Under TransitionSeries that is harmless — the
-  // presentation only exists for the length of the transition and composites
-  // over the outgoing sequence. At a cut it is not: the wrapper is mounted for
-  // the item's WHOLE sequence, and the neighbouring clip sits beneath it in a
-  // sibling Sequence, so the black root hides the neighbour rather than
-  // blending with it.
-  it.fails('pixelate does not paint an opaque root before the transition has begun', () => {
-    const p = presentationFor({ kind: 'pixelate', frames: 15 } as TransitionRecord, DIMS)!;
-    const { container, unmount } = mount(p, 'entering', 0);
-    const root = container.firstElementChild as HTMLElement;
-    expect(root.style.backgroundColor).toBe('');
-    unmount();
-  });
+  // including at progress 0. Under TransitionSeries that is bounded — it
+  // lasts only the transition's length and reads as a dip to black, since
+  // the presentation only exists for the length of the transition and
+  // composites over the outgoing sequence. At a cut it is not: the wrapper is
+  // mounted for the item's WHOLE sequence, and the neighbouring clip sits
+  // beneath it in a sibling Sequence, so the black root hides the neighbour
+  // for the entire clip rather than just the transition.
+  it.fails(
+    'KNOWN DEFECT: pixelate does NOT leave its root transparent before the transition has begun — see docs/superpowers/HANDOFF.md',
+    () => {
+      const p = presentationFor({ kind: 'pixelate', frames: 15 } as TransitionRecord, DIMS)!;
+      for (const progress of [0, 0.25, 0.5]) {
+        const { container, unmount } = mount(p, 'entering', progress);
+        // Select the pixelate root by the opaque-black style that identifies
+        // it (not by position: `firstElementChild` would silently start
+        // pointing at an unrelated wrapper if pixelate.tsx ever grows one).
+        const root = [...container.querySelectorAll('div')].find(
+          (d) => d.style.backgroundColor === 'rgb(0, 0, 0)',
+        );
+        expect({ progress, backgroundColor: root?.style.backgroundColor }).toEqual({
+          progress,
+          backgroundColor: undefined,
+        });
+        unmount();
+      }
+    },
+  );
 });
 
 describe('AtCutTransition drives progress off the current frame', () => {

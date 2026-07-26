@@ -290,10 +290,11 @@ normal `it` the day it is addressed and the runner shouts if it starts passing:
   content and no background — so a `checkerboard` used as a `transitionOut` plays as a hard cut.
   Only the entering direction reveals cell by cell.
 - **`pixelate` paints its root `AbsoluteFill` opaque black unconditionally**, including at
-  progress 0. Harmless under `TransitionSeries` (the presentation only exists for the transition's
-  length and composites over the outgoing sequence); *not* harmless at a cut, where the wrapper is
-  mounted for the item's whole sequence and the neighbouring clip sits beneath it in a sibling
-  `Sequence` — so the black root hides the neighbour instead of blending with it.
+  progress 0. Bounded under `TransitionSeries` — it lasts only the transition's length and reads
+  as a dip to black, since the presentation only exists for the transition's length and composites
+  over the outgoing sequence; *not* bounded at a cut, where the wrapper is mounted for the item's
+  whole sequence and the neighbouring clip sits beneath it in a sibling `Sequence` — so the black
+  root hides the neighbour for the entire clip instead of blending with it.
 
 **Nothing that renders today can regress** — every one of those kinds was unreachable before
 Phase 1.
