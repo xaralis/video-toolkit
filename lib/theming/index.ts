@@ -15,10 +15,19 @@ export {
   type OverlayEnvelope,
   type OverlayEnvelopeOptions,
 } from './envelope';
+export {
+  resolveRegistered,
+  registrationConfig,
+  registrationParams,
+  type ParamField,
+  type Registration,
+  type Registry,
+} from './registry';
 export type {
   OverlayRenderProps,
   OverlayRenderer,
   OverlayKind,
+  CoreOverlayKind,
   OverlayRegistration,
   VideoRenderProps,
   VideoRenderer,
@@ -30,7 +39,7 @@ export type {
   OverlayItemRegistration,
   CompositionTheme,
 } from './types';
-export { resolveOverlayRenderer, overlayConfig, resolveVideoRenderer, videoConfig } from './brand-theme';
+export { overlayRegistry, resolveOverlayRenderer, overlayConfig, resolveVideoRenderer, videoConfig } from './brand-theme';
 export { SegmentMedia } from './segment/SegmentMedia';
 export { GenericTextOverlay } from './generic/GenericTextOverlay';
 export { GenericWatermark, type WatermarkProps } from './generic/GenericWatermark';

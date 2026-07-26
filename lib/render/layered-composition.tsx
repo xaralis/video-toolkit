@@ -7,7 +7,14 @@ import { AbsoluteFill, Audio, Sequence, staticFile, useVideoConfig } from 'remot
 import type { LayeredReel, OverlayItem } from '../reel-config-base/layered-schema';
 import { computeMusicEnvelope } from '../reel-config-base/music-envelope';
 import type { CompositionTheme, Placement } from '../theming';
-import { resolveOverlayRenderer, overlayConfig, resolveVideoRenderer, videoConfig, DEFAULT_PLACEMENT } from '../theming';
+import {
+  resolveOverlayRenderer,
+  overlayConfig,
+  overlayRegistry,
+  resolveVideoRenderer,
+  videoConfig,
+  DEFAULT_PLACEMENT,
+} from '../theming';
 import { buildVideoNodes } from './video-track';
 import { buildAudioNodes } from './audio-track';
 import { routeOverlays, overlayKind } from './overlay-routing';
@@ -33,13 +40,22 @@ const TrackTextOverlay: React.FC<{ item: OverlayItem; theme: CompositionTheme }>
   );
 };
 
-const TEXT_KINDS = new Set(['text', 'quote-pull']);
+// Core's item-level generics: the kinds core can draw without any brand
+// registration. Both entries are the text adapter — 'quote-pull' is the legacy
+// alias of 'text' and deliberately resolves the SAME 'text' registration.
+const CORE_OVERLAY_GENERICS: Record<string, React.FC<{ item: OverlayItem; theme: CompositionTheme }>> = {
+  text: TrackTextOverlay,
+  'quote-pull': TrackTextOverlay,
+};
 
 export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: CompositionTheme }> = ({ reel, theme }) => {
   const { fps, width, height } = useVideoConfig();
   const msToFrames = (ms: number) => Math.round((ms / 1000) * fps);
 
-  const { track, anchored } = routeOverlays(reel.tracks.overlays, theme.overlayItems);
+  // ONE registry for the whole composition: brand tier + the deprecated
+  // composition tier, the latter winning per kind (see overlayRegistry).
+  const registry = overlayRegistry(theme);
+  const { track, anchored } = routeOverlays(reel.tracks.overlays, registry);
 
   // ---- video ----------------------------------------------------------------
   const videoItems = theme.prepareVideoTrack ? theme.prepareVideoTrack(reel.tracks.video) : reel.tracks.video;
@@ -74,10 +90,10 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
   // ---- overlays ------------------------------------------------------------------
   const renderTrackItem = (item: OverlayItem): React.ReactNode => {
     const kind = overlayKind(item);
-    const reg = theme.overlayItems?.[kind];
-    if (reg?.render) return reg.render(item);
-    if (TEXT_KINDS.has(kind)) return <TrackTextOverlay item={item} theme={theme} />;
-    return null;
+    const reg = registry[kind];
+    if (reg?.render) return reg.render(item); // item-level escape hatch wins
+    const Generic = CORE_OVERLAY_GENERICS[kind];
+    return Generic ? <Generic item={item} theme={theme} /> : null;
   };
   const overlayNodes = track.map((item) => {
     const from = msToFrames(item.startMs);

@@ -23,7 +23,7 @@ import { execFileSync } from 'node:child_process';
 const EXPECTED_MINIMUMS = {
   'lib/render/': 9,
   'lib/transitions/': 14,
-  'lib/theming/': 9,
+  'lib/theming/': 10, // +registry.ts (Phase 3 Task 1)
   'lib/reel-config-base/': 8,
   'lib/transcripts/': 1,
 };

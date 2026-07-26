@@ -1,4 +1,5 @@
 import type React from 'react';
+import type { Registration } from './registry';
 import type { AccentSlot } from './palette';
 import type { Placement } from './placement';
 import type { VideoItem, AudioItem, OverlayItem, BrandLayerItem } from '../reel-config-base/layered-schema';
@@ -25,20 +26,19 @@ export interface OverlayRenderProps {
 
 export type OverlayRenderer = React.FC<OverlayRenderProps>;
 
-/** Overlay kinds that flow through the theming module. Widened as kinds adopt it. */
-export type OverlayKind = 'text';
+/** Overlay kinds are OPEN — a brand names them, core never enumerates them.
+ *  Core knows routing MODES and the handful of kinds it can draw itself. */
+export type OverlayKind = string;
 
-/** One kind's brand registration: its custom renderer + opaque brand config. */
-export interface OverlayRegistration {
-  renderer: OverlayRenderer;
-  config?: unknown;
-}
+/** The overlay kinds core has a generic renderer for ('quote-pull' is the
+ *  legacy alias of 'text'). Everything else draws only if a brand registers it. */
+export type CoreOverlayKind = 'text';
 
 /** The theming contract a brand's theme object satisfies. */
 export interface BrandTheme {
   accentSlots: readonly AccentSlot[];
-  /** Per-kind brand-custom renderer + config. Absent kind → core generic. */
-  overlays?: Partial<Record<OverlayKind, OverlayRegistration>>;
+  /** ONE open-keyed overlay registry. Absent kind → core generic (text) → null. */
+  overlays?: Record<OverlayKind, OverlayItemRegistration>;
   /** Per-kind brand-custom video renderer + config. Absent kind → core generic. */
   video?: Partial<Record<VideoKind, VideoRegistration>>;
 }
@@ -81,19 +81,31 @@ export interface VideoRegistration {
  *  instead (items without anchorVideoId fall back to track). */
 export type OverlayRouting = 'track' | 'anchored';
 
-export interface OverlayItemRegistration {
+/** One overlay kind's registration. `renderer`/`config`/`params` come from the
+ *  shared Registration primitive; `routing` and `render` are this axis's own.
+ *  A registration with NO renderer and NO render contributes routing/config
+ *  only — it does not mask a core generic for a kind core can draw. */
+export interface OverlayItemRegistration extends Registration<OverlayRenderProps> {
   routing?: OverlayRouting;
-  /** Item-based renderer. Optional for 'anchored' (the video body renders it)
-   *  and for the 'text'/'quote-pull' kinds (core text adapter is the default). */
+  /** Item-level escape hatch: full control over the node, bypassing
+   *  OverlayRenderProps. Wins over `renderer` when both are present. */
   render?: (item: OverlayItem) => React.ReactNode;
 }
+
+/** @deprecated Use {@link OverlayItemRegistration} — the two overlay
+ *  registries collapsed into one in Phase 3 Task 1. Kept as an alias so
+ *  existing brand imports keep compiling. */
+export type OverlayRegistration = OverlayItemRegistration;
 
 /** The full composition contract a brand hands to LayeredReelComposition. */
 export interface CompositionTheme extends BrandTheme {
   /** Root AbsoluteFill background. */
   background: string;
-  /** Per-overlay-kind routing + renderer, any kind (core knows modes, not names). */
-  overlayItems?: Record<string, OverlayItemRegistration>;
+  /** @deprecated The composition tier of what is now ONE registry. It still
+   *  works — it merges over {@link BrandTheme.overlays}, winning per kind — but
+   *  new registrations belong on `overlays`. Phase 3 Task 11 writes the
+   *  migration that collapses this away. */
+  overlayItems?: Record<OverlayKind, OverlayItemRegistration>;
   /** Pre-pass over the video track before buildVideoNodes (e.g. brand-owned
    *  transition asset injection). */
   prepareVideoTrack?: (items: VideoItem[]) => VideoItem[];
