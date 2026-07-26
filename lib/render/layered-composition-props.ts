@@ -5,8 +5,12 @@
 // throwaway durationInFrames to satisfy the prop type. Two copies of a floor is
 // how a composition and its render drift apart, so core owns it.
 //
-// NOT a component and it must not import `remotion`: core has no remotion
-// installed. It returns a plain object the brand spreads onto <Composition>.
+// NOT a component: it returns a plain object the brand spreads onto <Composition>.
+// It deliberately does not import `remotion` — not because core lacks it (core has
+// `remotion` 4.0.498 in lib/editor/node_modules, and `examples/layered-minimal` is a
+// real Remotion project), but because a plain-object factory needs no framework
+// import and stays testable with no mock. The spread is type-checked against a real
+// <Composition> by the `examples/layered-minimal` gate.
 import type { LayeredReel } from '../reel-config-base/layered-schema';
 
 /** Remotion cannot mount a composition of zero frames, and a reel is routinely

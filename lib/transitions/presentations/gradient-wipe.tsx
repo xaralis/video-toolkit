@@ -10,14 +10,16 @@
 import { AbsoluteFill, interpolate } from 'remotion';
 import type { TransitionPresentation, TransitionPresentationComponentProps } from '@remotion/transitions';
 
-export interface GradientWipeProps {
+// `type`, not `interface` — see the note in wipe.tsx: TransitionPresentation<T>
+// requires T extends Record<string, unknown>, which only a type alias satisfies.
+export type GradientWipeProps = {
   // Corner where the incoming clip starts being revealed; the band sweeps to
   // the OPPOSITE corner. 'tl-br' = top-left → bottom-right (default).
   direction?: 'tl-br' | 'tr-bl' | 'bl-tr' | 'br-tl';
   // Width of the feathered blend band, in % of the diagonal. Larger = softer
   // (more cross-blend overlap visible at once). Default 40.
   softness?: number;
-}
+};
 
 // CSS gradient angle whose 0% endpoint sits at the reveal-start corner, so
 // `black` at low stops makes that corner appear first.

@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 // Imports from video-track-layout (not video-track.tsx) deliberately: the
 // latter also pulls in Remotion + at-cut-transitions.tsx for buildVideoNodes,
-// and core has no `remotion`/`@remotion/transitions` installed (see
-// lib/render/README.md) — this pure layout function is re-exported from
-// video-track.tsx too, but importing it here directly keeps this test
-// Remotion-free, same as transition-record.test.ts.
+// which would need `vi.mock('remotion')` and jsdom to load. This pure layout
+// function is re-exported from video-track.tsx too, but importing it here
+// directly keeps this test Remotion-free and mock-free, same as
+// transition-record.test.ts. (Core DOES have remotion — see
+// at-cut-transitions.test.tsx, which mocks it and tests the JSX side.)
 import { computeVideoLayout } from '@video-toolkit/lib/render/video-track-layout';
 
 const fps = 30;

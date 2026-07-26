@@ -2,7 +2,9 @@
 import { AbsoluteFill, interpolate, useCurrentFrame } from 'remotion';
 import type { TransitionPresentation, TransitionPresentationComponentProps } from '@remotion/transitions';
 
-export interface ScanlineGlitchProps { rgbShiftPx?: number; }
+// `type`, not `interface` — see the note in wipe.tsx: TransitionPresentation<T>
+// requires T extends Record<string, unknown>, which only a type alias satisfies.
+export type ScanlineGlitchProps = { rgbShiftPx?: number };
 
 const ScanlineGlitch: React.FC<TransitionPresentationComponentProps<ScanlineGlitchProps>> = ({
   children, presentationProgress, passedProps,

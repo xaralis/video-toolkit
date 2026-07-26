@@ -14,6 +14,13 @@
 import React from 'react';
 import { AbsoluteFill, useCurrentFrame, interpolate, Sequence } from 'remotion';
 import { TransitionSeries, linearTiming } from '@remotion/transitions';
+import type { TransitionPresentation } from '@remotion/transitions';
+
+// Any transition's presentation() call returns TransitionPresentation<PropsForThatTransition> —
+// each transition has its own props shape (GlitchProps, RgbSplitProps, ...), so a component
+// that renders whichever one is passed in must be generic over that shape rather than pinned
+// to a single transition's props (as it previously was, pinned to glitch's).
+
 import { slide } from '@remotion/transitions/slide';
 import { fade } from '@remotion/transitions/fade';
 import { wipe } from '@remotion/transitions/wipe';
@@ -105,11 +112,15 @@ const GalleryScene: React.FC<{
 };
 
 // Single transition demo segment
-const TransitionDemo: React.FC<{
+function TransitionDemo<Props extends Record<string, unknown>>({
+  name,
+  presentation,
+  transitionDuration = 20,
+}: {
   name: string;
-  presentation: ReturnType<typeof glitch>;
+  presentation: TransitionPresentation<Props>;
   transitionDuration?: number;
-}> = ({ name, presentation, transitionDuration = 20 }) => {
+}) {
   const sceneDuration = 45; // 1.5 seconds per scene
 
   return (
@@ -172,17 +183,44 @@ const IntroSlide: React.FC = () => {
   );
 };
 
+// Each transition's presentation() call returns TransitionPresentation<PropsForThatTransition> —
+// a different, incompatible Props type per transition. Storing those directly in one array would
+// force TypeScript to widen them to a union, which TransitionDemo's generic can't be instantiated
+// from at a single call site (its `component` slot is contravariant in Props). makeTransitionEntry
+// closes over the concrete presentation inside a `render` closure instead, so each entry's Props is
+// resolved once, locally, at its own call to makeTransitionEntry — the array itself only ever holds
+// the resulting non-generic { name, duration, render } shape.
+type TransitionEntry = {
+  name: string;
+  duration: number;
+  render: (transitionDuration: number) => React.ReactElement;
+};
+
+function makeTransitionEntry<Props extends Record<string, unknown>>(
+  name: string,
+  presentation: TransitionPresentation<Props>,
+  duration: number,
+): TransitionEntry {
+  return {
+    name,
+    duration,
+    render: (transitionDuration) => (
+      <TransitionDemo name={name} presentation={presentation} transitionDuration={transitionDuration} />
+    ),
+  };
+}
+
 // Define all transitions to showcase
-const TRANSITIONS = [
-  { name: 'glitch()', presentation: glitch({ intensity: 0.9 }), duration: 25 },
-  { name: 'rgbSplit()', presentation: rgbSplit({ direction: 'horizontal' }), duration: 25 },
-  { name: 'zoomBlur()', presentation: zoomBlur({ direction: 'in' }), duration: 25 },
-  { name: 'lightLeak()', presentation: lightLeak({ temperature: 'warm' }), duration: 35 },
-  { name: 'pixelate()', presentation: pixelate({ maxBlockSize: 50 }), duration: 25 },
-  { name: 'slide()', presentation: slide(), duration: 20 },
-  { name: 'fade()', presentation: fade(), duration: 25 },
-  { name: 'wipe()', presentation: wipe(), duration: 20 },
-  { name: 'flip()', presentation: flip(), duration: 25 },
+const TRANSITIONS: TransitionEntry[] = [
+  makeTransitionEntry('glitch()', glitch({ intensity: 0.9 }), 25),
+  makeTransitionEntry('rgbSplit()', rgbSplit({ direction: 'horizontal' }), 25),
+  makeTransitionEntry('zoomBlur()', zoomBlur({ direction: 'in' }), 25),
+  makeTransitionEntry('lightLeak()', lightLeak({ temperature: 'warm' }), 35),
+  makeTransitionEntry('pixelate()', pixelate({ maxBlockSize: 50 }), 25),
+  makeTransitionEntry('slide()', slide(), 20),
+  makeTransitionEntry('fade()', fade(), 25),
+  makeTransitionEntry('wipe()', wipe(), 20),
+  makeTransitionEntry('flip()', flip(), 25),
 ];
 
 // Calculate segment duration (scene + transition + scene, minus overlap)
@@ -217,11 +255,7 @@ export const TransitionGallery: React.FC = () => {
           from={segments[i].from}
           durationInFrames={segments[i].duration}
         >
-          <TransitionDemo
-            name={t.name}
-            presentation={t.presentation}
-            transitionDuration={t.duration}
-          />
+          {t.render(t.duration)}
         </Sequence>
       ))}
     </AbsoluteFill>
@@ -248,26 +282,39 @@ export const SingleTransitionPreview: React.FC<{
   const transition = transitionMap[transitionName];
   if (!transition) return null;
 
-  return (
-    <TransitionDemo
-      name={transitionName}
-      presentation={transition.presentation}
-      transitionDuration={transition.duration}
-    />
-  );
+  return transition.render(transitionName, transition.duration);
 };
 
-// Map for programmatic access
+// Map for programmatic access. See the TransitionEntry / makeTransitionEntry comment above —
+// same reasoning, but render() also takes `name` here since the map's keys (not a stored field)
+// are what SingleTransitionPreview passes through as the demo's label.
+type NamedTransitionEntry = {
+  duration: number;
+  render: (name: string, transitionDuration: number) => React.ReactElement;
+};
+
+function makeNamedTransitionEntry<Props extends Record<string, unknown>>(
+  presentation: TransitionPresentation<Props>,
+  duration: number,
+): NamedTransitionEntry {
+  return {
+    duration,
+    render: (name, transitionDuration) => (
+      <TransitionDemo name={name} presentation={presentation} transitionDuration={transitionDuration} />
+    ),
+  };
+}
+
 export const transitionMap = {
-  glitch: { presentation: glitch({ intensity: 0.9 }), duration: 25 },
-  rgbSplit: { presentation: rgbSplit({ direction: 'horizontal' }), duration: 25 },
-  zoomBlur: { presentation: zoomBlur({ direction: 'in' }), duration: 25 },
-  lightLeak: { presentation: lightLeak({ temperature: 'warm' }), duration: 35 },
-  pixelate: { presentation: pixelate({ maxBlockSize: 50 }), duration: 25 },
-  slide: { presentation: slide(), duration: 20 },
-  fade: { presentation: fade(), duration: 25 },
-  wipe: { presentation: wipe(), duration: 20 },
-  flip: { presentation: flip(), duration: 25 },
+  glitch: makeNamedTransitionEntry(glitch({ intensity: 0.9 }), 25),
+  rgbSplit: makeNamedTransitionEntry(rgbSplit({ direction: 'horizontal' }), 25),
+  zoomBlur: makeNamedTransitionEntry(zoomBlur({ direction: 'in' }), 25),
+  lightLeak: makeNamedTransitionEntry(lightLeak({ temperature: 'warm' }), 35),
+  pixelate: makeNamedTransitionEntry(pixelate({ maxBlockSize: 50 }), 25),
+  slide: makeNamedTransitionEntry(slide(), 20),
+  fade: makeNamedTransitionEntry(fade(), 25),
+  wipe: makeNamedTransitionEntry(wipe(), 20),
+  flip: makeNamedTransitionEntry(flip(), 25),
 } as const;
 
 export type TransitionName = keyof typeof transitionMap;

@@ -1,6 +1,8 @@
-// The "is this a real transition?" gate. Pure — no Remotion — so it can be
-// unit-tested in core (which has no Remotion installed). The Remotion
-// presentation mapping lives in ./at-cut-transitions.tsx.
+// The "is this a real transition?" gate. Pure — no Remotion — so it unit-tests
+// with no mock at all. (Remotion-importing modules ARE testable in core too, via
+// `vi.mock('remotion')` — see at-cut-transitions.test.tsx; being pure is a
+// convenience here, not a necessity.) The Remotion presentation mapping lives in
+// ./at-cut-transitions.tsx.
 //
 // This file used to carry its OWN structural copy of the transition shape,
 // "mirroring" lib/editor/app/transitions.ts. It no longer does: the vocabulary
