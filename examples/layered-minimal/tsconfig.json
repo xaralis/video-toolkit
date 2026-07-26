@@ -12,7 +12,27 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@video-toolkit/lib/*": ["../../lib/*"]
+      "@video-toolkit/lib/*": ["../../lib/*"],
+      // lib/render, lib/transitions and lib/theming reach this project through the
+      // mapping above, but they physically live OUTSIDE this project's tree. tsc
+      // resolves a bare specifier by walking node_modules upward from the *importing*
+      // file, so those files never reach examples/layered-minimal/node_modules and
+      // every "remotion" / "react" import in them fails to resolve. The mappings below
+      // are the only thing that makes the out-of-tree render surface type-check; they
+      // are not redundant with ambient resolution. (Same class of problem that
+      // resolve.modules solves for webpack and the transitions re-resolver for Vite.)
+      "remotion": ["./node_modules/remotion"],
+      "@remotion/transitions": ["./node_modules/@remotion/transitions"],
+      // Subpath declarations live in dist/presentations/*.d.ts — NOT dist/esm, which
+      // holds only .mjs runtime code. See the package's own "exports" map.
+      "@remotion/transitions/*": [
+        "./node_modules/@remotion/transitions/dist/presentations/*"
+      ],
+      // Map react to @types/react, NOT to node_modules/react: the JS package ships no
+      // declarations, so pointing there makes every consumer implicitly `any` and
+      // silently deletes the coverage this gate exists to provide.
+      "react": ["./node_modules/@types/react"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"]
     }
   },
   "include": ["src/**/*", "remotion.config.ts"],

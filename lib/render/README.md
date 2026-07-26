@@ -26,3 +26,13 @@ Config.overrideWebpackConfig((c) => ({
 ```
 
 Without it the bundle fails with `Can't resolve '@remotion/transitions/…'`. (The brand templates and their projects already carry this.)
+
+## Type-check gate
+
+Nothing in `lib/editor`'s tsconfig `include` covers this directory or `lib/transitions` — the surface that type-checks them is **`examples/layered-minimal`**, core's only real Remotion install:
+
+```bash
+cd examples/layered-minimal && npm run typecheck    # baseline: 0 errors
+```
+
+It reaches these out-of-tree files through the same class of workaround as the `resolve.modules` line above, expressed as tsconfig `paths`. Read **`docs/superpowers/core-typecheck-gate.md`** before editing that tsconfig — notably: `react` must map to `@types/react` (mapping it to the JS package silently `any`s the whole render surface), and `@remotion/transitions/*` declarations live under `dist/presentations/`, not `dist/esm/`.

@@ -2,7 +2,11 @@
 import { AbsoluteFill, interpolate } from 'remotion';
 import type { TransitionPresentation, TransitionPresentationComponentProps } from '@remotion/transitions';
 
-export interface WipeProps {
+// Declared as a `type`, not an `interface`, like every other presentation's props
+// in this directory: @remotion/transitions constrains TransitionPresentation<T> to
+// `Record<string, unknown>`, and only a type alias gets TypeScript's implicit index
+// signature. An interface does not, and fails the constraint (TS2344).
+export type WipeProps = {
   /** The sweeping sheet's colour, as a CSS colour (hex, rgb(), …). This used to
    *  be a three-value enum over one brand's palette, with a name→hex map right
    *  here in the shared presentation; the schema now carries a brand
@@ -10,7 +14,7 @@ export interface WipeProps {
    *  against the brand's own palette before calling in. */
   color?: string;
   direction?: 'left' | 'right';
-}
+};
 
 /** Used when no colour is supplied (or the brand's palette has no slot under
  *  the configured key). Pure black, not a near-black brand tint: it reads as a

@@ -51,11 +51,18 @@ npm run render   # 6s MP4 → out/reel.mp4
 - To build a full project rather than read one, run `/toolkit:video` in a brand
   repo; templates live there, not in core.
 
-## One known rough edge
+## It is also core's type-check gate
 
-`npx tsc --noEmit` typechecks `src/` cleanly, but reports unresolved `react` /
-`remotion` imports for the files under `../../lib`. That is structural to the
-alias approach and identical in the brand repos: `lib/` sits outside this
-project's tree, so TypeScript's upward module walk never reaches the
-`node_modules` where those packages are installed. The renderer resolves them via
-the `resolve.modules` line in `remotion.config.ts`.
+This example is the only place in core with a real Remotion install, so it is
+what type-checks `lib/render/` and `lib/transitions/` — neither of which is in
+`lib/editor`'s `include`.
+
+```bash
+npm run typecheck    # tsc --noEmit — baseline: 0 errors
+```
+
+Any error is a regression. The `paths` block in `tsconfig.json` is what makes it
+work — `lib/` sits outside this project's tree, so TypeScript's upward
+`node_modules` walk never reaches the packages those files import. See
+[`docs/superpowers/core-typecheck-gate.md`](../../docs/superpowers/core-typecheck-gate.md)
+before touching it (in particular: `react` must map to `@types/react`).
