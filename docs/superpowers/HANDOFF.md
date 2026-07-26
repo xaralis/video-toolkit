@@ -154,12 +154,15 @@ Core's own gates moved only upward: **650 → 669 tests**, `tsc` baseline still 
 `examples/layered-minimal` still **0** with its coverage guard intact, brand-leak grep still
 exactly **2**.
 
-**Core's `main` is now pushed.** It had been 56 commits ahead of `origin/main` — Phases 1, 2 and
-`fix/core-has-remotion` had never left the machine, so no pin could reference them. `origin/main`
-is `41bf406`. The two brand branches currently pin core's `chore/phase2.5-followups`
-(`cb51d4d`, fetched locally); **that branch must be merged and pushed, and the two pins
-re-pointed at the resulting `main` SHA, before either brand branch is merged** — see "Carried out
-of Phase 2.5" below.
+**Core's `main` is now pushed, and Phase 2.5 is merged into it.** `main` had been 56 commits
+ahead of `origin/main` — Phases 1, 2 and `fix/core-has-remotion` had never left the machine, so no
+pin could reference them. `origin/main` is now **`59d4b30`** (the Phase 2.5 merge), and **both
+brand branches pin exactly that**, so a fresh clone resolves the submodule. Re-verified against
+the merged pin: `tsc` 0 in both, and the two reference frames still render with **0 differing
+pixels**.
+
+**The two brand branches are NOT merged** — they are left on
+`chore/phase2.5-toolkit-migration` in each repo for review.
 
 ### The stage justified itself: five findings, two of them real regressions
 
@@ -273,10 +276,9 @@ as running them.
 
 ### Carried out of Phase 2.5
 
-- ⚠️ **Both brand pins point at an unmerged core branch.** They pin `cb51d4d` on
-  `chore/phase2.5-followups`, fetched locally. Merge that branch to `main`, push, then re-point
-  both pins at the resulting SHA before merging either brand branch — otherwise a fresh clone
-  cannot resolve the submodule.
+- **The two brand branches are unmerged, awaiting review** — `chore/phase2.5-toolkit-migration`
+  in each repo. Their pins are fine (`59d4b30`, on `origin/main`); merging them is a review
+  decision, not a blocker.
 - **3 PP projects were edited but never installed or verified** — `pp-cyklostezka-chrudimka`,
   `pp-druzstevni-parkovani`, `pp-plovarna-napojeni` (no `node_modules`, by explicit decision).
   Their `package.json` now says `zod: 3.22.3` while their lockfile still records `^3.22.0` as the
