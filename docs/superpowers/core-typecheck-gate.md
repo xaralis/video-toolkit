@@ -23,7 +23,7 @@ Core has two type-check surfaces, and until now they left a hole:
 | Surface | Covers | Does **not** cover |
 |---|---|---|
 | `lib/editor` (`cd lib/editor && npx tsc --noEmit`, baseline **4**) | `src`, `app`, `host`, `../theming`, plus 7 `lib/render` modules its own tests pull in: `audio-gain.ts`, `transition-record.ts`, `video-track-layout.ts`, `fonts.ts`, `layered-composition-props.ts`, `load-fonts.ts`, `overlay-routing.ts` | The render `.tsx` components (`at-cut-transitions.tsx`, `audio-track.tsx`, `layered-composition.tsx`, `video-track.tsx`) and all of `lib/transitions/` |
-| `examples/layered-minimal` (this gate, baseline **0**) | its own `src`, plus every `lib/**` file the render actually pulls in — `lib/render` (9 files, including the 4 `.tsx` components above), `lib/transitions` (14 files — every presentation, `index.ts`, and `TransitionGallery.tsx`; see below), `lib/theming` (10), `lib/reel-config-base` (8), `lib/transcripts` (1) | anything no reel imports (editor UI, host) |
+| `examples/layered-minimal` (this gate, baseline **0**) | its own `src`, plus every `lib/**` file the render actually pulls in — `lib/render` (9 files, including the 4 `.tsx` components above), `lib/transitions` (14 files — every presentation, `index.ts`, and `TransitionGallery.tsx`; see below), `lib/theming` (13), `lib/reel-config-base` (8), `lib/transcripts` (1) | anything no reel imports (editor UI, host) |
 
 Before this, the entire render surface — including ~1900 lines of transition
 presentations in `lib/transitions/presentations/*.tsx` — was type-checked by

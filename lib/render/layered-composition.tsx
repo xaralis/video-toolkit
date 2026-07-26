@@ -4,7 +4,7 @@
 // docs/superpowers/specs/2026-07-25-layered-reel-composition-design.md.
 import React from 'react';
 import { AbsoluteFill, Audio, Sequence, staticFile, useVideoConfig } from 'remotion';
-import type { LayeredReel, OverlayItem } from '../reel-config-base/layered-schema';
+import type { LayeredReel, OverlayItem, VideoItem, AudioItem } from '../reel-config-base/layered-schema';
 import { computeMusicEnvelope } from '../reel-config-base/music-envelope';
 import type { CompositionTheme, Placement } from '../theming';
 import {
@@ -14,6 +14,7 @@ import {
   resolveVideoRenderer,
   videoConfig,
   DEFAULT_PLACEMENT,
+  applyEffects,
 } from '../theming';
 import { buildVideoNodes } from './video-track';
 import { buildAudioNodes } from './audio-track';
@@ -48,6 +49,38 @@ const CORE_OVERLAY_GENERICS: Record<string, React.FC<{ item: OverlayItem; theme:
   'quote-pull': TrackTextOverlay,
 };
 
+/** One video item's node: the resolved renderer, decorated by the item's
+ *  `effects[]` (see lib/theming/effects).
+ *
+ *  Effects are applied HERE and not inside SegmentMedia for two reasons.
+ *  (1) Coverage: this seam owns every video kind, so a card or a brand-custom
+ *      clip renderer gets effects too, not just the three footage kinds.
+ *  (2) The theme lives here — VideoRenderProps deliberately carries no theme.
+ *
+ *  `ken-burns` is the one exception: it stays inside SegmentMedia, composing
+ *  into the media element's own transform/objectPosition alongside the crop.
+ *  It resolves to no wrapper in the effect registry, so it is skipped here
+ *  rather than double-applied. */
+export function renderVideoItemNode(
+  theme: CompositionTheme,
+  item: VideoItem,
+  handles: { inHalf: number; outHalf: number },
+  extras: { anchoredOverlays?: OverlayItem[]; boundAudio?: AudioItem } = {},
+): React.ReactNode {
+  const Renderer = resolveVideoRenderer(theme, item.kind);
+  if (!Renderer) return null; // a kind this brand didn't register a renderer for
+  const media = (
+    <Renderer
+      item={item}
+      handles={handles}
+      config={videoConfig(theme, item.kind)}
+      anchoredOverlays={extras.anchoredOverlays ?? []}
+      boundAudio={extras.boundAudio}
+    />
+  );
+  return applyEffects(theme, item, handles, media);
+}
+
 export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: CompositionTheme }> = ({ reel, theme }) => {
   const { fps, width, height } = useVideoConfig();
   const msToFrames = (ms: number) => Math.round((ms / 1000) * fps);
@@ -65,19 +98,11 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
     fps,
     // Lets a transition name a colour by brand accent-slot key (see `wipe`).
     palette: theme.accentSlots,
-    renderItem: (item, handles) => {
-      const Renderer = resolveVideoRenderer(theme, item.kind);
-      if (!Renderer) return null; // a kind this brand didn't register a renderer for
-      return (
-        <Renderer
-          item={item}
-          handles={handles}
-          config={videoConfig(theme, item.kind)}
-          anchoredOverlays={anchored.get(item.id) ?? []}
-          boundAudio={reel.tracks.audio.find((a) => a.followsVideoId === item.id)}
-        />
-      );
-    },
+    renderItem: (item, handles) =>
+      renderVideoItemNode(theme, item, handles, {
+        anchoredOverlays: anchored.get(item.id) ?? [],
+        boundAudio: reel.tracks.audio.find((a) => a.followsVideoId === item.id),
+      }),
   });
 
   // ---- audio (voice/beds) -----------------------------------------------------

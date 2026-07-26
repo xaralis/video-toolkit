@@ -1,5 +1,8 @@
 import type React from 'react';
-import type { Registration } from './registry';
+import type { Registration, Registry } from './registry';
+// Type-only import — erased at runtime, so this does NOT create a module cycle
+// with effects/index.ts (which imports BrandTheme back, also type-only).
+import type { EffectRenderProps } from './effects';
 import type { AccentSlot } from './palette';
 import type { Placement } from './placement';
 import type { VideoItem, AudioItem, OverlayItem, BrandLayerItem } from '../reel-config-base/layered-schema';
@@ -48,6 +51,10 @@ export interface BrandTheme {
   overlays?: Record<OverlayKind, OverlayItemRegistration>;
   /** Per-kind brand-custom video renderer + config. Absent kind → core generic. */
   video?: Partial<Record<VideoKind, VideoRegistration>>;
+  /** ONE open-keyed effect registry. Effect types are OPEN — a brand names
+   *  them, core never enumerates them. Absent type → core generic primitive
+   *  (grain/scanlines/vignette/grade/transform) → silently skipped. */
+  effects?: Registry<EffectRenderProps>;
 }
 
 /** All video-track item kinds. Footage kinds have a core generic renderer

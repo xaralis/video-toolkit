@@ -40,6 +40,22 @@ export type {
   CompositionTheme,
 } from './types';
 export { overlayRegistry, resolveOverlayRenderer, overlayConfig, resolveVideoRenderer, videoConfig } from './brand-theme';
+export {
+  resolveEffectRenderer,
+  effectConfig,
+  applyEffects,
+  kenBurnsStyle,
+  findKenBurns,
+  GrainEffect,
+  ScanlinesEffect,
+  VignetteEffect,
+  GradeEffect,
+  TransformEffect,
+  type EffectRenderProps,
+  type EffectRenderer,
+  type EffectRegistration,
+  type KenBurnsEffect,
+} from './effects';
 export { SegmentMedia } from './segment/SegmentMedia';
 export { GenericTextOverlay } from './generic/GenericTextOverlay';
 export { GenericWatermark, type WatermarkProps } from './generic/GenericWatermark';
