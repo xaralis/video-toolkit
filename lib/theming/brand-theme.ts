@@ -7,10 +7,14 @@ import type {
   OverlayRenderer,
   VideoKind,
   VideoRenderer,
-  FootageVideoKind,
+  VideoRenderProps,
 } from './types';
+import type { Registry } from './registry';
 import { resolveRegistered, registrationConfig } from './registry';
 import { GenericTextOverlay } from './generic/GenericTextOverlay';
+import { GenericOutro } from './generic/GenericOutro';
+import { GenericMultiClip } from './generic/GenericMultiClip';
+import { GenericCard } from './generic/GenericCard';
 import { SegmentMedia } from './segment/SegmentMedia';
 
 // Core generic fallback per kind. GenericTextOverlay imports only TYPES from
@@ -42,21 +46,38 @@ export function overlayConfig(theme: BrandTheme, kind: OverlayKind): unknown {
   return registrationConfig(overlayRegistry(theme), kind);
 }
 
-// Core generic fallback per footage video kind. SegmentMedia imports only TYPES
-// from ./types (erased at runtime), so this runtime edge is one-directional — no cycle.
-const GENERIC_VIDEO_RENDERERS: Record<FootageVideoKind, VideoRenderer> = {
+// Core generic fallback per video kind. The generics import only TYPES from
+// ./types (erased at runtime), so this runtime edge is one-directional — no cycle.
+//
+// THIS TABLE IS THE CONTRACT. Every VideoKind is in it, so a brand that
+// registers nothing at all still renders a whole reel — before Phase 3 Task 3,
+// `multi-clip`/`card`/`outro` resolved to undefined and
+// `renderVideoItemNode`'s `if (!Renderer) return null` dropped them silently,
+// which is what forced every brand to copy the same three components.
+// A brand registration still wins over any entry here (resolveRegistered).
+const GENERIC_VIDEO_RENDERERS: Record<string, VideoRenderer> = {
   clip: SegmentMedia,
   broll: SegmentMedia,
   photo: SegmentMedia,
+  'multi-clip': GenericMultiClip,
+  card: GenericCard,
+  outro: GenericOutro,
 };
 
-/** Footage kinds always resolve (core generic fallback); other kinds resolve
- *  only when the brand registered them. Overloads keep pre-widening call
- *  sites (guard-then-resolve on footage kinds) compiling non-optionally. */
-export function resolveVideoRenderer(theme: BrandTheme, kind: FootageVideoKind): VideoRenderer;
-export function resolveVideoRenderer(theme: BrandTheme, kind: VideoKind): VideoRenderer | undefined;
+/** The "generic OR brand-custom" switch for the video axis, resolved by the
+ *  SAME rule as overlays and effects (see registry.ts): brand registration
+ *  wins, core generic beneath.
+ *
+ *  ONE signature since Task 3. The old FootageVideoKind-vs-VideoKind overload
+ *  split existed only because footage kinds were the only ones with a generic
+ *  beneath them; now every kind has one. It still returns `| undefined`,
+ *  because `kind` reaches here off a permissive record in practice and a name
+ *  neither side knows must resolve to nothing rather than to a wrong renderer. */
 export function resolveVideoRenderer(theme: BrandTheme, kind: VideoKind): VideoRenderer | undefined {
-  return theme.video?.[kind]?.renderer ?? GENERIC_VIDEO_RENDERERS[kind as FootageVideoKind]; // non-footage kinds miss the record → undefined, matching the | undefined overload
+  // `theme.video` is keyed by the closed VideoKind union while the shared
+  // resolver takes an open Registry; the cast is the key-type widening only —
+  // the shapes are identical (VideoRegistration extends Registration).
+  return resolveRegistered(theme.video as Registry<VideoRenderProps> | undefined, kind, GENERIC_VIDEO_RENDERERS);
 }
 
 /** The brand config registered for a kind (undefined when none). */

@@ -4,6 +4,7 @@ import type { Registration, Registry } from './registry';
 // with effects/index.ts (which imports BrandTheme back, also type-only).
 import type { EffectRenderProps } from './effects';
 import type { AccentSlot } from './palette';
+import type { ThemeTokens } from './tokens';
 import type { Placement } from './placement';
 import type { VideoItem, AudioItem, OverlayItem, BrandLayerItem } from '../reel-config-base/layered-schema';
 
@@ -55,11 +56,21 @@ export interface BrandTheme {
    *  them, core never enumerates them. Absent type → core generic primitive
    *  (grain/scanlines/vignette/grade/transform) → silently skipped. */
   effects?: Registry<EffectRenderProps>;
+  /** Look constants for core's GENERIC renderers (see ./tokens.ts). Every
+   *  field is optional with a neutral core default, so omitting `tokens`
+   *  entirely still renders. This is how a brand re-colours a generic instead
+   *  of copy-pasting it into its own renderer. */
+  tokens?: ThemeTokens;
 }
 
-/** All video-track item kinds. Footage kinds have a core generic renderer
- *  (SegmentMedia); the rest render only when the brand registers them. */
+/** All video-track item kinds. EVERY kind now has a core generic renderer
+ *  (footage kinds → SegmentMedia; multi-clip/card/outro → the generics in
+ *  ./generic), so a brand that registers nothing still renders a whole reel. */
 export type VideoKind = 'clip' | 'broll' | 'photo' | 'multi-clip' | 'card' | 'outro';
+/** @deprecated The footage/non-footage split existed only because footage
+ *  kinds were the ones with a generic beneath them. Since Phase 3 Task 3 every
+ *  kind has one, so `resolveVideoRenderer` no longer distinguishes them. Kept
+ *  as an alias so existing brand imports keep compiling. */
 export type FootageVideoKind = 'clip' | 'broll' | 'photo';
 
 /** The static prop bag every video renderer receives. Frame-derived values
@@ -79,14 +90,26 @@ export interface VideoRenderProps {
    *  audio-track item on the audio track — a renderer must NOT mount this as an
    *  <Audio> itself, or the voice double-plays. */
   boundAudio?: AudioItem;
+  /** The theme's look constants for core's generic renderers (see ./tokens.ts).
+   *  Core-supplied — `renderVideoItemNode` threads `theme.tokens` through here.
+   *  Deliberately this ONE narrow typed field rather than the theme itself:
+   *  VideoRenderProps still carries no CompositionTheme. */
+  tokens?: ThemeTokens;
 }
 
 export type VideoRenderer = React.FC<VideoRenderProps>;
 
-/** One kind's brand registration: its custom renderer + opaque brand config. */
-export interface VideoRegistration {
-  renderer: VideoRenderer;
-  config?: unknown;
+/** One video kind's registration. Built on the shared `Registration`
+ *  primitive, so this axis resolves through `resolveRegistered` like the
+ *  overlay and effect axes do — and, like them, a registration with NO
+ *  `renderer` contributes `config`/`params` only and does not mask the core
+ *  generic for that kind.
+ *
+ *  Like `Registration`, deliberately NOT open with an index signature: a
+ *  typo'd `renderer` must not compile clean and silently drop the brand's
+ *  renderer into the core generic. */
+export interface VideoRegistration extends Registration<VideoRenderProps> {
+  renderer?: VideoRenderer;
 }
 
 /** How an overlay kind reaches the screen. 'track' (default): one absolute

@@ -57,6 +57,26 @@ const BrandText: React.FC<OverlayRenderProps> = ({ text, placement, fontSize = 7
 export const theme: CompositionTheme = {
   accentSlots: ACCENT_SLOTS,
   background: '#07090f',
+  // LOOK CONSTANTS for core's GENERIC renderers (multi-clip, card, outro — see
+  // lib/theming/tokens.ts). This is the whole reason a brand does not have to
+  // copy those three components to recolour them: registering nothing under
+  // `video` still renders them, and everything below is optional — delete this
+  // block and they render in core's neutral black-and-white defaults.
+  tokens: {
+    multiClip: {
+      borderColor: '#07090f',
+      label: { fontFamily: 'Helvetica, Arial, sans-serif', color: ACCENT_SLOTS[0].color, fontSize: 30 },
+      pip: { borderColor: ACCENT_SLOTS[0].color },
+      background: '#07090f',
+    },
+    card: {
+      background: '#07090f',
+      pattern: { color: ACCENT_SLOTS[1].color, accentColor: ACCENT_SLOTS[0].color, opacity: 0.25 },
+      text: { fontFamily: 'Helvetica, Arial, sans-serif', fontSize: 96, color: '#ffffff' },
+      // Opt-in flourish: core draws no endpoint unless a brand asks for one.
+      endpoint: { text: '.', color: ACCENT_SLOTS[0].color },
+    },
+  },
   // Per-kind renderer registration. Omit `overlays` entirely and every text
   // overlay falls back to core's GenericTextOverlay.
   overlays: { text: { renderer: BrandText } },

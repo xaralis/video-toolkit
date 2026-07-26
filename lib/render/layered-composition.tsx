@@ -85,6 +85,10 @@ export function renderVideoItemNode(
       config={videoConfig(theme, item.kind)}
       anchoredOverlays={extras.anchoredOverlays ?? []}
       boundAudio={extras.boundAudio}
+      // The theme's look constants for core's GENERIC renderers (tokens.ts).
+      // Threaded here because this is where the theme lives — VideoRenderProps
+      // still carries no CompositionTheme, only this one narrow typed field.
+      tokens={theme.tokens}
     />
   );
   return applyEffects(theme, item, handles, media);

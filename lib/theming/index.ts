@@ -59,3 +59,8 @@ export {
 export { SegmentMedia } from './segment/SegmentMedia';
 export { GenericTextOverlay } from './generic/GenericTextOverlay';
 export { GenericWatermark, type WatermarkProps } from './generic/GenericWatermark';
+export { GenericOutro } from './generic/GenericOutro';
+export { GenericMultiClip } from './generic/GenericMultiClip';
+export { GenericCard } from './generic/GenericCard';
+export { resolveGenericSource } from './generic/media-source';
+export type { ThemeTokens, MultiClipTokens, CardTokens } from './tokens';

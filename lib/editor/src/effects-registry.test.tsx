@@ -212,9 +212,29 @@ describe('renderVideoItemNode (the composition seam)', () => {
     expect(container.querySelector('[data-w="outer"] [data-w="card"]')).not.toBeNull();
   });
 
+  // Same argument as the effects seam above: `tokens` that no seam threads would
+  // pass every GenericCard/GenericMultiClip test (they take tokens as a prop
+  // directly) and still leave every real render in core's neutral defaults.
+  it("threads the theme's tokens to the resolved renderer", () => {
+    const theme = {
+      accentSlots: [],
+      background: '#000',
+      tokens: { card: { background: '#123456' } },
+    };
+    const card: VideoItem = { id: 'c1', kind: 'card', startMs: 0, endMs: 1000, cardKind: 'claim-plate' };
+    const { container } = render(<>{renderVideoItemNode(theme as never, card, NO_HANDLES)}</>);
+    // Core's GenericCard resolves for the unregistered kind and paints the
+    // TOKEN background, not its neutral #000000 default.
+    const bg = container.querySelector('[data-card-bg]') as HTMLElement;
+    expect(bg.style.backgroundColor).toBe('rgb(18, 52, 86)');
+  });
+
   it('renders nothing for a kind with no renderer, effects or not', () => {
+    // NB: `outro` used to be the example here. Since Phase 3 Task 3 every
+    // declared VideoKind has a core generic, so the only way to exercise the
+    // `if (!Renderer) return null` guard is a kind NEITHER side knows.
     const theme = { accentSlots: [], background: '#000', effects: { outer: { renderer: Outer } } };
-    const outro: VideoItem = { id: 'o1', kind: 'outro', startMs: 0, endMs: 1000, effects: [{ type: 'outer' }] };
-    expect(renderVideoItemNode(theme as never, outro, NO_HANDLES)).toBeNull();
+    const unknown = { id: 'x1', kind: 'sizzle-wall', startMs: 0, endMs: 1000, effects: [{ type: 'outer' }] } as unknown as VideoItem;
+    expect(renderVideoItemNode(theme as never, unknown, NO_HANDLES)).toBeNull();
   });
 });
