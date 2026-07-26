@@ -268,10 +268,35 @@ confirmation** — the six newly wired ones plus `wipe`, `glitch`, `whip-pan`, `
 `gradient-wipe`, which were previously marked verified only by inference from the
 `TransitionSeries` path. Only `burn` is at-cut confirmed. At-cut composites differently
 (handle-borrowed overlap, not a shrinking sequence), so a presentation that looks right in
-`showcase/transitions` can still misbehave at a cut. Specific suspects: `checkerboard`'s
-direction-branching cell clipping, `pixelate`'s opaque black root. Core cannot render (no
-`remotion`), so this needs a render-parity pass in a brand repo. **Nothing that renders today
-can regress** — every one of those kinds was unreachable before Phase 1.
+`showcase/transitions` can still misbehave at a cut.
+
+*Update (fix/core-has-remotion, Task 3).* `lib/editor/src/at-cut-transitions.test.tsx` now gives
+**every** catalog kind — all 20, derived from `TRANSITION_CATALOG` rather than a hardcoded list —
+**wiring** coverage: it resolves to a presentation, mounts in both directions at progress 0/0.5/1
+without throwing, and receives its authored params under the key the presentation reads (plus
+accent-key→hex resolution through a brand palette, and `AtCutTransition`'s own progress ramps and
+compositing order). That is the whole of what core can settle. **The visual risk is unchanged:
+none of the 11 has at-cut *appearance* confirmation, and a wiring test cannot give it** — core has
+no render pipeline, only jsdom, so "does this look right at a cut" still needs a render-parity
+pass in a brand repo. `burn` remains the only at-cut confirmed kind.
+
+Both named suspects turned out to be real, and are **recorded, not fixed** (what a transition
+renders is a look decision, and neither kind has ever had its at-cut appearance confirmed, so a
+"fix" would be a guess). Each is pinned as an `it.fails` in that test file, so it flips to a
+normal `it` the day it is addressed and the runner shouts if it starts passing:
+
+- **`checkerboard` has no effect in the EXITING direction.** Its cells are rendered empty on exit
+  — the children are drawn once, whole, in the base layer beneath them, and the cell divs carry no
+  content and no background — so a `checkerboard` used as a `transitionOut` plays as a hard cut.
+  Only the entering direction reveals cell by cell.
+- **`pixelate` paints its root `AbsoluteFill` opaque black unconditionally**, including at
+  progress 0. Harmless under `TransitionSeries` (the presentation only exists for the transition's
+  length and composites over the outgoing sequence); *not* harmless at a cut, where the wrapper is
+  mounted for the item's whole sequence and the neighbouring clip sits beneath it in a sibling
+  `Sequence` — so the black root hides the neighbour instead of blending with it.
+
+**Nothing that renders today can regress** — every one of those kinds was unreachable before
+Phase 1.
 
 **Top residual risk on this branch, needs the first brand-side `tsc` to close:**
 `layeredCompositionProps` (`lib/render/layered-composition-props.ts`) has never been

@@ -18,7 +18,19 @@
       // importing file, which never reaches this package's node_modules for files
       // that live outside it. Do not delete this as redundant with the ambient
       // resolution — it is the only thing that makes those 6 occurrences resolve.
-      "remotion": ["./node_modules/remotion"]
+      "remotion": ["./node_modules/remotion"],
+      // Same problem, same fix, for the out-of-tree files that a test here now
+      // imports (lib/render/at-cut-transitions.tsx and the lib/transitions
+      // presentations it pulls in). These mirror examples/layered-minimal's
+      // tsconfig exactly — read docs/superpowers/core-typecheck-gate.md before
+      // touching them; the two non-obvious parts are that the subpath
+      // declarations live under dist/presentations (not dist/esm), and that
+      // "react" must map to @types/react, since the JS package ships no
+      // declarations and mapping there silently `any`s the whole surface.
+      "@remotion/transitions": ["./node_modules/@remotion/transitions"],
+      "@remotion/transitions/*": ["./node_modules/@remotion/transitions/dist/presentations/*"],
+      "react": ["./node_modules/@types/react"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"]
     }
   },
   "include": ["src", "app", "host", "../theming"]
