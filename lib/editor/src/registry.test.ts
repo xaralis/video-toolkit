@@ -1,8 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { resolveRegistered, registrationConfig } from '@video-toolkit/lib/theming/registry';
+import { resolveRegistered, registrationConfig, type Registration } from '@video-toolkit/lib/theming/registry';
 
 const Generic = () => null;
 const Brand = () => null;
+
+// Registration is deliberately CLOSED (no index signature), so a typo'd
+// `renderer` is a compile error rather than a brand renderer that silently
+// vanishes into the core generic. Fixtures carrying a per-axis field are typed
+// as that axis's superset — which is exactly how real registries are declared.
+type RoutingReg = Registration<unknown> & { routing?: 'track' | 'anchored' };
+const routingOnly: Record<string, RoutingReg> = { title: { routing: 'anchored' } };
+const routingOnTextKind: Record<string, RoutingReg> = { text: { routing: 'track' } };
 
 describe('resolveRegistered', () => {
   it('prefers a brand registration over the core generic', () => {
@@ -22,12 +30,12 @@ describe('resolveRegistered', () => {
   });
 
   it('treats a routing-only registration (no renderer) as not resolving a renderer', () => {
-    expect(resolveRegistered({ title: { routing: 'anchored' } }, 'title', {})).toBeUndefined();
+    expect(resolveRegistered(routingOnly, 'title', {})).toBeUndefined();
   });
 
   it('does NOT let a routing-only registration mask the core generic', () => {
     // A brand that registers routing for a kind core can draw still gets core's drawing.
-    expect(resolveRegistered({ text: { routing: 'track' } }, 'text', { text: Generic })).toBe(Generic);
+    expect(resolveRegistered(routingOnTextKind, 'text', { text: Generic })).toBe(Generic);
   });
 
   it('reads the opaque config off the registration', () => {

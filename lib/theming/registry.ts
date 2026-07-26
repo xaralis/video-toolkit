@@ -20,9 +20,15 @@ export interface ParamField {
 }
 
 /** One kind's registration on one extension axis. Per-axis interfaces extend
- *  this with their own fields (e.g. the overlay axis adds `routing`/`render`);
- *  the index signature is what lets the shared resolver below accept those
- *  supersets — including as fresh object literals — without knowing them. */
+ *  this with their own fields (e.g. the overlay axis adds `routing`/`render`),
+ *  and a named superset is assignable to `Registration<P>` without a freshness
+ *  check, so the shared resolver below accepts them as-is.
+ *
+ *  Deliberately NOT open with an index signature: an index signature would let
+ *  a typo'd `renderer` compile clean, and a brand's renderer would then vanish
+ *  from the render into the core generic with no signal — the exact silent
+ *  brand regression Phase 3 exists to close. Fresh object literals that carry a
+ *  per-axis field must be typed as that superset. */
 export interface Registration<P> {
   /** The renderer for this kind. Absent = routing-only (the owning body draws it). */
   renderer?: React.FC<P>;
@@ -30,7 +36,6 @@ export interface Registration<P> {
   config?: unknown;
   /** Declared editable fields — what makes a brand kind editable without core UI. */
   params?: readonly ParamField[];
-  [key: string]: unknown;
 }
 
 export type Registry<P> = Record<string, Registration<P>>;

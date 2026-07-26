@@ -37,7 +37,14 @@ export type CoreOverlayKind = 'text';
 /** The theming contract a brand's theme object satisfies. */
 export interface BrandTheme {
   accentSlots: readonly AccentSlot[];
-  /** ONE open-keyed overlay registry. Absent kind → core generic (text) → null. */
+  /** ONE open-keyed overlay registry. Absent kind → core generic (text) → null.
+   *
+   *  Caveat on which field draws what: at item level core honours `render`
+   *  (the escape hatch) for ANY kind, but `renderer` — which takes
+   *  OverlayRenderProps — is consumed only through the core text adapter, i.e.
+   *  for the core kinds 'text' and its legacy alias 'quote-pull'. A `renderer`
+   *  on a non-core kind (`{ chevron: { renderer: X } }`) is therefore ignored;
+   *  register such kinds with `render`. */
   overlays?: Record<OverlayKind, OverlayItemRegistration>;
   /** Per-kind brand-custom video renderer + config. Absent kind → core generic. */
   video?: Partial<Record<VideoKind, VideoRegistration>>;

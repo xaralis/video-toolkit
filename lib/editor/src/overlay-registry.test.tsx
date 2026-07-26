@@ -82,6 +82,18 @@ describe('the unified overlay registry', () => {
     expect(getByTestId('chevron').textContent).toBe('c1');
   });
 
+  it('calls a render closure registered on BrandTheme.overlays — the new capability', () => {
+    // THE point of "one registry": before the collapse, item-level `render`
+    // closures were read off theme.overlayItems ONLY, so this registration was
+    // silently ignored. Mutation-pinned: reverting layered-composition's
+    // `registry[kind]` to `theme.overlayItems?.[kind]` must turn this red.
+    const renderChevron = vi.fn((item: OverlayItem) => <div data-testid="chevron">{item.id}</div>);
+    const theme: CompositionTheme = { ...base, overlays: { chevron: { render: renderChevron } } };
+    const { getByTestId } = render(<LayeredReelComposition reel={reelWith([overlay('c1', 'chevron')])} theme={theme} />);
+    expect(renderChevron).toHaveBeenCalledTimes(1);
+    expect(getByTestId('chevron').textContent).toBe('c1');
+  });
+
   it('lets overlayItems override overlays for the same kind', () => {
     const theme: CompositionTheme = {
       ...base,
