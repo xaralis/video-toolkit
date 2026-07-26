@@ -3,6 +3,9 @@
 **Last updated:** 2026-07-26, at the end of `fix/core-has-remotion` — a correction branch
 between Phase 2 and Phase 3. Phase 2 completed on `refactor/phase2-core-shell` (2026-07-25).
 
+**Starting Phase 3? Read "Phase 3 — scope and starting state" below**, then the pending
+brand migrations and the working conventions. Everything else is history.
+
 This file is the durable record across sessions. The working ledger
 (`.superpowers/sdd/progress.md`) is **gitignored** and will not survive a
 `git clean` — anything that must outlive a session belongs here instead.
@@ -173,10 +176,103 @@ Phase 2 queues seven more (A–G in that document) and **retires Phase 1's #4**.
 
 ---
 
+## Phase 3 — scope and starting state
+
+**The goal of Phase 3 is what makes "a new brand only themes" actually true, including in
+the editor.** Phases 1 and 2 moved the *mechanisms* into core. What is still brand-side is
+everything a brand must **register**: overlays, effects, segment generators, the brand
+layer, captions, media paths. Today several of those have no contract at all, so a brand
+extends core by writing a renderer rather than by declaring one — which is exactly the
+copy-paste channel the programme exists to close.
+
+### Starting state, measured (2026-07-26, `main` @ `8198af3`)
+
+| Gate | Command | Value |
+|---|---|---|
+| Tests | `cd lib/editor && npx vitest run` | **57 files / 650** — 2 are `it.fails` known-defect pins |
+| Editor types | `cd lib/editor && npx tsc --noEmit` | **4** pre-existing |
+| Render/transition types | `cd examples/layered-minimal && npm run typecheck` | **0**, coverage guard ok |
+| Brand leak | the `grep -riE` under Working conventions | exactly **2** known hits |
+
+Capabilities, each demonstrated by a command (see the convention at the end of this file):
+core **can** unit-test a `remotion`-importing module with `vi.mock('remotion')`, **can**
+type-check its render surface, and **can render** (`cd examples/layered-minimal && npx
+remotion still src/index.ts MinimalReel out/x.png --frame=45`). Do not inherit a "core
+cannot X" from anywhere without re-running its command first — that mistake has been made
+three times in this programme.
+
+### The seams Phase 3 closes
+
+Each is verified present in core today, not quoted from the plan:
+
+1. **Two live overlay registries.** `BrandTheme.overlays` is
+   `Partial<Record<OverlayKind, …>>` with `OverlayKind = 'text'` (`lib/theming/types.ts:29,41`),
+   while `CompositionTheme.overlayItems` is open-keyed `Record<string, OverlayItemRegistration>`
+   (`:96`). `LayeredReelComposition` bridges them with a `TEXT_KINDS` set and a
+   `TrackTextOverlay` adapter (`lib/render/layered-composition.tsx:18,36,79`). Unify into one
+   open-keyed registry carrying routing + renderer + `params`, keeping the core text adapter as
+   the default renderer so existing brand registrations keep working.
+2. **No effect registry.** `resolveEffectRenderer` does not exist; `SegmentMedia` understands
+   only `ken-burns` (`lib/theming/segment/SegmentMedia.tsx:21,32`). So a brand's `vintage` and
+   `blend` are ad-hoc pipelines, and PP's `video-item-renderers.tsx` (270 LOC) exists purely to
+   reverse `effects[]` back into legacy prop bags and hand-apply a `frameOffsetSec` correction at
+   four call sites. Add the registry plus core generic `grain`, `scanlines`, `vignette`, `grade`,
+   `transform` primitives; the brand keeps only its tuning constants.
+3. **`card` / `outro` / `multi-clip` have no core generic.** `VideoKind` covers all six, but
+   `LayeredReelComposition` does `if (!Renderer) return null`, so a brand must still register
+   them. Ship the generic asset-outro (`props: {video, audio}`) and the four multi-clip layouts;
+   a brand's procedural outro then registers as an override — precisely what the contract is for.
+4. **Brand track is a hook, not a registry.** `renderBrandTrack` means each brand writes its own
+   `…BrandTrack` of the same shape and neither uses core's `GenericWatermark`; three
+   implementations of corner anchoring exist. Replace with a registry +
+   `defaultRenderBrandTrack(items)`, extend `GenericWatermark` with the PNG-as-alpha-mask tint
+   technique (generic trick; brand colours stay in the theme) and add a `disclaimer` kind.
+5. **Captions are entirely brand-side.** `brand-lib/overlays/CaptionStrip.tsx` (293 LOC) admits
+   in-file that it is hardcoded to one brand. Core exposes `transcript-window.ts` but no caption
+   renderer. Bring `GenericCaptions` into core, parameterized by `theme.tokens.caption`, which
+   already exists brand-side.
+6. **Media paths are hardcoded in three places.** `resolveAudioSource` exists as a theme hook;
+   the video side hardcodes `recordings/`+`broll/` prefixes brand-side while another brand uses
+   full `media/…` paths — and core's own editor hardcodes the same convention again in
+   `LayeredTimeline.tsx:25-32`. Add `resolveMediaSource(item, role)`, consumed by the renderers
+   **and** by the timeline, so the editor stops knowing folder names.
+7. **Schema-driven inspector** — render inspector controls from each registration's `params`,
+   which is what makes a brand's own registered kind editable without touching core UI.
+8. **Resolve the `brand-lib/` tier** so a brand repo has one brand tier, not two, and
+   **migrate `web-program-intro`** onto `LayeredReelComposition` — its hand-rolled 170-LOC
+   `TransitionSeries` assembly is a pre-layered fossil that already imports core's
+   `presentationFor`.
+
+### Already-queued Phase 3 work recorded elsewhere in this file
+
+Read these before scoping — they are decided or half-decided, not open questions:
+
+- `video_toolkit/sync_template.py:136,141` still mirrors only `src`, so `.editor/`,
+  `remotion.config.ts`, `vitest.config.ts`, `tsconfig.json` and `package.json` are hand-carried
+  to 14 directories.
+- The **zod guard**, sequenced: it must land *after* roost migrates, and must warn, not throw.
+- The **`TransitionGallery` fork** decision (two divergent copies; only the showcase one runs).
+- The **two `it.fails` defects** (`checkerboard` exiting no-op, `pixelate` opaque root) and the
+  **at-cut visual confirmation pass**, which this programme established is now possible *in core*
+  rather than blocked on a brand repo.
+- The smaller deferred items under "New in Phase 2, deferred".
+
+### Two things Phase 3 must not repeat
+
+- **Phase 3 changes what brands render.** Phases 1–2 could hold "rendering an existing baked
+  literal must not change" almost for free. Registries and generic renderers cannot: folding a
+  brand's bespoke renderer into a core generic *will* move pixels unless proven otherwise. Decide
+  per item whether parity is required, and where it is, prove it with a **still render** — core
+  can do that now. This is the phase where "derivation output is free to change, rendering a baked
+  literal is not" needs actual enforcement rather than assertion.
+- **Do not design around an unverified limit.** See the working convention at the end of this file.
+
+---
+
 ## Carried into later phases
 
 **Phase 3 is next** — close the extension contract (registries, effects, generators,
-captions).
+captions). Its scope is the section above.
 
 **Deliberately NOT done in Phase 2, now a Phase 3 task:**
 `video_toolkit/sync_template.py:136,141` still mirrors only
