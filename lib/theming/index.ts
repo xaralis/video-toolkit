@@ -79,6 +79,7 @@ export { GenericOutro } from './generic/GenericOutro';
 export { GenericMultiClip } from './generic/GenericMultiClip';
 export { GenericCard } from './generic/GenericCard';
 export { resolveGenericSource } from './generic/media-source';
+export { resolveMediaSource, ROLE_FOLDERS, type MediaRole, type MediaSourceResolver } from './media-source';
 export {
   GenericCaptions,
   type GenericCaptionsProps,

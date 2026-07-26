@@ -3,7 +3,7 @@
 // contributes only look (renderers, background, routing) — see spec
 // docs/superpowers/specs/2026-07-25-layered-reel-composition-design.md.
 import React from 'react';
-import { AbsoluteFill, Audio, Sequence, staticFile, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Audio, Sequence, useVideoConfig } from 'remotion';
 import type { LayeredReel, OverlayItem, VideoItem, AudioItem } from '../reel-config-base/layered-schema';
 import { computeMusicEnvelope } from '../reel-config-base/music-envelope';
 import type { CompositionTheme, Placement } from '../theming';
@@ -16,6 +16,7 @@ import {
   DEFAULT_PLACEMENT,
   applyEffects,
   defaultRenderBrandTrack,
+  resolveGenericSource,
 } from '../theming';
 import { buildVideoNodes } from './video-track';
 import { buildAudioNodes } from './audio-track';
@@ -90,6 +91,9 @@ export function renderVideoItemNode(
       // Threaded here because this is where the theme lives — VideoRenderProps
       // still carries no CompositionTheme, only this one narrow typed field.
       tokens={theme.tokens}
+      // Same narrow threading for the media-path rule: the brand's wholesale
+      // override, or `undefined` → the renderer uses core's resolveMediaSource.
+      resolveMediaSource={theme.resolveMediaSource}
     />
   );
   return applyEffects(theme, item, handles, media);
@@ -120,7 +124,13 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
   });
 
   // ---- audio (voice/beds) -----------------------------------------------------
-  const audioNodes = buildAudioNodes(reel.tracks.audio, { fps, resolveSource: theme.resolveAudioSource });
+  // `resolveAudioSource` (deprecated) still WINS when a brand registers one —
+  // campaign-reels does, and its rule is the pre-Task-6 prefix list. Otherwise
+  // the wholesale `resolveMediaSource` applies, bound to the 'audio' role.
+  const resolveAudio =
+    theme.resolveAudioSource ??
+    (theme.resolveMediaSource ? (raw: string) => theme.resolveMediaSource!(raw, 'audio') : undefined);
+  const audioNodes = buildAudioNodes(reel.tracks.audio, { fps, resolveSource: resolveAudio });
 
   // ---- music -------------------------------------------------------------------
   const { volumeAt } = computeMusicEnvelope(reel, { fps });
@@ -151,7 +161,11 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
       {videoNodes}
       {audioNodes}
       {musicSource && (
-        <Audio src={musicSource.startsWith('http') ? musicSource : staticFile(musicSource)} volume={volumeAt} />
+        // Role 'music' has no folder in ROLE_FOLDERS — a bed's source is
+        // already public/-relative in both brands ('audio/boj.wav',
+        // 'music/bed.mp3') — so this is byte-identical to the inline
+        // http/staticFile rule it replaces; it just lives in one place now.
+        <Audio src={resolveGenericSource(musicSource, 'music', theme.resolveMediaSource)} volume={volumeAt} />
       )}
       {overlayNodes}
       {/* The whole-track escape hatch wins outright when a brand declares it —

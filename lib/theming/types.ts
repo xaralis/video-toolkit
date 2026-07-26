@@ -6,6 +6,7 @@ import type { EffectRenderProps } from './effects';
 import type { AccentSlot } from './palette';
 import type { ThemeTokens } from './tokens';
 import type { Placement } from './placement';
+import type { MediaSourceResolver } from './media-source';
 import type { VideoItem, AudioItem, OverlayItem, BrandLayerItem } from '../reel-config-base/layered-schema';
 
 /** The static prop bag every text-overlay renderer receives. Frame-derived
@@ -101,6 +102,12 @@ export interface VideoRenderProps {
    *  Deliberately this ONE narrow typed field rather than the theme itself:
    *  VideoRenderProps still carries no CompositionTheme. */
   tokens?: ThemeTokens;
+  /** The theme's wholesale media-path override, threaded by
+   *  `renderVideoItemNode` the same narrow way `tokens` is. Absent → the
+   *  renderer falls back to core's `resolveMediaSource` (./media-source.ts).
+   *  A renderer must apply this at render time only — never write the result
+   *  back onto `item.source`, which captions are derived from. */
+  resolveMediaSource?: MediaSourceResolver;
 }
 
 export type VideoRenderer = React.FC<VideoRenderProps>;
@@ -194,6 +201,18 @@ export interface CompositionTheme extends BrandTheme {
    *  then spans its OWN [startMs, endMs) — which is NOT what a track written
    *  against this hook necessarily does. */
   renderBrandTrack?: (items: BrandLayerItem[]) => React.ReactNode;
-  /** Override the audio-source folder convention (default: recordings/). */
+  /** @deprecated Superseded by {@link CompositionTheme.resolveMediaSource},
+   *  which covers the video and brand tracks too. Still honoured and still
+   *  WINS over `resolveMediaSource` on the audio track when present, because a
+   *  brand (campaign-reels) registers one — dropping it would silently change
+   *  its audio paths. New brands should register `resolveMediaSource` instead. */
   resolveAudioSource?: (raw: string) => string;
+  /** Wholesale override of core's ONE media-path rule (./media-source.ts) for
+   *  EVERY role — clip/broll/photo footage, audio, music and brand assets.
+   *  Absent → `resolveMediaSource` from ./media-source.
+   *
+   *  Like the default, it must resolve at RENDER TIME and never write back
+   *  onto the item: `loadTranscriptSync` derives the caption sidecar path from
+   *  the BARE source. */
+  resolveMediaSource?: MediaSourceResolver;
 }

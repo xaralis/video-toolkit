@@ -6,11 +6,25 @@ import { gradeFilter, gradeNeedsWb, gradeWbMatrixValues } from '../../reel-confi
 import type { Crop, Grade } from '../../reel-config-base/base-types';
 import type { VideoRenderProps } from '../types';
 import { kenBurnsStyle, findKenBurns, type KenBurnsEffect } from '../effects/ken-burns';
+import { resolveMediaSource, type MediaRole, type MediaSourceResolver } from '../media-source';
 
 const VIDEO_EXT_RE = /\.(mp4|mov|webm)$/i;
 
-function resolveSrc(source: string): string {
-  return source.startsWith('http') ? source : staticFile(source);
+/** `item.source` → a URL Remotion can load, through core's ONE media-path rule
+ *  (../media-source.ts) and then `staticFile`.
+ *
+ *  Both brands prefix BEFORE calling here (one's clip/broll renderers hand over
+ *  `recordings/…`/`broll/…`; the other's sources are full `media/…` paths), so
+ *  the rule's idempotence is what keeps them rendering byte-identically — it
+ *  sees a source that already contains a slash and returns it untouched. A
+ *  brand that hands over a BARE filename now gets the folder convention for
+ *  free instead of a
+ *  broken path. Resolution happens HERE, at render time: `item.source` is never
+ *  written back, because `loadTranscriptSync` derives the caption sidecar from
+ *  the bare name. */
+function resolveSrc(source: string, role: MediaRole, override?: MediaSourceResolver): string {
+  const path = (override ?? resolveMediaSource)(source, role);
+  return path.startsWith('http') ? path : staticFile(path);
 }
 
 // Ken Burns lives in ../effects/ken-burns.ts as of Phase 3 Task 2 (its math is
@@ -24,13 +38,14 @@ export { kenBurnsStyle, findKenBurns, type KenBurnsEffect };
  *  brands' clip/broll/photo renderers compose around — vintage, paper-frame,
  *  and overlays are brand wrappers rendered AROUND this, not part of it.
  *  multi-clip/card/outro items render nothing here (out of scope). */
-export const SegmentMedia: React.FC<VideoRenderProps> = ({ item, handles }) => {
+export const SegmentMedia: React.FC<VideoRenderProps> = ({ item, handles, resolveMediaSource: override }) => {
   const { fps } = useVideoConfig();
   const frame = useCurrentFrame();
 
   if (item.kind !== 'clip' && item.kind !== 'broll' && item.kind !== 'photo') return null;
 
-  const src = resolveSrc(item.source);
+  // `item.kind` maps 1:1 onto MediaRole for the three footage kinds.
+  const src = resolveSrc(item.source, item.kind, override);
   const useImg = item.kind === 'photo' && !VIDEO_EXT_RE.test(item.source);
 
   // On-screen span for this item, extended by the handles borrowed at each

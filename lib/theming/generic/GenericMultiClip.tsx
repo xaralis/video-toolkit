@@ -63,7 +63,7 @@ const fillStyle: React.CSSProperties = { position: 'absolute', inset: 0 };
  *  AROUND this whole renderer by `renderVideoItemNode`, not here.
  *
  *  `SubSource.zoom` is currently ignored, as it is in campaign-reels. */
-export const GenericMultiClip: React.FC<VideoRenderProps> = ({ item, tokens }) => {
+export const GenericMultiClip: React.FC<VideoRenderProps> = ({ item, tokens, resolveMediaSource }) => {
   if (item.kind !== 'multi-clip') return null;
 
   const t: MultiClipTokens = tokens?.multiClip ?? {};
@@ -83,7 +83,9 @@ export const GenericMultiClip: React.FC<VideoRenderProps> = ({ item, tokens }) =
     const subItem: VideoItem = VIDEO_EXT_RE.test(s.source)
       ? { ...span, kind: 'clip', sourceInMs: s.sourceInMs, sourceOutMs: s.sourceOutMs }
       : { ...span, kind: 'photo' }; // a still has no source trim — its span IS its on-screen span
-    return <SegmentMedia item={subItem} handles={{ inHalf: 0, outHalf: 0 }} />;
+    // The brand's wholesale source resolver (if any) is forwarded, so a
+    // sub-source follows the same media-path rule as a top-level clip.
+    return <SegmentMedia item={subItem} handles={{ inHalf: 0, outHalf: 0 }} resolveMediaSource={resolveMediaSource} />;
   };
 
   const renderLabel = (i: number): React.ReactNode => {

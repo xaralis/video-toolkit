@@ -1,6 +1,7 @@
 // Explicit React import: files under lib/theming are transformed with the classic JSX runtime under the editor's Vitest config, so `React` must be in scope.
 import React from 'react';
-import { Img, staticFile } from 'remotion';
+import { Img } from 'remotion';
+import { resolveGenericSource } from './media-source';
 
 type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 
@@ -123,7 +124,12 @@ export const GenericWatermark: React.FC<WatermarkProps> = (props) => {
   // The chosen image, clamped so an out-of-range index never picks `undefined`.
   const idx = Math.min(Math.max(props.index ?? 0, 0), imageList.length - 1);
   const selectedImage = imageList[idx];
-  const src = selectedImage.startsWith('http') ? selectedImage : staticFile(selectedImage);
+  // Role 'brand' — a watermark asset is already public/-relative, so this is
+  // byte-identical to the inline http/staticFile rule it replaces. Routed
+  // through the shared helper so the convention lives in exactly one place
+  // (Phase 3 Task 6). WatermarkProps carries no theme, so there is no
+  // brand-override hook here; a brand needing one registers its own renderer.
+  const src = resolveGenericSource(selectedImage, 'brand');
 
   const style = watermarkStyle(props, src);
 

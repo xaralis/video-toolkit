@@ -31,14 +31,17 @@ interface GenericOutroProps {
  *
  *  Effects on the item are applied AROUND this by `renderVideoItemNode`
  *  (lib/render/layered-composition.tsx), so nothing is applied here. */
-export const GenericOutro: React.FC<VideoRenderProps> = ({ item }) => {
+export const GenericOutro: React.FC<VideoRenderProps> = ({ item, resolveMediaSource: override }) => {
   // `props` is the schema's permissive per-item render-hint bag (z.record), so
   // it is asserted to the shape this renderer reads; anything else is ignored.
   const props = (item.props ?? {}) as GenericOutroProps;
+  // Role 'brand': an outro's video/audio are brand assets, already
+  // public/-relative — no folder convention applies, so nothing about the
+  // resolved URL changed when Task 6 swapped resolveGenericSource's body.
   return (
     <AbsoluteFill>
-      {props.video ? <OffthreadVideo src={resolveGenericSource(props.video)} muted /> : null}
-      {props.audio ? <Audio src={resolveGenericSource(props.audio)} /> : null}
+      {props.video ? <OffthreadVideo src={resolveGenericSource(props.video, 'brand', override)} muted /> : null}
+      {props.audio ? <Audio src={resolveGenericSource(props.audio, 'brand', override)} /> : null}
     </AbsoluteFill>
   );
 };

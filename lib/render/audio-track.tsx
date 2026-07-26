@@ -5,13 +5,22 @@
 import React from 'react';
 import { Audio, Sequence, staticFile } from 'remotion';
 import { audioGainAt } from './audio-gain';
+import { resolveMediaSource } from '../theming/media-source';
 import type { AudioItem } from '../reel-config-base/layered-schema';
 
 // AudioItem.source is a bare filename by convention (derive-layered emits the
-// clip's own source). Campaign's folder convention is the core default; a
-// brand with different folders overrides via CompositionTheme.resolveAudioSource.
+// clip's own source), living under recordings/.
+//
+// Phase 3 Task 6: this is now core's ONE media-path rule bound to the 'audio'
+// role, not a fourth private copy of the convention. Identical for every shape
+// either brand actually stores — bare filenames prefix, `recordings/…` and
+// `broll/…` pass through — and it additionally leaves any OTHER path with a
+// slash alone (e.g. `audio/bed.wav`), which the old prefix list mangled into
+// `recordings/audio/bed.wav`. A brand overrides wholesale via
+// CompositionTheme.resolveMediaSource (or the deprecated resolveAudioSource,
+// which still wins).
 export function defaultResolveAudioSource(raw: string): string {
-  return raw.startsWith('recordings/') || raw.startsWith('broll/') ? raw : `recordings/${raw}`;
+  return resolveMediaSource(raw, 'audio');
 }
 
 export function buildAudioNodes(

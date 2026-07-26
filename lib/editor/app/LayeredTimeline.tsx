@@ -19,18 +19,28 @@ import { useSourceDurations } from './useSourceDurations';
 import { Waveform, VolumeLine } from './Waveform';
 import { MusicEnvelope } from './MusicEnvelope';
 import { computeMusicEnvelope } from '@video-toolkit/lib/reel-config-base/music-envelope';
+import { resolveMediaSource, type MediaRole } from '@video-toolkit/lib/theming/media-source';
 import { humanizeKey, stableColor, type EditorMeta } from './editor-meta';
 
-// Audio sources: bare filenames are broll/clip beds under public/recordings;
-// a path (e.g. audio/bg.mp3, the music) is served from public as-is.
-const audioUrl = (source: string) => (source.includes('/') ? `/${source}` : `/recordings/${source}`);
+// Media paths go through core's ONE rule (lib/theming/media-source.ts) — the
+// same one SegmentMedia and the audio track use — rather than a third private
+// copy of the convention, which is what these two lines used to be. The editor
+// serves URLs off the Vite dev server (`/recordings/x.mp4`), not staticFile
+// paths, so the only difference from the renderers is the leading `/` instead
+// of staticFile. `resolveMediaSource` is dependency-free (it imports nothing,
+// in particular not `remotion`), so importing it here adds nothing to the
+// editor's browser bundle and needs no dev-server resolve hook.
+const publicUrl = (source: string, role: MediaRole) => `/${resolveMediaSource(source, role)}`;
+
+export const audioUrl = (source: string) => publicUrl(source, 'audio');
 
 // Video source URL for a clip/broll (for intrinsic-duration decode → right-edge
-// bound). Clips live under recordings/, broll footage under broll/.
-const videoUrl = (item: { kind: string; source?: string }): string | null => {
-  const src = item.kind === 'clip' || item.kind === 'broll' ? item.source : undefined;
-  if (!src) return null;
-  return src.includes('/') ? `/${src}` : item.kind === 'broll' ? `/broll/${src}` : `/recordings/${src}`;
+// bound). Clips live under recordings/, broll footage under broll/; a source
+// that already contains a path (a full `media/…` source) is served as-is.
+export const videoUrl = (item: { kind: string; source?: string }): string | null => {
+  if (item.kind !== 'clip' && item.kind !== 'broll') return null;
+  if (!item.source) return null;
+  return publicUrl(item.source, item.kind);
 };
 
 // Fixed, typed lanes (D4) — the structure comes from the reel, not free-form
