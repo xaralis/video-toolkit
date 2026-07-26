@@ -311,7 +311,7 @@ copy-paste channel the programme exists to close.
 
 | Gate | Command | Value |
 |---|---|---|
-| Tests | `cd lib/editor && npx vitest run` | **59 files / 669** — 2 are `it.fails` known-defect pins |
+| Tests | `cd lib/editor && npx vitest run` | **58 files / 669** — 2 are `it.fails` known-defect pins |
 | Editor types | `cd lib/editor && npx tsc --noEmit` | **4** pre-existing |
 | Render/transition types | `cd examples/layered-minimal && npm run typecheck` | **0**, coverage guard ok |
 | Brand leak | the `grep -riE` under Working conventions | exactly **2** known hits |
@@ -700,7 +700,7 @@ now ordinary migration verification, not risk closure.
   these are live:
   | Gate | Command | Now |
   |---|---|---|
-  | Editor tests | `cd lib/editor && npx vitest run` | **59 files / 669 tests**, green (2 of them are `it.fails` known-defect pins — `at-cut-transitions.test.tsx:289,307` — see the at-cut risk entry) |
+  | Editor tests | `cd lib/editor && npx vitest run` | **58 files / 669 tests**, green (2 of them are `it.fails` known-defect pins — `at-cut-transitions.test.tsx:289,307` — see the at-cut risk entry) |
   | Editor types | `cd lib/editor && npx tsc --noEmit` | **4** errors |
   | Render/transition types | `cd examples/layered-minimal && npm run typecheck` | **0**, coverage guard ok |
 
