@@ -197,7 +197,13 @@ describe('strokeShadow', () => {
   });
 
   it('excludes the centre offset', () => {
-    expect(strokeShadow(2, '#000000')).not.toContain('0px 0px 0 ');
+    // Split into entries rather than substring-matching the whole string: at
+    // px >= 5 the offset `-10px 0px 0 ...` CONTAINS "0px 0px 0 ", so a
+    // substring check passes today only because px is 2 and would false-fail
+    // for whoever raises the default.
+    for (const px of [1, 2, 5, 7]) {
+      expect(strokeShadow(px, '#000000').split(', ')).not.toContain('0px 0px 0 #000000');
+    }
   });
 
   it('uses the colour it is given', () => {
@@ -294,6 +300,16 @@ describe('GenericCaptions — pop-focus mode (the default)', () => {
     expect(colors).toEqual(['rgb(255, 255, 255)', 'rgb(255, 255, 0)', 'rgb(255, 255, 255)']);
   });
 
+  // The migration path for the brand shipping captions today rests on these
+  // defaults already matching its live module constants, so pin them.
+  it('defaults the pill to fontSize 52 (x1.04 in-pill) on a black background', () => {
+    frameState.frame = 45;
+    const pill = draw().container.querySelector('[data-caption-pill]') as HTMLElement;
+    expect(pill.style.fontSize).toBe('54.08px'); // 52 * 1.04
+    expect(pill.style.backgroundColor).toBe('rgb(0, 0, 0)');
+    expect(pill.style.fontFamily).toBe('monospace');
+  });
+
   it('honours colour / typography / background tokens', () => {
     frameState.frame = 45;
     const { container } = draw({
@@ -331,8 +347,8 @@ describe('GenericCaptions — pop-focus mode (the default)', () => {
 
   it('threads gapBreakMs through to the grouper', () => {
     frameState.frame = 45;
-    // Zero-gap words: only a gapBreakMs below 0 could split them, so instead
-    // use words with a 200ms gap and a 100ms threshold.
+    // A 200ms gap: under the 350ms default the words stay on one line; a
+    // 100ms threshold splits them, leaving only the second line alive at 1500ms.
     const gapped = [w(0, 1, 'one'), w(1.2, 3, 'two')];
     const joined = draw({ words: gapped, tokens: {} });
     expect(spans(joined.container).map((s) => s.textContent)).toEqual(['one', 'two']);
@@ -392,13 +408,55 @@ describe('GenericCaptions — highlight mode', () => {
     expect(spans(container)[0].style.transform).toBe('scale(1)');
   });
 
-  it('haloes the active word in activeColor and nobody else', () => {
+  it('haloes the active word and nobody else', () => {
     frameState.frame = 45;
-    const { container } = highlight({ activeColor: '#00ff00' });
-    // The halo alpha rides the active envelope, so the colour is emitted with
-    // an alpha channel — never a hardcoded brand rgba().
+    const { container } = highlight();
     expect(spans(container)[1].style.textShadow).toContain('0 0 10px');
     expect(spans(container)[0].style.textShadow).not.toContain('0 0 10px');
+  });
+
+  // The halo COLOUR, pinned explicitly. This is the one place a brand literal
+  // was neutralised — the ported implementation hardcoded `rgba(198,244,50, …)`,
+  // one brand's accent — so it is the one place a regression would be silent:
+  // the brand-leak grep matches the word `lime`, not a numeric rgba triple.
+  it('draws the halo in activeColor, with the envelope as its alpha channel', () => {
+    frameState.frame = 45; // "two" fully active → alpha 0.5 * 1 → hex 80
+    const green = highlight({ activeColor: '#00ff00' });
+    expect(spans(green.container)[1].style.textShadow).toContain('0 0 10px #00ff0080');
+
+    // Tracks the token: a different activeColor gives a different halo, so a
+    // hardcoded colour cannot satisfy both assertions.
+    const blue = highlight({ activeColor: '#0000ff' });
+    expect(spans(blue.container)[1].style.textShadow).toContain('0 0 10px #0000ff80');
+  });
+
+  it('ramps the halo alpha with the active envelope', () => {
+    frameState.frame = 61; // ≈2033ms — 33ms past "two", inside the 30ms… past it
+    const { container } = highlight({ activeColor: '#00ff00' });
+    // "three" (2000–3000ms) is now the active word at full envelope.
+    expect(spans(container)[2].style.textShadow).toContain('0 0 10px #00ff0080');
+    // and "two" has dropped out of its ramp entirely.
+    expect(spans(container)[1].style.textShadow).not.toContain('0 0 ');
+  });
+
+  it('leaves a non-hex activeColor untouched rather than mangling it', () => {
+    frameState.frame = 45;
+    const { container } = highlight({ activeColor: 'rgb(1, 2, 3)' });
+    expect(spans(container)[1].style.textShadow).toContain('rgb(1, 2, 3)');
+  });
+
+  it('defaults maxWidthPct to 0.86', () => {
+    frameState.frame = 45;
+    const line = highlight().container.querySelector('[data-caption-line]') as HTMLElement;
+    expect(line.style.maxWidth).toBe('86%');
+  });
+
+  it('defaults fontSize to 52 and fontFamily to monospace', () => {
+    frameState.frame = 45;
+    const line = highlight().container.querySelector('[data-caption-line]') as HTMLElement;
+    expect(line.style.fontSize).toBe('52px');
+    expect(line.style.fontFamily).toBe('monospace');
+    expect(line.style.fontWeight).toBe('700');
   });
 
   it('honours maxWidthPct', () => {
