@@ -63,21 +63,37 @@ export function createEditorViteConfig(opts: EditorViteConfigOptions): Record<st
   // exists to prevent, just deferred to a much more confusing point at runtime.
   const zodMain = (opts.resolveZod ?? defaultResolveZod)(templateRoot);
 
-  // The shared at-cut engine (toolkit/lib/render) runtime-imports
-  // @remotion/transitions/* from OUTSIDE this project's tree, so Vite's normal
-  // node-resolution walk-up from the toolkit submodule can't find it. Re-resolve
-  // those specifiers as if imported from the project root — this honours the
-  // package's exports map, which some subpaths (iris, wipe) rely on entirely
-  // (ESM-only via exports, not root .js files, so a plain dir alias breaks them).
+  // Everything under toolkit/lib that this editor loads — the host itself
+  // (@remotion/player), the shared at-cut engine (remotion,
+  // @remotion/transitions/*) — imports Remotion by BARE specifier from OUTSIDE
+  // this project's tree, so Vite's normal node-resolution walk-up from the
+  // toolkit submodule can't find it: it climbs to the brand repo root and stops.
+  // Re-resolve those specifiers as if imported from the project root.
+  //
+  // Resolution, not a dir alias, on purpose: it honours each package's exports
+  // map, which some @remotion/transitions subpaths (iris, wipe) rely on entirely
+  // (ESM-only via exports, no root .js file, so a plain dir alias breaks them).
   // Mirrors remotion.config.ts's webpack resolve.modules fix on the render side.
-  const resolveRemotionTransitionsFromProject = {
-    name: 'resolve-remotion-transitions-from-project',
+  //
+  // The scope is every Remotion specifier, not just @remotion/transitions. It was
+  // originally only the latter, from when the editor host still lived in the
+  // brand's own .editor/main.tsx and its `import { Player } from
+  // '@remotion/player'` resolved through the project's own node_modules. Phase 2
+  // moved the host into lib/editor/host/EditorHost.tsx, out of the project tree,
+  // and that import stopped resolving: the dev server still served / and /props,
+  // but the app never mounted and the only symptom was one line in the Vite log.
+  // Widening it here is what makes a core-owned host work in a brand repo at all.
+  const isRemotionSpecifier = (source: string) =>
+    source === 'remotion' || source.startsWith('remotion/') || source.startsWith('@remotion/');
+
+  const resolveRemotionFromProject = {
+    name: 'resolve-remotion-from-project',
     enforce: 'pre' as const,
     async resolveId(
       this: { resolve: (s: string, i: string, o: { skipSelf: boolean }) => Promise<{ id: string } | null> },
       source: string,
     ) {
-      if (source.startsWith('@remotion/transitions')) {
+      if (isRemotionSpecifier(source)) {
         const resolved = await this.resolve(source, path.join(templateRoot, 'index.js'), { skipSelf: true });
         if (resolved) return resolved.id;
       }
@@ -89,7 +105,7 @@ export function createEditorViteConfig(opts: EditorViteConfigOptions): Record<st
     root: editorDir,
     plugins: [
       ...plugins,
-      resolveRemotionTransitionsFromProject,
+      resolveRemotionFromProject,
       createEditorPlugin({ templateRoot, compositionId, extraArgs }),
     ],
     publicDir: path.resolve(templateRoot, 'public'),

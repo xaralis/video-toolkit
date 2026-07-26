@@ -45,13 +45,57 @@ describe('createEditorViteConfig', () => {
     expect(names.indexOf('mine')).toBeLessThan(names.indexOf('video-toolkit-editor'));
   });
 
-  it('ships the @remotion/transitions re-resolver as a pre-enforced plugin', () => {
+  it('ships the Remotion re-resolver as a pre-enforced plugin', () => {
     // lib/render/at-cut-transitions.tsx runtime-imports @remotion/transitions/*
     // from outside the project tree. A plain dir alias breaks the ESM-only
     // subpaths (iris, wipe) that exist only via the package exports map, so this
     // has to be a resolveId hook, not an alias.
-    const p = cfg().plugins.find((x: any) => x?.name === 'resolve-remotion-transitions-from-project');
+    const p = cfg().plugins.find((x: any) => x?.name === 'resolve-remotion-from-project');
     expect(p.enforce).toBe('pre');
+  });
+
+  // Regression, Phase 2.5: this plugin used to match only '@remotion/transitions',
+  // which was enough while the editor host lived in the brand's own .editor/main.tsx
+  // and its `import { Player } from '@remotion/player'` resolved through the
+  // project's node_modules. Phase 2 moved the host to lib/editor/host/EditorHost.tsx,
+  // outside the project tree, and that import stopped resolving — the dev server
+  // still answered / and /props, but the app never mounted and the only symptom was
+  // a single line in the Vite log. Nothing here is tsc-reachable, so this test is
+  // the guard.
+  describe('re-resolves every Remotion specifier from the project root', () => {
+    const resolveIdFor = async (source: string) => {
+      const p: any = cfg().plugins.find((x: any) => x?.name === 'resolve-remotion-from-project');
+      const seen: string[] = [];
+      const ctx = {
+        resolve: async (s: string, importer: string) => {
+          seen.push(importer);
+          return { id: `/resolved/${s}` };
+        },
+      };
+      const id = await p.resolveId.call(ctx, source);
+      return { id, importer: seen[0] };
+    };
+
+    it.each([
+      ['@remotion/player', 'the host itself — the specifier that broke'],
+      ['remotion', 'lib/render and lib/theming import it bare'],
+      ['@remotion/transitions', 'the original case'],
+      ['@remotion/transitions/slide', 'a subpath with an exports-map-only entry'],
+      ['remotion/no-react', 'a remotion/ subpath'],
+    ])('re-resolves %s (%s)', async (source) => {
+      const { id, importer } = await resolveIdFor(source);
+      expect(id).toBe(`/resolved/${source}`);
+      // Resolved AS IF imported from the project root — that is the whole point;
+      // resolving from the toolkit submodule is what fails.
+      expect(importer).toBe(path.join(TEMPLATE, 'index.js'));
+    });
+
+    it.each(['react', 'zod', '@xzdarcy/react-timeline-editor', 'remotion-ish'])(
+      'leaves %s alone',
+      async (source) => {
+        expect((await resolveIdFor(source)).id).toBeNull();
+      },
+    );
   });
 
   it('defaults the dev-server port to 3100 and honours an override', () => {
