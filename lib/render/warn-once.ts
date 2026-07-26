@@ -39,14 +39,20 @@ export interface WarnOnceOptions {
 /**
  * Emit `message` the first time this `key` is seen, and never again.
  *
+ * `message` may be a THUNK, and on a per-frame call site it should be: an eager
+ * string argument is built before this function can decide to drop it, so a
+ * long interpolated message allocates on every frame of a render forever, which
+ * is precisely the cost the de-duplication exists to avoid. A thunk is only
+ * invoked on the one call that actually warns.
+ *
  * Returns `true` when it actually warned, so a caller can assert on the
  * behaviour without capturing console output.
  */
-export function warnOnce(key: string, message: string, opts: WarnOnceOptions = {}): boolean {
+export function warnOnce(key: string, message: string | (() => string), opts: WarnOnceOptions = {}): boolean {
   if (!(opts.dev ?? isDevEnvironment())) return false;
   if (SEEN.has(key)) return false;
   SEEN.add(key);
-  (opts.warn ?? ((m: string) => console.warn(m)))(message);
+  (opts.warn ?? ((m: string) => console.warn(m)))(typeof message === 'function' ? message() : message);
   return true;
 }
 

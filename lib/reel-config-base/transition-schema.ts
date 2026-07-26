@@ -648,18 +648,33 @@ type NonEmptyPartial<T> = [keyof T] extends [never] ? never : Partial<T>;
  *  keys, so a non-distributive `Partial<Omit<Transition, 'kind'>>` would
  *  collapse to `{}` and accept literally any object. `kind` is excluded — an
  *  override may not change the discriminant — and `cut` (nothing to override
- *  once `kind` is gone) contributes `never`, so it can't re-open the union. */
-export type TransitionOverrides<T extends Transition = Transition> = T extends Transition
+ *  once `kind` is gone) contributes `never`, so it can't re-open the union.
+ *
+ *  DISTRIBUTES OVER `CoreTransition`, NOT `Transition`, and that is the whole
+ *  guarantee this helper offers over a hand-spread. `BrandTransitionSchema` is
+ *  `.passthrough()`, so `BrandTransition` infers WITH a string index signature;
+ *  `NonEmptyPartial<Omit<…, 'kind'>>` of an index-signature type accepts any key
+ *  at all, and a single such constituent makes the whole union accept anything —
+ *  the exact `{}` failure the comment above describes, arriving by a different
+ *  door. Catching a typo'd key is the only thing `withTransitionOverrides` does
+ *  that `{ ...t, … }` doesn't, so losing it empties the helper.
+ *
+ *  The consequence, deliberately: a BRAND transition's own params cannot be
+ *  overridden through this helper (core cannot name them, so it cannot check
+ *  them). Overriding a brand kind's params is the brand's own business, in the
+ *  brand's own types. */
+export type TransitionOverrides<T extends Transition = CoreTransition> = T extends CoreTransition
   ? NonEmptyPartial<Omit<T, 'kind'>>
   : never;
 
-/** The overrides accepted for the argument type `T`. When `T` is `undefined`
- *  alone (a caller passing a literal `undefined`) there is no member to read
- *  fields off, so fall back to the whole vocabulary rather than `never` —
- *  passing `undefined` is supported, and must not be un-callable. */
-type OverridesFor<T> = [Extract<T, Transition>] extends [never]
-  ? TransitionOverrides<Transition>
-  : TransitionOverrides<Extract<T, Transition>>;
+/** The overrides accepted for the argument type `T`. When `T` contains no CORE
+ *  member — a caller passing a literal `undefined`, or a `BrandTransition` —
+ *  there is no member to read fields off, so fall back to the whole core
+ *  vocabulary rather than `never`: passing `undefined` is supported and must not
+ *  be un-callable. */
+type OverridesFor<T> = [Extract<T, CoreTransition>] extends [never]
+  ? TransitionOverrides<CoreTransition>
+  : TransitionOverrides<Extract<T, CoreTransition>>;
 
 /**
  * Returns a copy of `t` with `overrides` applied — the type-safe replacement

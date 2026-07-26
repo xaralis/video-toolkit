@@ -116,7 +116,14 @@ export function presentationFor(t: TransitionRecord | undefined, dims: Dims): An
   // The index is deliberately widened to `string` before the lookup: `t.kind` is
   // `string` for a brand transition, and a missing key must be a runtime `undefined`
   // rather than a compile error at the call site.
-  const render = (PRESENTATIONS as Record<string, Renderer<TransitionKind> | undefined>)[t.kind];
+  //
+  // `hasOwn` is load-bearing NOW in a way it wasn't before Phase 4. While the
+  // schema was closed, no authored kind could reach `Object.prototype`; now any
+  // non-core string parses, and `{kind:'constructor', frames:20}` would otherwise
+  // return an inherited FUNCTION that this code would then call as a renderer.
+  const kind: string = t.kind;
+  if (!Object.prototype.hasOwnProperty.call(PRESENTATIONS, kind)) return null;
+  const render = (PRESENTATIONS as Record<string, Renderer<TransitionKind> | undefined>)[kind];
   return render ? render(t as Extract<CoreTransition, { kind: TransitionKind }>, dims) : null;
 }
 

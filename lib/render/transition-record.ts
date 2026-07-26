@@ -53,16 +53,23 @@ export function getTransitionRecord(
   const kind = (raw as { kind?: unknown }).kind;
   if (!kind || kind === 'cut') return undefined;
   if (typeof kind === 'string' && !isCoreTransitionKind(kind) && !declaredByBrand(kind, opts.brandKinds)) {
-    warnOnce(
-      `transition-kind:${kind}`,
-      `[video-toolkit] Unrecognised transition kind "${kind}". Core does not declare it and no brand ` +
-        'transition registry claims it, so this boundary will render as a hard cut. ' +
-        'If it is a typo, fix the kind; if it is a brand transition, register it on the brand theme. ' +
-        '(Warning only; nothing is blocked, and this is reported once per kind.)',
-      opts,
-    );
+    // A THUNK, not a string: this runs on every rendered frame of the boundary,
+    // and an eagerly-built message would allocate ~350 chars on every one of them
+    // just to be thrown away by the de-duplication. Only the call that actually
+    // warns pays for it. (`declaredByBrand` below is allocation-free for the same
+    // reason.)
+    warnOnce(`transition-kind:${kind}`, () => unrecognisedKindMessage(kind), opts);
   }
   return raw as TransitionRecord;
+}
+
+const UNRECOGNISED_KIND_SUFFIX =
+  '. Core does not declare it and no brand transition registry claims it, so this boundary will ' +
+  'render as a hard cut. If it is a typo, fix the kind; if it is a brand transition, register it ' +
+  'on the brand theme. (Warning only; nothing is blocked, and this is reported once per kind.)';
+
+function unrecognisedKindMessage(kind: string): string {
+  return `[video-toolkit] Unrecognised transition kind "${kind}"${UNRECOGNISED_KIND_SUFFIX}`;
 }
 
 // Deliberately allocation-free for the two hot cases (no brand kinds at all, or

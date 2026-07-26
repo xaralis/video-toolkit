@@ -154,6 +154,18 @@ describe('the catalog is fully mapped', () => {
     expect(presentationFor(getTransitionRecord(bogus), DIMS)).toBeNull();
   });
 
+  // Reachable only since Phase 4 opened the schema. While the union was closed
+  // no authored kind could name an inherited property; now any non-core string
+  // parses, and a bare `PRESENTATIONS[t.kind]` would hand back
+  // `Object.prototype.constructor` — a FUNCTION — which this code would then
+  // call as a renderer.
+  it('returns null for a kind that names an Object.prototype member', () => {
+    for (const kind of ['constructor', 'toString', 'hasOwnProperty', '__proto__', 'valueOf']) {
+      const bogus = { kind, frames: 15 } as unknown as Transition;
+      expect(presentationFor(getTransitionRecord(bogus), DIMS), kind).toBeNull();
+    }
+  });
+
   it('treats cut as no transition at all', () => {
     expect(getTransitionRecord({ kind: 'cut' } as Transition)).toBeUndefined();
   });

@@ -38,6 +38,47 @@ describe('withTransitionOverrides', () => {
     expect(after).not.toBe(before);
   });
 
+  // TYPE-LEVEL PINS. Rejecting a key the transition does not have is the ONLY
+  // thing this helper does that `{ ...t, … }` doesn't, and nothing pinned it
+  // until Phase 4 quietly took it away: `BrandTransitionSchema` is
+  // `.passthrough()`, so `BrandTransition` infers with a string index signature,
+  // and once that arm joined `TransitionOverrides`' distribution the union
+  // accepted any key at all. `@ts-expect-error` is itself an error when the line
+  // COMPILES, so this fails loudly if the guarantee is lost again — which a
+  // runtime assertion could never do.
+  it('rejects a key the transition does not have (compile-time)', () => {
+    // PARAMETERS, not initialised consts: a `const x: Transition = {kind:'burn',…}`
+    // is narrowed to the `burn` member by control flow, which would test a
+    // narrowing the roost call site never has. `it.transitionOut` there is the
+    // full `Transition | undefined`, and that is the path that lost the check.
+    const widened = (t: Transition) =>
+      // @ts-expect-error `glowColour` is a typo for `glowColor` and must not compile.
+      withTransitionOverrides(t, { mask: 'm.png', glowColour: '#fff' });
+    const optional = (t: Transition | undefined) =>
+      // @ts-expect-error same typo, reached through the roost call site's exact type.
+      withTransitionOverrides(t, { glowColour: '#fff' });
+
+    expect(widened({ kind: 'burn', frames: 20 })).toBeTruthy();
+    expect(optional({ kind: 'burn', frames: 20 })).toBeTruthy();
+  });
+
+  // The flip side, pinned so the boundary is recorded rather than rediscovered:
+  // when the argument DOES narrow to one member, the accepted keys narrow with
+  // it — `softness` belongs to gradient-wipe, not burn.
+  it('rejects another member’s key once the argument narrows (compile-time)', () => {
+    const burn: Transition = { kind: 'burn', frames: 20 };
+    // @ts-expect-error `softness` is gradient-wipe's, and `burn` is narrowed here.
+    const wrongMember = withTransitionOverrides(burn, { softness: 40 });
+    expect(wrongMember).toBeTruthy();
+  });
+
+  it('accepts the correctly-spelled key it rejected the typo of', () => {
+    const burn: Transition = { kind: 'burn', frames: 20 };
+    expect(withTransitionOverrides(burn, { mask: 'm.png', glowColor: '#fff' })).toEqual({
+      kind: 'burn', frames: 20, mask: 'm.png', glowColor: '#fff',
+    });
+  });
+
   it('produces something TransitionSchema still accepts', () => {
     const t = withTransitionOverrides<Transition>({ kind: 'wipe', frames: 15, color: 'gold', direction: 'left' }, {
       color: 'rust',

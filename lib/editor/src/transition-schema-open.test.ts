@@ -180,4 +180,26 @@ describe('warnOnce', () => {
   it('is a no-op outside dev', () => {
     expect(warnOnce('k2', 'm', { dev: false, warn: () => {} })).toBe(false);
   });
+
+  // The per-frame call site (getTransitionRecord) passes a thunk so the ~350-char
+  // message isn't built on frames that will drop it. Pinned by counting builds.
+  it('invokes a thunk message only on the call that actually warns', () => {
+    let built = 0;
+    const msg = () => { built++; return 'built'; };
+    const seen: string[] = [];
+    for (let i = 0; i < 50; i++) warnOnce('k3', msg, { dev: true, warn: (m) => seen.push(m) });
+    expect(built).toBe(1);
+    expect(seen).toEqual(['built']);
+    warnOnce('k4', msg, { dev: false, warn: () => {} });
+    expect(built).toBe(1); // not built at all outside dev
+  });
+
+  it('getTransitionRecord builds its message once across many frames', () => {
+    const seen: string[] = [];
+    for (let frame = 0; frame < 100; frame++) {
+      getTransitionRecord({ kind: 'never-heard-of-it', frames: 20 }, { dev: true, warn: (m) => seen.push(m) });
+    }
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toContain('never-heard-of-it');
+  });
 });
