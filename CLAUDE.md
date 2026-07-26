@@ -308,7 +308,7 @@ Docker images, cuts releases, and syncs the Remotion skill from upstream).
 | Gate | Command | Covers | Baseline (measured 2026-07-26) |
 |---|---|---|---|
 | Editor tests | `cd lib/editor && npx vitest run` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **70 files / 905 tests** |
-| Editor types | `cd lib/editor && npx tsc --noEmit` | Same surface as above, plus all of `lib/render` (declared directly in `lib/editor/tsconfig.json`'s `include`, or reached transitively) and `lib/transitions` including `TransitionGallery.tsx` | **3** pre-existing errors |
+| Editor types | `cd lib/editor && npx tsc --noEmit` | Same surface as above, plus all of `lib/render` (declared directly in `lib/editor/tsconfig.json`'s `include`, or reached transitively) and 13 of `lib/transitions`' 14 files — `index.ts` plus all 12 presentations, but **not** `TransitionGallery.tsx`, which only `examples/layered-minimal` reaches (verify with `npx tsc --noEmit --listFiles`) | **3** pre-existing errors |
 | Render/transitions types | `cd examples/layered-minimal && npm run typecheck` | `lib/render` and `lib/transitions` (including their `.tsx` components), via the example that actually imports them — see `docs/superpowers/core-typecheck-gate.md` | **0**, plus a coverage guard |
 
 **"All passed" is not full green.** Four of those tests are `it.fails` known-defect pins

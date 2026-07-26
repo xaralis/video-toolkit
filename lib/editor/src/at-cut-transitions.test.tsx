@@ -267,10 +267,14 @@ describe('direction-branching suspects', () => {
 
   // ------------------------------------------------------------------
   // KNOWN DEFECTS. `it.fails` records the behaviour we believe is CORRECT
-  // together with the fact that the code does not do it. These are NOT
-  // fixed here: what a transition renders is a look decision, and neither of
-  // these kinds has ever had its at-cut appearance confirmed by a render, so
-  // "fix" would be guessing. Each one flips to a normal `it` the moment it is
+  // together with the fact that the code does not do it. There are FOUR of
+  // them below. These are NOT fixed here: what a transition renders is a look
+  // decision, and the shape of a correct fix is the user's call, not this
+  // test's. All four defects HAVE since been confirmed by a real render —
+  // Phase 3 probed all 20 catalog kinds in both directions and across a real
+  // cut; see docs/superpowers/at-cut-transition-findings.md for the contact
+  // sheets. So these pins record measured behaviour, not suspicion.
+  // Each one flips to a normal `it` the moment it is
   // addressed — the runner fails loudly if a `.fails` test starts passing.
   // See docs/superpowers/HANDOFF.md.
   // ------------------------------------------------------------------

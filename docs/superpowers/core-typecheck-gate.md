@@ -22,7 +22,7 @@ Core has two type-check surfaces, and until now they left a hole:
 
 | Surface | Covers | Does **not** cover |
 |---|---|---|
-| `lib/editor` (`cd lib/editor && npx tsc --noEmit`, baseline **4**) | `src`, `app`, `host`, `../theming`, plus 7 `lib/render` modules its own tests pull in: `audio-gain.ts`, `transition-record.ts`, `video-track-layout.ts`, `fonts.ts`, `layered-composition-props.ts`, `load-fonts.ts`, `overlay-routing.ts` | The render `.tsx` components (`at-cut-transitions.tsx`, `audio-track.tsx`, `layered-composition.tsx`, `video-track.tsx`) and all of `lib/transitions/` |
+| `lib/editor` (`cd lib/editor && npx tsc --noEmit`, baseline **3**) | `src`, `app`, `host`, `../theming`, plus **11** `lib/render` files and **13** `lib/transitions` files. Five of the render files are *declared* in that tsconfig's `include` — `at-cut-transitions.tsx`, `audio-track.tsx`, `layered-composition.tsx`, `video-track.tsx`, `load-fonts.ts` — so no test deletion can silently drop them; the other six (`audio-gain.ts`, `transition-record.ts`, `video-track-layout.ts`, `fonts.ts`, `layered-composition-props.ts`, `overlay-routing.ts`) and all of `lib/transitions` arrive transitively | `TransitionGallery.tsx` (not in this program), and anything no editor file or declared entry point reaches |
 | `examples/layered-minimal` (this gate, baseline **0**) | its own `src`, plus every `lib/**` file the render actually pulls in — `lib/render` (9 files, including the 4 `.tsx` components above), `lib/transitions` (14 files — every presentation, `index.ts`, and `TransitionGallery.tsx`; see below), `lib/theming` (23), `lib/reel-config-base` (8), `lib/transcripts` (1) | anything no reel imports (editor UI, host) |
 
 Before this, the entire render surface — including ~1900 lines of transition
@@ -45,15 +45,21 @@ doesn't ride in for free the way the presentations do. It's added directly to th
 `@remotion/transitions` and its subpaths, five presentations) already resolve through the
 `paths` mappings below, so this was a clean addition — no contortion of `src/` needed.
 
-**Caveat: this covers a copy with no runtime consumer.** `showcase/transitions/src/TransitionGallery.tsx`
-is a separate, divergent fork of this file — it's what `showcase/transitions/src/Root.tsx` and
-`npm run render` in that project actually use, and it sits outside this gate entirely (nothing
-adds it to any `tsconfig.json` `include`). The showcase copy still has the exact `TransitionDemo`
-`presentation: ReturnType<typeof glitch>` mis-typing this gate caught and fixed in the *lib* copy
-below — this gate's "0 errors" says nothing about it. So: this gate type-checks
-`lib/transitions/TransitionGallery.tsx`, which nothing renders; the copy that does render is
-unchecked. See `docs/superpowers/HANDOFF.md` ("New in the fix-pass-2 re-review, now a Phase 3
-candidate") for the full diff and a recommendation on which copy should survive.
+**The copy this gate checks is now the copy that renders — the claim here is strictly stronger
+than it used to be.** There was once a second, divergent fork at
+`showcase/transitions/src/TransitionGallery.tsx`: it held the real content, it was what
+`showcase/transitions/src/Root.tsx` and `npm run render` actually used, and it sat outside this
+gate entirely — so this gate type-checked a file nothing rendered while the rendered file went
+unchecked. Phase 3 (`9368f38`) closed that: the showcase's content was ported into the lib copy,
+the fork was deleted, and `showcase/transitions/src/Root.tsx` now imports
+`@video-toolkit/lib/transitions/TransitionGallery`. `showcase/transitions/src/` contains only
+`Root.tsx` and `index.ts`. So the `TransitionDemo` `presentation: ReturnType<typeof glitch>`
+mis-typing described below was fixed in the one surviving copy, and this gate's "0 errors" now
+covers what the showcase renders.
+
+That merge needed one runtime change worth knowing about: `showcase/transitions/remotion.config.ts`
+gained the `resolve.modules` line, because the gallery now lives outside the project tree and
+runtime-imports `@remotion/transitions`, which webpack's upward walk from `lib/` never finds.
 
 Pulling it in surfaced one real, pre-existing type error: `TransitionDemo`'s `presentation`
 prop was pinned to `ReturnType<typeof glitch>` (i.e. `TransitionPresentation<GlitchProps>`)

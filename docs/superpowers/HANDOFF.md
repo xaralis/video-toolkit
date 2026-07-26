@@ -11,7 +11,7 @@ immediately below, then `docs/superpowers/phase3-migrations.md` (the adoption li
 conventions. Everything else is history.
 
 **The twelve Phase 2 brand migrations are APPLIED.** `docs/superpowers/phase2-migrations.md` is
-now a record and a reference for the next brand repo, not pending work. **The sixteen Phase 3
+now a record and a reference for the next brand repo, not pending work. **The seventeen Phase 3
 migrations are NOT** — `phase3-migrations.md` is pending work, and it says so at the top.
 
 This file is the durable record across sessions. The working ledger
@@ -322,15 +322,15 @@ as running them.
 **Branch:** `refactor/phase3-extension-contract`, merge base `d6e9482`.
 Re-derived from `git log` / `git diff --stat` against the merge base rather than carried forward
 from running totals — that is how Phase 2's counts drifted. Measured over
-**`d6e9482..e40fc53`**: **23 commits** (including the plan document's own commit), **70 files,
-+10935 / −752**. Excluding the 1751-line plan document
-(`docs/superpowers/plans/2026-07-26-phase3-extension-contract.md`): 69 files, **+9184 / −752**.
+**`d6e9482..1b2f93a`**: **24 commits** (including the plan document's own commit), **70 files,
++10945 / −752**. Excluding the 1751-line plan document
+(`docs/superpowers/plans/2026-07-26-phase3-extension-contract.md`): 69 files, **+9194 / −752**.
 
-> **The range stops one commit short of the branch tip, deliberately.** A commit cannot state its
-> own diffstat, and the previous version of this paragraph was stale for exactly that reason — it
-> named a range that excluded the commit carrying the text, without saying so. `e40fc53` is the
-> last commit before the one recording these numbers; the tip adds this paragraph and nothing
-> else. Re-derive rather than trust it after any further commit:
+> **The range stops short of the branch tip, deliberately.** A commit cannot state its
+> own diffstat, and an earlier version of this paragraph was stale for exactly that reason — it
+> named a range that excluded the commit carrying the text, without saying so. `1b2f93a` is the
+> last commit before the documentation-truthfulness pass that rewrote this paragraph; what came
+> after it is doc-only. Re-derive rather than trust it after any further commit:
 > ```bash
 > git log --oneline $(git merge-base main HEAD)..HEAD | wc -l
 > git diff --stat $(git merge-base main HEAD)..HEAD | tail -1
@@ -394,7 +394,7 @@ confirmation.
 
 **Seam 8 is enabled and documented, but NOT applied.** Dissolving PP's `brand-lib/` tier and
 migrating `web-program-intro` onto `LayeredReelComposition` are *brand-repo* edits, and Phase 3
-was core-only by constraint. More generally: **every one of the sixteen items in
+was core-only by constraint. More generally: **every one of the seventeen items in
 `docs/superpowers/phase3-migrations.md` is pending.** Core now ships a generic for every kind a
 reel can contain, and **not one brand has adopted any of them.**
 
@@ -405,17 +405,22 @@ against the real repos. `phase3-migrations.md` was written the same careful way 
 correct **nine** claims supplied to it as measured; assume it is still wrong somewhere. Read its
 own warning at the top before pasting anything from it.
 
-Four of its sixteen items are graded **deliberate look change**, not refactor — they move
-pixels on purpose and need the user's agreement on the result:
+Several items move pixels on purpose rather than refactoring, and need the user's agreement on
+the result. Read each item's own **Grade:** line rather than trusting a count here — four carry a
+literal *deliberate look change* grade (items **2**, **4**, **6**, **17**), and items **5** and
+**8** are graded parity-preserving *except* for a named file or half. The concrete deltas:
 
-- adopting a core effect on PP changes what the effect *covers* (PP draws its title inside the
-  renderer, so a core `grade`/`grain` also tints the title text);
-- `GenericMultiClip` renders no overlay, so adopting it **deletes an anchored title** from
-  `pp-05-zastupitelsky-klub`'s live multi-clip;
-- PP's disclaimer padding (`6px 40px 4px`) has no core equivalent (`paddingX` only), shifting
-  the line ~4 px;
-- roost's watermark migration silently loses `variant` (core's `GenericWatermark` has
-  `mode`/`color`, no `variant`).
+- **item 2** — adopting a core effect on PP changes what the effect *covers* (PP draws its title
+  inside the renderer, so a core `grade`/`grain` also tints the title text);
+- **item 6** — `GenericMultiClip` renders no overlay, so adopting it **deletes an anchored title**
+  from `pp-05-zastupitelsky-klub`'s live multi-clip;
+- **item 8** — PP's disclaimer padding (`6px 40px 4px`) has no core equivalent (`paddingX` only),
+  shifting the line ~4 px (the watermark half of the same item is a pure refactor);
+- **item 7** — roost's watermark migration silently loses `variant` (core's `GenericWatermark` has
+  `mode`/`color`, no `variant`). Graded a functional loss rather than a look change, but it is
+  equally not free;
+- **item 17** — PP's one live card item (`pp-paro-2026` `seg-008`) carries `cardKind: ''`, which
+  renders a bare `AbsoluteFill` under PP and coal + pixels under `GenericCard`.
 
 And one item is explicitly **not migrated**: roost's `vintage` **stays brand-registered**.
 `film` uses `HtmlInCanvas` + `@remotion/effects` — a different rendering mechanism, not a harder
@@ -632,7 +637,7 @@ Read these before scoping — they are decided or half-decided, not open questio
 
 ## Carried into later phases
 
-**Phase 3.5 is next** — apply the sixteen brand migrations in
+**Phase 3.5 is next** — apply the seventeen brand migrations in
 `docs/superpowers/phase3-migrations.md`, which is the validation of Phase 3 the way Phase 2.5 was
 the validation of Phases 1–2. Phase 3's own outcome is recorded above; the section immediately
 above this one is its historical scope.
