@@ -1,14 +1,38 @@
-# Brand-repo migrations — everything pending as of Phase 2
+# Brand-repo migrations — Phase 1 + Phase 2
+
+> ## ✅ APPLIED — 2026-07-26
+>
+> **Every item in this document has been applied to both brand repos and verified.** Both repos
+> are green (`npm test`, `npx tsc --noEmit`), one reel per brand renders byte-identically to its
+> pre-migration baseline, and both editors open, edit and save. This file is now a **record of
+> what was done** and the **reference for the next brand repo** — not pending work.
+>
+> - **PP** `~/Workspace/progpce/video-toolkit`, branch `chore/phase2.5-toolkit-migration`:
+>   `7a4d698` (submodule pin), `f8ff467` (**G** + **C**), `f7f4095` (**B**, **A**, Part 1 items
+>   **2** and **5**, the endpoint fix), `ff955c6` (**E** + **F**).
+> - **roost** `~/Workspace/roost/video-toolkit`, branch `chore/phase2.5-toolkit-migration`:
+>   `18953c3` (submodule pin), `aaa7279` (pin bumped again, to pick up the host fix below),
+>   `cfe7bd5` (everything else).
+> - **A core fix the migration forced:** `cb51d4d`. `@remotion/player` could not be resolved from
+>   the out-of-tree `EditorHost.tsx`, so **the editor served `/` and `/props` but never mounted**.
+>   The Vite pre-plugin now re-resolves *every* Remotion specifier from the project root, not just
+>   `@remotion/transitions`. This was invisible to every automated check on both sides — it was
+>   found by opening a migrated editor in a browser.
+>
+> Applying the document also found **seven** places where it was wrong or incomplete. Those are
+> corrected in place below (most consequentially: the `tsconfig` `paths` block in item **C**, and
+> the PP half of Part 1 item **3**, which the document had exactly backwards). Read the corrected
+> text, not the commit messages.
 
 **What this is.** Core's Phase 1 and Phase 2 were deliberately *core-only*: nothing under
 `~/Workspace/progpce/video-toolkit` (Progresivní Pardubice) or `~/Workspace/roost/video-toolkit`
 (ROOST) was modified. This file is the complete set of edits a brand repo must apply when it
-bumps its `toolkit/` submodule pin past Phase 2 — Phase 1's five still-pending items **plus**
-Phase 2's. One document is enough; nothing else needs to be read.
+bumps its `toolkit/` submodule pin past Phase 2 — Phase 1's five items **plus** Phase 2's. One
+document is enough; nothing else needs to be read.
 
-Every snippet below was checked against the real files in both brand repos (read-only) and
-against core's actual exports on branch `refactor/phase2-core-shell`. Where a snippet is *not*
-literally paste-able (a trailing comma, a module that does not exist yet), it says so.
+Every snippet below was checked against the real files in both brand repos and against core's
+actual exports, and then **corrected against what applying it actually did**. Where a snippet is
+*not* literally paste-able (a trailing comma, a module that does not exist yet), it says so.
 
 **Each item is marked:**
 
@@ -53,29 +77,64 @@ error (confirmed with `--traceResolution`).
 
 ---
 
-# Part 1 — Phase 1's pending migrations, carried forward
+# Part 1 — Phase 1's migrations, carried forward
 
-Unchanged from `docs/superpowers/HANDOFF.md`, except item 4, which Phase 2 makes obsolete.
+From `docs/superpowers/HANDOFF.md`, with item 4 made obsolete by Phase 2 and items **1**, **3**
+and **5** corrected against what applying them found (more files than listed in 1 and 5; item 3
+had PP exactly backwards).
 
 ### 1. roost — `withTransitionOverrides` *(tsc-caught)*
 
 `projects/roost-reel-01/src/LayeredRoostReel.tsx:110` spreads `Transition | undefined`, which
 yields `kind?:` and no longer satisfies the tightened `VideoItem['transitionOut']`. Core now
-exports `withTransitionOverrides()` for exactly this. One file — the template is a shim with no
-spread. Rendering is unaffected; nothing parses at render time.
+exports `withTransitionOverrides()` for exactly this. Rendering is unaffected; nothing parses at
+render time.
+
+**Three files, not one.** The same `{ ...it.transitionOut, mask, glowColor }` spread also lives at
+`templates/roost-reels/src/config/composition-theme.tsx:14` and
+`projects/roost-promo-01/src/config/composition-theme.tsx:14` — it moved there when the template
+became a thin wrapper. Those two passed `tsc` only because an
+`(it.transitionOut as { kind?: string } | undefined)` cast was masking the discriminant. **Delete
+the cast when you put the helper in**; leaving it keeps the hole open.
 
 ### 2. PP — union mirror *(tsc-caught)*
 
 `projects/pp-05-zastupitelsky-klub/src/config/types.ts:18` hand-mirrors the transition union and
 needs `color?: string`. Only that project; the template has no such mirror.
 
-### 3. roost — drop `applyEndpoint` *(tsc-caught)*
+### 3. The endpoint rule — **asymmetric: roost drops it, PP must pass it** *(tsc-caught)*
 
-`templates/roost-reels/src/overlays/TextOverlay.tsx:43` and its vendored copy in
-`projects/roost-reel-01/`. **This is a PURE DELETION of `applyEndpoint={false}`.** Do **not**
-pass an `endpointKey`: roost deliberately has the endpoint rule off, and absent `endpointKey` now
-means off. Passing one would switch on an accent rule roost disabled and change its rendered
-captions. PP needs nothing.
+Core commit `07eeca9` removed `applyBrandEndpoint`'s `'teal'` default. The old signature was
+`(text, ...rest: [endpointKey?: string])` with `rest.length === 0 ? 'teal' : rest[0]` — a
+rest-tuple that deliberately distinguished *omitted* (→ default `'teal'`) from *explicitly
+undefined* (→ rule disabled). It is now `(text, endpointKey: string | undefined)` with
+`if (!endpointKey) return text`. **Absent now means off.** Both halves below follow from that one
+change, and they point in opposite directions — a migrator meets both, so read both.
+
+**roost — a PURE DELETION of `applyEndpoint={false}`. Three files, not two:**
+`templates/roost-reels/src/overlays/TextOverlay.tsx:43`, its vendored copy in
+`projects/roost-reel-01/`, and `projects/roost-promo-01/src/overlays/TextOverlay.tsx:43`. Do
+**not** pass an `endpointKey`: roost deliberately has the endpoint rule off. Passing one would
+switch on an accent rule roost disabled and change its rendered captions.
+
+> Same caveat as item **D**: `projects/roost-promo-01/` is untracked (`git status` shows
+> `?? projects/roost-promo-01/`) and is the user's own in-progress work. Apply it only when that
+> project is itself part of the migration being carried out — do not reach into it
+> opportunistically.
+
+**PP — the opposite: two call sites MUST gain an explicit `'teal'`.** (An earlier version of this
+document said "PP needs nothing." That was wrong, and it cost a real rendering regression.)
+`brand-lib/overlays/TitleOverlay.tsx:52` and `brand-lib/overlays/QuotePullOverlay.tsx:258` call
+`applyBrandEndpoint` with a single argument and relied on the removed default. After the pin bump
+both no-op, so **every PP caption silently lost its brand endpoint accent**: the sentence-final
+period in "Říční sauna na Labi." rendered white instead of teal `#2ad4c5`. Pass PP's own slot
+explicitly at both sites — `'teal'`, declared at
+`templates/campaign-reels/src/config/theme.ts:4`. That restores byte-identical output.
+
+Severity is **tsc-caught** (`TS2554: Expected 2 arguments, but got 1`) — but nobody saw the error,
+because the brand-side `tsc` gate was drowning in ~160 spurious `TS2307`s until item **C**'s
+`paths` block was corrected (see there). What actually caught it was **comparing rendered stills
+before and after the bump**: 306 differing pixels out of 2.07M, peak channel delta 203/255.
 
 ### 4. All editor hosts — pass `meta` — **✅ SUPERSEDED BY PHASE 2. DO NOT HAND-EDIT.**
 
@@ -93,12 +152,20 @@ Caveat: passing an *actual* `EditorMeta` still requires the brand to author one.
 
 ### 5. PP web-program-intro — pass the palette *(silent, latent)*
 
-`projects/pp-program-{klima,obvody,verejny-prostor}/src/WebProgramIntro.tsx:26` calls
-`presentationFor(t, { width, height })` with no palette, so a `wipe` carrying an accent key would
-resolve to `#000` instead of the brand colour. Latent only — there is currently zero
-`kind: 'wipe'` in any project. Pass `palette: theme.accentSlots`. Related: the old wipe
-presentation defaulted an unset colour to lime; it is now `#000`. Intended (core must not default
-to a brand colour), affects nothing today.
+**Six files, not three.** The `presentationFor(t, { width, height })` call sits at line 26 of
+`src/WebProgramIntro.tsx` in `templates/web-program-intro`, `projects/pp-program-bydleni`,
+`projects/pp-program-klima`, `projects/pp-program-mobilita`, `projects/pp-program-obvody` and
+`projects/pp-program-verejny-prostor`. With no palette, a `wipe` carrying an accent key resolves
+to `#000` instead of the brand colour. Latent only — there is currently zero `kind: 'wipe'` in any
+project. Related: the old wipe presentation defaulted an unset colour to lime; it is now `#000`.
+Intended (core must not default to a brand colour), affects nothing today.
+
+> **"Pass `palette: theme.accentSlots`" is not executable as written.** None of the six
+> `src/config/theme.ts` files declares `accentSlots` at all, and `WebProgramIntro.tsx` imported no
+> theme. Resolved by adding the same two slots `campaign-reels` declares (`lime #c6f432`,
+> `teal #2ad4c5`) to all six web themes, plus the theme import in `WebProgramIntro.tsx`. Note that
+> this is a **brand-data addition**, not a mechanical wiring change — and it stays latent either
+> way, since no project uses a `wipe`.
 
 ---
 
@@ -330,13 +397,41 @@ export default defineConfig(
     "paths": {
       "@/*": ["src/*"],
       "@video-toolkit/lib/*": ["../../toolkit/lib/*"],
-      "@brand-lib/*": ["../../brand-lib/*"]
+      "@brand-lib/*": ["../../brand-lib/*"],
+      "remotion": ["./node_modules/remotion"],
+      "@remotion/transitions": ["./node_modules/@remotion/transitions"],
+      "@remotion/transitions/*": ["./node_modules/@remotion/transitions/dist/presentations/*"],
+      "react": ["./node_modules/@types/react"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"]
     }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "out"]
 }
 ```
+
+> **⚠️ The last five entries are not optional — without them the brand-side `tsc` gate is
+> worthless.** This is the correction that matters most in this document: it is why Part 1 item
+> **3**'s PP regression stayed hidden.
+>
+> Without them every PP directory reports **~160 errors** (campaign-reels 174, web-program-intro
+> 159, pp-program-klima 167, pp-05 162) — *all* of them `TS2307 Cannot find module 'remotion'` and
+> `TS2875 … 'react/jsx-runtime' …`, and *all* emitted from files **outside** the project:
+> `../../toolkit/lib/**` and `../../brand-lib/**`. tsc resolves a bare specifier by walking up
+> `node_modules` from the **importing file**; for a file in `toolkit/lib/` that walk never reaches
+> the project's `node_modules`. Real errors in your own `src/` are invisible in that noise.
+>
+> `react` must map to **`@types/react`**, not `react` — the JS package ships no declarations, and
+> mapping there silently `any`s the whole React surface instead of erroring.
+>
+> This mirrors what core already does for itself at `lib/editor/tsconfig.json:14-33` (that block's
+> comments spell out the same reasoning) and in `examples/layered-minimal/tsconfig.json`.
+>
+> **It cannot be hoisted into `lib/project/tsconfig.base.json`** — Rule 2: `paths` does not merge
+> across `extends`, so a base-level block is discarded wholesale by every template that declares
+> its own `@/*`. Every brand tsconfig must carry these five itself.
+>
+> Measured: with them, every PP campaign directory went from ~162 errors to **0**.
 
 The base supplies `target`, `module`, `moduleResolution`, `jsx`, `strict`, `esModuleInterop`,
 `skipLibCheck`, `forceConsistentCasingInFileNames`, `resolveJsonModule` — exactly the nine
@@ -477,11 +572,12 @@ optionally each `projects/pp-*/package.json` (16 files):
 +    "zod": "3.22.3"
 ```
 
-> **⚠️ Not literal-exact for 10 of the 16 projects.** `zod` is not the last key in
-> `dependencies` there, so the real line reads `"zod": "^3.22.0",` **with a trailing comma**.
-> Apply by line content, not by copy-paste. The 6 that match the diff literally are
-> `pp-namesti-republiky`, `pp-program-bydleni`, `pp-program-klima`, `pp-program-mobilita`,
-> `pp-program-obvody`, `pp-program-verejny-prostor`.
+> **⚠️ The diff is literal-exact for only 8 of PP's 18 `package.json` files. Apply by line
+> content, not by copy-paste.** In the other **10** `zod` is not the last key in `dependencies`,
+> so the real line reads `"zod": "^3.22.0",` **with a trailing comma** and the paste silently
+> produces invalid JSON. The **8** where `zod` *is* the last key are: `templates/campaign-reels`,
+> `templates/web-program-intro`, `projects/pp-namesti-republiky`, and
+> `projects/pp-program-{bydleni,klima,mobilita,obvody,verejny-prostor}`.
 
 Then per changed directory: `npm install && npm test && npx tsc --noEmit`, plus one
 `npm run studio` on a representative project to confirm the schema sidebar still renders real
@@ -645,7 +741,12 @@ export default defineConfig(
     "outDir": "./dist",
     "paths": {
       "@/*": ["src/*"],
-      "@video-toolkit/lib/*": ["../../toolkit/lib/*"]
+      "@video-toolkit/lib/*": ["../../toolkit/lib/*"],
+      "remotion": ["./node_modules/remotion"],
+      "@remotion/transitions": ["./node_modules/@remotion/transitions"],
+      "@remotion/transitions/*": ["./node_modules/@remotion/transitions/dist/presentations/*"],
+      "react": ["./node_modules/@types/react"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"]
     }
   },
   "include": ["src/**/*"],
@@ -653,13 +754,18 @@ export default defineConfig(
 }
 ```
 
-No `@brand-lib` entry.
+No `@brand-lib` entry — but the five Remotion/React entries are **identical to PP's and equally
+required**; see the boxed note in PP's item **C** for why (out-of-project files under
+`../../toolkit/lib/**` cannot resolve bare specifiers, and `react` must point at `@types/react`).
 
 > **`projects/roost-reel-01/tsconfig.json` has *no* `@video-toolkit/lib/*` entry today** — only
 > `@/*` — even though its `src/` imports through that alias. Adding it as shown fixes
 > type-checking and IntelliSense there for the first time. Expect `npx tsc --noEmit` in that
 > project to surface previously-hidden errors; that is the entry doing its job, not a regression
 > this migration introduced.
+
+Measured: with the block above, all three roost directories type-check at **0 errors**,
+`roost-reel-01` included.
 
 ---
 
@@ -793,14 +899,21 @@ mountEditorHost({
 });
 ```
 
-No `accentSlots`, no `meta`, no CSS import — roost declares none of them today. It loses nothing
-in the move: its beats toggle becomes core's, shipped to every brand. It *gains* `meta`-driven
-timeline and inspector wiring the moment the template declares an `EditorMeta`, and a palette the
-moment it declares `accentSlots`.
+No `meta`, no CSS import, and — **for `templates/roost-reels` only** — no `accentSlots`. It loses
+nothing in the move: its beats toggle becomes core's, shipped to every brand. It *gains*
+`meta`-driven timeline and inspector wiring the moment the template declares an `EditorMeta`.
 
-Note that roost's editor was previously being shown **PP's** `lime`/`teal` accent buttons.
-Getting no palette instead is a fix, not a regression (this is Phase 1 migration #4's roost half,
-also settled by adoption).
+> **⚠️ `projects/roost-reel-01` DOES declare `accentSlots` — carry it through.** An earlier
+> version of this document said roost declares none. True for `templates/roost-reels` and
+> `projects/roost-promo-01`; **wrong for `projects/roost-reel-01`**, whose pre-migration
+> `.editor/main.tsx` imported `brandTheme` and passed `accentSlots={brandTheme.accentSlots}` to
+> `LayeredInspector` — roost's own palette. Dropping it would be a real regression. In that
+> project's `.editor/main.tsx`, keep the `brandTheme` import and pass
+> `accentSlots: brandTheme.accentSlots` as a `mountEditorHost` option.
+
+Note that roost's editor was previously being shown **PP's** `lime`/`teal` accent buttons wherever
+it had no palette of its own. Getting no palette instead is a fix, not a regression (this is
+Phase 1 migration #4's roost half, also settled by adoption).
 
 ---
 
@@ -906,6 +1019,22 @@ Per repo, per directory:
    and **Save** — Save is also what exercises `readDefaultProps` against item **A**'s new
    spread form, the one thing that fails loudly if **A** was spelled wrong. Everything else
    here has a compiler or a test behind it.
+
+   **What this step actually caught, in practice.** Two of its checks earned their place and one
+   gap remained:
+
+   - **`/props` + an editor Save proved item A.** Hitting `/props` confirmed `readDefaultProps`
+     resolves the composition id through the new spread, and a surgical Save landed
+     `grade: { brightness: 1.15 }` in exactly the right segment. Do both — loading alone is not
+     enough.
+   - **Render a still before and after the pin bump and compare hashes.** This is the *only*
+     thing that caught Part 1 item **3**'s PP endpoint regression (306 pixels of 2.07M). Make it
+     part of the procedure, not an afterthought. Caveat: a single still render can flake on a
+     video-heavy frame, so a hash mismatch must be **re-rendered and reproduced** before it counts
+     as a finding.
+   - **The gap that stayed open:** nothing here reached the editor's *mount*. The editor served
+     `/` and `/props` correctly while never mounting at all (core `cb51d4d`, see the header). Only
+     opening it in a browser and seeing the timeline shows that.
 
    > **No longer a concern: `layeredCompositionProps` loosening `defaultProps`.** An earlier
    > version of this document told you to treat the first brand-side `npx tsc --noEmit` as the
