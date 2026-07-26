@@ -35,6 +35,6 @@
       "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"]
     }
   },
-  "include": ["src/**/*", "remotion.config.ts"],
+  "include": ["src/**/*", "remotion.config.ts", "../../lib/transitions/TransitionGallery.tsx"],
   "exclude": ["node_modules", "out"]
 }

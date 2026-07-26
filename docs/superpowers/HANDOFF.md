@@ -279,3 +279,9 @@ regression to investigate, not noise to dismiss.
   `lib/editor/host/README.md`, which otherwise advertises Focus/Zoom with no verification note.
 - The brand-leak gate needs its exclusions or it walks `node_modules` and is permanently red:
   `grep -riE 'lime|teal|roost|progresivn|sand-brown' lib/ --exclude-dir=node_modules --exclude='*.test.*'`
+- **`examples/layered-minimal` is also a type-check gate**, over `lib/render` and
+  `lib/transitions` (`cd examples/layered-minimal && npx tsc --noEmit`, baseline 0) — the
+  surface `lib/editor`'s own `tsc --noEmit` (baseline 29) doesn't reach. See
+  `docs/superpowers/core-typecheck-gate.md` and the `CLAUDE.md` "Quality Gates" table. No CI
+  runs any of these three gates; they are manual and easy to forget — run them before calling
+  render/transitions work in `lib/` done.

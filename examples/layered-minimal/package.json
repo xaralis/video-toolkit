@@ -7,7 +7,8 @@
     "render": "npx remotion render src/index.ts MinimalReel out/reel.mp4",
     "still": "npx remotion still src/index.ts MinimalReel out/frame.png --frame=45",
     "upgrade": "npx remotion upgrade",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && node scripts/verify-typecheck-coverage.mjs",
+    "verify-coverage": "node scripts/verify-typecheck-coverage.mjs"
   },
   "dependencies": {
     "@remotion/cli": "4.0.425",
