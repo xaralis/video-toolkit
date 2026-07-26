@@ -274,6 +274,43 @@ assertion turns a routine submodule bump into a hard stop. Recorded in
   hardcoding its own `60`. Cross-file drift is no longer possible — verified by mutating
   `MIN_FRAMES` and confirming both `layered-composition-props.test.ts` and
   `host-duration.test.ts`'s floor assertions fail. Closed.
+- **The `650/650 passed` gate figure hid two deliberately-failing tests.** Vitest's summary
+  (and its JSON reporter's `numPassedTests`) counts an `it.fails` pin as a pass, so
+  `lib/editor/src/at-cut-transitions.test.tsx:289,307`'s two known-defect pins (`checkerboard`
+  exiting as a no-op, `pixelate`'s opaque root at a cut) were invisible in the gate table above
+  a reader who reads counts, not test titles. The gate-table row and `CLAUDE.md`'s Quality
+  Gates table now both say so explicitly. `CLAUDE.md`'s table carried no test counts to begin
+  with, so it had no matching omission to fix there; it did need the brand-leak gate's 2-hit
+  baseline named (below).
+- **Migration D (`docs/superpowers/phase2-migrations.md`) undercounted, and its premise was
+  already partly false.** It said roost "carries a second one, in two files"; re-verified
+  against the real (read-only) roost working tree, there are **three** copies of
+  `roostReelDurationInFrames` — the two D named plus
+  `~/Workspace/roost/video-toolkit/projects/roost-promo-01/src/LayeredRoostReel.tsx:15`,
+  byte-identical to the template's, no consumer. `roost-promo-01` is untracked
+  (`?? projects/roost-promo-01/`) and is the user's own current work — recorded as a fact, not
+  touched. Worse: D's premise that the local helper is a live single source of truth was
+  **already false** before this correction — `templates/roost-reels/src/Root.tsx:195` and both
+  projects' `Root.tsx` (`roost-reel-01:201`, `roost-promo-01:195`) already inline
+  `Math.max(60, Math.round(…))` directly in `calculateMetadata` and never call the helper at
+  all. D now states this and adds the third file as a delete-only item, so a migrator no longer
+  hunts for `Root.tsx` consumers that do not exist.
+- **The `lib/editor` type-check gate's coverage was import-driven and unguarded — and this
+  branch had created that exact gap.** `lib/editor/tsconfig.json`'s `include` only names
+  `src`/`app`/`host`/`../theming`; `lib/render`'s four `.tsx` files (`at-cut-transitions.tsx`,
+  `audio-track.tsx`, `layered-composition.tsx`, `video-track.tsx`) and `lib/transitions`
+  entered the program **solely** through `at-cut-transitions.test.tsx`'s import chain, and
+  `load-fonts.ts` solely through `load-fonts.test.ts` — delete either test and the gate would
+  silently check less, with no guard and no exit-code signal, unlike
+  `examples/layered-minimal`'s `verify-typecheck-coverage.mjs` for the sibling gate. **Resolved
+  by making the coverage declared, not derived:** those four `.tsx` files plus `load-fonts.ts`
+  are now listed directly in `lib/editor/tsconfig.json`'s `include`. Re-verified afterward:
+  `cd lib/editor && npx tsc --noEmit` still reports exactly **4** errors — declaring them
+  surfaced no new ones, because their own imports (`remotion`, `@remotion/transitions`,
+  `../theming`) were already mapped/included for the two test files that used to be the only
+  path in. `lib/transitions`'s presentation files and the remaining pure `lib/render/*.ts`
+  files still arrive only by transitive import from those now-declared files, which is fine —
+  nothing test-only left to delete out from under them.
 
 **Deferred, judged genuinely fine to carry:**
 - The `AccentKey` marker in `transition-schema.ts` patches zod's `describe()` so clones stay
@@ -324,6 +361,16 @@ folded into this task. Two known suspects make it concrete rather than speculati
 `checkerboard` a no-op when exiting (see below) and `pixelate`'s opaque root occluding the
 neighbouring clip at a cut — a still render of either would confirm or refute the defect
 directly, in core, without a brand repo.
+
+**Acceptance criterion for that Phase 3 task** (now possible in core, not blocked on a brand
+repo): a reel literal in `examples/layered-minimal` exercising each of the 20 catalog kinds at a
+cut, in both directions (`transitionIn` and `transitionOut`), with stills rendered at several
+progress points per kind/direction so the composite can be eyeballed against what the kind is
+meant to do. 2 of the 20 kinds already have a predicted outcome to check the render against,
+rather than a blind look: `checkerboard` (predicted: renders as a hard cut, not a checkerboard
+reveal, in the exiting direction) and `pixelate` (predicted: an opaque black frame hiding the
+neighbouring clip for the whole shot, not a pixelation blend) — see the two `it.fails` pins
+below. The other 18 have no predicted outcome; the still is the first evidence either way.
 
 Both named suspects turned out to be real, and are **recorded, not fixed** (what a transition
 renders is a look decision, and neither kind has ever had its at-cut appearance confirmed, so a
@@ -423,7 +470,7 @@ now ordinary migration verification, not risk closure.
   quoted elsewhere in this file from Phase 1 or Phase 2 is historical; these are live:
   | Gate | Command | Now |
   |---|---|---|
-  | Editor tests | `cd lib/editor && npx vitest run` | **57 files / 650 tests**, green |
+  | Editor tests | `cd lib/editor && npx vitest run` | **57 files / 650 tests**, green (2 of them are `it.fails` known-defect pins — `at-cut-transitions.test.tsx:289,307` — see the at-cut risk entry) |
   | Editor types | `cd lib/editor && npx tsc --noEmit` | **4** errors |
   | Render/transition types | `cd examples/layered-minimal && npm run typecheck` | **0**, coverage guard ok |
 

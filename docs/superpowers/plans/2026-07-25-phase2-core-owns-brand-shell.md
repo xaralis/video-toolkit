@@ -1,5 +1,12 @@
 # Phase 2 — Core Owns the Brand Shell — Implementation Plan
 
+> **Superseded premise:** this plan's "core has no `remotion` deps" / "NOT unit-tested in core
+> (no remotion installed)" claims (e.g. lines 74, 218, 468, 662) were disproved on
+> `fix/core-has-remotion` — core does have `remotion`, and a module importing it can be
+> unit-tested here. This document is left as-written, a historical record of the plan as
+> executed; see `docs/superpowers/HANDOFF.md`'s "Working conventions established" entry
+> ("Core DOES have `remotion`...") for the corrected, current facts.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Move the brand repos' editor host, composition wiring, build config and font

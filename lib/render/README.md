@@ -35,7 +35,7 @@ The **test runner needs the same class of workaround**, for the same reason, and
 
 `lib/editor`'s tsconfig `include` still names only `src`/`app`/`host`/`../theming`, but this directory and `lib/transitions` are now dragged into that program anyway, by `src/at-cut-transitions.test.tsx`'s imports — which is why `lib/editor/tsconfig.json` gained the same `@remotion/transitions*` and `react`/`react/jsx-runtime` `paths` that `examples/layered-minimal` carries. (Side effect worth knowing: those mappings also resolved 25 of `lib/editor`'s 29 pre-existing errors, which were unresolved-`react`/`remotion` noise in the out-of-tree `../theming` files. Its baseline is now **4**.)
 
-The authoritative surface for the render/transitions files is still **`examples/layered-minimal`**, core's only real Remotion install — it is the one that also enforces file-count coverage:
+The authoritative surface for the render/transitions **`.tsx` components** is still **`examples/layered-minimal`**, core's only real Remotion install — it is the one that also enforces file-count coverage. (It does not reach every file in `lib/render/`: `load-fonts.ts` and `fonts.ts` are not in that program at all — `load-fonts.ts` is checked only by `lib/editor`'s `tsc` gate, reached solely through `load-fonts.test.ts`'s import, with no coverage guard of its own; see `docs/superpowers/HANDOFF.md`'s Minor-4 note.)
 
 ```bash
 cd examples/layered-minimal && npm run typecheck    # baseline: 0 errors

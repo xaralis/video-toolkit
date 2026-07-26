@@ -33,5 +33,24 @@
       "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"]
     }
   },
-  "include": ["src", "app", "host", "../theming"]
+  "include": [
+    "src",
+    "app",
+    "host",
+    "../theming",
+    // Declared, not derived: these out-of-tree lib/render files only enter this
+    // program today because a test happens to import them (at-cut-transitions.test.tsx,
+    // load-fonts.test.ts). Deleting either test would silently shrink this gate's
+    // coverage with no error and no exit-code signal — the same failure mode
+    // examples/layered-minimal/scripts/verify-typecheck-coverage.mjs guards against for
+    // the OTHER type-check gate. Listing them here explicitly removes that dependency.
+    // lib/transitions and the remaining pure lib/render/*.ts files still arrive only by
+    // transitive import (from at-cut-transitions.tsx / layered-composition-props.ts
+    // etc.), which is fine — they have no test-only, deletable path into the program.
+    "../render/at-cut-transitions.tsx",
+    "../render/audio-track.tsx",
+    "../render/layered-composition.tsx",
+    "../render/video-track.tsx",
+    "../render/load-fonts.ts"
+  ]
 }

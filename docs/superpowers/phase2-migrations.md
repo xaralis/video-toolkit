@@ -670,20 +670,34 @@ Bit-identity is explicitly NOT required.** This is a straight replacement, not a
 call — do not keep a local unfloored helper "just in case".
 
 `layeredDurationInFrames(reel, fps)` in `lib/render/layered-composition-props.ts` is the ONE
-definition of a reel's length. roost carries a second one, in two files.
+definition of a reel's length. roost carries **three** copies of `roostReelDurationInFrames`,
+in three files — not two, as an earlier pass here undercounted.
 
 **Severity is *tsc-caught*, not silent.** Once the local `export const` is deleted, any call
 site you miss is an unresolved identifier — `tsc` names the file and line. The old *silent*
 grade described a world where both definitions coexisted and you had to notice the difference
 by reading; deleting the export removes that world.
 
+**This migration's premise is already partly false, and that is good news.** Every `Root.tsx`
+that matters — `templates/roost-reels/src/Root.tsx:195`,
+`projects/roost-reel-01/src/Root.tsx:201`, and `projects/roost-promo-01/src/Root.tsx:195` —
+already inlines `Math.max(60, Math.round((props.reel.meta.totalDurationMs / 1000) * 30))`
+directly in `calculateMetadata`, matching core's floor. None of them calls
+`roostReelDurationInFrames` today. So the local helper is not a live single source of truth
+being migrated away from — it is **already dead code** at every `Root.tsx` call site; the one
+live call (`projects/roost-reel-01/src/LayeredRoostReel.tsx:141`, sizing the music fade-out) is
+the only place item **D** below changes behaviour. Do not go hunting for `Root.tsx` consumers
+of the helper — there are none left to find.
+
 **1. `templates/roost-reels/src/LayeredRoostReel.tsx:15`** — the export has **no consumer**
-anywhere in the template (re-verified: `roostReelDurationInFrames` appears in roost only at
+anywhere in the template (re-verified: `roostReelDurationInFrames` appears in roost at
 `templates/roost-reels/src/LayeredRoostReel.tsx:15`,
-`projects/roost-reel-01/src/LayeredRoostReel.tsx:68` and `:141`, as far as tracked files show —
-before relying on this list, re-run `grep -rn roostReelDurationInFrames` in the roost repo
-yourself rather than trusting it verbatim; it can go stale). Delete it and its two-line
-comment outright; nothing replaces it here:
+`projects/roost-reel-01/src/LayeredRoostReel.tsx:68` and `:141`, and
+`projects/roost-promo-01/src/LayeredRoostReel.tsx:15` — re-verified against the real working
+tree, not just tracked files; before relying on this list, re-run
+`grep -rn roostReelDurationInFrames` in the roost repo yourself rather than trusting it
+verbatim; it can go stale). Delete it and its two-line comment outright; nothing replaces it
+here:
 
 ```ts
 // DELETE — no import needed, nothing in the template calls it:
@@ -726,6 +740,18 @@ import { layeredDurationInFrames } from '@video-toolkit/lib/render/layered-compo
 
 `totalFrames` feeds `fadeStart = totalFrames - OUTRO_FADE_OUT_FRAMES` and the
 `f >= totalFrames → 0` cutoff in `musicVolumeAt` — nothing else reads it.
+
+**3. `projects/roost-promo-01/src/LayeredRoostReel.tsx:15`** — a third copy, byte-identical to
+the template's item **1** (same export, same no-consumer status: `roost-promo-01`'s own
+`Root.tsx:195` already inlines the floored `Math.max(60, Math.round(…))` form directly, exactly
+like the template and `roost-reel-01`). Delete it and its two-line comment the same way as item
+**1**; nothing replaces it here either.
+
+> **Note for whoever applies this migration:** `projects/roost-promo-01/` is untracked
+> (`git status` shows `?? projects/roost-promo-01/`) and is the user's own in-progress work, not
+> a stray copy to clean up incidentally. Treat this item as a fact about what exists today, and
+> apply it only when/if that project is itself part of the migration being carried out — do not
+> reach into it opportunistically while doing something else in the roost repo.
 
 > **The one real difference, and why it does not matter here.** roost's version is a bare
 > `Math.round((totalDurationMs / 1000) * fps)`; core's is
