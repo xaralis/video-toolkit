@@ -1,12 +1,15 @@
 # Handoff — core architecture rework
 
-**Last updated:** 2026-07-26, at the end of `fix/core-has-remotion` — a correction branch
-between Phase 2 and Phase 3. Phase 2 completed on `refactor/phase2-core-shell` (2026-07-25).
+**Last updated:** 2026-07-26, at the end of **Phase 2.5** — the brand migration, which was also
+the first end-to-end validation that Phases 1–2 actually work. Phase 2 completed on
+`refactor/phase2-core-shell` (2026-07-25); `fix/core-has-remotion` corrected it the same week.
 
-**Next up is Phase 2.5 — apply the twelve pending brand migrations, which is also the first
-end-to-end validation that Phases 1–2 actually work.** Read that section below, then the
-pending-migrations index, `docs/superpowers/phase2-migrations.md`, and the working
-conventions. Phase 3's scope follows it. Everything else is history.
+**Next up is Phase 3 — close the extension contract.** Read "Phase 2.5 outcome" immediately
+below (it changed Phase 3's starting state and left three carried items), then "Phase 3 — scope
+and starting state", then the working conventions. Everything else is history.
+
+**The twelve brand migrations are APPLIED.** `docs/superpowers/phase2-migrations.md` is now a
+record and a reference for the next brand repo, not pending work.
 
 This file is the durable record across sessions. The working ledger
 (`.superpowers/sdd/progress.md`) is **gitignored** and will not survive a
@@ -29,7 +32,8 @@ The full audit and phase plan live at
 | 0 | Unblock (fast-forward core, pin zod) | ✅ closed in Phase 2 — `docs/zod-version.md`; roost's pin is a brand migration |
 | 1 | Subtract — remove drift surfaces | ✅ merged `73bd891` |
 | 2 | Core owns the brand shell (editor host, composition wiring, config, fonts) | ✅ `refactor/phase2-core-shell` |
-| 3 | Close the extension contract (registries, effects, generators, captions) | ⬜ |
+| 2.5 | Apply the brand migrations — the validation of 1–2 | ✅ both brand repos green, 2026-07-26 |
+| 3 | Close the extension contract (registries, effects, generators, captions) | ⬜ **next** |
 | 4 | Tighten the model (real schemas, pre-save validation) | ⬜ |
 | 5 | NLE alignment (effect stack, music track, transition entities, media pool) | ⬜ |
 | 6 | `brand.json` becomes the theming contract | ⬜ |
@@ -130,114 +134,169 @@ did not exist before. Phase 2's top residual risk: **closed** (see below).
 
 ---
 
-## ⚠️ Pending brand migrations — apply when the submodule pin bumps
+## ✅ Phase 2.5 outcome — the brand migration, and what it found
 
-**→ `docs/superpowers/phase2-migrations.md` is the authoritative, paste-ready
-document.** It has complete before/after file contents per brand repo, the two
-hard-won rules (config files import core by *relative* path; a template's own
-`tsconfig.json` must still declare `@video-toolkit/lib/*`), and a suggested order.
-The summary below is an index, not a substitute.
-
-Phases 1 and 2 were both deliberately **core-only**. Phase 1 queued five migrations;
-Phase 2 queues seven more (A–G in that document) and **retires Phase 1's #4**.
-
-1. **roost — `withTransitionOverrides`** *(tsc-caught)*
-   `projects/roost-reel-01/src/LayeredRoostReel.tsx:110` spreads `Transition | undefined`,
-   which yields `kind?:` and no longer satisfies the tightened `VideoItem['transitionOut']`.
-   Core now exports `withTransitionOverrides()` for exactly this. One file — the template
-   is a shim with no spread. Rendering is unaffected; nothing parses at render time.
-
-2. **PP — union mirror** *(tsc-caught)*
-   `projects/pp-05-zastupitelsky-klub/src/config/types.ts:18` hand-mirrors the transition
-   union and needs `color?: string`. Only that project; the template has no such mirror.
-
-3. **roost — drop `applyEndpoint`** *(tsc-caught)*
-   `templates/roost-reels/src/overlays/TextOverlay.tsx:43` and its vendored copy in
-   `projects/roost-reel-01/`. **This is a PURE DELETION of `applyEndpoint={false}`.**
-   Do **not** pass an `endpointKey`: roost deliberately has the endpoint rule off, and
-   absent `endpointKey` now means off. Passing one would switch on an accent rule roost
-   disabled and change its rendered captions. PP needs nothing.
-
-4. **All editor hosts — pass `meta`** — **✅ SUPERSEDED BY PHASE 2. DO NOT HAND-EDIT.**
-   This was **14 call sites**: 12 PP (`templates/campaign-reels/.editor` + 11
-   `projects/pp-*/.editor`) and 2 roost (`templates/roost-reels/.editor` +
-   `projects/roost-reel-01/.editor`) — re-verified against both repos.
-   Core's `EditorHost` passes `meta` to **both** `LayeredTimeline` and
-   `LayeredInspector` itself, so adopting `mountEditorHost` (Phase 2 migration **E**)
-   fulfils this at all 14 sites as a side effect. The 14-file hand-edit is wasted work
-   and would be overwritten. Caveat: passing an *actual* `EditorMeta` still needs the
-   brand to author one — neither brand has a `src/config/editor-meta` module today.
-
-5. **PP web-program-intro — pass the palette** *(SILENT, latent)*
-   `projects/pp-program-{klima,obvody,verejny-prostor}/src/WebProgramIntro.tsx:26` calls
-   `presentationFor(t, { width, height })` with no palette, so a `wipe` carrying an accent
-   key would resolve to `#000` instead of the brand colour. Latent only — there is currently
-   zero `kind: 'wipe'` in any project. Pass `palette: theme.accentSlots`.
-   Related: the old wipe presentation defaulted an unset colour to **lime**; it is now `#000`.
-   Intended (core must not default to a brand colour), affects nothing today.
-
----
-
-## Phase 2.5 — apply the migrations, and thereby validate Phases 1–2
-
-**Decided 2026-07-26: this happens BEFORE Phase 3.** It is the first time this programme
-touches a brand repo, and the "core-only" rule that governed Phases 1, 2 and the correction
-branch does not apply to it.
-
-**It is not debt payment — it is the missing validation.** Everything Phases 1 and 2 landed
-was verified *inside core*: unit tests, type gates, one render of a minimal example. **Nothing
-has yet demonstrated that a real brand repo still works on top of it.** Whether the core editor
-host actually boots against a real project, whether a tuned reel still renders identically,
-whether Save still finds the `defaultProps` literal through the new spread — none of that is
-known. The migration is the experiment that answers it, and every further phase built on the
-unvalidated assumption that it does costs more to unwind.
-
-**Waiting also makes it strictly worse.** Twelve migrations are already queued (Phase 1's five,
-Phase 2's seven). Phase 3 changes what brands *render*, so its migrations will be visual rather
-than merely structural — far harder to review in a batch that also carries twelve structural
-ones.
-
-### Scope, measured
+**All twelve migrations are applied to both brand repos, and both are green.** The paste-ready
+document, `docs/superpowers/phase2-migrations.md`, has been corrected in seven places and marked
+applied; read it for the per-item detail. This section is the result.
 
 | | PP (`~/Workspace/progpce/video-toolkit`) | roost (`~/Workspace/roost/video-toolkit`) |
 |---|---|---|
-| Current pin | `0c452362` | `0c452362` |
-| Templates | 2 (`campaign-reels`, `web-program-intro`) | 1 (`roost-reels`) |
-| Projects | 16 (11 with `.editor/`) | 2 (`roost-reel-01`, `roost-promo-01`) |
+| Branch | `chore/phase2.5-toolkit-migration` | `chore/phase2.5-toolkit-migration` |
+| Commits | `7a4d698` pin · `f8ff467` G+C · `f7f4095` B/A/items 2,5/endpoint · `ff955c6` E+F | `18953c3` pin · `aaa7279` pin→host fix · `cfe7bd5` everything else |
+| Directories migrated | 18 (2 templates + 16 projects), 12 with `.editor/` | 3 (1 template + 2 projects) |
+| `tsc --noEmit` | **0** in every installed dir except the pre-existing WPI `TS2322`s (see finding 3) | **0** in all three |
+| Tests | every test-bearing dir green; the 6 with a top-level `tests/` still run 2 files / 6 tests | green |
+| Render parity | `pp-ricni-sauna`, 5 frames **byte-identical** to the pre-migration baseline | `roost-reel-01`, 5 frames **byte-identical** |
+| Editor | loads, edits, **saves** | loads, `/props` real, no resolution errors |
 
-Both pins sit at `0c452362` — **before Phase 1**. One bump therefore spans Phase 1, Phase 2
-*and* `fix/core-has-remotion`, so all twelve migrations land at once. Core's `main` is
-`3f83865` at the time of writing.
+Core's own gates moved only upward: **650 → 669 tests**, `tsc` baseline still **4**,
+`examples/layered-minimal` still **0** with its coverage guard intact, brand-leak grep still
+exactly **2**.
 
-`docs/superpowers/phase2-migrations.md` is the authoritative paste-ready document, including a
-suggested order (pin bump → **G** zod → **C** build config → **B**/**A**/**D** → **F** then
-**E** → Phase 1's items → verify).
+**Core's `main` is now pushed.** It had been 56 commits ahead of `origin/main` — Phases 1, 2 and
+`fix/core-has-remotion` had never left the machine, so no pin could reference them. `origin/main`
+is `41bf406`. The two brand branches currently pin core's `chore/phase2.5-followups`
+(`cb51d4d`, fetched locally); **that branch must be merged and pushed, and the two pins
+re-pointed at the resulting `main` SHA, before either brand branch is merged** — see "Carried out
+of Phase 2.5" below.
 
-### Rules specific to this stage
+### The stage justified itself: five findings, two of them real regressions
 
-- **Never edit a project's `defaultProps` literal.** It is the tuned cut and the source of
-  truth. Every migration item changes the scaffolding around it; if a diff touches inside that
-  block, the migration was applied wrongly.
-- **`projects/roost-promo-01/` is untracked work in progress.** It is the user's own current
-  work, it is not committed, and git cannot restore it. Do not migrate it without asking, and
-  never `git clean`. It also holds a third copy of `roostReelDurationInFrames` (migration **D**).
-- **Item E is unreachable by every automated check on both sides.** `.editor/` sits outside every
-  `tsconfig.json`'s `"include": ["src/**/*"]`, so a mistyped `mountEditorHost` option key is
-  stripped by esbuild in silence and the editor simply loads with no palette. It is only caught
-  by opening the editor, making an edit and **saving** — Save is also what exercises
-  `readDefaultProps` against the new `Root.tsx` spread, which is the one thing that fails loudly
-  if item **A** was spelled wrong.
-- **Prove a render still matches.** For at least one real reel per brand, render before the
-  migration and after, and compare. Phases 1–2 promised that rendering a baked literal does not
-  change; this is where that promise is actually tested.
-- The **zod guard** may land in core only after roost's pin moves (it would otherwise fire on
-  the one repo that is not broken), and must warn rather than throw.
+**1. The pin bump alone changed what PP renders.** Before any migration was applied,
+`pp-ricni-sauna` frames 15 and 75 differed — 306 pixels of 2.07M, peak delta 203/255, localized to
+an 18×17 box. Visually: the caption "**Říční sauna** na Labi**.**" had a teal `#2ad4c5`
+sentence-final period and rendered it white.
+
+`07eeca9` ("drop the last brand accent default") changed `applyBrandEndpoint` from
+`(text, ...rest: [endpointKey?: string])`, whose rest-tuple deliberately distinguished *omitted*
+(→ default `'teal'`) from *explicitly undefined* (→ disabled), to a required parameter that
+no-ops when absent. PP had two single-argument call sites relying on that default.
+
+**Core was right and the document was wrong.** Evicting a brand colour from core is the whole
+point of the programme. The defect was that `phase2-migrations.md` said in as many words
+"**PP needs nothing**". It needed an explicit `'teal'`. Fixed brand-side, doc corrected.
+
+The asymmetry is worth remembering because a migrator meets both halves: roost must *not* pass an
+`endpointKey` (its rule is deliberately off, and absent now means off), PP must. roost's stills
+were unchanged throughout, which is exactly what that predicts.
+
+**2. The brand-side `tsc` gate was worthless, which is why finding 1 hid.** After item C as
+written, every PP directory reported **~160 errors** — 174, 159, 167, 162 — *all* of them
+`TS2307 Cannot find module 'remotion'` / `TS2875 react/jsx-runtime`, emitted from files outside
+the project (`toolkit/lib/**`, `brand-lib/**`). tsc resolves a bare specifier by walking up
+`node_modules` from the *importing* file, and that walk never reaches the project's
+`node_modules`. Finding 1's real `TS2554` was sitting in that pile the whole time.
+
+Fixed by adding five `paths` entries to item C's tsconfig template — the same fix core already
+applies to itself at `lib/editor/tsconfig.json:14-33`. It cannot be hoisted into
+`lib/project/tsconfig.base.json`: Rule 2, `paths` does not merge across `extends`. **Result: ~162
+→ 0** in every PP campaign directory and in all three roost directories, including
+`roost-reel-01`, which had never had a `@video-toolkit/lib/*` entry at all.
+
+**3. Pre-existing, NOT a bump regression: `web-program-intro` literal type errors.** Unmasking the
+noise revealed real `TS2322`s in WPI `src/Root.tsx` (a clip literal missing `audioMode`, which is
+`.optional().default('voice')` and so required in the inferred output type) — 9 in
+`pp-program-klima`, 7 in `pp-program-mobilita`, 1 each in the template and `pp-program-bydleni`.
+
+Settled by controlled experiment rather than assumption: same project, same probe tsconfig, only
+the submodule SHA varying — old core `0c452362` → **15** errors, new core `41bf406` → **11**. The
+new core *reduced* them. Left alone deliberately; the authored literal is not ours to edit.
+Phase 3 already plans to migrate `web-program-intro` onto `LayeredReelComposition`.
+
+**4. A real Phase 2 regression: the core-owned editor never mounted.** ⚠️ The important one.
+
+Every migrated editor served `/` and `/props` — so every smoke check passed — but the app never
+mounted. `#root` stayed empty, no console error, and the only evidence anywhere was one line in
+the Vite dev-server log:
+
+```
+Failed to resolve import "@remotion/player" from "../../toolkit/lib/editor/host/EditorHost.tsx".
+```
+
+`createEditorViteConfig`'s pre-plugin re-resolved only `@remotion/transitions`. That sufficed
+while the host lived in the brand's own `.editor/main.tsx`, where `@remotion/player` resolved
+through the project's `node_modules` like any local import. **Phase 2 moved the host out of the
+project tree** and Node's walk-up from the submodule climbs to the brand repo root and stops.
+Confirmed a regression, not pre-existing, by restoring the original `.editor/` at the same depth
+and watching it mount.
+
+Fixed in core, `cb51d4d`: the pre-plugin now re-resolves `remotion`, `remotion/*` and
+`@remotion/*`. Still a `resolveId` hook rather than a dir alias, for the reason the original
+comment gives (exports-map-only subpaths). Guarded by tests **verified by mutation** — narrowing
+the predicate back fails exactly `@remotion/player`, `remotion`, `remotion/no-react`.
+
+**Findings 2 and 4 are the same lesson on two sides of the toolchain:** core code now lives
+outside the project tree, and bare-specifier resolution does not follow it. tsc needed `paths`;
+Vite needed a resolver. **Phase 3 moves more code into core — assume this recurs, and check both.**
+
+**5. Pre-existing: 8 of 11 PP project editors cannot start at all.** They declare an `"editor"`
+script but no `vite` / `@vitejs/plugin-react` / `@tailwindcss/vite` devDependencies (4 also lack
+`@remotion/player`) — `ERR_MODULE_NOT_FOUND` before Vite loads the config. Already broken at HEAD;
+the vendored copies never inherited the template's editor devDependencies. Same root as the
+`sync_template.py` gap already queued for Phase 3.
+
+### Six things the migration document got wrong, now corrected in it
+
+Recorded here too because the pattern matters: **every one was a miscount or a false negative in a
+document that had been carefully checked against the real repos.** Reading files is not the same
+as running them.
+
+1. Part 1 item 3 said "PP needs nothing" — PP needed the endpoint key (finding 1).
+2. Item C's tsconfig template was missing the five bare-specifier `paths` entries (finding 2).
+3. Part 1 item 5 is **6** files, not 3 — and none of the six web themes declared `accentSlots`
+   at all, so the instruction was not executable as written. Resolved by adding the same two slots
+   campaign-reels declares; latent either way, no project uses a `wipe`.
+4. Part 1 item 3 is **3** roost files, not 2 (`roost-promo-01` is the third).
+5. Item E claimed roost declares no `accentSlots`. `roost-reel-01`'s editor did — roost's *own*
+   palette — and dropping it would have been a real regression. Carried through the host option.
+6. Part 1 item 1 has **3** `withTransitionOverrides` sites, not 1: two more in
+   `composition-theme.tsx`, passing tsc only because a cast was masking the discriminant.
+
+(Item G's trailing-comma split was also 10/8 rather than as implied. Harmless — the doc's own
+"apply by line content" advice covers it.)
+
+### Method notes worth keeping
+
+- **Still renders are byte-deterministic and make an excellent parity gate** — `remotion still` at
+  fixed frames, compared by `shasum`. This is what caught finding 1, which no test would have.
+  **Caveat:** one render in ~20 flaked on a video-decode-heavy frame. A mismatch is not a finding
+  until it has been re-rendered and reproduced. Two mismatches in this stage; one was real
+  (reproduced exactly), one was noise (re-rendered twice, both matched the original).
+- **`npx tsc --noEmit | grep -c 'error TS'` returns 0 when tsc *crashes*.** Hit twice. Check the
+  exit code. Related: four PP projects had `node_modules/.bin` entries that were regular files
+  instead of symlinks (a `cp -r`'d `node_modules`); `npm install` does *not* repair that,
+  `rm -rf node_modules/.bin && npm install` does.
+- **`git add -A` in the roost repo swept the untracked `roost-promo-01` into a commit.** Caught and
+  undone with `git rm --cached -r` + amend; files verified byte-identical on disk afterwards. If
+  you work in that repo, stage explicitly.
+
+### Carried out of Phase 2.5
+
+- ⚠️ **Both brand pins point at an unmerged core branch.** They pin `cb51d4d` on
+  `chore/phase2.5-followups`, fetched locally. Merge that branch to `main`, push, then re-point
+  both pins at the resulting SHA before merging either brand branch — otherwise a fresh clone
+  cannot resolve the submodule.
+- **3 PP projects were edited but never installed or verified** — `pp-cyklostezka-chrudimka`,
+  `pp-druzstevni-parkovani`, `pp-plovarna-napojeni` (no `node_modules`, by explicit decision).
+  Their `package.json` now says `zod: 3.22.3` while their lockfile still records `^3.22.0` as the
+  root spec, so `npm ci` fails there until someone runs `npm install`.
+- **`roost-promo-01` is migrated but still untracked** — the user's WIP, backed up at
+  `~/roost-promo-01-pre-phase2.5.tgz` before anything was touched. `tsc` 0 errors. Never
+  `git clean` in that repo.
+- **Finding 5** (8 PP editors missing devDependencies) and **finding 3** (WPI literal errors) are
+  both unfixed and both pre-existing.
+- The **zod guard** is done — `b02669c`, `lib/project/zod-guard.ts`. It warns and never throws, and
+  it landed only after both brand repos moved off zod 4, as sequenced.
 
 ---
 
 ## Phase 3 — scope and starting state
 
-**Phase 2.5 above comes first.** Phase 3 assumes both brand repos are migrated and green.
+**Phase 2.5 is done** — both brand repos are migrated and green. Read its outcome above before
+scoping: it changed the numbers below, it fixed a Phase 2 regression that Phase 3 can repeat, and
+it left three carried items (an unmerged core branch both brand pins depend on, 3 uninstalled PP
+projects, 8 PP editors missing devDependencies).
 
 **The goal of Phase 3 is what makes "a new brand only themes" actually true, including in
 the editor.** Phases 1 and 2 moved the *mechanisms* into core. What is still brand-side is
@@ -246,11 +305,11 @@ layer, captions, media paths. Today several of those have no contract at all, so
 extends core by writing a renderer rather than by declaring one — which is exactly the
 copy-paste channel the programme exists to close.
 
-### Starting state, measured (2026-07-26, `main` @ `8198af3`)
+### Starting state, measured (2026-07-26, end of Phase 2.5, `chore/phase2.5-followups` @ `b02669c`)
 
 | Gate | Command | Value |
 |---|---|---|
-| Tests | `cd lib/editor && npx vitest run` | **57 files / 650** — 2 are `it.fails` known-defect pins |
+| Tests | `cd lib/editor && npx vitest run` | **59 files / 669** — 2 are `it.fails` known-defect pins |
 | Editor types | `cd lib/editor && npx tsc --noEmit` | **4** pre-existing |
 | Render/transition types | `cd examples/layered-minimal && npm run typecheck` | **0**, coverage guard ok |
 | Brand leak | the `grep -riE` under Working conventions | exactly **2** known hits |
@@ -261,6 +320,16 @@ type-check its render surface, and **can render** (`cd examples/layered-minimal 
 remotion still src/index.ts MinimalReel out/x.png --frame=45`). Do not inherit a "core
 cannot X" from anywhere without re-running its command first — that mistake has been made
 three times in this programme.
+
+**Two capabilities Phase 2.5 added, both cheap and both worth reusing in Phase 3:**
+- **A brand repo is now a usable check surface.** With item C's `paths` fix, `npx tsc --noEmit` in
+  a brand project reports **0**, not ~160. Phase 3 changes what brands render, so this is the gate
+  that will catch a broken registration.
+- **Still-render parity is a working regression test.** `npx remotion still` at fixed frames,
+  compared by `shasum`, is byte-deterministic and caught the one rendering regression Phases 1–2
+  had shipped. Phase 3's "prove parity with a still render" requirement now has a proven procedure
+  — including the caveat that a single render can flake on a video-heavy frame, so reproduce
+  before believing a mismatch.
 
 ### The seams Phase 3 closes
 
@@ -335,23 +404,24 @@ Read these before scoping — they are decided or half-decided, not open questio
 **Phase 3 is next** — close the extension contract (registries, effects, generators,
 captions). Its scope is the section above.
 
-**Deliberately NOT done in Phase 2, now a Phase 3 task:**
+**Deliberately NOT done in Phase 2, now a Phase 3 task — and Phase 2.5 raised its priority:**
 `video_toolkit/sync_template.py:136,141` still mirrors only
 `templates/<t>/src → projects/<p>/src`, so it does **not** carry `.editor/`. With the
 host in core, `.editor/` is 45 (PP) / 41 (roost) lines across three files that rarely change, which
-lowers the cost a lot — but the next `.editor/` change still hits **14 directories**
-by hand (12 PP, 2 roost).
+lowers the cost a lot — but the next `.editor/` change still hits **15 directories**
+by hand (12 PP, 3 roost — `roost-promo-01` has one too).
 The same gap covers `remotion.config.ts`, `vitest.config.ts`, `tsconfig.json` and
-`package.json`, none of which the mirror carries either.
+`package.json`, none of which the mirror carries either. Phase 2.5 showed what that costs:
+8 of 11 PP project editors cannot start because the vendored `package.json` never inherited the
+template's editor devDependencies (finding 5), and every one of the ~90 files the migration
+rewrote was a hand-edit for exactly this reason.
 
-**Phase 0 leftover — decided, half-applied.** `docs/zod-version.md` settles the
-question (exactly `3.22.3`, forced by Remotion 4.0.425). Core and
-`examples/layered-minimal` already carry it. **roost is still on `^4.3.6`** and PP on
-`^3.22.0`; both are Phase 2 migration **G**. Sequenced follow-up: a core-side check
-that the resolved zod major is 3 must land **after** roost migrates (added now it
-would fire on the one repo that is not broken) and must **warn, not throw** — a hard
-assertion turns a routine submodule bump into a hard stop. Recorded in
-`docs/zod-version.md`; no guard code exists yet.
+**Phase 0 leftover — ✅ CLOSED in Phase 2.5.** `docs/zod-version.md` settles the question
+(exactly `3.22.3`, forced by Remotion 4.0.425). Both brand repos are now pinned there — PP from
+`^3.22.0`, roost from `^4.3.6` — and the sequenced core-side guard has landed (`b02669c`,
+`lib/project/zod-guard.ts`), wired into both `applyToolkitWebpack` and `createEditorViteConfig`.
+It **warns, never throws**, for the reason recorded all along: a hard assertion turns a routine
+submodule bump into a hard stop on a repo that still renders fine.
 
 **New in the fix-pass-2 re-review, now a Phase 3 candidate:**
 - **`lib/transitions/TransitionGallery.tsx` and `showcase/transitions/src/TransitionGallery.tsx`
@@ -623,11 +693,12 @@ now ordinary migration verification, not risk closure.
   `lib/editor/host/README.md`, which otherwise advertises Focus/Zoom with no verification note.
 - The brand-leak gate needs its exclusions or it walks `node_modules` and is permanently red:
   `grep -riE 'lime|teal|roost|progresivn|sand-brown' lib/ --exclude-dir=node_modules --exclude='*.test.*'`
-- **Current gate numbers, measured on `fix/core-has-remotion` (2026-07-26).** Any figure
-  quoted elsewhere in this file from Phase 1 or Phase 2 is historical; these are live:
+- **Current gate numbers, measured at the end of Phase 2.5 (2026-07-26).** Any figure
+  quoted elsewhere in this file from Phase 1, Phase 2 or `fix/core-has-remotion` is historical;
+  these are live:
   | Gate | Command | Now |
   |---|---|---|
-  | Editor tests | `cd lib/editor && npx vitest run` | **57 files / 650 tests**, green (2 of them are `it.fails` known-defect pins — `at-cut-transitions.test.tsx:289,307` — see the at-cut risk entry) |
+  | Editor tests | `cd lib/editor && npx vitest run` | **59 files / 669 tests**, green (2 of them are `it.fails` known-defect pins — `at-cut-transitions.test.tsx:289,307` — see the at-cut risk entry) |
   | Editor types | `cd lib/editor && npx tsc --noEmit` | **4** errors |
   | Render/transition types | `cd examples/layered-minimal && npm run typecheck` | **0**, coverage guard ok |
 
@@ -643,6 +714,25 @@ now ordinary migration verification, not risk closure.
   `docs/superpowers/core-typecheck-gate.md` and the `CLAUDE.md` "Quality Gates" table. No CI
   runs any of these three gates; they are manual and easy to forget — run them before calling
   render/transitions work in `lib/` done.
+- **Reading a file is not running it — and a doc checked against real repos can still be wrong.**
+  `docs/superpowers/phase2-migrations.md` was written by inspecting both brand repos carefully,
+  and applying it still found six miscounts and one outright false negative ("PP needs nothing",
+  which cost a rendering regression). Every one of them needed the code to actually run. When a
+  future phase queues brand migrations, treat the document as a hypothesis, not an inventory.
+- **Moving core code out of the project tree breaks bare-specifier resolution, twice.**
+  Phase 2 moved the editor host into `lib/editor/host/`; the files there import `remotion`,
+  `@remotion/player`, `react` by bare specifier, and every resolver that walks up `node_modules`
+  from the *importing* file then fails — it climbs to the brand repo root and stops. This bit
+  **tsc** (~160 phantom errors per brand directory, fixed with `paths`) and **Vite** (the editor
+  silently never mounted, fixed with a `resolveId` hook, `cb51d4d`) independently. Phase 3 moves
+  more code into core: assume it recurs, and check both toolchains, not just the one that
+  complains.
+- **A parity claim needs a render, not a test.** "Rendering an existing baked literal is frozen"
+  was asserted through Phases 1 and 2 and was **false** — `applyBrandEndpoint`'s dropped default
+  changed every PP caption. No test caught it; comparing `remotion still` hashes before and after
+  did, in minutes. The procedure: pick ~5 frames spanning a real reel, `npx remotion still` each,
+  `shasum -a 256`. It is byte-deterministic. One render in ~20 flakes on a video-decode-heavy
+  frame, so re-render and reproduce before calling a mismatch a finding.
 - **Capability claims must carry the command that demonstrates them, or not be written down.**
   This branch exists because "core has no `remotion`, so anything importing it can't be
   unit-tested" was written into this file unmeasured and false. The same pattern recurred twice

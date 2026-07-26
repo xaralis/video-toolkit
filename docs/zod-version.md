@@ -160,19 +160,30 @@ point zod 4 becomes viable toolkit-wide. The prerequisites, in order:
 
 Anything short of all four leaves one template silently editor-less.
 
-## A pin guard, if one gets added later
+## The pin guard — ✅ implemented (Phase 2.5, `b02669c`)
 
-Nothing today enforces the pin at install or build time (see "How the mismatch presents
-if ignored" above — neither npm nor `tsc` catches it). A cheap fix would be a core-side
-assertion in `applyToolkitWebpack` / `createToolkitVitestConfig` that the resolved zod
-major is 3. **That guard is deliberately not implemented yet, and if it is added, it must
-respect two constraints:**
+Neither npm nor `tsc` catches a drifted pin (see "How the mismatch presents if ignored"
+above), so core carries its own check: **`lib/project/zod-guard.ts`**, called from
+`applyToolkitWebpack` (`lib/project/remotion-config.ts`) and `createEditorViteConfig`
+(`lib/editor/host/vite-config.mts`) — the two surfaces that already resolve the project's
+zod, so it costs nothing extra.
 
-- **Sequencing: it can only land *after* roost migrates to `3.22.3`.** Added today, it
-  would fire the moment any consuming repo's `toolkit/` submodule pin advances — and the
-  one repo currently running zod 4 is roost, which per "Status today" above is *correct*
-  today. A guard added now would break the one repo that isn't broken.
-- **Warn, not throw.** A hard assertion turns a brand's routine `toolkit/` submodule bump
-  into a hard stop the moment their own `package.json` drifts from the pin, for reasons
-  that may have nothing to do with the bump itself. Log a warning identifying the resolved
-  version and pointing at this document; do not fail the build.
+It honours both constraints this section originally set out:
+
+- **Sequencing — it landed only *after* both brand repos moved.** PP went `^3.22.0` →
+  `3.22.3` and roost `^4.3.6` → `3.22.3` in Phase 2.5; the guard came after. Added earlier
+  it would have fired on every build of roost, which per "Status today" was the one repo
+  that was *correct*. That is how a warning gets tuned out.
+- **It warns and never throws.** `warnOnZodMismatch` returns the version it saw and calls
+  `console.warn` at most once; nothing is blocked. A hard assertion would turn a routine
+  `toolkit/` submodule bump into a hard stop on a repo that very likely still renders fine
+  — nothing about a zod-4 install breaks until a schema crosses the Remotion boundary, and
+  the `zod$` alias already prevents the crash that would cause.
+
+The message grades the two cases differently: a different zod **3** is called hygiene, a
+different **major** is named as untested against core's schemas. Both point back at this
+document. An unresolvable zod is *not* the guard's business — `applyToolkitWebpack` and
+`createEditorViteConfig` both already throw on that, earlier and with a better message.
+
+Tests: `lib/editor/src/zod-guard.test.ts` covers the helper and both call sites, including
+that neither one throws — a guard nobody calls is the same as no guard.
