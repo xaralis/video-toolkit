@@ -79,4 +79,31 @@ export { GenericOutro } from './generic/GenericOutro';
 export { GenericMultiClip } from './generic/GenericMultiClip';
 export { GenericCard } from './generic/GenericCard';
 export { resolveGenericSource } from './generic/media-source';
-export type { ThemeTokens, MultiClipTokens, CardTokens, WatermarkTokens, DisclaimerTokens } from './tokens';
+export {
+  GenericCaptions,
+  type GenericCaptionsProps,
+  type CaptionLiftWindow,
+} from './generic/GenericCaptions';
+export {
+  linesFromWords,
+  activeAmount,
+  chunkWords,
+  strokeShadow,
+  DEFAULT_CAPTION_MAX_CHARS,
+  DEFAULT_CAPTION_GAP_BREAK_MS,
+  DEFAULT_CAPTION_LAST_LINE_GRACE_MS,
+  DEFAULT_CAPTION_MAX_WORDS_PER_CHUNK,
+  DEFAULT_CAPTION_WORD_FADE_MS,
+  type CaptionLine,
+  type CaptionLineWord,
+  type CaptionSourceWord,
+  type LinesFromWordsOptions,
+} from './generic/caption-lines';
+export type {
+  ThemeTokens,
+  MultiClipTokens,
+  CardTokens,
+  WatermarkTokens,
+  DisclaimerTokens,
+  CaptionTokens,
+} from './tokens';

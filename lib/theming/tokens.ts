@@ -124,16 +124,72 @@ export interface DisclaimerTokens {
   alpha?: number;
 }
 
+/** Look constants for {@link GenericCaptions}.
+ *
+ *  A NOTE ON PROVENANCE, because this axis had three disagreeing sources when
+ *  it was written: the brand that ships burned-in captions today had (a) live
+ *  module constants inside its `CaptionStrip.tsx`, (b) a `caption` block in its
+ *  template `theme.ts` that NOTHING imported, and (c) a `reels.caption` block in
+ *  its `brand.json` that no TS/TSX read. Only (a) renders. So the DEFAULTS below
+ *  are (a)'s magnitudes — notably `bottomPct` 0.20, not the dead `theme.ts`'s
+ *  0.28, which would move that brand's captions 8% of frame height — while the
+ *  FIELD NAMES follow (b)/(c)'s richer vocabulary, which is where brand config is
+ *  heading. The dead blocks are migration cleanup, tracked separately.
+ *
+ *  Colours: neutral, as everywhere in this file. The default `activeColor` is
+ *  pure yellow, the long-standing karaoke-subtitle convention — it has to differ
+ *  from `color` or the mode's whole point (a word lighting up) is a no-op under
+ *  defaults, and yellow is the one choice that is a convention rather than
+ *  somebody's brand. */
+export interface CaptionTokens {
+  /** `pop-focus` (default): one phrase chunk at a time as a `nowrap` pill, the
+   *  active word flips to `activeColor`. `highlight`: the whole line, inactive
+   *  words receding by opacity, the active word scaled up with a halo. */
+  mode?: 'pop-focus' | 'highlight';
+  /** Default `monospace` (the shipping brand uses `JetBrains Mono, monospace`). */
+  fontFamily?: string;
+  /** Default 52. `pop-focus` draws it 1.04x larger inside the pill. */
+  fontSize?: number;
+  /** Default 700. */
+  fontWeight?: number;
+  /** Inactive word. Default `#ffffff` (the shipping brand uses its linen `#f5f5f0`). */
+  color?: string;
+  /** Active word. Default `#ffff00` (the shipping brand uses its accent `#c6f432`). */
+  activeColor?: string;
+  /** The `pop-focus` pill behind the chunk. Default `#000000` (the shipping
+   *  brand uses its coal `#0a0a0a`). */
+  background?: string;
+  /** Outline colour. Default `#000000` (the shipping brand uses coal `#0a0a0a`). */
+  strokeColor?: string;
+  /** Outline radius in px. Default 4 — which is `(2·4+1)² − 1` = **80 stacked
+   *  text-shadows per span**. Lower it if render time matters more than the
+   *  outline; see `strokeShadow`'s cost note. */
+  strokeWidthPx?: number;
+  /** `highlight` line width as a fraction of frame width. Default 0.86. */
+  maxWidthPct?: number;
+  /** Characters a line may reach before the grouper breaks. Default 28. */
+  maxChars?: number;
+  /** Baseline bottom position as a fraction of frame height. Default 0.20 — NOT
+   *  the dead `theme.ts` block's 0.28. */
+  bottomPct?: number;
+  /** Bottom position while inside a lift window. Default 0.42. Captions LIFT to
+   *  clear bottom-anchored chrome; they are never suppressed. */
+  liftBottomPct?: number;
+  /** An inter-word gap longer than this forces a line break. Default 350. */
+  gapBreakMs?: number;
+  /** Grace added to the last line's `endMs` and its last word's. Default 600. */
+  lastLineGraceMs?: number;
+  /** Upper bound on a `pop-focus` phrase chunk. Default 4. */
+  maxWordsPerChunk?: number;
+}
+
 /** Look constants a theme hands to core's generic renderers. Every axis is
  *  optional and every consumer has a neutral core default, so `tokens` may be
- *  omitted entirely.
- *
- *  A later Phase 3 task adds its own axis here (`caption` — Task 5); it is
- *  deliberately NOT declared yet, so this file never carries a type no
- *  consumer reads. */
+ *  omitted entirely. */
 export interface ThemeTokens {
   multiClip?: MultiClipTokens;
   card?: CardTokens;
   watermark?: WatermarkTokens;
   disclaimer?: DisclaimerTokens;
+  caption?: CaptionTokens;
 }
