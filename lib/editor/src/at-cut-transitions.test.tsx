@@ -297,13 +297,22 @@ describe('direction-branching suspects', () => {
   );
 
   // DEFECT: pixelate's root AbsoluteFill is painted opaque black unconditionally,
-  // including at progress 0. Under TransitionSeries that is bounded — it
-  // lasts only the transition's length and reads as a dip to black, since
-  // the presentation only exists for the length of the transition and
-  // composites over the outgoing sequence. At a cut it is not: the wrapper is
-  // mounted for the item's WHOLE sequence, and the neighbouring clip sits
-  // beneath it in a sibling Sequence, so the black root hides the neighbour
-  // for the entire clip rather than just the transition.
+  // including at progress 0, and only in the ENTERING direction. At a cut the
+  // neighbouring clip sits beneath it in a sibling Sequence, so the first frame
+  // of the transition is FULL BLACK and the outgoing clip vanishes rather than
+  // dissolving; the incoming clip then emerges from black through the pixel
+  // grid.
+  //
+  // CONFIRMED BY RENDER (Task 10, examples/layered-minimal Probe-pixelate-cut):
+  // frame 49 = the outgoing clip, clean; frame 50 = pure black; frames 51-55 =
+  // the incoming clip emerging from black. See
+  // docs/superpowers/at-cut-transition-findings.md.
+  //
+  // The extent this comment used to claim ("hides the neighbour for the entire
+  // clip") is REFUTED by that render: AtCutTransition clamps progress to 1
+  // after the window, and at progress 1 pixelate paints nothing, so the
+  // blackout is bounded to the transition window after all. The defect is the
+  // opaque root at progress 0, not its duration.
   it.fails(
     'KNOWN DEFECT: pixelate does NOT leave its root transparent before the transition has begun — see docs/superpowers/HANDOFF.md',
     () => {
@@ -322,6 +331,68 @@ describe('direction-branching suspects', () => {
         });
         unmount();
       }
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // FOUND BY RENDER, Task 10. These two are the same FAMILY of defect as
+  // pixelate above and were found the same way it was predicted: at a cut the
+  // ENTERING presentation is mounted over the outgoing clip (a sibling
+  // Sequence beneath it) for the whole transition window, so anything it
+  // paints opaquely at progress 0 does not "start the transition" — it
+  // REPLACES the outgoing clip instantly, at the moment the handle-borrowed
+  // window opens, which is `floor(frames/2)` frames BEFORE the authored cut.
+  //
+  // The discriminator is one still per kind: `Probe-<kind>-cut` at progress 0
+  // must show the OUTGOING clip. 17 of the 20 catalog kinds do. These two and
+  // pixelate do not. See docs/superpowers/at-cut-transition-findings.md for
+  // the full matrix and the stills that show it.
+  //
+  // NOT FIXED HERE, deliberately: what a transition renders is a look
+  // decision, and each of these has more than one legitimate fix (ramp the
+  // root's opacity; hold the entering layer transparent for the first half;
+  // re-time the two halves). Both assertions below therefore assume ONE fix
+  // shape — an opacity ramp on the entering root — exactly like the
+  // checkerboard pin above. A different but legitimate fix would leave these
+  // red; that is the safe direction (no false green), just don't be surprised.
+  // ------------------------------------------------------------------
+
+  /** The outermost element a presentation renders — what sits between the
+   *  incoming clip and the outgoing one beneath it at a cut. */
+  const rootOf = (container: HTMLElement) => container.firstElementChild as HTMLElement | null;
+
+  // DEFECT: scanline-glitch never touches opacity in EITHER direction — its
+  // base `<AbsoluteFill>{children}</AbsoluteFill>` is fully opaque at every
+  // progress, and the presentation does not branch on presentationDirection at
+  // all. So at a cut it is not a dissolve: the incoming clip is simply there
+  // from the transition's first frame, with a scanline shimmer over it, and
+  // the cut effectively lands `floor(frames/2)` frames early.
+  it.fails(
+    'KNOWN DEFECT: scanline-glitch does NOT hide its own children when ENTERING at progress 0 — see docs/superpowers/at-cut-transition-findings.md',
+    () => {
+      const p = presentationFor({ kind: 'scanline-glitch', frames: 15 } as TransitionRecord, DIMS)!;
+      const { container, unmount } = mount(p, 'entering', 0);
+      expect(rootOf(container)?.style.opacity).toBe('0');
+      unmount();
+    },
+  );
+
+  // DEFECT: wipe is a TWO-BEAT design — the exiting half slides a coloured
+  // sheet IN over the outgoing clip, the entering half slides it back OUT to
+  // reveal the incoming one — but both halves run SIMULTANEOUSLY over the same
+  // window (at a cut and under TransitionSeries alike), and the entering half
+  // is drawn on top. At progress 0 its sheet sits at translateX(0%), fully
+  // covering, so the whole frame flashes to the accent colour on the
+  // transition's first frame and the exiting half's sweep is never seen at
+  // all.
+  it.fails(
+    'KNOWN DEFECT: wipe’s ENTERING sheet already covers the frame at progress 0, hiding the outgoing clip — see docs/superpowers/at-cut-transition-findings.md',
+    () => {
+      const t = { kind: 'wipe', frames: 15, color: 'secondary', direction: 'left' } as TransitionRecord;
+      const p = presentationFor(t, { ...DIMS, palette: PALETTE })!;
+      const { container, unmount } = mount(p, 'entering', 0);
+      expect(rootOf(container)?.style.opacity).toBe('0');
+      unmount();
     },
   );
 });

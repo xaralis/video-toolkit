@@ -12,8 +12,10 @@ import React from 'react';
 import { Composition } from 'remotion';
 import { layeredCompositionProps } from '@video-toolkit/lib/render/layered-composition-props';
 import { MinimalReel } from './MinimalReel';
+import { TransitionProbeCompositions } from './TransitionMatrix';
 
 export const RemotionRoot: React.FC = () => (
+  <>
   <Composition
     // The composition's length is DERIVED FROM THE DATA, the way every real
     // template does it: `layeredCompositionProps` supplies a `calculateMetadata`
@@ -156,4 +158,8 @@ export const RemotionRoot: React.FC = () => (
       },
     }}
   />
+  {/* At-cut transition probes — one composition per catalog kind per direction.
+      Registration only; nothing here can change what MinimalReel renders. */}
+  <TransitionProbeCompositions />
+  </>
 );
