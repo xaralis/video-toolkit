@@ -20,8 +20,9 @@ LayeredReel (data)        CompositionTheme (look)
   tracks.music     ├──►  LayeredReelComposition  ──►  frames
   tracks.overlays  │        overlays / video    ← per-kind renderer registrations
   tracks.brand    ─┘        overlayItems        ← per-kind routing
+                            brand               ← per-kind brand-layer renderers
                             prepareVideoTrack
-                            renderBrandTrack
+                            renderBrandTrack    ← whole-track escape hatch
                             resolveAudioSource
 ```
 
@@ -222,11 +223,18 @@ exceed the 28s default.
 
 ```tsx
 import { mountEditorHost } from '@video-toolkit/lib/editor/host/mount';
+import { editorMetaFromTheme } from '@video-toolkit/lib/editor/app/editor-meta';
 import { MyBrandReel } from '../src/MyBrandReel';
 import { brandTheme } from '../src/config/brand-theme';
-import { editorMeta } from '../src/config/editor-meta';
 import { fps, width, height } from '../src/config/reel-config';
 import '../src/styles/global.css';
+
+// The theme's registrations ARE the editor vocabulary: every kind you
+// registered with `params` is editable, every effect type you registered is
+// addable. Declare each kind once, in the theme. The optional second argument
+// is an explicit EditorMeta that wins per field — for the things the theme has
+// no place for (`laneColors`, `overlayLabels`) or a host-only override.
+const editorMeta = editorMetaFromTheme(brandTheme);
 
 mountEditorHost({
   component: MyBrandReel,
@@ -244,6 +252,8 @@ That is the whole file. Only `component`, `projectName`, `fps`, `width` and
 stylesheet drops the last three lines and the CSS import.
 
 **`meta` and `accentSlots` must be module-level constants, never inline literals.**
+`editorMetaFromTheme` returns a fresh object per call, so call it once at module
+scope (as above) — never inline in the `mountEditorHost` argument.
 `LayeredTimeline` is memoized with a shallow compare and re-renders on every
 playhead frame; a fresh object each render defeats the memo and stutters playback.
 **`accentSlots` has no default** — omitting it means no palette in the accent
@@ -330,7 +340,15 @@ export const compositionTheme: CompositionTheme = {
   // Per-kind video renderer. clip/broll/photo already fall back to core's
   // SegmentMedia (trim, crop, focal point, grade, Ken Burns); card/outro/
   // multi-clip render ONLY when you register them.
-  video: { outro: { renderer: OutroSegment }, card: { renderer: CardSegment } },
+  // `params` declares a kind's editable fields ONCE, here. The editor derives
+  // its vocabulary from these registrations (editorMetaFromTheme), so a kind
+  // you register renders AND is editable — no second declaration to keep in
+  // sync. Declare `type` for any field the item may not carry yet; without it
+  // an absent field has nothing to be typed from and saves a string.
+  video: {
+    outro: { renderer: OutroSegment, params: [{ prop: 'style', options: ['organic', 'fade'] }] },
+    card: { renderer: CardSegment },
+  },
 
   // How a kind reaches the screen: 'track' (its own absolute Sequence, the
   // default) or 'anchored' (handed to the owning video renderer instead).
@@ -339,10 +357,50 @@ export const compositionTheme: CompositionTheme = {
     'stat-callout': { render: (item) => <StatCallout item={item} /> },
   },
 
-  // The whole brand layer as one node — you decide how many components that is.
-  renderBrandTrack: (items) => <PersistentOverlay items={items} />,
+  // The brand layer needs NO code: core dispatches tracks.brand by kind
+  // (watermark / disclaimer) through GenericWatermark / GenericDisclaimer,
+  // Sequencing each item over its OWN [startMs, endMs). Recolour with
+  // tokens.watermark / tokens.disclaimer; register a kind to replace one
+  // renderer; reach for renderBrandTrack ONLY when the whole track has to be
+  // one hand-written node (it wins outright and the default never runs).
+  brand: { watermark: { renderer: BrandMark } },
 };
 ```
+
+### Effects, and the reserved types
+
+An effect is a **wrapper**: it receives the media node and returns a decorated
+one. Register a type and it both renders and becomes addable in the editor's
+"+ Add effect":
+
+```tsx
+effects: { vintage: { renderer: VintageEffect, params: [{ prop: 'mode', options: ['film', 'vhs'] }] } },
+```
+
+Core already draws `grain`, `scanlines`, `vignette`, `grade` and `transform`
+generically; a type neither you nor core has is **silently skipped**, never
+thrown, so a typo'd effect leaves the reel rendering.
+
+**`ken-burns` is RESERVED and cannot be overridden on this axis.** It is not a
+wrapper — it composes into the media element's own transform inside
+`SegmentMedia`, alongside the crop. `applyEffects` therefore skips it *before*
+resolution, so writing `effects: { 'ken-burns': { renderer: MyKenBurns } }` does
+nothing: your renderer never runs, and (because the editor derives its catalog
+from the same reserved list) your `params` never appear in the inspector either.
+The silence is deliberate and symmetric — the editor shows exactly what will
+render — but it is silence, so it is worth knowing about before you spend an
+afternoon on it.
+
+**The escape is the video axis, not the effect axis.** A brand that wants its
+own Ken Burns registers a video renderer for the footage kinds, because the
+renderer that owns the media element is what owns its transform:
+
+```tsx
+video: { clip: { renderer: MyFootage }, broll: { renderer: MyFootage }, photo: { renderer: MyFootage } },
+```
+
+`RESERVED_EFFECT_TYPES` in `lib/theming/effects/index.ts` is the list, and it is
+consulted at both ends — render and edit.
 
 ### What core already does for you
 

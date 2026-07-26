@@ -12,8 +12,10 @@ import React from 'react';
 import { Composition } from 'remotion';
 import { layeredCompositionProps } from '@video-toolkit/lib/render/layered-composition-props';
 import { MinimalReel } from './MinimalReel';
+import { TransitionProbeCompositions } from './TransitionMatrix';
 
 export const RemotionRoot: React.FC = () => (
+  <>
   <Composition
     // The composition's length is DERIVED FROM THE DATA, the way every real
     // template does it: `layeredCompositionProps` supplies a `calculateMetadata`
@@ -36,7 +38,7 @@ export const RemotionRoot: React.FC = () => (
         // Every value in this literal is a literal: `readDefaultProps` (the
         // editor's reader) accepts only the JSON grammar, so an identifier or a
         // constant here would make the file unopenable.
-        meta: { topic: 'Minimal layered example', totalDurationMs: 6000 },
+        meta: { topic: 'Minimal layered example', totalDurationMs: 13500 },
         tracks: {
           // ---- video: what fills the frame, back to back -------------------
           // Two `photo` items. `photo`/`clip`/`broll` are the FOOTAGE kinds:
@@ -55,9 +57,23 @@ export const RemotionRoot: React.FC = () => (
               effects: [{ type: 'ken-burns', fromScale: 1.0, toScale: 1.14 }],
               // The transition is declared ONCE, by the item LEAVING the cut.
               // The next item borrows handle frames from this side
-              // automatically, so the wipe really plays across both clips
-              // instead of degrading to a fade. `color` names a brand ACCENT
-              // SLOT key, never a hex — core does not own the palette.
+              // automatically, so a transition really plays ACROSS both clips
+              // instead of degrading to a fade on one of them. `color` names a
+              // brand ACCENT SLOT key, never a hex — core does not own the
+              // palette.
+              //
+              // WHAT THIS ACTUALLY RENDERS TODAY, since a comment claiming
+              // otherwise is worse than none: `wipe` is a KNOWN DEFECT. Its
+              // entering sheet already covers the frame at progress 0, so the
+              // cut below reads as a hard flash to the accent colour rather
+              // than a sweep, and the outgoing clip's own half of the wipe is
+              // never seen. The handle-borrow machinery this comment describes
+              // is working correctly — the defect is in the presentation, and
+              // fixing it is an open look decision. Measured, with stills, in
+              // docs/superpowers/at-cut-transition-findings.md; pinned as an
+              // `it.fails` in lib/editor/src/at-cut-transitions.test.tsx.
+              // Left as-is deliberately: this literal is also the frame-45
+              // still gate's fixture.
               transitionOut: { kind: 'wipe', frames: 20, direction: 'left', color: 'accent' },
             },
             {
@@ -67,6 +83,43 @@ export const RemotionRoot: React.FC = () => (
               endMs: 6000,
               source: 'photos/dusk.jpg',
               effects: [{ type: 'ken-burns', direction: 'in' }],
+            },
+            // The three kinds core draws GENERICALLY without any brand
+            // renderer: multi-clip, card and outro. This theme registers no
+            // `video` renderers at all, so everything below is core's own —
+            // recoloured only through `tokens` in ./theme.tsx.
+            {
+              id: 'v-compare',
+              kind: 'multi-clip',
+              startMs: 6000,
+              endMs: 9000,
+              layout: 'split-h',
+              sources: [
+                { source: 'photos/dawn.jpg', sourceInMs: 0, sourceOutMs: 3000, label: 'DAWN' },
+                { source: 'photos/dusk.jpg', sourceInMs: 0, sourceOutMs: 3000, label: 'DUSK' },
+              ],
+            },
+            {
+              id: 'v-claim',
+              kind: 'card',
+              startMs: 9000,
+              endMs: 12000,
+              // `cardKind` is OPEN: core implements 'claim-plate' and draws
+              // background-only for any name it doesn't know, so a brand can
+              // name its own plates without core changing.
+              cardKind: 'claim-plate',
+              cardProps: { lines: ['One timeline.', 'Every kind', 'renders'] },
+              pattern: 'grid',
+            },
+            {
+              id: 'v-outro',
+              kind: 'outro',
+              startMs: 12000,
+              endMs: 13500,
+              // The generic outro is an ASSET outro: a muted video plus a
+              // separate audio file. A brand wanting a PROCEDURAL outro
+              // registers its own renderer instead.
+              props: { video: 'brand/outro.mp4', audio: 'brand/outro.mp3' },
             },
           ],
 
@@ -111,7 +164,7 @@ export const RemotionRoot: React.FC = () => (
               id: 'b-mark',
               kind: 'watermark',
               startMs: 0,
-              endMs: 6000,
+              endMs: 13500,
               props: { asset: 'brand/logo.png', corner: 'top-right', sizePx: 96, alpha: 0.85 },
             },
           ],
@@ -119,4 +172,8 @@ export const RemotionRoot: React.FC = () => (
       },
     }}
   />
+  {/* At-cut transition probes — one composition per catalog kind per direction.
+      Registration only; nothing here can change what MinimalReel renders. */}
+  <TransitionProbeCompositions />
+  </>
 );

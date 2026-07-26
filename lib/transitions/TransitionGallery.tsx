@@ -6,10 +6,8 @@
  * labeled clearly for easy comparison.
  *
  * Can be:
- * 1. Rendered as a showcase video
+ * 1. Rendered as a showcase video (see showcase/transitions, which imports this file)
  * 2. Used with @remotion/player for interactive preview
- *
- * Total duration: ~20 seconds at 30fps
  */
 import React from 'react';
 import { AbsoluteFill, useCurrentFrame, interpolate, Sequence } from 'remotion';
@@ -30,10 +28,37 @@ import { rgbSplit } from './presentations/rgb-split';
 import { zoomBlur } from './presentations/zoom-blur';
 import { lightLeak } from './presentations/light-leak';
 import { pixelate } from './presentations/pixelate';
+import { checkerboard } from './presentations/checkerboard';
 
 // Scene colors for visual variety
 const SCENE_A_COLOR = '#1a1a2e';
 const SCENE_B_COLOR = '#e94560';
+
+// Default scene lengths (frames) on either side of a transition
+const DEFAULT_SCENE_DURATION = 90;
+
+// Transition descriptions for context
+const TRANSITION_NOTES: Record<string, string> = {
+  'glitch()': 'Digital distortion with RGB shift',
+  'rgbSplit()': 'Chromatic aberration effect',
+  'zoomBlur()': 'Radial motion blur',
+  'lightLeak()': 'Cinematic lens flare',
+  'pixelate()': 'Mosaic dissolution',
+  'checkerboard()': 'Grid squares reveal',
+  'checkerboard(diagonal)': 'Diagonal wave pattern',
+  'checkerboard(alternating)': 'True checkerboard pattern',
+  'checkerboard(spiral)': 'Spiral from center',
+  'checkerboard(center-out)': 'Radial grid reveal',
+  'slide()': 'Push from direction',
+  'fade()': 'Simple crossfade',
+  'wipe()': 'Edge reveal',
+  'flip()': '3D card flip',
+};
+
+// The gallery labels transitions as `glitch()`; the programmatic transitionMap keys them as
+// `glitch`. Look up both spellings so a note shows either way.
+const noteFor = (label: string): string =>
+  TRANSITION_NOTES[label] ?? TRANSITION_NOTES[`${label}()`] ?? '';
 
 // Consistent scene component
 const GalleryScene: React.FC<{
@@ -46,22 +71,55 @@ const GalleryScene: React.FC<{
     extrapolateRight: 'clamp',
   });
 
+  const sceneName = isAfter ? 'Scene B' : 'Scene A';
+  const note = noteFor(label);
+
   return (
     <AbsoluteFill
       style={{
         backgroundColor: color,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        alignItems: 'center',
         fontFamily: "'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif",
       }}
     >
-      {/* Transition name label */}
+      {/* Background grid pattern for visual texture */}
       <div
         style={{
           position: 'absolute',
-          top: 60,
+          inset: 0,
+          backgroundImage: `
+            linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)
+          `,
+          backgroundSize: '50px 50px',
+        }}
+      />
+
+      {/* Corner markers to show scene boundaries */}
+      {['top-left', 'top-right', 'bottom-left', 'bottom-right'].map((corner) => (
+        <div
+          key={corner}
+          style={{
+            position: 'absolute',
+            width: 40,
+            height: 40,
+            borderColor: 'rgba(255,255,255,0.2)',
+            borderStyle: 'solid',
+            borderWidth: 0,
+            ...(corner.includes('top') ? { top: 30 } : { bottom: 30 }),
+            ...(corner.includes('left') ? { left: 30 } : { right: 30 }),
+            ...(corner.includes('top') && corner.includes('left') && { borderTopWidth: 2, borderLeftWidth: 2 }),
+            ...(corner.includes('top') && corner.includes('right') && { borderTopWidth: 2, borderRightWidth: 2 }),
+            ...(corner.includes('bottom') && corner.includes('left') && { borderBottomWidth: 2, borderLeftWidth: 2 }),
+            ...(corner.includes('bottom') && corner.includes('right') && { borderBottomWidth: 2, borderRightWidth: 2 }),
+          }}
+        />
+      ))}
+
+      {/* Transition name label - top center */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 50,
           left: 0,
           right: 0,
           textAlign: 'center',
@@ -70,12 +128,12 @@ const GalleryScene: React.FC<{
       >
         <span
           style={{
-            fontSize: 28,
-            fontWeight: 600,
+            fontSize: 32,
+            fontWeight: 700,
             color: 'white',
-            backgroundColor: 'rgba(0, 0, 0, 0.4)',
-            padding: '12px 32px',
-            borderRadius: 8,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            padding: '14px 40px',
+            borderRadius: 12,
             letterSpacing: '0.5px',
           }}
         >
@@ -83,29 +141,85 @@ const GalleryScene: React.FC<{
         </span>
       </div>
 
-      {/* Before/After indicator */}
-      <div
-        style={{
-          fontSize: 120,
-          fontWeight: 800,
-          color: 'rgba(255, 255, 255, 0.15)',
-          letterSpacing: '-4px',
-        }}
-      >
-        {isAfter ? 'B' : 'A'}
-      </div>
-
-      {/* Scene indicator */}
+      {/* Main scene indicator - center */}
       <div
         style={{
           position: 'absolute',
-          bottom: 60,
-          fontSize: 18,
-          color: 'rgba(255, 255, 255, 0.5)',
-          fontWeight: 500,
+          inset: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
         }}
       >
-        {isAfter ? 'After' : 'Before'}
+        {/* Large letter */}
+        <div
+          style={{
+            fontSize: 200,
+            fontWeight: 900,
+            color: 'rgba(255, 255, 255, 0.08)',
+            letterSpacing: '-8px',
+            lineHeight: 1,
+          }}
+        >
+          {isAfter ? 'B' : 'A'}
+        </div>
+
+        {/* Scene name */}
+        <div
+          style={{
+            fontSize: 48,
+            fontWeight: 700,
+            color: 'white',
+            marginTop: -20,
+            textTransform: 'uppercase',
+            letterSpacing: '8px',
+          }}
+        >
+          {sceneName}
+        </div>
+      </div>
+
+      {/* Transition description - bottom center */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 80,
+          left: 0,
+          right: 0,
+          textAlign: 'center',
+          opacity: labelOpacity * 0.7,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 20,
+            fontWeight: 400,
+            color: 'rgba(255, 255, 255, 0.6)',
+            fontStyle: 'italic',
+          }}
+        >
+          {note}
+        </span>
+      </div>
+
+      {/* Side label showing transition direction */}
+      <div
+        style={{
+          position: 'absolute',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          ...(isAfter ? { right: 40 } : { left: 40 }),
+          writingMode: 'vertical-rl',
+          textOrientation: 'mixed',
+          fontSize: 14,
+          fontWeight: 500,
+          color: 'rgba(255, 255, 255, 0.3)',
+          letterSpacing: '3px',
+          textTransform: 'uppercase',
+        }}
+      >
+        {isAfter ? 'Entering' : 'Exiting'}
       </div>
     </AbsoluteFill>
   );
@@ -115,29 +229,31 @@ const GalleryScene: React.FC<{
 function TransitionDemo<Props extends Record<string, unknown>>({
   name,
   presentation,
-  transitionDuration = 20,
+  transitionDuration = 45,
+  sceneADuration = DEFAULT_SCENE_DURATION,
+  sceneBDuration = DEFAULT_SCENE_DURATION,
 }: {
   name: string;
   presentation: TransitionPresentation<Props>;
   transitionDuration?: number;
+  sceneADuration?: number;
+  sceneBDuration?: number;
 }) {
-  const sceneDuration = 45; // 1.5 seconds per scene
-
   return (
     <TransitionSeries>
-      <TransitionSeries.Sequence durationInFrames={sceneDuration}>
+      <TransitionSeries.Sequence durationInFrames={sceneADuration}>
         <GalleryScene color={SCENE_A_COLOR} label={name} />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
         presentation={presentation}
         timing={linearTiming({ durationInFrames: transitionDuration })}
       />
-      <TransitionSeries.Sequence durationInFrames={sceneDuration}>
+      <TransitionSeries.Sequence durationInFrames={sceneBDuration}>
         <GalleryScene color={SCENE_B_COLOR} label={name} isAfter />
       </TransitionSeries.Sequence>
     </TransitionSeries>
   );
-};
+}
 
 // Intro slide
 const IntroSlide: React.FC = () => {
@@ -193,6 +309,8 @@ const IntroSlide: React.FC = () => {
 type TransitionEntry = {
   name: string;
   duration: number;
+  sceneA: number;
+  sceneB: number;
   render: (transitionDuration: number) => React.ReactElement;
 };
 
@@ -200,34 +318,51 @@ function makeTransitionEntry<Props extends Record<string, unknown>>(
   name: string,
   presentation: TransitionPresentation<Props>,
   duration: number,
+  scenes: { sceneA?: number; sceneB?: number } = {},
 ): TransitionEntry {
+  const sceneA = scenes.sceneA ?? DEFAULT_SCENE_DURATION;
+  const sceneB = scenes.sceneB ?? DEFAULT_SCENE_DURATION;
   return {
     name,
     duration,
+    sceneA,
+    sceneB,
     render: (transitionDuration) => (
-      <TransitionDemo name={name} presentation={presentation} transitionDuration={transitionDuration} />
+      <TransitionDemo
+        name={name}
+        presentation={presentation}
+        transitionDuration={transitionDuration}
+        sceneADuration={sceneA}
+        sceneBDuration={sceneB}
+      />
     ),
   };
 }
 
-// Define all transitions to showcase
+// Define all transitions to showcase.
+// Transition durations: 45 frames = 1.5s for most, longer for complex effects.
 const TRANSITIONS: TransitionEntry[] = [
-  makeTransitionEntry('glitch()', glitch({ intensity: 0.9 }), 25),
-  makeTransitionEntry('rgbSplit()', rgbSplit({ direction: 'horizontal' }), 25),
-  makeTransitionEntry('zoomBlur()', zoomBlur({ direction: 'in' }), 25),
-  makeTransitionEntry('lightLeak()', lightLeak({ temperature: 'warm' }), 35),
-  makeTransitionEntry('pixelate()', pixelate({ maxBlockSize: 50 }), 25),
-  makeTransitionEntry('slide()', slide(), 20),
-  makeTransitionEntry('fade()', fade(), 25),
-  makeTransitionEntry('wipe()', wipe(), 20),
-  makeTransitionEntry('flip()', flip(), 25),
+  makeTransitionEntry('glitch()', glitch({ intensity: 0.9 }), 45),
+  makeTransitionEntry('rgbSplit()', rgbSplit({ direction: 'horizontal' }), 45),
+  makeTransitionEntry('zoomBlur()', zoomBlur({ direction: 'in' }), 45),
+  makeTransitionEntry('lightLeak()', lightLeak({ temperature: 'warm' }), 60),
+  makeTransitionEntry('pixelate()', pixelate({ maxBlockSize: 50 }), 45),
+  makeTransitionEntry('checkerboard(diagonal)', checkerboard({ pattern: 'diagonal', gridSize: 8 }), 50),
+  makeTransitionEntry('checkerboard(alternating)', checkerboard({ pattern: 'alternating', gridSize: 8 }), 50),
+  makeTransitionEntry('checkerboard(spiral)', checkerboard({ pattern: 'spiral', gridSize: 10 }), 55),
+  makeTransitionEntry(
+    'checkerboard(center-out)',
+    checkerboard({ pattern: 'center-out', gridSize: 8, squareAnimation: 'scale' }),
+    50,
+  ),
+  makeTransitionEntry('slide()', slide(), 40),
+  makeTransitionEntry('fade()', fade(), 45),
+  makeTransitionEntry('wipe()', wipe(), 40),
+  makeTransitionEntry('flip()', flip(), 45),
 ];
 
-// Calculate segment duration (scene + transition + scene, minus overlap)
-const getSegmentDuration = (transitionDuration: number) => {
-  const sceneDuration = 45;
-  return sceneDuration * 2 - transitionDuration;
-};
+// Calculate segment duration (scene A + scene B - overlap from transition)
+const getSegmentDuration = (t: TransitionEntry) => t.sceneA + t.sceneB - t.duration;
 
 export const TransitionGallery: React.FC = () => {
   const introDuration = 60; // 2 seconds
@@ -236,7 +371,7 @@ export const TransitionGallery: React.FC = () => {
   const segments: { name: string; from: number; duration: number }[] = [];
 
   TRANSITIONS.forEach((t) => {
-    const duration = getSegmentDuration(t.duration);
+    const duration = getSegmentDuration(t);
     segments.push({ name: t.name, from: currentFrame, duration });
     currentFrame += duration;
   });
@@ -267,7 +402,7 @@ export const transitionGalleryConfig = {
   id: 'TransitionGallery',
   component: TransitionGallery,
   durationInFrames: 60 + TRANSITIONS.reduce(
-    (acc, t) => acc + getSegmentDuration(t.duration),
+    (acc, t) => acc + getSegmentDuration(t),
     0
   ),
   fps: 30,
@@ -306,15 +441,16 @@ function makeNamedTransitionEntry<Props extends Record<string, unknown>>(
 }
 
 export const transitionMap = {
-  glitch: makeNamedTransitionEntry(glitch({ intensity: 0.9 }), 25),
-  rgbSplit: makeNamedTransitionEntry(rgbSplit({ direction: 'horizontal' }), 25),
-  zoomBlur: makeNamedTransitionEntry(zoomBlur({ direction: 'in' }), 25),
-  lightLeak: makeNamedTransitionEntry(lightLeak({ temperature: 'warm' }), 35),
-  pixelate: makeNamedTransitionEntry(pixelate({ maxBlockSize: 50 }), 25),
-  slide: makeNamedTransitionEntry(slide(), 20),
-  fade: makeNamedTransitionEntry(fade(), 25),
-  wipe: makeNamedTransitionEntry(wipe(), 20),
-  flip: makeNamedTransitionEntry(flip(), 25),
+  glitch: makeNamedTransitionEntry(glitch({ intensity: 0.9 }), 45),
+  rgbSplit: makeNamedTransitionEntry(rgbSplit({ direction: 'horizontal' }), 45),
+  zoomBlur: makeNamedTransitionEntry(zoomBlur({ direction: 'in' }), 45),
+  lightLeak: makeNamedTransitionEntry(lightLeak({ temperature: 'warm' }), 60),
+  pixelate: makeNamedTransitionEntry(pixelate({ maxBlockSize: 50 }), 45),
+  checkerboard: makeNamedTransitionEntry(checkerboard({ pattern: 'diagonal', gridSize: 8 }), 50),
+  slide: makeNamedTransitionEntry(slide(), 40),
+  fade: makeNamedTransitionEntry(fade(), 45),
+  wipe: makeNamedTransitionEntry(wipe(), 40),
+  flip: makeNamedTransitionEntry(flip(), 45),
 } as const;
 
 export type TransitionName = keyof typeof transitionMap;

@@ -631,16 +631,66 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
             <AccentEditor value={content.text ?? ''} onChange={(next) => patchContent({ text: next })} colors={slots} multiline />
           </div>
         )}
-        {/* Overlay kinds that carry reveal/hide + font size (e.g. a stacked pull-quote). */}
-        {(content.reveal !== undefined || content.hide !== undefined || content.fontSize !== undefined) && (
-          <>
-            <Row>
-              <SelectField lbl="Reveal" value={content.reveal ?? 'line'} options={['line', 'all', 'none']} onChange={(s) => patchContent({ reveal: s })} />
-              <SelectField lbl="Hide" value={content.hide ?? 'fade'} options={['fade', 'none']} onChange={(s) => patchContent({ hide: s })} />
-            </Row>
-            <NumberField lbl="Font size" step={4} value={content.fontSize} onCommit={(n) => patchContent({ fontSize: Math.round(n) })} />
-          </>
-        )}
+        {/* The overlay's `content` bag, edited by TWO layers that ADD UP rather
+            than replace each other:
+              • core's own typed controls for the three content fields core
+                KNOWS — reveal/hide (real enums at render, see
+                OverlayRenderProps) and fontSize (steps in 4s) — shown, as they
+                always have been, whenever the item carries any of them;
+              • the kind's registration `params` (meta.overlayProps, derived
+                from the theme by editorMetaFromTheme) on top, so a brand's own
+                overlay kind is editable with no core UI knowing it.
+
+            Additive, NOT per-kind either/or. Declaring one param of a brand's
+            own must not drag reveal/hide/fontSize into the generic bag editor,
+            where they would be typed by value: reveal and hide would become
+            free-text inputs and `content` is `z.record(z.unknown())`, so
+            nothing would reject `reveal: "lien"` — the exact type-dirty write
+            declared fields exist to prevent.
+
+            A brand that declares one of the three BY NAME takes it over — core
+            steps aside for that field only and it renders below through the
+            brand's own declaration (options/type), which is the same
+            explicit-wins rule editorMetaFromTheme applies.
+
+            `text` is excluded from the declared params: it has the dedicated
+            accent-aware editor above, and a plain TextField for the same value
+            would be a second, accent-blind editor for it. */}
+        {(() => {
+          const declared = (meta?.overlayProps?.[content.kind ?? ''] ?? []).filter((f) => f.prop !== 'text');
+          const declaredProps = new Set(declared.map((f) => f.prop));
+          const bag = o.content as Record<string, unknown>;
+          const core = (['reveal', 'hide', 'fontSize'] as const).filter((k) => !declaredProps.has(k));
+          const showCore = core.some((k) => bag[k] !== undefined);
+          // Keys core renders above are dropped so ParamFields cannot show a
+          // second, value-typed control for the same field.
+          const { kind: _k, text: _t, ...values } = bag;
+          for (const k of core) delete values[k];
+          return (
+            <>
+              {showCore && (
+                <>
+                  {(core.includes('reveal') || core.includes('hide')) && (
+                    <Row>
+                      {core.includes('reveal') && (
+                        <SelectField lbl="Reveal" value={content.reveal ?? 'line'} options={['line', 'all', 'none']} onChange={(s) => patchContent({ reveal: s })} />
+                      )}
+                      {core.includes('hide') && (
+                        <SelectField lbl="Hide" value={content.hide ?? 'fade'} options={['fade', 'none']} onChange={(s) => patchContent({ hide: s })} />
+                      )}
+                    </Row>
+                  )}
+                  {core.includes('fontSize') && (
+                    <NumberField lbl="Font size" step={4} value={content.fontSize} onCommit={(n) => patchContent({ fontSize: Math.round(n) })} />
+                  )}
+                </>
+              )}
+              {/* Undeclared leftovers surface only once something IS declared —
+                  a kind with no declaration keeps exactly today's inspector. */}
+              {declared.length > 0 && <ParamFields values={values} fields={declared} onPatch={patchContent} />}
+            </>
+          );
+        })()}
         {o.position !== undefined && (
           <SelectField lbl="Position" value={o.position} options={OVERLAY_POSITIONS} onChange={(s) => patchItem('overlays', id, { position: s })} />
         )}

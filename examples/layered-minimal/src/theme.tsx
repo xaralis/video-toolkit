@@ -4,13 +4,12 @@
 //
 // Everything below is optional except `accentSlots` and `background`. Drop the
 // text renderer and core's `GenericTextOverlay` draws the overlays instead;
-// drop `renderBrandTrack` and the brand layer simply doesn't paint.
+// declare no brand-layer code at all (as this theme does) and core paints the
+// brand track itself, one Sequence per item, through its generics.
 import React from 'react';
 import type { CompositionTheme, OverlayRenderProps } from '@video-toolkit/lib/theming';
-import { GenericWatermark, paletteMap, placementGeometry, useOverlayEnvelope } from '@video-toolkit/lib/theming';
+import { paletteMap, placementGeometry, useOverlayEnvelope } from '@video-toolkit/lib/theming';
 import { parseAccents } from '@video-toolkit/lib/transcripts/accent-parser';
-import type { BrandLayerItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
-import type { WatermarkProps } from '@video-toolkit/lib/theming';
 
 // The brand's accent palette. The COUNT and the KEYS are the brand's to choose
 // — core never enumerates them. Anything that names a colour (accent markup in
@@ -57,18 +56,33 @@ const BrandText: React.FC<OverlayRenderProps> = ({ text, placement, fontSize = 7
 export const theme: CompositionTheme = {
   accentSlots: ACCENT_SLOTS,
   background: '#07090f',
+  // LOOK CONSTANTS for core's GENERIC renderers (multi-clip, card, outro — see
+  // lib/theming/tokens.ts). This is the whole reason a brand does not have to
+  // copy those three components to recolour them: registering nothing under
+  // `video` still renders them, and everything below is optional — delete this
+  // block and they render in core's neutral black-and-white defaults.
+  tokens: {
+    multiClip: {
+      borderColor: '#07090f',
+      label: { fontFamily: 'Helvetica, Arial, sans-serif', color: ACCENT_SLOTS[0].color, fontSize: 30 },
+      pip: { borderColor: ACCENT_SLOTS[0].color },
+      background: '#07090f',
+    },
+    card: {
+      background: '#07090f',
+      pattern: { color: ACCENT_SLOTS[1].color, accentColor: ACCENT_SLOTS[0].color, opacity: 0.25 },
+      text: { fontFamily: 'Helvetica, Arial, sans-serif', fontSize: 96, color: '#ffffff' },
+      // Opt-in flourish: core draws no endpoint unless a brand asks for one.
+      endpoint: { text: '.', color: ACCENT_SLOTS[0].color },
+    },
+  },
   // Per-kind renderer registration. Omit `overlays` entirely and every text
   // overlay falls back to core's GenericTextOverlay.
   overlays: { text: { renderer: BrandText } },
-  // The brand layer, rendered as one node — the brand decides how many
-  // components that is. `GenericWatermark` is core's ready-made corner logo.
-  renderBrandTrack: (items: BrandLayerItem[]) => (
-    <>
-      {items
-        .filter((item) => item.kind === 'watermark')
-        .map((item) => (
-          <GenericWatermark key={item.id} {...(item.props as WatermarkProps)} />
-        ))}
-    </>
-  ),
+  // The brand layer needs NO code at all: core dispatches reel.tracks.brand by
+  // kind (watermark / disclaimer) through GenericWatermark / GenericDisclaimer,
+  // Sequencing each item over its own [startMs, endMs). Recolour them with
+  // `tokens.watermark` / `tokens.disclaimer` above; register `brand: { … }` to
+  // replace one kind's renderer; keep `renderBrandTrack` only if the whole
+  // track has to be one hand-written node.
 };

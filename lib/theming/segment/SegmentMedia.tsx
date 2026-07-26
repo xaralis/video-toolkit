@@ -1,77 +1,36 @@
 // Explicit React import: files under lib/theming are transformed with the classic JSX runtime under the editor's Vitest config, so `React` must be in scope.
 import React from 'react';
-import { Img, OffthreadVideo, staticFile, useCurrentFrame, useVideoConfig, interpolate, Easing } from 'remotion';
+import { Img, OffthreadVideo, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { cropCoverStyle } from '../../reel-config-base/crop';
 import { gradeFilter, gradeNeedsWb, gradeWbMatrixValues } from '../../reel-config-base/grade';
 import type { Crop, Grade } from '../../reel-config-base/base-types';
 import type { VideoRenderProps } from '../types';
+import { kenBurnsStyle, findKenBurns, type KenBurnsEffect } from '../effects/ken-burns';
+import { resolveMediaSource, type MediaRole, type MediaSourceResolver } from '../media-source';
 
 const VIDEO_EXT_RE = /\.(mp4|mov|webm)$/i;
 
-function resolveSrc(source: string): string {
-  return source.startsWith('http') ? source : staticFile(source);
+/** `item.source` → a URL Remotion can load, through core's ONE media-path rule
+ *  (../media-source.ts) and then `staticFile`.
+ *
+ *  Both brands prefix BEFORE calling here (one's clip/broll renderers hand over
+ *  `recordings/…`/`broll/…`; the other's sources are full `media/…` paths), so
+ *  the rule's idempotence is what keeps them rendering byte-identically — it
+ *  sees a source that already contains a slash and returns it untouched. A
+ *  brand that hands over a BARE filename now gets the folder convention for
+ *  free instead of a
+ *  broken path. Resolution happens HERE, at render time: `item.source` is never
+ *  written back, because `loadTranscriptSync` derives the caption sidecar from
+ *  the bare name. */
+function resolveSrc(source: string, role: MediaRole, override?: MediaSourceResolver): string {
+  const path = (override ?? resolveMediaSource)(source, role);
+  return path.startsWith('http') ? path : staticFile(path);
 }
 
-// Ken Burns effect params, as found on a VideoItem's `effects` array (permissive
-// passthrough per EffectSchema). Two shapes are supported, mirroring the two
-// per-brand originals this primitive unifies:
-//  - roost's `direction` shorthand (KenBurnsPhoto.tsx)
-//  - campaign's explicit from/to fields (PhotoSegment.tsx / BrollSegment.tsx)
-interface KenBurnsEffect {
-  type: 'ken-burns';
-  direction?: 'in' | 'left' | 'up';
-  fromScale?: number;
-  toScale?: number;
-  fromX?: number;
-  toX?: number;
-  fromY?: number;
-  toY?: number;
-}
-
-function findKenBurns(effects: Array<{ type: string }> | undefined): KenBurnsEffect | undefined {
-  return effects?.find((e): e is KenBurnsEffect => e.type === 'ken-burns');
-}
-
-// Ken Burns transform for the current frame.
-//  - `direction` shorthand: replicates KenBurnsPhoto's exact math — scale
-//    1.08 + p*(in?0.12:0.06), translate up to -60px for left/up. Pure
-//    transform, no objectPosition opinion (composes with a static crop).
-//  - explicit from/to shorthand: replicates BrollSegment/PhotoSegment's eased
-//    pan+zoom across normalized focal points (falling back to the item's own
-//    focalX/focalY as the pan base when a from/to endpoint is omitted). This
-//    shape drives its own objectPosition/transformOrigin because the pan
-//    point is itself animated — a moving pan point supersedes the crop's
-//    fixed one — but the SCALE still composes with the crop's zoom below (via
-//    transform string concatenation), so a brand can crop-zoom AND ken-burns
-//    zoom at once.
-function kenBurnsStyle(
-  kb: KenBurnsEffect,
-  frame: number,
-  durationInFrames: number,
-  focalX: number | undefined,
-  focalY: number | undefined,
-): { transform: string; objectPosition?: string; transformOrigin?: string } {
-  if (kb.direction) {
-    const p = interpolate(frame, [0, Math.max(1, durationInFrames)], [0, 1], { extrapolateRight: 'clamp' });
-    const scale = 1.08 + p * (kb.direction === 'in' ? 0.12 : 0.06);
-    const x = kb.direction === 'left' ? interpolate(p, [0, 1], [0, -60]) : 0;
-    const y = kb.direction === 'up' ? interpolate(p, [0, 1], [0, -60]) : 0;
-    return { transform: `scale(${scale}) translate(${x}px, ${y}px)` };
-  }
-  const e = interpolate(frame, [0, Math.max(1, durationInFrames - 1)], [0, 1], {
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-    easing: Easing.inOut(Easing.ease),
-  });
-  const lerp = (a: number, b: number) => a + (b - a) * e;
-  const baseX = focalX ?? 0.5;
-  const baseY = focalY ?? 0.5;
-  const x = lerp(kb.fromX ?? baseX, kb.toX ?? baseX);
-  const y = lerp(kb.fromY ?? baseY, kb.toY ?? baseY);
-  const scale = lerp(kb.fromScale ?? 1, kb.toScale ?? 1);
-  const pos = `${x * 100}% ${y * 100}%`;
-  return { transform: `scale(${scale})`, objectPosition: pos, transformOrigin: pos };
-}
+// Ken Burns lives in ../effects/ken-burns.ts as of Phase 3 Task 2 (its math is
+// pinned there by a parity test). Re-exported so existing importers of this
+// module keep working.
+export { kenBurnsStyle, findKenBurns, type KenBurnsEffect };
 
 /** Brand-agnostic mechanics for rendering a footage VideoItem (clip/broll/photo):
  *  element choice (Img vs OffthreadVideo, incl. video-as-photo by extension),
@@ -79,13 +38,14 @@ function kenBurnsStyle(
  *  brands' clip/broll/photo renderers compose around — vintage, paper-frame,
  *  and overlays are brand wrappers rendered AROUND this, not part of it.
  *  multi-clip/card/outro items render nothing here (out of scope). */
-export const SegmentMedia: React.FC<VideoRenderProps> = ({ item, handles }) => {
+export const SegmentMedia: React.FC<VideoRenderProps> = ({ item, handles, resolveMediaSource: override }) => {
   const { fps } = useVideoConfig();
   const frame = useCurrentFrame();
 
   if (item.kind !== 'clip' && item.kind !== 'broll' && item.kind !== 'photo') return null;
 
-  const src = resolveSrc(item.source);
+  // `item.kind` maps 1:1 onto MediaRole for the three footage kinds.
+  const src = resolveSrc(item.source, item.kind, override);
   const useImg = item.kind === 'photo' && !VIDEO_EXT_RE.test(item.source);
 
   // On-screen span for this item, extended by the handles borrowed at each

@@ -1,6 +1,12 @@
 import type React from 'react';
+import type { Registration, Registry } from './registry';
+// Type-only import — erased at runtime, so this does NOT create a module cycle
+// with effects/index.ts (which imports BrandTheme back, also type-only).
+import type { EffectRenderProps } from './effects';
 import type { AccentSlot } from './palette';
+import type { ThemeTokens } from './tokens';
 import type { Placement } from './placement';
+import type { MediaSourceResolver } from './media-source';
 import type { VideoItem, AudioItem, OverlayItem, BrandLayerItem } from '../reel-config-base/layered-schema';
 
 /** The static prop bag every text-overlay renderer receives. Frame-derived
@@ -25,27 +31,53 @@ export interface OverlayRenderProps {
 
 export type OverlayRenderer = React.FC<OverlayRenderProps>;
 
-/** Overlay kinds that flow through the theming module. Widened as kinds adopt it. */
-export type OverlayKind = 'text';
+/** Overlay kinds are OPEN — a brand names them, core never enumerates them.
+ *  Core knows routing MODES and the handful of kinds it can draw itself. */
+export type OverlayKind = string;
 
-/** One kind's brand registration: its custom renderer + opaque brand config. */
-export interface OverlayRegistration {
-  renderer: OverlayRenderer;
-  config?: unknown;
-}
+/** The overlay kinds core has a generic renderer for ('quote-pull' is the
+ *  legacy alias of 'text'). Everything else draws only if a brand registers it. */
+export type CoreOverlayKind = 'text';
 
 /** The theming contract a brand's theme object satisfies. */
 export interface BrandTheme {
   accentSlots: readonly AccentSlot[];
-  /** Per-kind brand-custom renderer + config. Absent kind → core generic. */
-  overlays?: Partial<Record<OverlayKind, OverlayRegistration>>;
+  /** ONE open-keyed overlay registry. Absent kind → core generic (text) → null.
+   *
+   *  Caveat on which field draws what: at item level core honours `render`
+   *  (the escape hatch) for ANY kind, but `renderer` — which takes
+   *  OverlayRenderProps — is consumed only through the core text adapter, i.e.
+   *  for the core kinds 'text' and its legacy alias 'quote-pull'. A `renderer`
+   *  on a non-core kind (`{ chevron: { renderer: X } }`) is therefore ignored;
+   *  register such kinds with `render`. */
+  overlays?: Record<OverlayKind, OverlayItemRegistration>;
   /** Per-kind brand-custom video renderer + config. Absent kind → core generic. */
   video?: Partial<Record<VideoKind, VideoRegistration>>;
+  /** ONE open-keyed effect registry. Effect types are OPEN — a brand names
+   *  them, core never enumerates them. Absent type → core generic primitive
+   *  (grain/scanlines/vignette/grade/transform) → silently skipped. */
+  effects?: Registry<EffectRenderProps>;
+  /** ONE open-keyed brand-layer registry (watermark / disclaimer / whatever a
+   *  brand names). Absent kind → core generic (GenericWatermark /
+   *  GenericDisclaimer) → silently skipped. Consumed by
+   *  `defaultRenderBrandTrack`; the whole-track escape hatch
+   *  {@link CompositionTheme.renderBrandTrack} still wins over it entirely. */
+  brand?: Registry<BrandRenderProps>;
+  /** Look constants for core's GENERIC renderers (see ./tokens.ts). Every
+   *  field is optional with a neutral core default, so omitting `tokens`
+   *  entirely still renders. This is how a brand re-colours a generic instead
+   *  of copy-pasting it into its own renderer. */
+  tokens?: ThemeTokens;
 }
 
-/** All video-track item kinds. Footage kinds have a core generic renderer
- *  (SegmentMedia); the rest render only when the brand registers them. */
+/** All video-track item kinds. EVERY kind now has a core generic renderer
+ *  (footage kinds → SegmentMedia; multi-clip/card/outro → the generics in
+ *  ./generic), so a brand that registers nothing still renders a whole reel. */
 export type VideoKind = 'clip' | 'broll' | 'photo' | 'multi-clip' | 'card' | 'outro';
+/** @deprecated The footage/non-footage split existed only because footage
+ *  kinds were the ones with a generic beneath them. Since Phase 3 Task 3 every
+ *  kind has one, so `resolveVideoRenderer` no longer distinguishes them. Kept
+ *  as an alias so existing brand imports keep compiling. */
 export type FootageVideoKind = 'clip' | 'broll' | 'photo';
 
 /** The static prop bag every video renderer receives. Frame-derived values
@@ -65,14 +97,64 @@ export interface VideoRenderProps {
    *  audio-track item on the audio track — a renderer must NOT mount this as an
    *  <Audio> itself, or the voice double-plays. */
   boundAudio?: AudioItem;
+  /** The theme's look constants for core's generic renderers (see ./tokens.ts).
+   *  Core-supplied — `renderVideoItemNode` threads `theme.tokens` through here.
+   *  Deliberately this ONE narrow typed field rather than the theme itself:
+   *  VideoRenderProps still carries no CompositionTheme. */
+  tokens?: ThemeTokens;
+  /** The theme's wholesale media-path override, threaded by
+   *  `renderVideoItemNode` the same narrow way `tokens` is. Absent → the
+   *  renderer falls back to core's `resolveMediaSource` (./media-source.ts).
+   *  A renderer must apply this at render time only — never write the result
+   *  back onto `item.source`, which captions are derived from. */
+  resolveMediaSource?: MediaSourceResolver;
 }
 
 export type VideoRenderer = React.FC<VideoRenderProps>;
 
-/** One kind's brand registration: its custom renderer + opaque brand config. */
-export interface VideoRegistration {
-  renderer: VideoRenderer;
+/** One video kind's registration. Built on the shared `Registration`
+ *  primitive, so this axis resolves through `resolveRegistered` like the
+ *  overlay and effect axes do — and, like them, a registration with NO
+ *  `renderer` contributes `config`/`params` only and does not mask the core
+ *  generic for that kind.
+ *
+ *  Like `Registration`, deliberately NOT open with an index signature: a
+ *  typo'd `renderer` must not compile clean and silently drop the brand's
+ *  renderer into the core generic. */
+export interface VideoRegistration extends Registration<VideoRenderProps> {
+  renderer?: VideoRenderer;
+}
+
+/** The static prop bag every brand-layer renderer receives. Mirrors
+ *  VideoRenderProps: the raw item, the brand's opaque per-kind config, and the
+ *  theme's typed look constants — deliberately NOT the theme itself. */
+export interface BrandRenderProps {
+  item: BrandLayerItem;
+  /** Opaque brand-level config threaded down from the theme's registration. */
   config?: unknown;
+  /** The theme's look constants for core's generic brand renderers
+   *  (see ./tokens.ts). Core-supplied by `defaultRenderBrandTrack`. */
+  tokens?: ThemeTokens;
+}
+
+export type BrandRenderer = React.FC<BrandRenderProps>;
+
+/** Brand-layer kinds are OPEN, like overlay kinds and effect types — the
+ *  schema names two today ('watermark' | 'disclaimer'), and core has a generic
+ *  for exactly those two. A brand may register more. */
+export type BrandKind = string;
+
+/** One brand-layer kind's registration. Built on the shared `Registration`
+ *  primitive, so this axis resolves through `resolveRegistered` like the
+ *  overlay, video and effect axes do — and, like them, a registration with NO
+ *  `renderer` contributes `config`/`params` only and does NOT mask the core
+ *  generic for that kind.
+ *
+ *  Like `Registration`, deliberately NOT open with an index signature: a
+ *  typo'd `renderer` must not compile clean and silently drop the brand's
+ *  renderer into the core generic. */
+export interface BrandRegistration extends Registration<BrandRenderProps> {
+  renderer?: BrandRenderer;
 }
 
 /** How an overlay kind reaches the screen. 'track' (default): one absolute
@@ -81,25 +163,73 @@ export interface VideoRegistration {
  *  instead (items without anchorVideoId fall back to track). */
 export type OverlayRouting = 'track' | 'anchored';
 
-export interface OverlayItemRegistration {
+/** One overlay kind's registration. `renderer`/`config`/`params` come from the
+ *  shared Registration primitive; `routing` and `render` are this axis's own.
+ *  A registration with NO renderer and NO render contributes routing/config
+ *  only — it does not mask a core generic for a kind core can draw. */
+export interface OverlayItemRegistration extends Registration<OverlayRenderProps> {
   routing?: OverlayRouting;
-  /** Item-based renderer. Optional for 'anchored' (the video body renders it)
-   *  and for the 'text'/'quote-pull' kinds (core text adapter is the default). */
+  /** Item-level escape hatch: full control over the node, bypassing
+   *  OverlayRenderProps. Wins over `renderer` when both are present. */
   render?: (item: OverlayItem) => React.ReactNode;
 }
+
+/** @deprecated Use {@link OverlayItemRegistration} — the two overlay
+ *  registries collapsed into one in Phase 3 Task 1. Kept as an alias so
+ *  existing brand imports keep compiling. */
+export type OverlayRegistration = OverlayItemRegistration;
 
 /** The full composition contract a brand hands to LayeredReelComposition. */
 export interface CompositionTheme extends BrandTheme {
   /** Root AbsoluteFill background. */
   background: string;
-  /** Per-overlay-kind routing + renderer, any kind (core knows modes, not names). */
-  overlayItems?: Record<string, OverlayItemRegistration>;
+  /** @deprecated The composition tier of what is now ONE registry. It still
+   *  works — it merges over {@link BrandTheme.overlays}, winning per kind — but
+   *  new registrations belong on `overlays`. Phase 3 Task 11 writes the
+   *  migration that collapses this away. */
+  overlayItems?: Record<OverlayKind, OverlayItemRegistration>;
   /** Pre-pass over the video track before buildVideoNodes (e.g. brand-owned
    *  transition asset injection). */
   prepareVideoTrack?: (items: VideoItem[]) => VideoItem[];
-  /** Renders the whole brand track (watermark/disclaimer) — one hook, the
-   *  brand decides how many components that is. */
+  /** WHOLE-TRACK escape hatch for the brand layer. When present it wins
+   *  outright and core's `defaultRenderBrandTrack` never runs — that is what
+   *  keeps a brand that mounts ONE component for several items (or spans every
+   *  item from 0) working unchanged.
+   *
+   *  Prefer {@link BrandTheme.brand}: registering per kind gets core's
+   *  Sequencing, config threading and token plumbing for free, and each item
+   *  then spans its OWN [startMs, endMs) — which is NOT what a track written
+   *  against this hook necessarily does. */
   renderBrandTrack?: (items: BrandLayerItem[]) => React.ReactNode;
-  /** Override the audio-source folder convention (default: recordings/). */
+  /** @deprecated Superseded by {@link CompositionTheme.resolveMediaSource},
+   *  which covers the video and brand tracks too. Still honoured and still
+   *  WINS over `resolveMediaSource` on the audio track when present, because a
+   *  brand (campaign-reels) registers one — dropping it would silently change
+   *  its audio paths. New brands should register `resolveMediaSource` instead. */
   resolveAudioSource?: (raw: string) => string;
+  /** Wholesale override of core's ONE media-path rule (./media-source.ts).
+   *  Absent → `resolveMediaSource` from ./media-source.
+   *
+   *  WHICH ROLES ACTUALLY HONOUR IT, precisely — `MediaRole` names six
+   *  ('clip' | 'broll' | 'photo' | 'audio' | 'music' | 'brand'), but the axes
+   *  that thread the override are not all of them:
+   *  - **video track** — yes. `layered-composition.tsx:96` passes it as
+   *    `VideoRenderProps.resolveMediaSource`, so `SegmentMedia` (clip/broll/
+   *    photo), `GenericMultiClip` and `GenericOutro` all honour it. Outro
+   *    assets resolve under role `'brand'`, so brand-role assets ON THIS AXIS
+   *    are covered.
+   *  - **audio and music** — yes (`layered-composition.tsx:132,168`), with
+   *    the deprecated `resolveAudioSource` still winning on audio.
+   *  - **brand LAYER track** — **no.** `BrandRenderProps` carries no resolver
+   *    field, so `defaultRenderBrandTrack` has nothing to thread and
+   *    `GenericWatermark` resolves through core's rule unconditionally (its
+   *    own comment says so). A brand needing a different watermark path
+   *    registers its own brand-layer renderer. Threading it here would be a
+   *    routing decision — whether a brand-layer override is even the same
+   *    override — not a mechanical change, so it is left open deliberately.
+   *
+   *  Like the default, it must resolve at RENDER TIME and never write back
+   *  onto the item: `loadTranscriptSync` derives the caption sidecar path from
+   *  the BARE source. */
+  resolveMediaSource?: MediaSourceResolver;
 }

@@ -109,4 +109,70 @@ describe('SegmentMedia', () => {
     expect(style.transform).toBe('scale(2)');
     expect(style.transformOrigin).toBe('30% 70%');
   });
+
+  // ---- media-path resolution (Phase 3 Task 6) --------------------------------
+  // SegmentMedia now runs item.source through core's ONE media-path rule
+  // (lib/theming/media-source.ts) before staticFile. These pin that BOTH
+  // brands keep resolving to exactly the byte-identical path they did before,
+  // which is the whole safety argument for adopting roost's rule.
+  describe('media-path resolution', () => {
+    const srcOf = (item: any) => {
+      captured.video.length = 0;
+      captured.img.length = 0;
+      render(<SegmentMedia item={item} handles={{ inHalf: 0, outHalf: 0 }} />);
+      return (captured.video[0] ?? captured.img[0]).src;
+    };
+    const clip = (source: string) => ({ id: 'c', kind: 'clip', startMs: 0, endMs: 1000, source, sourceInMs: 0, sourceOutMs: 1000 });
+
+    // PP's clip/broll renderers build a SHALLOW-CLONED item whose source is
+    // already prefixed (`{ ...item, source: \`recordings/${item.source}\` }`)
+    // and hand THAT to SegmentMedia. The rule's idempotence is what keeps that
+    // working unchanged — a second `recordings/` prefix would 404 every clip.
+    it('leaves PP\'s already-prefixed shallow-cloned source alone (idempotent)', () => {
+      const raw = { id: 'c', kind: 'clip', startMs: 0, endMs: 1000, source: 'seg02.MP4', sourceInMs: 0, sourceOutMs: 1000 };
+      const ppShape = { ...raw, source: `recordings/${raw.source}` };
+      expect(srcOf(ppShape)).toBe('recordings/seg02.MP4');
+      // ... and the ORIGINAL item is untouched: loadTranscriptSync derives
+      // `recordings/<source>.transcript.json` from the BARE name.
+      expect(raw.source).toBe('seg02.MP4');
+    });
+
+    it("leaves roost's media/… source alone for every footage kind", () => {
+      expect(srcOf(clip('media/VIDEO-2026.mp4'))).toBe('media/VIDEO-2026.mp4');
+      expect(
+        srcOf({ id: 'b', kind: 'broll', startMs: 0, endMs: 1000, source: 'media/VIDEO-2026.mp4', sourceInMs: 0, sourceOutMs: 1000 }),
+      ).toBe('media/VIDEO-2026.mp4');
+      expect(srcOf({ id: 'p', kind: 'photo', startMs: 0, endMs: 1000, source: 'media/PHOTO-2026.jpg' })).toBe(
+        'media/PHOTO-2026.jpg',
+      );
+    });
+
+    // The genuinely NEW capability: a BARE filename now gets the role's folder
+    // instead of being handed to staticFile as-is (which resolved to a
+    // nonexistent public/seg02.MP4). Mutating the resolveSrc call to pass the
+    // source through unchanged turns exactly these three red.
+    it('prefixes a bare filename by the item kind', () => {
+      expect(srcOf(clip('seg02.MP4'))).toBe('recordings/seg02.MP4');
+      expect(
+        srcOf({ id: 'b', kind: 'broll', startMs: 0, endMs: 1000, source: 'street.mp4', sourceInMs: 0, sourceOutMs: 1000 }),
+      ).toBe('broll/street.mp4');
+      // photo has no folder in either brand — bare stays bare.
+      expect(srcOf({ id: 'p', kind: 'photo', startMs: 0, endMs: 1000, source: 'skyline.jpg' })).toBe('skyline.jpg');
+    });
+
+    it('passes an http source through without staticFile', () => {
+      expect(srcOf(clip('https://cdn/x.mp4'))).toBe('https://cdn/x.mp4');
+    });
+
+    it("honours a brand's wholesale resolveMediaSource override", () => {
+      render(
+        <SegmentMedia
+          item={clip('seg02.MP4') as any}
+          handles={{ inHalf: 0, outHalf: 0 }}
+          resolveMediaSource={(raw, role) => `cdn/${role}/${raw}`}
+        />,
+      );
+      expect(captured.video[0].src).toBe('cdn/clip/seg02.MP4');
+    });
+  });
 });

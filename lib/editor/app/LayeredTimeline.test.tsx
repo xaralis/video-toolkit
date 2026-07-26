@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
-import { LayeredTimeline, colorFor, timelineLabel } from './LayeredTimeline';
+import { LayeredTimeline, colorFor, timelineLabel, audioUrl, videoUrl } from './LayeredTimeline';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
 const reel: LayeredReel = {
@@ -85,5 +85,39 @@ describe('LayeredTimeline lane colours', () => {
     const meta = { laneColors: { 'overlay-stat-callout': '#123456', 'video-clip': '#654321' } };
     expect(colorFor('overlay-stat-callout', meta)).toBe('#123456');
     expect(colorFor('video-clip', meta)).toBe('#654321');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 6: the timeline's media URLs. These two helpers were the THIRD
+// hardcoded copy of the media-path convention (after PP's resolveAudioSource
+// and roost's resolveVideoSource) and the one nobody was testing. They now run
+// core's ONE rule (lib/theming/media-source.ts) and only differ from the
+// renderers in serving `/…` dev-server URLs instead of staticFile paths.
+// ---------------------------------------------------------------------------
+
+describe('LayeredTimeline media URLs', () => {
+  it('prefixes a PP-shaped bare filename by role', () => {
+    expect(audioUrl('vo-01.mp3')).toBe('/recordings/vo-01.mp3');
+    expect(videoUrl({ kind: 'clip', source: 'seg02.MP4' })).toBe('/recordings/seg02.MP4');
+    // broll's folder differs from clip's — the role, not just "prefix", matters.
+    expect(videoUrl({ kind: 'broll', source: 'street.mp4' })).toBe('/broll/street.mp4');
+  });
+
+  it('serves a roost-shaped media/… source as-is', () => {
+    expect(videoUrl({ kind: 'clip', source: 'media/VIDEO-2026.mp4' })).toBe('/media/VIDEO-2026.mp4');
+    expect(videoUrl({ kind: 'broll', source: 'media/VIDEO-2026.mp4' })).toBe('/media/VIDEO-2026.mp4');
+    expect(audioUrl('audio/boj.wav')).toBe('/audio/boj.wav');
+  });
+
+  it('leaves an already-prefixed source alone (idempotent, as the renderers do)', () => {
+    expect(videoUrl({ kind: 'clip', source: 'recordings/seg02.MP4' })).toBe('/recordings/seg02.MP4');
+    expect(videoUrl({ kind: 'broll', source: 'broll/street.mp4' })).toBe('/broll/street.mp4');
+  });
+
+  it('returns null for kinds with no decodable single source', () => {
+    expect(videoUrl({ kind: 'photo', source: 'a.jpg' })).toBeNull();
+    expect(videoUrl({ kind: 'card' })).toBeNull();
+    expect(videoUrl({ kind: 'clip' })).toBeNull();
   });
 });

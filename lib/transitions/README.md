@@ -261,7 +261,7 @@ Opens Remotion Studio with a visual gallery showing each transition as Scene A â
 Add the gallery to your own project's Root.tsx:
 
 ```tsx
-import { TransitionGallery, transitionGalleryConfig } from '@video-toolkit/lib/transitions';
+import { TransitionGallery, transitionGalleryConfig } from '@video-toolkit/lib/transitions/TransitionGallery';
 
 // Register in Root.tsx
 <Composition
@@ -276,12 +276,17 @@ import { TransitionGallery, transitionGalleryConfig } from '@video-toolkit/lib/t
 
 Then run `npm run studio` and select "TransitionGallery" to preview all transitions.
 
+The gallery lives in `lib/` and imports `@remotion/transitions` at runtime, so the consuming
+project's `remotion.config.ts` must set `resolve.modules` to include its own `node_modules`
+(see `showcase/transitions/remotion.config.ts`) â€” webpack's upward walk from a `lib/` file
+never reaches it otherwise.
+
 ### Single Transition Preview
 
 For interactive previews (e.g., with `@remotion/player`):
 
 ```tsx
-import { SingleTransitionPreview, transitionMap } from '@video-toolkit/lib/transitions';
+import { SingleTransitionPreview, transitionMap } from '@video-toolkit/lib/transitions/TransitionGallery';
 
 // Preview a specific transition
 <SingleTransitionPreview transitionName="glitch" />

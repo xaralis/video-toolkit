@@ -38,18 +38,41 @@ structure.
 
 ## Template sync (vendored src)
 
-Projects **vendor** their template's `src/` — a project is a self-contained snapshot, so a later
-toolkit upgrade can't break a finished render. To pull a template fix into an **in-progress** project:
+Projects **vendor** their template — a project is a self-contained snapshot, so a later toolkit
+upgrade can't break a finished render. To pull a template fix into an **in-progress** project:
 
 ```bash
 python3 -m video_toolkit.sync_template <project> --dry-run          # preview (writes nothing)
 python3 -m video_toolkit.sync_template <project>                    # sync
 python3 -m video_toolkit.sync_template <project> --template <name>  # if project.json has no `template`
-python3 -m video_toolkit.sync_template <project> --strict           # also delete files the template dropped
+python3 -m video_toolkit.sync_template <project> --strict           # also delete mirrored files the template dropped
+python3 -m video_toolkit.sync_template <project> --src-only         # legacy: mirror src/ only
+python3 -m video_toolkit.sync_template <project> --force            # DESTRUCTIVE: overwrite authored files
 ```
 
-`src/Root.tsx` and `src/config/demo.config.json` are **project-owned and never written** (they are
-the project's actual cut) — reported as `preserved`. Compares by content hash; idempotent.
+**It never overwrites or deletes a file it can't prove it placed.** A provenance manifest
+(`.template-sync.json` in the project) records the hash of what the tool wrote at each path. A file
+that differs from that record — or has no record — is treated as project-authored, reported
+`PROTECTED`, and left alone. Path-based protection cannot do this: `pp-mov-koalice`'s
+`src/segments/OutroSegment.tsx` is 83 lines of client work at the exact path where the template
+ships a 10-line default. Legacy projects self-bootstrap (files already identical to the template get
+recorded on the first run), so `--force` stays rare — it is the only way to lose content, and it can.
+
+Carries `src/`, `.editor/` (the reel editor) and the build config (`remotion.config.ts`,
+`vitest.config.ts`, `tsconfig.json`, `tailwind.config.ts`, `.prettierrc.json` — a file the template
+doesn't ship is skipped); **merges** `package.json` — `dependencies`/`devDependencies` and any
+script the project lacks come from the template (a version mismatch resolves to the template's),
+while `name`, `version` and existing scripts are the project's and are never written. Every merged
+key is reported as `pkg add` / `pkg update` / `pkg keep`; run `npm install` after any.
+
+`--strict` deletes from **every mirrored tree, `.editor/` included**, but only files the manifest
+says the tool placed and the project hasn't touched — authored trees like `src/lib/` or
+`src/graphics/` are reported `PROTECTED` and kept. It never touches the project root or removes a
+dependency, and `--dry-run` lists every `removed` file first.
+
+`src/Root.tsx` and `src/config/demo.config.json` are additionally **project-owned by name and never
+written** (they are the project's actual cut) — reported as `preserved`, and they survive `--force`.
+Compares by content hash; idempotent.
 **Never run it on a finished project.** See `/toolkit:sync-template` for the full workflow.
 
 Brand assets have the same snapshot model — mirrored by copy, not linked:

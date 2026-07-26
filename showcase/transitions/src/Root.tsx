@@ -1,5 +1,8 @@
 import { Composition } from 'remotion';
-import { TransitionGallery, transitionGalleryConfig } from './TransitionGallery';
+import {
+  TransitionGallery,
+  transitionGalleryConfig,
+} from '@video-toolkit/lib/transitions/TransitionGallery';
 
 export const RemotionRoot: React.FC = () => {
   return (

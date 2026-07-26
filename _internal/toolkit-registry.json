@@ -658,12 +658,12 @@
       "updated": "2026-07-12"
     },
     "sync_template": {
-      "path": "tools/sync_template.py",
-      "description": "Mirror a template's src into a project, preserving project-owned Root.tsx + demo.config.json",
+      "path": "video_toolkit/sync_template.py",
+      "description": "Mirror a template's vendored surface (src/, .editor/, build config) into a project and merge its package.json. Never overwrites or deletes a file it cannot prove it placed — a .template-sync.json provenance manifest protects project-authored work; --force is the only way to lose content",
       "status": "stable",
       "created": "2026-07-15",
-      "updated": "2026-07-15",
-      "usage": "python3 tools/sync_template.py <project> [--template NAME] [--dry-run] [--strict]"
+      "updated": "2026-07-26",
+      "usage": "python3 -m video_toolkit.sync_template <project> [--template NAME] [--dry-run] [--strict] [--src-only] [--force]"
     },
     "render_shooting_cards": {
       "path": "video_toolkit/render_shooting_cards.py",

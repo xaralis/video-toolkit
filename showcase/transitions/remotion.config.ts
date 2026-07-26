@@ -15,6 +15,12 @@ Config.overrideWebpackConfig((current) => ({
   ...current,
   resolve: {
     ...current.resolve,
+    // REQUIRED, not optional: the gallery component now lives in lib/transitions/ and
+    // imports '@remotion/transitions' at runtime. Files under lib/ live OUTSIDE this
+    // project's tree, so webpack's default upward walk from lib/ never reaches the
+    // node_modules where that package is installed. Without this line the bundle fails
+    // with "Can't resolve '@remotion/transitions' in .../lib/transitions".
+    modules: [path.resolve(process.cwd(), 'node_modules'), 'node_modules'],
     alias: { ...(current.resolve?.alias ?? {}), '@video-toolkit/lib': toolkitLib },
   },
 }));

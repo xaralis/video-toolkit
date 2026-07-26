@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { CORE_EFFECTS, effectCatalog, effectDefinition, humanizeKey, stableColor } from './editor-meta';
+import {
+  CORE_EFFECTS,
+  editorMetaFromTheme,
+  effectCatalog,
+  effectDefinition,
+  humanizeKey,
+  stableColor,
+  type EditorMeta,
+} from './editor-meta';
+import type { CompositionTheme } from '../../theming/types';
 
 describe('effectCatalog', () => {
   it('is core-only (Ken Burns — the one effect core itself renders) with no meta', () => {
@@ -76,5 +85,113 @@ describe('stableColor', () => {
         expect(dist(cols[i], cols[j]), `${kinds[i]} vs ${kinds[j]}`).toBeGreaterThanOrEqual(24);
       }
     }
+  });
+});
+
+// A brand used to declare each kind TWICE — once as a theme registration (so it
+// renders) and once in EditorMeta (so it is editable). These pin that ONE
+// declaration now serves both, and that an explicit EditorMeta still wins.
+describe('editorMetaFromTheme', () => {
+  const bare: CompositionTheme = { background: '#000', accentSlots: [] };
+
+  it('derives videoProps from a video registration’s params', () => {
+    const theme: CompositionTheme = {
+      ...bare,
+      video: { outro: { params: [{ prop: 'style', options: ['organic', 'fade'] }] } },
+    };
+    expect(editorMetaFromTheme(theme).videoProps?.outro).toEqual([
+      { prop: 'style', options: ['organic', 'fade'] },
+    ]);
+  });
+
+  it('adds a registered effect to the catalog ON TOP of the core one', () => {
+    const theme: CompositionTheme = {
+      ...bare,
+      effects: { vintage: { params: [{ prop: 'mode', options: ['film', 'vhs'] }] } },
+    };
+    const meta = editorMetaFromTheme(theme);
+    expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns', 'vintage']);
+    expect(effectDefinition(meta, 'vintage')?.params?.[0].options).toEqual(['film', 'vhs']);
+  });
+
+  it('derives an effect with no params at all — registering it is what makes it addable', () => {
+    const theme: CompositionTheme = { ...bare, effects: { vintage: {} } };
+    expect(effectCatalog(editorMetaFromTheme(theme)).map((e) => e.type)).toEqual(['ken-burns', 'vintage']);
+  });
+
+  it('derives overlayProps from an overlay registration’s params', () => {
+    const theme: CompositionTheme = {
+      ...bare,
+      overlays: { chevron: { params: [{ prop: 'weight', type: 'number' }] } },
+    };
+    expect(editorMetaFromTheme(theme).overlayProps?.chevron).toEqual([{ prop: 'weight', type: 'number' }]);
+  });
+
+  it('reads the deprecated overlayItems tier too — one registry, one derivation', () => {
+    const theme: CompositionTheme = {
+      ...bare,
+      overlayItems: { ticker: { params: [{ prop: 'speed', type: 'number' }] } },
+    };
+    expect(editorMetaFromTheme(theme).overlayProps?.ticker).toEqual([{ prop: 'speed', type: 'number' }]);
+  });
+
+  // RESERVED_EFFECT_TYPES is skipped by applyEffects BEFORE resolution, so a
+  // brand's effect-axis ken-burns never draws. Offering its params in the
+  // editor would advertise a control that cannot take effect.
+  it('does not derive a RESERVED effect type from the theme (ken-burns is inert on this axis)', () => {
+    const theme: CompositionTheme = {
+      ...bare,
+      effects: { 'ken-burns': { params: [{ prop: 'beats', type: 'number' }] }, vintage: {} },
+    };
+    const meta = editorMetaFromTheme(theme);
+    expect(meta.effects?.map((e) => e.type)).toEqual(['vintage']);
+    // Core's own ken-burns entry is untouched: core RENDERS it (SegmentMedia),
+    // so it stays offerable with core's defaults, not the brand's params.
+    const kb = effectDefinition(meta, 'ken-burns');
+    expect(kb?.label).toBe('Ken Burns');
+    expect(kb?.params).toBeUndefined();
+  });
+
+  it('lets an explicit videoProps entry override that kind while others stay theme-derived', () => {
+    const theme: CompositionTheme = {
+      ...bare,
+      video: {
+        outro: { params: [{ prop: 'style', options: ['organic'] }] },
+        card: { params: [{ prop: 'tone', options: ['dark'] }] },
+      },
+    };
+    const explicit: EditorMeta = { videoProps: { outro: [{ prop: 'style', options: ['host-only'] }] } };
+    const meta = editorMetaFromTheme(theme, explicit);
+    expect(meta.videoProps?.outro).toEqual([{ prop: 'style', options: ['host-only'] }]);
+    expect(meta.videoProps?.card).toEqual([{ prop: 'tone', options: ['dark'] }]);
+  });
+
+  it('lets an explicit effect entry win over the theme-derived one of the same type', () => {
+    const theme: CompositionTheme = { ...bare, effects: { vintage: { params: [{ prop: 'mode' }] } } };
+    const meta = editorMetaFromTheme(theme, { effects: [{ type: 'vintage', label: 'Vintage', defaults: { mode: 'film' } }] });
+    const cat = effectCatalog(meta);
+    expect(cat.map((e) => e.type)).toEqual(['ken-burns', 'vintage']);
+    expect(cat[1].label).toBe('Vintage');
+    expect(cat[1].defaults).toEqual({ mode: 'film' });
+  });
+
+  it('passes laneColors and overlayLabels through untouched — they have no theme source', () => {
+    const explicit: EditorMeta = {
+      laneColors: { 'overlay-chevron': '#123456' },
+      overlayLabels: { chevron: 'Chevron' },
+    };
+    const meta = editorMetaFromTheme(bare, explicit);
+    expect(meta.laneColors).toEqual({ 'overlay-chevron': '#123456' });
+    expect(meta.overlayLabels).toEqual({ chevron: 'Chevron' });
+  });
+
+  it('a theme declaring no params anywhere produces the neutral core default', () => {
+    const meta = editorMetaFromTheme({ ...bare, video: { outro: {} }, overlays: { chevron: {} } });
+    expect(meta.videoProps).toEqual({});
+    expect(meta.overlayProps).toEqual({});
+    // No declared fields for any kind, and the catalog is exactly core's.
+    expect(meta.videoProps?.outro).toBeUndefined();
+    expect(meta.overlayProps?.chevron).toBeUndefined();
+    expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns']);
   });
 });
