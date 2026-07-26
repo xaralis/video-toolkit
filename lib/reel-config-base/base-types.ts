@@ -5,7 +5,10 @@
 // slide/flip/gradient-wipe were missing, breaking segment transitionOut types).
 // Re-exported here (rather than redefined) because the segment-based templates
 // import their types from this module.
-export type { Transition, TransitionKind } from './transition-schema';
+// `Transition` admits brand-authored kinds since Phase 4; `CoreTransition` is
+// the closed catalog union, and `TransitionKind` its kinds. Narrow to
+// `CoreTransition` when you need a discriminated member.
+export type { Transition, CoreTransition, BrandTransition, TransitionKind } from './transition-schema';
 import type { Transition } from './transition-schema';
 
 // Derived from CropSchema (segment-base-schemas.ts) so this and the zod

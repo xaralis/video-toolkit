@@ -7,17 +7,25 @@
 // file now owns the vocabulary the way `lib/theming/placement.ts` owns
 // PLACEMENTS: ONE ordered catalog, from which everything else is derived —
 //
-//   TransitionSchema     = the zod union, built from the catalog's members
+//   CoreTransitionSchema = the zod discriminated union, built from the catalog
+//   TransitionSchema     = CoreTransitionSchema ∪ BrandTransitionSchema (below)
 //   Transition           = z.infer of that union (see ./base-types)
+//   TransitionKind       = the CORE kinds only — see the note on the type
 //   TRANSITION_KINDS     = catalog kinds + labels (lib/editor/app/transitions)
 //   subOptionsFor(kind)  = read STRUCTURALLY off the kind's own zod shape
 //   defaultTransition()  = catalog defaults, checked against the schema by test
 //   presentationFor      = a Record keyed by TransitionKind, so the compiler
 //                          demands a mapping for every kind (lib/render)
 //
-// ADDING A KIND: append one entry below. The union, the editor dropdown, its
-// sub-option controls and its defaults all follow; the only other edit the
+// ADDING A CORE KIND: append one entry below. The union, the editor dropdown,
+// its sub-option controls and its defaults all follow; the only other edit the
 // compiler will demand is the render mapping in lib/render/at-cut-transitions.
+//
+// ADDING A BRAND KIND: don't touch this file at all. Since Phase 4 the catalog
+// is core's vocabulary, not THE vocabulary: `TransitionSchema` is a union of the
+// closed catalog and an open `BrandTransitionSchema`, so a brand kind parses on
+// shape alone and reaches the renderer with its own parameters intact. The cost
+// is spelled out on `BrandTransitionSchema` and in lib/render/transition-record.
 //
 // MIGRATING A BRAND (on the submodule pin bump that brings this file in):
 // `layered-schema.ts` now types `transitionIn`/`transitionOut` as
@@ -333,15 +341,78 @@ const CATALOG = catalog(
 type SchemasOf<T extends readonly CatalogEntry[]> = { [K in keyof T]: T[K]['schema'] };
 type CatalogMembers = SchemasOf<typeof CATALOG>;
 
-/** The zod discriminated union, assembled from the catalog. */
-export const TransitionSchema = z.discriminatedUnion('kind', CATALOG.map((e) => e.schema) as unknown as CatalogMembers);
+/** The CORE zod discriminated union, assembled from the catalog. Every core kind
+ *  is validated field by field here, exactly as before Phase 4. */
+export const CoreTransitionSchema = z.discriminatedUnion(
+  'kind',
+  CATALOG.map((e) => e.schema) as unknown as CatalogMembers,
+);
 
-/** A transition, exactly as the schema defines it. */
-export type Transition = z.infer<typeof TransitionSchema>;
+/** Every kind core itself declares. Read off the catalog, never restated. */
+const CORE_KINDS: ReadonlySet<string> = new Set(CATALOG.map(kindOf));
 
-/** Every transition kind in the vocabulary — derived, so a `Record<TransitionKind, …>`
- *  elsewhere becomes a compiler-enforced "handle every kind" obligation. */
-export type TransitionKind = Transition['kind'];
+/** True when `kind` is one of core's own catalog kinds. The one predicate that
+ *  separates "core kind, fully validated" from "brand kind, shape-only" — used
+ *  by `BrandTransitionSchema` below and by the render-side dev warning in
+ *  `lib/render/transition-record.ts`. */
+export function isCoreTransitionKind(kind: string): kind is TransitionKind {
+  return CORE_KINDS.has(kind);
+}
+
+/**
+ * A BRAND-authored transition: shape-only validation, because the parameters
+ * belong to the brand's own presentation and core cannot enumerate them.
+ * `.passthrough()` so those parameters survive the parse and reach the renderer
+ * instead of being stripped.
+ *
+ * The `refine` is load-bearing, not belt-and-braces. Without it a CORE kind that
+ * fails its OWN member (`{kind:'slide', frames:20}` — no `direction`) would fall
+ * through to this branch, match on shape, and parse; core kinds would silently
+ * lose per-field validation, which is the exact guarantee this split is supposed
+ * to keep. A core kind must be judged by its core member or not at all.
+ *
+ * What this deliberately does NOT catch is a TYPO'd core kind (`'disolve'`):
+ * it is, structurally, indistinguishable from a brand kind core has never heard
+ * of, and refusing it would refuse brand kinds too. That guarantee moves to the
+ * dev warning at `getTransitionRecord` — see `lib/render/transition-record.ts`.
+ */
+export const BrandTransitionSchema = z
+  .object({
+    kind: z
+      .string()
+      .refine((k) => !isCoreTransitionKind(k), {
+        message: 'is a core transition kind and must satisfy that kind’s own schema',
+      })
+      .describe('Brand-authored transition kind (resolved through the brand theme’s transition registry).'),
+    frames: TransitionFrames,
+  })
+  .passthrough();
+
+/** What a `transitionIn`/`transitionOut` field accepts: a fully-validated core
+ *  transition, OR a shape-checked brand one. Core is tried first, so a core kind
+ *  never reaches the permissive branch. */
+export const TransitionSchema = z.union([CoreTransitionSchema, BrandTransitionSchema]);
+
+/** A core transition, exactly as the catalog defines it. */
+export type CoreTransition = z.infer<typeof CoreTransitionSchema>;
+
+/** A brand transition: a kind, a length, and whatever else the brand's own
+ *  presentation reads (passthrough — zod keeps the extra keys at runtime even
+ *  though the inferred type cannot name them). */
+export type BrandTransition = z.infer<typeof BrandTransitionSchema>;
+
+/** A transition, exactly as the schema defines it. Widened in Phase 4 to include
+ *  brand kinds — so anything that must NARROW to a core member should say
+ *  `CoreTransition`, not `Transition`. */
+export type Transition = CoreTransition | BrandTransition;
+
+/** Every transition kind CORE declares — derived, so a `Record<TransitionKind, …>`
+ *  elsewhere becomes a compiler-enforced "handle every kind" obligation.
+ *  Deliberately read off `CoreTransition`, NOT off `Transition`: the widened
+ *  union's `kind` is `string`, and a `Record<string, …>` demands nothing at all,
+ *  which would silently retire the exhaustiveness check in
+ *  `lib/render/at-cut-transitions.tsx`. */
+export type TransitionKind = CoreTransition['kind'];
 
 /** The keys of `T` that are REQUIRED, ignoring the two every member shares. */
 type RequiredExtraKeys<T> = {
@@ -354,8 +425,8 @@ type RequiredExtraKeys<T> = {
  *  is not a valid transition. Used to type config fields that get turned into
  *  `{ kind, frames }` objects, so a kind needing a `direction`/`color`/`from`
  *  can't be named there and then silently produce an invalid transition. */
-export type FramesOnlyTransition = Extract<Transition, { frames: number }> extends infer M
-  ? M extends Transition
+export type FramesOnlyTransition = Extract<CoreTransition, { frames: number }> extends infer M
+  ? M extends CoreTransition
     ? [RequiredExtraKeys<M>] extends [never]
       ? M
       : never
@@ -365,7 +436,11 @@ export type FramesOnlyTransition = Extract<Transition, { frames: number }> exten
 /** The `kind` of any `FramesOnlyTransition`. */
 export type FramesOnlyTransitionKind = FramesOnlyTransition['kind'];
 
-const kindOf = (e: CatalogEntry) => (e.schema.shape.kind as z.ZodLiteral<string>).value;
+// A function DECLARATION, not a `const` arrow: `CORE_KINDS` above is built at
+// module-eval time and would hit the temporal dead zone otherwise.
+function kindOf(e: CatalogEntry): string {
+  return (e.schema.shape.kind as z.ZodLiteral<string>).value;
+}
 const entryFor = (kind: string): CatalogEntry | undefined => CATALOG.find((e) => kindOf(e) === kind);
 
 /** Every kind with its editor label, in catalog order. */

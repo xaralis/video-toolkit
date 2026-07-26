@@ -43,7 +43,7 @@ vi.mock('remotion', async () => {
 
 import {
   TRANSITION_CATALOG,
-  TransitionSchema,
+  CoreTransitionSchema,
   defaultTransition,
   subOptionsFor,
   type Transition,
@@ -90,7 +90,7 @@ function unwrap(f: LooseZod): LooseZod {
 }
 
 function shapeFor(kind: string): Record<string, LooseZod> {
-  const member = (TransitionSchema.options as unknown as LooseZod[]).find(
+  const member = (CoreTransitionSchema.options as unknown as LooseZod[]).find(
     (o) => (o.shape?.kind as unknown as { _def: { value: string } })._def.value === kind,
   );
   if (!member?.shape) throw new Error(`no schema member for kind ${kind}`);

@@ -38,8 +38,21 @@ describe('layered video item transitions are schema-typed', () => {
     expect(r.transitionOut).toBeUndefined();
   });
 
-  it('rejects an unknown kind', () => {
-    expect(VideoItemSchema.safeParse({ ...clip, transitionOut: { kind: 'swoosh', frames: 15 } }).success).toBe(false);
+  // CHANGED IN PHASE 4 (task 1.0), deliberately. This used to assert `false`:
+  // the schema was a closed discriminated union, so a kind core didn't declare
+  // could not parse. A brand must be able to add a transition without editing
+  // core, so a non-core kind with a valid `{kind, frames}` shape now parses —
+  // shape-only, via BrandTransitionSchema. The "is this kind real?" signal moved
+  // to a dev warning at `getTransitionRecord`; see
+  // src/transition-schema-open.test.ts, which pins both halves.
+  it('accepts an unknown (brand-authored) kind, shape-checked only', () => {
+    const r = VideoItemSchema.safeParse({ ...clip, transitionOut: { kind: 'swoosh', frames: 15 } });
+    expect(r.success).toBe(true);
+    expect(r.success && r.data.transitionOut).toEqual({ kind: 'swoosh', frames: 15 });
+  });
+
+  it('still rejects an unknown kind with no frames', () => {
+    expect(VideoItemSchema.safeParse({ ...clip, transitionOut: { kind: 'swoosh' } }).success).toBe(false);
   });
 
   it('rejects a frame-bearing kind with no frames', () => {

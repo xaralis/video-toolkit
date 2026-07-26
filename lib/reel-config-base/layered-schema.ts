@@ -47,10 +47,18 @@ const VideoContainerBase = {
   effects: z.array(EffectSchema).optional(),
   musicBoostDb: z.number().optional(),
   // The at-the-cut boundary transitions. These carry the SHARED TransitionSchema
-  // (not a permissive record): a typo'd kind or a missing required field used to
-  // parse cleanly and then degrade silently to a hard cut at render time, because
-  // `presentationFor` returns null for anything it doesn't recognise. See
-  // transition-schema.ts for the catalog these validate against.
+  // (not a permissive record): a missing required field or a bad value on a CORE
+  // kind used to parse cleanly and then degrade silently to a hard cut at render
+  // time, because `presentationFor` returns null for anything it doesn't
+  // recognise. That half of the guarantee is intact — a core kind is still
+  // validated field by field.
+  //
+  // What CHANGED in Phase 4: the schema is no longer closed. A brand must be able
+  // to add a transition without editing core, so an unknown kind with a valid
+  // `{kind, frames}` shape now parses (shape-only). A TYPO'd kind is
+  // indistinguishable from that, so it parses too — and is caught instead by the
+  // dev warning at `getTransitionRecord` (lib/render/transition-record.ts), which
+  // sees every record on its way to the renderer. See transition-schema.ts.
   transitionOut: TransitionSchema.optional(),
   transitionIn: TransitionSchema.optional(),
   // Per-item brand render-hint bag (e.g. a displayMode; outro style/variant).

@@ -13,15 +13,18 @@ import {
   defaultTransition,
 } from './transitions';
 import {
+  CoreTransitionSchema,
   TransitionSchema,
   AccentKey,
   subOptionForField,
   defaultValueForField,
 } from '@video-toolkit/lib/reel-config-base/transition-schema';
 
-// The zod union's own members, read straight off the schema — the yardstick
-// every derived list below is measured against.
-const SCHEMA_MEMBERS = TransitionSchema.options as ReadonlyArray<z.ZodObject<z.ZodRawShape>>;
+// The CORE union's own members, read straight off the schema — the yardstick
+// every derived list below is measured against. Read off `CoreTransitionSchema`
+// rather than `TransitionSchema`: since Phase 4 the latter is a two-branch
+// `z.union`, whose `.options` are the two BRANCHES, not the catalog's kinds.
+const SCHEMA_MEMBERS = CoreTransitionSchema.options as ReadonlyArray<z.ZodObject<z.ZodRawShape>>;
 const SCHEMA_KINDS = SCHEMA_MEMBERS.map((m) => (m.shape.kind as z.ZodLiteral<string>).value);
 const shapeFor = (kind: string) =>
   SCHEMA_MEMBERS.find((m) => (m.shape.kind as z.ZodLiteral<string>).value === kind)!.shape;

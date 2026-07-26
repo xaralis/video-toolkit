@@ -17,7 +17,7 @@ import {
 import { useCurrentFrame } from 'remotion';
 import { getTransitionRecord, type TransitionRecord } from './transition-record';
 import { resolveAccentColor, type AccentSlot } from '../theming/palette';
-import type { Transition, TransitionKind } from '../reel-config-base/transition-schema';
+import type { CoreTransition, TransitionKind } from '../reel-config-base/transition-schema';
 
 export { getTransitionRecord, type TransitionRecord };
 
@@ -47,7 +47,14 @@ type Dims = { width: number; height: number; palette?: readonly AccentSlot[] };
 // @remotion/transitions/wipe (4-way, colourless) — because that's what the
 // schema's `wipe` member describes (a brand accent-slot key + a 2-way
 // direction); the official package backs every OTHER official kind.
-type Renderer<K extends TransitionKind> = (t: Extract<Transition, { kind: K }>, dims: Dims) => AnyPresentation | null;
+//
+// `Extract<CoreTransition, …>` and `TransitionKind` are both read off the CORE
+// union deliberately. Since Phase 4 `Transition` also admits brand-authored
+// kinds (`kind: string`), and keying this map off THAT would make it a
+// `Record<string, …>` — which demands no entries at all and would retire the
+// exhaustiveness check silently. Brand kinds are not core's to render; they
+// resolve through the brand's own registry.
+type Renderer<K extends TransitionKind> = (t: Extract<CoreTransition, { kind: K }>, dims: Dims) => AnyPresentation | null;
 
 const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   // `cut` is the absence of a transition; the gate in ./transition-record
@@ -99,12 +106,18 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   }) as AnyPresentation,
 };
 
-// `cut`/absent/unrecognised → null (hard cut, no wrap). "Unrecognised" can still
-// happen at runtime: a hand-edited Root.tsx literal is not schema-validated.
+// `cut`/absent/unrecognised → null (hard cut, no wrap). "Unrecognised" now covers
+// two cases: a hand-edited Root.tsx literal that is not schema-validated, and a
+// BRAND kind that core legitimately has no renderer for. Either way the lookup
+// misses and the boundary is a hard cut; `getTransitionRecord` is what says so
+// out loud (once per kind, in dev).
 export function presentationFor(t: TransitionRecord | undefined, dims: Dims): AnyPresentation | null {
   if (!t) return null;
-  const render = PRESENTATIONS[t.kind] as Renderer<TransitionKind> | undefined;
-  return render ? render(t, dims) : null;
+  // The index is deliberately widened to `string` before the lookup: `t.kind` is
+  // `string` for a brand transition, and a missing key must be a runtime `undefined`
+  // rather than a compile error at the call site.
+  const render = (PRESENTATIONS as Record<string, Renderer<TransitionKind> | undefined>)[t.kind];
+  return render ? render(t as Extract<CoreTransition, { kind: TransitionKind }>, dims) : null;
 }
 
 // Invokes one presentation's component directly (not via TransitionSeries —
