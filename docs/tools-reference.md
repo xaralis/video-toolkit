@@ -38,15 +38,22 @@ structure.
 
 ## Template sync (vendored src)
 
-Projects **vendor** their template's `src/` — a project is a self-contained snapshot, so a later
-toolkit upgrade can't break a finished render. To pull a template fix into an **in-progress** project:
+Projects **vendor** their template — a project is a self-contained snapshot, so a later toolkit
+upgrade can't break a finished render. To pull a template fix into an **in-progress** project:
 
 ```bash
 python3 -m video_toolkit.sync_template <project> --dry-run          # preview (writes nothing)
 python3 -m video_toolkit.sync_template <project>                    # sync
 python3 -m video_toolkit.sync_template <project> --template <name>  # if project.json has no `template`
 python3 -m video_toolkit.sync_template <project> --strict           # also delete files the template dropped
+python3 -m video_toolkit.sync_template <project> --src-only         # legacy: mirror src/ only
 ```
+
+Carries `src/`, `.editor/` (the reel editor) and the build config (`remotion.config.ts`,
+`vitest.config.ts`, `tsconfig.json`); **merges** `package.json` — `dependencies`/`devDependencies`
+and any script the project lacks come from the template (a version mismatch resolves to the
+template's), while `name`, `version` and existing scripts are the project's and are never written.
+Every merged key is reported as `pkg add` / `pkg update` / `pkg keep`; run `npm install` after any.
 
 `src/Root.tsx` and `src/config/demo.config.json` are **project-owned and never written** (they are
 the project's actual cut) — reported as `preserved`. Compares by content hash; idempotent.
