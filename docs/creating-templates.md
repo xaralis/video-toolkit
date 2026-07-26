@@ -20,8 +20,9 @@ LayeredReel (data)        CompositionTheme (look)
   tracks.music     ├──►  LayeredReelComposition  ──►  frames
   tracks.overlays  │        overlays / video    ← per-kind renderer registrations
   tracks.brand    ─┘        overlayItems        ← per-kind routing
+                            brand               ← per-kind brand-layer renderers
                             prepareVideoTrack
-                            renderBrandTrack
+                            renderBrandTrack    ← whole-track escape hatch
                             resolveAudioSource
 ```
 
@@ -339,8 +340,13 @@ export const compositionTheme: CompositionTheme = {
     'stat-callout': { render: (item) => <StatCallout item={item} /> },
   },
 
-  // The whole brand layer as one node — you decide how many components that is.
-  renderBrandTrack: (items) => <PersistentOverlay items={items} />,
+  // The brand layer needs NO code: core dispatches tracks.brand by kind
+  // (watermark / disclaimer) through GenericWatermark / GenericDisclaimer,
+  // Sequencing each item over its OWN [startMs, endMs). Recolour with
+  // tokens.watermark / tokens.disclaimer; register a kind to replace one
+  // renderer; reach for renderBrandTrack ONLY when the whole track has to be
+  // one hand-written node (it wins outright and the default never runs).
+  brand: { watermark: { renderer: BrandMark } },
 };
 ```
 

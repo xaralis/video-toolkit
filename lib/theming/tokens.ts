@@ -17,9 +17,10 @@
 // and every consumer has a neutral core default".
 //
 // How a generic receives these: `BrandTheme.tokens` → threaded to every video
-// renderer as `VideoRenderProps.tokens` by `renderVideoItemNode`. Deliberately
-// ONE narrow typed field, not the whole theme — VideoRenderProps still carries
-// no `CompositionTheme`.
+// renderer as `VideoRenderProps.tokens` by `renderVideoItemNode`, and to every
+// brand-layer renderer as `BrandRenderProps.tokens` by
+// `defaultRenderBrandTrack`. Deliberately ONE narrow typed field in both
+// cases, not the whole theme — neither prop bag carries a `CompositionTheme`.
 
 /** Look constants for {@link GenericMultiClip}. */
 export interface MultiClipTokens {
@@ -92,14 +93,47 @@ export interface CardTokens {
   endpoint?: { text?: string; color?: string };
 }
 
+/** Look constants for {@link GenericWatermark}, threaded by
+ *  {@link defaultRenderBrandTrack}. A brand item's own `props` win over these
+ *  for the same field — tokens are the theme-wide look, props are per item. */
+export interface WatermarkTokens {
+  /** 'image' (default): an `<Img>` of the asset. 'tint': the PNG as an alpha
+   *  mask over a solid colour, so one asset renders in any brand colour. */
+  mode?: 'image' | 'tint';
+  /** Required when mode is 'tint'; ignored otherwise. Default `#000000` (a
+   *  brand shipping today tints its one mark black / cream / brown). */
+  color?: string;
+  /** Per-axis margins from the frame edge. A single number sets both (the
+   *  back-compat meaning of `marginPx`). Default 40 on both axes — a brand
+   *  with a tightly-cropped mark uses `{ vertical: 40, horizontal: 36 }`. */
+  margin?: number | { vertical: number; horizontal: number };
+}
+
+/** Look constants for {@link GenericDisclaimer}, threaded by
+ *  {@link defaultRenderBrandTrack}. Defaults: `monospace` 400/20px `#ffffff`,
+ *  centred, 40px from the bottom and 40px in from each side, no background. */
+export interface DisclaimerTokens {
+  bottomOffsetPx?: number;
+  paddingX?: number;
+  fontFamily?: string;
+  fontSize?: number;
+  fontWeight?: number;
+  color?: string;
+  letterSpacing?: string;
+  textAlign?: 'left' | 'center' | 'right';
+  alpha?: number;
+}
+
 /** Look constants a theme hands to core's generic renderers. Every axis is
  *  optional and every consumer has a neutral core default, so `tokens` may be
  *  omitted entirely.
  *
- *  Later Phase 3 tasks add their own axes here (`caption` — Task 5;
- *  `watermark` — Task 4); they are deliberately NOT declared yet, so this file
- *  never carries a type no consumer reads. */
+ *  A later Phase 3 task adds its own axis here (`caption` — Task 5); it is
+ *  deliberately NOT declared yet, so this file never carries a type no
+ *  consumer reads. */
 export interface ThemeTokens {
   multiClip?: MultiClipTokens;
   card?: CardTokens;
+  watermark?: WatermarkTokens;
+  disclaimer?: DisclaimerTokens;
 }

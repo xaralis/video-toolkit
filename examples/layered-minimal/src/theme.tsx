@@ -4,13 +4,12 @@
 //
 // Everything below is optional except `accentSlots` and `background`. Drop the
 // text renderer and core's `GenericTextOverlay` draws the overlays instead;
-// drop `renderBrandTrack` and the brand layer simply doesn't paint.
+// declare no brand-layer code at all (as this theme does) and core paints the
+// brand track itself, one Sequence per item, through its generics.
 import React from 'react';
 import type { CompositionTheme, OverlayRenderProps } from '@video-toolkit/lib/theming';
-import { GenericWatermark, paletteMap, placementGeometry, useOverlayEnvelope } from '@video-toolkit/lib/theming';
+import { paletteMap, placementGeometry, useOverlayEnvelope } from '@video-toolkit/lib/theming';
 import { parseAccents } from '@video-toolkit/lib/transcripts/accent-parser';
-import type { BrandLayerItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
-import type { WatermarkProps } from '@video-toolkit/lib/theming';
 
 // The brand's accent palette. The COUNT and the KEYS are the brand's to choose
 // — core never enumerates them. Anything that names a colour (accent markup in
@@ -80,15 +79,10 @@ export const theme: CompositionTheme = {
   // Per-kind renderer registration. Omit `overlays` entirely and every text
   // overlay falls back to core's GenericTextOverlay.
   overlays: { text: { renderer: BrandText } },
-  // The brand layer, rendered as one node — the brand decides how many
-  // components that is. `GenericWatermark` is core's ready-made corner logo.
-  renderBrandTrack: (items: BrandLayerItem[]) => (
-    <>
-      {items
-        .filter((item) => item.kind === 'watermark')
-        .map((item) => (
-          <GenericWatermark key={item.id} {...(item.props as WatermarkProps)} />
-        ))}
-    </>
-  ),
+  // The brand layer needs NO code at all: core dispatches reel.tracks.brand by
+  // kind (watermark / disclaimer) through GenericWatermark / GenericDisclaimer,
+  // Sequencing each item over its own [startMs, endMs). Recolour them with
+  // `tokens.watermark` / `tokens.disclaimer` above; register `brand: { … }` to
+  // replace one kind's renderer; keep `renderBrandTrack` only if the whole
+  // track has to be one hand-written node.
 };

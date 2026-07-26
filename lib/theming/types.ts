@@ -56,6 +56,12 @@ export interface BrandTheme {
    *  them, core never enumerates them. Absent type → core generic primitive
    *  (grain/scanlines/vignette/grade/transform) → silently skipped. */
   effects?: Registry<EffectRenderProps>;
+  /** ONE open-keyed brand-layer registry (watermark / disclaimer / whatever a
+   *  brand names). Absent kind → core generic (GenericWatermark /
+   *  GenericDisclaimer) → silently skipped. Consumed by
+   *  `defaultRenderBrandTrack`; the whole-track escape hatch
+   *  {@link CompositionTheme.renderBrandTrack} still wins over it entirely. */
+  brand?: Registry<BrandRenderProps>;
   /** Look constants for core's GENERIC renderers (see ./tokens.ts). Every
    *  field is optional with a neutral core default, so omitting `tokens`
    *  entirely still renders. This is how a brand re-colours a generic instead
@@ -112,6 +118,38 @@ export interface VideoRegistration extends Registration<VideoRenderProps> {
   renderer?: VideoRenderer;
 }
 
+/** The static prop bag every brand-layer renderer receives. Mirrors
+ *  VideoRenderProps: the raw item, the brand's opaque per-kind config, and the
+ *  theme's typed look constants — deliberately NOT the theme itself. */
+export interface BrandRenderProps {
+  item: BrandLayerItem;
+  /** Opaque brand-level config threaded down from the theme's registration. */
+  config?: unknown;
+  /** The theme's look constants for core's generic brand renderers
+   *  (see ./tokens.ts). Core-supplied by `defaultRenderBrandTrack`. */
+  tokens?: ThemeTokens;
+}
+
+export type BrandRenderer = React.FC<BrandRenderProps>;
+
+/** Brand-layer kinds are OPEN, like overlay kinds and effect types — the
+ *  schema names two today ('watermark' | 'disclaimer'), and core has a generic
+ *  for exactly those two. A brand may register more. */
+export type BrandKind = string;
+
+/** One brand-layer kind's registration. Built on the shared `Registration`
+ *  primitive, so this axis resolves through `resolveRegistered` like the
+ *  overlay, video and effect axes do — and, like them, a registration with NO
+ *  `renderer` contributes `config`/`params` only and does NOT mask the core
+ *  generic for that kind.
+ *
+ *  Like `Registration`, deliberately NOT open with an index signature: a
+ *  typo'd `renderer` must not compile clean and silently drop the brand's
+ *  renderer into the core generic. */
+export interface BrandRegistration extends Registration<BrandRenderProps> {
+  renderer?: BrandRenderer;
+}
+
 /** How an overlay kind reaches the screen. 'track' (default): one absolute
  *  Sequence per item, so every item animates in its own [startMs, endMs) window.
  *  'anchored': delivered to the owning video renderer via anchoredOverlays
@@ -146,8 +184,15 @@ export interface CompositionTheme extends BrandTheme {
   /** Pre-pass over the video track before buildVideoNodes (e.g. brand-owned
    *  transition asset injection). */
   prepareVideoTrack?: (items: VideoItem[]) => VideoItem[];
-  /** Renders the whole brand track (watermark/disclaimer) — one hook, the
-   *  brand decides how many components that is. */
+  /** WHOLE-TRACK escape hatch for the brand layer. When present it wins
+   *  outright and core's `defaultRenderBrandTrack` never runs — that is what
+   *  keeps a brand that mounts ONE component for several items (or spans every
+   *  item from 0) working unchanged.
+   *
+   *  Prefer {@link BrandTheme.brand}: registering per kind gets core's
+   *  Sequencing, config threading and token plumbing for free, and each item
+   *  then spans its OWN [startMs, endMs) — which is NOT what a track written
+   *  against this hook necessarily does. */
   renderBrandTrack?: (items: BrandLayerItem[]) => React.ReactNode;
   /** Override the audio-source folder convention (default: recordings/). */
   resolveAudioSource?: (raw: string) => string;

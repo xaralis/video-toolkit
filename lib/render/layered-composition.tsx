@@ -15,6 +15,7 @@ import {
   videoConfig,
   DEFAULT_PLACEMENT,
   applyEffects,
+  defaultRenderBrandTrack,
 } from '../theming';
 import { buildVideoNodes } from './video-track';
 import { buildAudioNodes } from './audio-track';
@@ -153,7 +154,13 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
         <Audio src={musicSource.startsWith('http') ? musicSource : staticFile(musicSource)} volume={volumeAt} />
       )}
       {overlayNodes}
-      {theme.renderBrandTrack ? theme.renderBrandTrack(reel.tracks.brand) : null}
+      {/* The whole-track escape hatch wins outright when a brand declares it —
+          that is what keeps a brand mounting ONE component for several items
+          (or spanning every item from 0) rendering exactly as before. With no
+          hook, the brand layer is dispatched per kind through the registry. */}
+      {theme.renderBrandTrack
+        ? theme.renderBrandTrack(reel.tracks.brand)
+        : defaultRenderBrandTrack(reel.tracks.brand, theme, fps)}
     </AbsoluteFill>
   );
 };

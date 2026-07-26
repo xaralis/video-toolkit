@@ -34,6 +34,10 @@ export type {
   VideoKind,
   FootageVideoKind,
   VideoRegistration,
+  BrandRenderProps,
+  BrandRenderer,
+  BrandKind,
+  BrandRegistration,
   BrandTheme,
   OverlayRouting,
   OverlayItemRegistration,
@@ -58,9 +62,21 @@ export {
 } from './effects';
 export { SegmentMedia } from './segment/SegmentMedia';
 export { GenericTextOverlay } from './generic/GenericTextOverlay';
-export { GenericWatermark, type WatermarkProps } from './generic/GenericWatermark';
+export {
+  GenericWatermark,
+  watermarkStyle,
+  resolveWatermarkMargin,
+  DEFAULT_WATERMARK_MARGIN_PX,
+  DEFAULT_WATERMARK_TINT_COLOR,
+  DEFAULT_WATERMARK_SIZE_PX,
+  type WatermarkProps,
+  type WatermarkMode,
+  type WatermarkMargin,
+} from './generic/GenericWatermark';
+export { GenericDisclaimer, type DisclaimerProps } from './generic/GenericDisclaimer';
+export { defaultRenderBrandTrack, resolveBrandRenderer, brandConfig } from './brand-track';
 export { GenericOutro } from './generic/GenericOutro';
 export { GenericMultiClip } from './generic/GenericMultiClip';
 export { GenericCard } from './generic/GenericCard';
 export { resolveGenericSource } from './generic/media-source';
-export type { ThemeTokens, MultiClipTokens, CardTokens } from './tokens';
+export type { ThemeTokens, MultiClipTokens, CardTokens, WatermarkTokens, DisclaimerTokens } from './tokens';
