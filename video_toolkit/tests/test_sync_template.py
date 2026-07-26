@@ -1,12 +1,16 @@
+import hashlib
 import json
 
 import pytest
 
 from video_toolkit.sync_template import (
+    MANIFEST_NAME,
     PROJECT_OWNED,
     check_identity_preserved,
+    load_vendored,
     merge_package_json,
     resolve_template,
+    save_vendored,
     sync_extras,
     sync_template,
 )
@@ -24,6 +28,11 @@ def _make_template(root):
     (src / "Root.tsx").write_text("TEMPLATE demo cut\n")
     (src / "config" / "demo.config.json").write_text('{"demo": true}\n')
     return src
+
+
+def _sha(text: str) -> str:
+    """The hash the manifest would carry for this content."""
+    return hashlib.sha256(text.encode()).hexdigest()
 
 
 def _make_project(root):
@@ -49,18 +58,21 @@ def test_project_owned_files_are_never_overwritten(tmp_path):
 
 
 def test_shared_code_is_copied_and_updated(tmp_path):
+    """Drift is pulled forward — but only for a file the tool can PROVE it vendored."""
     src = _make_template(tmp_path)
     dst = _make_project(tmp_path)
-    # a vendored file that has drifted behind the template
+    # a vendored file that has drifted behind the template, with the provenance to say so
     (dst / "Comp.tsx").write_text("template v1\n")
+    vendored = {"Comp.tsx": _sha("template v1\n")}
 
-    report = sync_template(src, dst)
+    report = sync_template(src, dst, vendored=vendored)
 
     assert (dst / "Comp.tsx").read_text() == "template v2\n"           # drift pulled forward
     assert (dst / "overlays" / "Watermark.tsx").read_text() == "watermark v2\n"  # new subdir file
     assert report["updated"] == ["Comp.tsx"]
     assert "overlays/Watermark.tsx" in report["copied"]
     assert "config/schema.ts" in report["copied"]
+    assert vendored["Comp.tsx"] == _sha("template v2\n")  # manifest advanced to what we wrote
 
 
 def test_identical_files_are_skipped_not_rewritten(tmp_path):
@@ -86,16 +98,222 @@ def test_dry_run_writes_nothing(tmp_path):
 
 
 def test_strict_removes_extra_files_but_spares_project_owned(tmp_path):
+    """--strict prunes what the TOOL placed and the template has since dropped."""
     src = _make_template(tmp_path)
     dst = _make_project(tmp_path)
     (dst / "Stale.tsx").write_text("removed from template\n")
+    vendored = {"Stale.tsx": _sha("removed from template\n")}  # we put it there
 
-    report = sync_template(src, dst, strict=True)
+    report = sync_template(src, dst, strict=True, vendored=vendored)
 
     assert not (dst / "Stale.tsx").exists()
     assert report["removed"] == ["Stale.tsx"]
+    assert "Stale.tsx" not in vendored  # and the manifest forgets it
     # --strict must not take the project's own files with it
     assert (dst / "Root.tsx").read_text() == "PROJECT real cut\n"
+
+
+# --- DATA LOSS: project-authored files must survive an unflagged sync ----------------------------
+#
+# Four real cases, all confirmed by dry-run against the PP repo. The first is the sharp one: an
+# authored file at a path the template also ships, which no path-based rule can protect.
+
+# pp-mov-koalice/src/segments/OutroSegment.tsx — 83 lines of client work (a coalition partner logo
+# over the brand stinger) where the template ships a 10-line default.
+AUTHORED_OUTRO = """\
+import { AbsoluteFill, OffthreadVideo, Audio, Img, staticFile } from 'remotion';
+// Coalition co-branding: reveal the Novi lidovci partner logo below the PP wordmark.
+// Brand rules honoured: #24 entry/exit fade+slide, #26 logo sits on the stinger's own coal.
+const NL_LOGO_WIDTH = 620;
+const APPEAR_F = 36;
+const FADEOUT_START_F = 165;
+export const OutroSegment: React.FC = () => <AbsoluteFill>...</AbsoluteFill>;
+"""
+TEMPLATE_OUTRO = "export const OutroSegment: React.FC = () => <AbsoluteFill>default</AbsoluteFill>;\n"
+
+
+def test_authored_file_at_a_template_path_is_never_silently_overwritten(tmp_path):
+    """THE data-loss case. pp-mov-koalice's OutroSegment.tsx is authored client work sitting at the
+    template's own path. An unflagged sync must not touch it — no path rule can save it, only
+    provenance, and unknown provenance must read as `authored`."""
+    src = _make_template(tmp_path)
+    (src / "segments").mkdir()
+    (src / "segments" / "OutroSegment.tsx").write_text(TEMPLATE_OUTRO)
+    dst = _make_project(tmp_path)
+    (dst / "segments").mkdir()
+    (dst / "segments" / "OutroSegment.tsx").write_text(AUTHORED_OUTRO)
+
+    report = sync_template(src, dst)  # no flags, no manifest — the default path
+
+    assert (dst / "segments" / "OutroSegment.tsx").read_text() == AUTHORED_OUTRO
+    assert report["diverged"] == ["segments/OutroSegment.tsx"]
+    assert "segments/OutroSegment.tsx" not in report["updated"]
+
+
+def test_authored_trees_absent_from_the_template_survive_strict(tmp_path):
+    """pp-05-zastupitelsky-klub's src/lib/*, pp-paro-2026's plates/, pp-program-klima-reel's
+    graphics/ — authored files the template never had. --strict must not prune them."""
+    src = _make_template(tmp_path)
+    dst = _make_project(tmp_path)
+    authored = [
+        "lib/accent-parser.ts", "lib/accent-parser.test.ts", "lib/load-transcripts.ts",
+        "lib/transcript-window.ts", "lib/transcript-window.test.ts",
+        "segments/plates/LinkPlate.tsx", "graphics/HaComparison.tsx", "graphics/StudieZones.tsx",
+    ]
+    for rel in authored:
+        (dst / rel).parent.mkdir(parents=True, exist_ok=True)
+        (dst / rel).write_text(f"project-authored {rel}\n")
+
+    report = sync_template(src, dst, strict=True)
+
+    for rel in authored:
+        assert (dst / rel).exists(), f"--strict deleted authored {rel}"
+        assert (dst / rel).read_text() == f"project-authored {rel}\n"
+    assert sorted(report["unmanaged"]) == sorted(authored)
+    assert report["removed"] == []
+
+
+def test_an_edited_vendored_file_is_protected_even_though_we_placed_it(tmp_path):
+    """Provenance is content-based, not name-based: a file we vendored and the project then EDITED
+    is authored work now, and stops being ours to overwrite."""
+    src = _make_template(tmp_path)
+    dst = _make_project(tmp_path)
+    (dst / "Comp.tsx").write_text("template v1 + the project's own tweak\n")
+    vendored = {"Comp.tsx": _sha("template v1\n")}  # what we wrote; not what's there now
+
+    report = sync_template(src, dst, vendored=vendored)
+
+    assert (dst / "Comp.tsx").read_text() == "template v1 + the project's own tweak\n"
+    assert report["diverged"] == ["Comp.tsx"]
+
+
+def test_force_is_the_only_way_to_lose_authored_content(tmp_path):
+    """The escape hatch stays available — explicit, and named in the report first."""
+    src = _make_template(tmp_path)
+    (src / "segments").mkdir()
+    (src / "segments" / "OutroSegment.tsx").write_text(TEMPLATE_OUTRO)
+    dst = _make_project(tmp_path)
+    (dst / "segments").mkdir()
+    (dst / "segments" / "OutroSegment.tsx").write_text(AUTHORED_OUTRO)
+    (dst / "Authored.tsx").write_text("authored\n")
+
+    report = sync_template(src, dst, strict=True, force=True)
+
+    assert (dst / "segments" / "OutroSegment.tsx").read_text() == TEMPLATE_OUTRO
+    assert not (dst / "Authored.tsx").exists()
+    assert report["diverged"] == [] and report["unmanaged"] == []
+    # even --force does not touch the files the project owns by path
+    assert (dst / "Root.tsx").read_text() == "PROJECT real cut\n"
+
+
+def test_dry_run_never_writes_even_when_protecting(tmp_path):
+    src = _make_template(tmp_path)
+    (src / "segments").mkdir()
+    (src / "segments" / "OutroSegment.tsx").write_text(TEMPLATE_OUTRO)
+    dst = _make_project(tmp_path)
+    (dst / "segments").mkdir()
+    (dst / "segments" / "OutroSegment.tsx").write_text(AUTHORED_OUTRO)
+
+    report = sync_template(src, dst, dry_run=True, strict=True)
+
+    assert (dst / "segments" / "OutroSegment.tsx").read_text() == AUTHORED_OUTRO
+    assert report["diverged"] == ["segments/OutroSegment.tsx"]
+
+
+# --- the provenance manifest itself ---------------------------------------------------------------
+
+
+def test_manifest_bootstraps_from_identical_files_then_lets_drift_flow(tmp_path):
+    """A LEGACY project — files already on disk, no manifest at all, as all 14 real projects are
+    today. Files that already match the template are provably safe, so the first run records them,
+    and the NEXT template fix then flows with no flag. Without this the tool would be stuck
+    demanding --force forever, and --force is the thing that destroys work."""
+    src = _make_template(tmp_path)
+    dst = _make_project(tmp_path)
+    # the legacy project's vendored copies: identical to the template, but nothing records that
+    (dst / "Comp.tsx").write_text("template v2\n")
+    vendored: dict[str, str] = {}
+
+    first = sync_template(src, dst, vendored=vendored)
+    assert first["skipped"] == ["Comp.tsx"]                      # recognised as unchanged...
+    assert vendored["Comp.tsx"] == _sha("template v2\n")         # ...and now recorded as ours
+    assert first["diverged"] == []
+
+    (src / "Comp.tsx").write_text("template v3\n")               # template moves on
+    second = sync_template(src, dst, vendored=vendored)
+
+    assert second["updated"] == ["Comp.tsx"]                     # flows automatically, no --force
+    assert (dst / "Comp.tsx").read_text() == "template v3\n"
+
+
+def test_divergence_is_sticky_a_second_run_still_protects(tmp_path):
+    """Protection must not decay. If a `diverged` file were recorded as vendored, the very NEXT
+    sync would consider it ours and destroy it — the defect, one run later."""
+    src = _make_template(tmp_path)
+    (src / "segments").mkdir()
+    (src / "segments" / "OutroSegment.tsx").write_text(TEMPLATE_OUTRO)
+    dst = _make_project(tmp_path)
+    (dst / "segments").mkdir()
+    (dst / "segments" / "OutroSegment.tsx").write_text(AUTHORED_OUTRO)
+    vendored: dict[str, str] = {}
+
+    first = sync_template(src, dst, vendored=vendored)
+    assert first["diverged"] == ["segments/OutroSegment.tsx"]
+    assert "segments/OutroSegment.tsx" not in vendored  # NOT recorded — it isn't ours
+
+    second = sync_template(src, dst, vendored=vendored)
+    third = sync_template(src, dst, vendored=vendored)
+
+    assert second["diverged"] == ["segments/OutroSegment.tsx"]
+    assert third["diverged"] == ["segments/OutroSegment.tsx"]
+    assert (dst / "segments" / "OutroSegment.tsx").read_text() == AUTHORED_OUTRO
+
+
+def test_manifest_round_trips_and_a_corrupt_one_fails_safe(tmp_path):
+    proj = tmp_path / "projects" / "p1"
+    proj.mkdir(parents=True)
+
+    assert load_vendored(proj) == {}                             # absent -> nothing is vendored
+    save_vendored(proj, {"src/Comp.tsx": "abc123"})
+    assert load_vendored(proj) == {"src/Comp.tsx": "abc123"}
+
+    (proj / MANIFEST_NAME).write_text("{ not json")
+    assert load_vendored(proj) == {}                             # corrupt -> protect everything
+
+    save_vendored(proj, {"src/X.tsx": "d"}, dry_run=True)        # dry run writes nothing
+    assert load_vendored(proj) == {}
+
+
+def test_provenance_guards_the_editor_tree_too(tmp_path):
+    """The .editor/ mirror protects nothing by PATH, so provenance is its only guard — and the
+    prefixed manifest keys have to line up for it to work."""
+    tpl = _make_template_dir(tmp_path)
+    proj = _make_project_dir(tmp_path)
+    (proj / ".editor").mkdir()
+    (proj / ".editor" / "main.tsx").write_text("the project's own editor tweak\n")
+    (proj / ".editor" / "local-notes.md").write_text("my notes\n")
+
+    report = sync_extras(tpl, proj, strict=True)
+
+    assert (proj / ".editor" / "main.tsx").read_text() == "the project's own editor tweak\n"
+    assert (proj / ".editor" / "local-notes.md").exists()
+    assert ".editor/main.tsx" in report["diverged"]
+    assert ".editor/local-notes.md" in report["unmanaged"]
+
+
+def test_provenance_uses_project_relative_keys(tmp_path):
+    """src/Comp.tsx and .editor/Comp.tsx must not collide in one manifest."""
+    tpl = _make_template_dir(tmp_path)
+    proj = _make_project_dir(tmp_path)
+    vendored: dict[str, str] = {}
+
+    sync_template(tpl / "src", proj / "src", vendored=vendored, prefix="src/")
+    sync_extras(tpl, proj, vendored=vendored)
+
+    assert "src/Comp.tsx" in vendored
+    assert ".editor/main.tsx" in vendored
+    assert "tsconfig.json" in vendored
+    assert all(not k.startswith("/") for k in vendored)
 
 
 def test_resolve_template_prefers_override_then_project_json(tmp_path):
@@ -187,29 +405,31 @@ def test_editor_drift_is_pulled_forward_and_idempotent(tmp_path):
     proj = _make_project_dir(tmp_path)
     (proj / ".editor").mkdir()
     (proj / ".editor" / "main.tsx").write_text("editor main v1\n")  # drifted behind
+    vendored = {".editor/main.tsx": _sha("editor main v1\n")}       # ...and we are the ones who put it there
 
-    report = sync_extras(tpl, proj)
+    report = sync_extras(tpl, proj, vendored=vendored)
     assert report["updated"] == [".editor/main.tsx"]
     assert (proj / ".editor" / "main.tsx").read_text() == "editor main v2\n"
 
-    again = sync_extras(tpl, proj)
+    again = sync_extras(tpl, proj, vendored=vendored)
     assert again["copied"] == [] and again["updated"] == []
     assert len(again["skipped"]) == 8
 
 
-def test_diverged_build_config_surfaces_as_updated_before_anything_is_written(tmp_path):
-    """The safety valve: a project that diverged is never silently overwritten — --dry-run names
-    the file as `updated` first. This is what makes carrying tailwind.config.ts safe."""
+def test_a_project_that_tuned_its_build_config_keeps_it(tmp_path):
+    """What makes carrying tailwind.config.ts safe: a project that tuned its own is PROTECTED, not
+    overwritten. (This test used to assert `updated` — that was the data-loss defect.)"""
     tpl = _make_template_dir(tmp_path)
     proj = _make_project_dir(tmp_path)
     (proj / "tailwind.config.ts").write_text("project's own tailwind\n")
     (proj / ".prettierrc.json").write_text('{"semi": false}\n')
 
-    preview = sync_extras(tpl, proj, dry_run=True)
+    report = sync_extras(tpl, proj)
 
-    assert "tailwind.config.ts" in preview["updated"]
-    assert ".prettierrc.json" in preview["updated"]
-    assert (proj / "tailwind.config.ts").read_text() == "project's own tailwind\n"  # not yet written
+    assert "tailwind.config.ts" in report["diverged"]
+    assert ".prettierrc.json" in report["diverged"]
+    assert (proj / "tailwind.config.ts").read_text() == "project's own tailwind\n"
+    assert json.loads((proj / ".prettierrc.json").read_text()) == {"semi": False}
 
 
 def test_a_template_shipping_only_some_config_files_is_fine(tmp_path):
@@ -267,8 +487,9 @@ def test_extras_strict_prunes_only_the_mirrored_dir(tmp_path):
     (proj / ".editor").mkdir()
     (proj / ".editor" / "stale.tsx").write_text("gone from template\n")
     (proj / "CLAUDE.md").write_text("project docs\n")
+    vendored = {".editor/stale.tsx": _sha("gone from template\n")}  # the tool placed it
 
-    report = sync_extras(tpl, proj, strict=True)
+    report = sync_extras(tpl, proj, strict=True, vendored=vendored)
 
     assert report["removed"] == [".editor/stale.tsx"]
     assert (proj / "CLAUDE.md").exists()  # --strict must not reach outside the mirrored dirs

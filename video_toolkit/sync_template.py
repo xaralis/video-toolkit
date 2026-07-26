@@ -6,7 +6,12 @@ upgrade can never break a finished render. That isolation is the point — but w
 being worked on you sometimes want a template fix pulled in. Doing that by hand (`rsync`) reliably
 destroys the project's own files; this tool exists so that can't happen.
 
-PROJECT-OWNED files are NEVER written:
+THE TOOL ONLY WRITES OVER FILES IT CAN PROVE IT PLACED. Provenance (see the block above
+MANIFEST_NAME) decides: a file that differs from what this tool last wrote there — or that it has no
+record of at all — is project-authored as far as the tool is concerned, and is reported `diverged`
+rather than overwritten. `--force` overrides, and is the only way to lose authored content.
+
+PROJECT-OWNED files are NEVER written, provenance or not, `--force` or not:
     Root.tsx                  the project's cut — defaultProps / segments / brand config
     config/demo.config.json   the project's Studio defaultProps sample
 
@@ -28,6 +33,7 @@ Usage:
     python3 -m video_toolkit.sync_template <project> --template <name> # if project.json has no `template`
     python3 -m video_toolkit.sync_template <project> --strict          # also delete project files the template no longer has
     python3 -m video_toolkit.sync_template <project> --src-only        # legacy: mirror src/ only
+    python3 -m video_toolkit.sync_template <project> --force           # DESTRUCTIVE: overwrite authored files
 
 Template is read from `projects/<name>/project.json` (`template` field) unless --template is given.
 Run from the toolkit root. Safe to run any time; run it before you edit a vendored component so you
@@ -45,9 +51,34 @@ from pathlib import Path
 
 from video_toolkit.paths import NotFound, find_template, workspace_root
 
-# Files the PROJECT owns. The template ships its own versions (a demo cut), but a project's copies are
-# its actual content — overwriting them destroys the user's work. Never written, never deleted.
+# Files the PROJECT owns BY PATH. A short, explicit list — the template ships its own demo versions
+# at these paths, so they always differ and would always need a human decision otherwise. This is a
+# convenience, NOT the safety mechanism: see PROVENANCE below.
 PROJECT_OWNED = frozenset({"Root.tsx", "config/demo.config.json"})
+
+# --- PROVENANCE: why a path list can never be the safety mechanism -------------------------------
+#
+# A content-hash mirror can tell that a project's file DIFFERS from the template's. It cannot tell
+# WHY, and the two causes need opposite handling:
+#
+#   1. the template moved forward, and the project holds a stale vendored copy  -> update it
+#   2. the project authored or edited that file                                 -> NEVER touch it
+#
+# Guessing from the path is hopeless. pp-mov-koalice's `src/segments/OutroSegment.tsx` is 83 lines of
+# client work (a coalition partner logo overlaid on the brand stinger, with its own tuned constants)
+# living at the exact path where the template ships a 10-line default. No path rule separates those.
+#
+# So the tool records what it actually vendored: MANIFEST_NAME maps each project-relative path to the
+# sha256 of the content THIS TOOL wrote there. On the next run:
+#
+#   project file == recorded hash  -> untouched since we wrote it, provably a vendored copy -> safe
+#   project file != recorded hash  -> the project edited it            -> `diverged`, never written
+#   no record at all               -> unknown provenance               -> `diverged`, never written
+#
+# Unknown is treated as authored. That is the whole point: the failure mode of a wrong guess is
+# silent destruction of client work, so the tool refuses and reports instead. `--force` overrides,
+# and is the only way to lose content — deliberately, and named in the report first.
+MANIFEST_NAME = ".template-sync.json"
 
 # Vendored directories beyond src/ that are mirrored wholesale. The reel editor lives here; a
 # project whose .editor/ drifted behind the template's cannot start at all.
@@ -85,6 +116,36 @@ def _rel_files(root: Path) -> dict[str, Path]:
     return {p.relative_to(root).as_posix(): p for p in root.rglob("*") if p.is_file()}
 
 
+def load_vendored(project_dir: Path) -> dict[str, str]:
+    """The provenance manifest: project-relative path -> sha256 this tool last wrote there.
+
+    A missing or corrupt manifest reads as empty, which means "nothing is known to be vendored" —
+    the maximally protective answer, not the permissive one.
+    """
+    path = project_dir / MANIFEST_NAME
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return {}
+    files = data.get("files")
+    return {str(k): str(v) for k, v in files.items()} if isinstance(files, dict) else {}
+
+
+def save_vendored(project_dir: Path, vendored: dict[str, str], dry_run: bool = False) -> None:
+    if dry_run:
+        return
+    project_dir.mkdir(parents=True, exist_ok=True)
+    payload = {"version": 1, "files": dict(sorted(vendored.items()))}
+    (project_dir / MANIFEST_NAME).write_text(json.dumps(payload, indent=2) + "\n")
+
+
+def _is_vendored_copy(dst_path: Path, key: str, vendored: dict[str, str]) -> bool:
+    """True only if this file is byte-for-byte what the tool last wrote at `key`."""
+    return key in vendored and vendored[key] == _digest(dst_path)
+
+
 def resolve_template(project_dir: Path, override: str | None) -> str | None:
     """Template name from --template, else the project.json `template` field."""
     if override:
@@ -104,13 +165,27 @@ def sync_template(
     dry_run: bool = False,
     strict: bool = False,
     protected: frozenset[str] = PROJECT_OWNED,
+    vendored: dict[str, str] | None = None,
+    prefix: str = "",
+    force: bool = False,
 ) -> dict[str, list[str]]:
-    """Mirror template src -> project src. Returns the report; `protected` files are never touched.
+    """Mirror template src -> project src. Returns the report.
+
+    Nothing the project authored is ever overwritten or deleted. A file is written only when it is
+    absent, already identical, or provably a vendored copy (`vendored` records what this tool wrote
+    there — see PROVENANCE at the top of the module). Anything else is reported as `diverged` and
+    left alone unless `force`.
+
+    `vendored` is MUTATED in place with the new hashes, so the caller can persist one manifest
+    across several mirrored trees; `prefix` makes its keys project-relative (`src/`, `.editor/`).
+    Passing no manifest means "nothing is known to be vendored" — the protective default.
 
     Pure w.r.t. the repo layout (takes explicit dirs) so it's testable and reusable. `protected`
     defaults to the src-relative PROJECT_OWNED set; other mirrored trees (`.editor/`) pass an empty
-    set — a project owns nothing in there.
+    set — a project owns nothing in there by PATH, though provenance still protects it.
     """
+    if vendored is None:
+        vendored = {}
     # NOT under dry-run: a dry run must leave no trace, and now that `.editor/` is mirrored too,
     # an unconditional mkdir would materialise an empty directory in a real project.
     if not dry_run:
@@ -123,52 +198,93 @@ def sync_template(
     skipped: list[str] = []
     preserved: list[str] = []
     removed: list[str] = []
+    diverged: list[str] = []
+    unmanaged: list[str] = []
 
     for rel, src_path in sorted(src_files.items()):
         if rel in protected:
             preserved.append(rel)
             continue
+        key = prefix + rel
         dst_path = dst / rel
         if not dst_path.exists():
             if not dry_run:
                 dst_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src_path, dst_path)
             copied.append(rel)
-        elif _digest(dst_path) != _digest(src_path):
+            vendored[key] = _digest(src_path)
+        elif _digest(dst_path) == _digest(src_path):
+            skipped.append(rel)
+            # Identical content: provably safe to manage from here on, whoever wrote it. This is how
+            # a legacy project bootstraps most of its manifest on the first run.
+            vendored[key] = _digest(src_path)
+        elif force or _is_vendored_copy(dst_path, key, vendored):
             if not dry_run:
                 shutil.copy2(src_path, dst_path)
             updated.append(rel)
+            vendored[key] = _digest(src_path)
         else:
-            skipped.append(rel)
+            # Differs, and we have no proof we put it there. Could be 83 lines of client work.
+            diverged.append(rel)
 
     if strict:
         for rel in sorted(dst_files):
             if rel in src_files or rel in protected:
                 continue
+            key = prefix + rel
+            if not (force or _is_vendored_copy(dst / rel, key, vendored)):
+                # We never placed this file (or the project changed it since) — not ours to delete.
+                unmanaged.append(rel)
+                continue
             if not dry_run:
                 (dst / rel).unlink()
             removed.append(rel)
+            vendored.pop(key, None)
 
-    return {"copied": copied, "updated": updated, "skipped": skipped, "preserved": preserved, "removed": removed}
+    return {
+        "copied": copied,
+        "updated": updated,
+        "skipped": skipped,
+        "preserved": preserved,
+        "removed": removed,
+        "diverged": diverged,
+        "unmanaged": unmanaged,
+    }
+
+
+REPORT_KEYS = ("copied", "updated", "skipped", "preserved", "removed", "diverged", "unmanaged")
 
 
 def _empty_report() -> dict[str, list[str]]:
-    return {"copied": [], "updated": [], "skipped": [], "preserved": [], "removed": []}
+    return {key: [] for key in REPORT_KEYS}
 
 
-def _mirror_file(src_path: Path, dst_path: Path, rel: str, report: dict[str, list[str]], dry_run: bool) -> None:
-    """One file, same copied/updated/skipped semantics as the tree mirror."""
+def _mirror_file(
+    src_path: Path,
+    dst_path: Path,
+    rel: str,
+    report: dict[str, list[str]],
+    dry_run: bool,
+    vendored: dict[str, str],
+    force: bool = False,
+) -> None:
+    """One file, same semantics as the tree mirror — including the provenance guard."""
     if not dst_path.exists():
         if not dry_run:
             dst_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src_path, dst_path)
         report["copied"].append(rel)
-    elif _digest(dst_path) != _digest(src_path):
+        vendored[rel] = _digest(src_path)
+    elif _digest(dst_path) == _digest(src_path):
+        report["skipped"].append(rel)
+        vendored[rel] = _digest(src_path)
+    elif force or _is_vendored_copy(dst_path, rel, vendored):
         if not dry_run:
             shutil.copy2(src_path, dst_path)
         report["updated"].append(rel)
+        vendored[rel] = _digest(src_path)
     else:
-        report["skipped"].append(rel)
+        report["diverged"].append(rel)
 
 
 def sync_extras(
@@ -176,6 +292,8 @@ def sync_extras(
     project_dir: Path,
     dry_run: bool = False,
     strict: bool = False,
+    vendored: dict[str, str] | None = None,
+    force: bool = False,
 ) -> dict[str, list[str]]:
     """Mirror the vendored surface OUTSIDE src/: `.editor/` and the build-config files.
 
@@ -183,14 +301,26 @@ def sync_extras(
     same in the output as it does on disk. A template that ships none of these yields an empty
     report — nothing here is required.
     """
+    if vendored is None:
+        vendored = {}
     report = _empty_report()
 
     for name in MIRROR_DIRS:
         sub = template_dir / name
         if not sub.is_dir():
             continue
-        # A project owns nothing inside .editor/ — the whole tree is the template's.
-        sub_report = sync_template(sub, project_dir / name, dry_run=dry_run, strict=strict, protected=frozenset())
+        # A project owns nothing inside .editor/ by PATH — but provenance still guards it, so a
+        # project's own file in there is neither overwritten nor pruned.
+        sub_report = sync_template(
+            sub,
+            project_dir / name,
+            dry_run=dry_run,
+            strict=strict,
+            protected=frozenset(),
+            vendored=vendored,
+            prefix=f"{name}/",
+            force=force,
+        )
         for key, values in sub_report.items():
             report[key].extend(f"{name}/{v}" for v in values)
 
@@ -198,7 +328,7 @@ def sync_extras(
         src_path = template_dir / name
         if not src_path.is_file():
             continue
-        _mirror_file(src_path, project_dir / name, name, report, dry_run)
+        _mirror_file(src_path, project_dir / name, name, report, dry_run, vendored, force)
 
     return report
 
@@ -298,6 +428,12 @@ def main() -> int:
         action="store_true",
         help="mirror src/ only — skip .editor/, the build config and the package.json merge",
     )
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help="DESTRUCTIVE: overwrite (and with --strict, delete) files the project authored or "
+        "edited. Without this, such files are reported as `diverged` and left alone.",
+    )
     args = ap.parse_args()
 
     proj = workspace_root() / "projects" / args.project
@@ -325,20 +461,30 @@ def main() -> int:
         return 1
 
     dst = proj / "src"
-    report = sync_template(src, dst, dry_run=args.dry_run, strict=args.strict)
+    vendored = load_vendored(proj)
+    report = sync_template(
+        src, dst, dry_run=args.dry_run, strict=args.strict,
+        vendored=vendored, prefix="src/", force=args.force,
+    )
 
     if args.src_only:
         extras = _empty_report()
         pkg = {"added": [], "updated": [], "kept": [], "created": []}
     else:
-        extras = sync_extras(template_dir, proj, dry_run=args.dry_run, strict=args.strict)
+        extras = sync_extras(
+            template_dir, proj, dry_run=args.dry_run, strict=args.strict,
+            vendored=vendored, force=args.force,
+        )
         pkg = merge_package_json(template_dir, proj, dry_run=args.dry_run)
+
+    save_vendored(proj, vendored, dry_run=args.dry_run)
 
     # src entries are src-relative; extras are project-relative. Print everything project-relative.
     for key in report:
         report[key] = [f"src/{rel}" for rel in report[key]] + extras[key]
     copied, updated = report["copied"], report["updated"]
     skipped, preserved, removed = report["skipped"], report["preserved"], report["removed"]
+    diverged, unmanaged = report["diverged"], report["unmanaged"]
 
     root = workspace_root()
 
@@ -358,6 +504,10 @@ def main() -> int:
         print(f"   removed    {rel}  (--strict, not in template)")
     for rel in preserved:
         print(f"   preserved  {rel}  (project-owned, never overwritten)")
+    for rel in diverged:
+        print(f"   PROTECTED  {rel}  (project-authored or edited — NOT overwritten)")
+    for rel in unmanaged:
+        print(f"   PROTECTED  {rel}  (not placed by this tool — NOT deleted)")
     for entry in pkg["created"]:
         print(f"   created    {entry}")
     for entry in pkg["added"]:
@@ -368,7 +518,7 @@ def main() -> int:
         print(f"   pkg keep   {entry}")
     print(
         f"-> {len(copied)} copied, {len(updated)} updated, {len(removed)} removed, "
-        f"{len(skipped)} unchanged, {len(preserved)} preserved"
+        f"{len(skipped)} unchanged, {len(preserved) + len(diverged) + len(unmanaged)} protected"
         + (
             ""
             if args.src_only
@@ -377,6 +527,12 @@ def main() -> int:
         )
         + (" [DRY RUN]" if args.dry_run else "")
     )
+    if diverged or unmanaged:
+        print(
+            f"!! {len(diverged) + len(unmanaged)} file(s) the project appears to own were left "
+            f"untouched. Review them; --force overrides and CAN DESTROY authored work.",
+            file=sys.stderr,
+        )
     return 0
 
 

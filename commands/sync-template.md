@@ -36,18 +36,53 @@ Runs `python3 -m video_toolkit.sync_template` from the toolkit root.
 Everything mirrored is compared by **content hash**, so unchanged files are skipped and genuine
 drift shows as `updated`. Idempotent: re-running is free.
 
+## How your work is protected
+
+**The tool only ever overwrites or deletes a file it can prove it put there itself.** Anything else
+is reported and left alone.
+
+It keeps a provenance manifest, `.template-sync.json` in the project, mapping each path to the hash
+of the content *this tool wrote there*. On the next run:
+
+| project's file | meaning | what happens |
+|---|---|---|
+| matches the recorded hash | untouched since we vendored it | updated to the template's version |
+| identical to the template's | provably the same content already | left alone, and recorded from now on |
+| **differs from the recorded hash** | **the project edited it** | **`PROTECTED` — not written** |
+| **no record at all** | **unknown — assume authored** | **`PROTECTED` — not written** |
+
+Unknown provenance counts as *authored*, deliberately: the cost of guessing wrong is destroying
+client work, so the tool refuses and tells you instead.
+
+This matters because path-based rules cannot do the job. `pp-mov-koalice`'s
+`src/segments/OutroSegment.tsx` is 83 lines of client work — a coalition partner logo over the brand
+stinger, with its own tuned constants — living at the exact path where the template ships a 10-line
+default. Nothing about the path distinguishes it from a stale vendored copy. Only provenance does.
+
+**Legacy projects bootstrap themselves.** A project with no manifest isn't stuck needing `--force`:
+every file that already matches the template is recorded on the first run, so only genuinely
+diverged files need a human decision, and the next template fix flows normally.
+
+> **`--force` is the only way to lose content — and it can.** It overwrites diverged files and, with
+> `--strict`, deletes unmanaged ones. Use it only after reading a `--dry-run` and deciding
+> file-by-file that nothing listed as `PROTECTED` matters. `Root.tsx` and `config/demo.config.json`
+> survive even `--force`.
+
 > **`--strict` blast radius.** `--strict` deletes files the template no longer has **from every
-> mirrored tree, which now includes `.editor/`** — the editor tree is the template's wholesale, so a
-> project's own `.editor/local-notes.md` or `.editor/brand-overrides.css` would be deleted. It never
-> reaches the project root (`CLAUDE.md`, `project.json`, `public/`, `out/` are all safe) and never
-> removes a dependency from `package.json`. It is opt-in, and `--dry-run` lists every `removed` file
-> before anything happens — check that list.
+> mirrored tree, which includes `.editor/`**. It only removes files the manifest says this tool
+> placed and the project hasn't touched — a project's own `.editor/local-notes.md`, or authored
+> trees like `src/lib/` and `src/graphics/`, are reported `PROTECTED` and kept. It never reaches the
+> project root (`CLAUDE.md`, `project.json`, `public/`, `out/`) and never removes a dependency from
+> `package.json`. `--dry-run` lists every `removed` file first — check that list.
 
 `src/` alone used to be the whole story, and it was not enough: 8 of 11 PP project editors could not
 start at all, because the vendored `package.json` never inherited the template's editor
 `devDependencies` and Vite died with `ERR_MODULE_NOT_FOUND` before it even read the config.
 
 ## What it will never touch
+
+Beyond the provenance rule above, these are protected **by name**, unconditionally — they survive
+even `--force`:
 
 | File | Why |
 |------|-----|
@@ -59,6 +94,9 @@ start at all, because the vendored `package.json` never inherited the template's
 The template ships its own demo versions of the first two. Copying them over a project **destroys
 the user's work** — the tool refuses, and reports them as `preserved`. (This is not a nicety:
 hand-`rsync`ing a template into a project has silently wiped a project's cut more than once.)
+
+This list is short on purpose. It is a convenience for the two paths that *always* differ, **not**
+the safety mechanism — that is provenance, which needs no list and cannot go stale.
 
 ## The `package.json` merge
 
@@ -86,10 +124,11 @@ what changed. Run `npm install` in the project afterwards if anything was added 
 ## Workflow
 
 1. **Preview first.** Run with `--dry-run` and read the report: `copied` (new files), `updated`
-   (drift being pulled forward), `preserved` (project-owned, untouched), `unchanged`.
-2. **Check the `updated` list.** Each one means the project's copy differs from the template. If the
-   project intentionally diverged (a project-specific tweak living in a shared component), syncing
-   will overwrite that tweak — move it into `Root.tsx`/config, or skip the sync.
+   (drift being pulled forward), `PROTECTED` (yours — not written), `preserved`, `unchanged`.
+2. **Check the `PROTECTED` list.** Each one is a file the project appears to own. That is the
+   correct outcome for authored work; if one is really just a stale vendored copy you want
+   refreshed, delete it and re-run (it will be `copied`), which is safer than reaching for
+   `--force`.
 3. **Run for real** (drop `--dry-run`).
 4. **`npm install`** in the project if the report showed any `pkg add` / `pkg update`.
 5. **Verify the project still renders** — `/toolkit:render preview` or a still. The template may have moved on
