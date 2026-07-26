@@ -7,11 +7,22 @@ import type React from 'react';
 /** One editable field a registration declares, so a brand kind is editable
  *  without any core UI knowing the kind.
  *
- *  KNOWN TEMPORARY DUPLICATE of the `ParamField` in lib/editor/app/editor-meta.ts.
- *  lib/theming must not import from lib/editor (the dependency runs one way),
- *  so the shape is restated here; Phase 3 Task 7 collapses them by making
- *  editor-meta.ts re-export from this module. Do NOT "fix" this by adding the
- *  wrong-direction import. */
+ *  THE one definition — `lib/editor/app/editor-meta.ts` re-exports this rather
+ *  than restating it (Phase 3 Task 7 collapsed the temporary duplicate). It
+ *  lives HERE and not in the editor because lib/theming must not import from
+ *  lib/editor: theming is consumed by lib/render and by every brand's render
+ *  program, the editor by neither. Do NOT "fix" the direction by importing the
+ *  editor from here.
+ *
+ *  `options` present → a dropdown over exactly those values; else `type` if
+ *  declared; else the field is typed by the value currently held.
+ *
+ *  Declare `type` for any field whose value the item may not carry yet: with
+ *  neither `options` nor `type`, an absent key has no value to be typed from,
+ *  so it falls back to a text input and would write a STRING into what the
+ *  renderer expects to be a number (e.g. `logoDelaySec: "0.5"`). The opaque bag
+ *  is `z.record(z.unknown())`, so nothing rejects it — the config just goes
+ *  type-dirty until a reload re-types the field from its (now string) value. */
 export interface ParamField {
   prop: string;
   label?: string;

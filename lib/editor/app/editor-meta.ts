@@ -13,22 +13,16 @@
 // dedicated `accentSlots` prop and that stays the single source of truth — one
 // carrier plus a precedence rule is one too many.
 
+import type { CompositionTheme } from '../../theming/types';
+import { overlayRegistry } from '../../theming/brand-theme';
+import { RESERVED_EFFECT_TYPES } from '../../theming/effects';
+import type { ParamField } from '../../theming/registry';
+
 /** One declared, editable field inside an opaque bag (`props`, effect params).
- *  `options` present → a dropdown over exactly those values; else `type` if
- *  declared; else the field is typed by the value currently held.
- *
- *  Declare `type` for any field whose value the item may not carry yet: with
- *  neither `options` nor `type`, an absent key has no value to be typed from,
- *  so it falls back to a text input and would write a STRING into what the
- *  renderer expects to be a number (e.g. `logoDelaySec: "0.5"`). The opaque bag
- *  is `z.record(z.unknown())`, so nothing rejects it — the config just goes
- *  type-dirty until a reload re-types the field from its (now string) value. */
-export interface ParamField {
-  prop: string;
-  label?: string;
-  options?: readonly string[];
-  type?: 'number' | 'string' | 'boolean';
-}
+ *  Defined in `lib/theming/registry.ts` — a registration declares it, so that
+ *  is where it lives; the editor consumes it. Re-exported here because this
+ *  module is the editor's public vocabulary surface. */
+export type { ParamField };
 
 /** One offerable clip effect. `defaults` (merged with `{ type }`) is what gets
  *  written onto the item when the effect is added; `params` declares its
@@ -49,6 +43,10 @@ export interface EditorMeta {
    *  (e.g. `{ outro: [{ prop: 'style', options: [...] }] }`). Undeclared props
    *  still render, typed by their current value. */
   videoProps?: Record<string, readonly ParamField[]>;
+  /** Declared editable fields of an overlay item's `content` bag, per overlay
+   *  `content.kind`. A kind with declared fields is edited through them; a kind
+   *  with none keeps the value-presence editor core has always shown. */
+  overlayProps?: Record<string, readonly ParamField[]>;
   /** Timeline block colour per timeline effectId (`overlay-<kind>`,
    *  `video-<kind>`, `audio`, `music`, `brand-<kind>`). Overrides the core
    *  defaults and the deterministic fallback. */
@@ -83,6 +81,68 @@ export function effectCatalog(meta?: EditorMeta): EffectDefinition[] {
 /** The definition for an effect type, when the catalog declares one. */
 export function effectDefinition(meta: EditorMeta | undefined, type: string): EffectDefinition | undefined {
   return effectCatalog(meta).find((e) => e.type === type);
+}
+
+// ---- Deriving the vocabulary from the theme --------------------------------
+// Before this, a brand declared each kind TWICE: once as a theme registration
+// (so it renders) and once in EditorMeta (so it is editable), with nothing
+// keeping the two in sync — a brand that added a param to its registration and
+// forgot the EditorMeta copy got a field that renders and cannot be edited.
+// The registrations already carry `params`, so the editor vocabulary is
+// DERIVED from them and the second declaration disappears.
+//
+// An explicit EditorMeta still wins, PER FIELD (per kind / per effect type):
+// the host must be able to override anything the theme implies — relabel a
+// field, offer a narrower option list in the editor than the renderer accepts,
+// or declare something the theme has no place for at all (laneColors,
+// overlayLabels, which have no theme source and simply pass through).
+
+/** Every effect type the theme registers, as catalog entries — minus the
+ *  RESERVED ones. A reserved type (`ken-burns`) is skipped by `applyEffects`
+ *  BEFORE resolution, so a brand's effect-axis registration for it never draws;
+ *  deriving an editor entry from it would advertise params that cannot take
+ *  effect. Core's own `ken-burns` entry (rendered by SegmentMedia, edited by
+ *  the inspector's bespoke editor) is unaffected and stays offerable — it is
+ *  the effect-axis OVERRIDE that is inert, not the effect. */
+function effectsFromTheme(theme: CompositionTheme): EffectDefinition[] {
+  const out: EffectDefinition[] = [];
+  for (const [type, reg] of Object.entries(theme.effects ?? {})) {
+    if (RESERVED_EFFECT_TYPES.has(type)) continue;
+    out.push(reg.params ? { type, params: reg.params } : { type });
+  }
+  return out;
+}
+
+/** Per-kind declared fields off one axis' registry, kinds with no `params`
+ *  omitted entirely (an empty entry would claim "declared, and nothing to
+ *  edit" and suppress the value-presence fallback). */
+function paramsByKind(
+  registry: Record<string, { params?: readonly ParamField[] }> | undefined,
+): Record<string, readonly ParamField[]> {
+  const out: Record<string, readonly ParamField[]> = {};
+  for (const [kind, reg] of Object.entries(registry ?? {})) {
+    if (reg.params?.length) out[kind] = reg.params;
+  }
+  return out;
+}
+
+/** Derives the editor vocabulary from the theme's registrations, so a brand
+ *  declares each kind ONCE. An explicit EditorMeta still wins per field —
+ *  the host may override anything the theme implies. */
+export function editorMetaFromTheme(theme: CompositionTheme, explicit?: EditorMeta): EditorMeta {
+  const videoProps = paramsByKind(theme.video as Record<string, { params?: readonly ParamField[] }> | undefined);
+  const overlayProps = paramsByKind(overlayRegistry(theme));
+  // Theme-derived first, explicit appended: `effectCatalog` replaces in place
+  // on a `type` collision, so the LATER entry wins — i.e. the explicit one.
+  const effects = [...effectsFromTheme(theme), ...(explicit?.effects ?? [])];
+  return {
+    ...explicit,
+    // Spread per kind, not per axis: an explicit `videoProps.outro` overrides
+    // the theme-derived outro while every OTHER kind stays theme-derived.
+    videoProps: { ...videoProps, ...explicit?.videoProps },
+    overlayProps: { ...overlayProps, ...explicit?.overlayProps },
+    effects,
+  };
 }
 
 /** A readable label for an identifier key: `logoDelaySec` → "Logo delay sec",

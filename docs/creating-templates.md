@@ -223,11 +223,18 @@ exceed the 28s default.
 
 ```tsx
 import { mountEditorHost } from '@video-toolkit/lib/editor/host/mount';
+import { editorMetaFromTheme } from '@video-toolkit/lib/editor/app/editor-meta';
 import { MyBrandReel } from '../src/MyBrandReel';
 import { brandTheme } from '../src/config/brand-theme';
-import { editorMeta } from '../src/config/editor-meta';
 import { fps, width, height } from '../src/config/reel-config';
 import '../src/styles/global.css';
+
+// The theme's registrations ARE the editor vocabulary: every kind you
+// registered with `params` is editable, every effect type you registered is
+// addable. Declare each kind once, in the theme. The optional second argument
+// is an explicit EditorMeta that wins per field — for the things the theme has
+// no place for (`laneColors`, `overlayLabels`) or a host-only override.
+const editorMeta = editorMetaFromTheme(brandTheme);
 
 mountEditorHost({
   component: MyBrandReel,
@@ -245,6 +252,8 @@ That is the whole file. Only `component`, `projectName`, `fps`, `width` and
 stylesheet drops the last three lines and the CSS import.
 
 **`meta` and `accentSlots` must be module-level constants, never inline literals.**
+`editorMetaFromTheme` returns a fresh object per call, so call it once at module
+scope (as above) — never inline in the `mountEditorHost` argument.
 `LayeredTimeline` is memoized with a shallow compare and re-renders on every
 playhead frame; a fresh object each render defeats the memo and stutters playback.
 **`accentSlots` has no default** — omitting it means no palette in the accent

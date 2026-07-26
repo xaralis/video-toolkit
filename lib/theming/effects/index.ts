@@ -56,8 +56,13 @@ export type EffectRegistration = Registry<EffectRenderProps>[string];
  *  is NOT sufficient: the registry is open-keyed, so a brand writing
  *  `effects: { 'ken-burns': { renderer: X } }` would otherwise resolve and
  *  double-apply. A brand that genuinely wants its own ken-burns replaces it on
- *  the VIDEO axis (its own renderer, which owns the media transform), not here. */
-const RESERVED_EFFECT_TYPES: ReadonlySet<string> = new Set(['ken-burns']);
+ *  the VIDEO axis (its own renderer, which owns the media transform), not here.
+ *
+ *  EXPORTED since Phase 3 Task 7: a brand registration for a reserved type is
+ *  inert at RENDER time, so `editorMetaFromTheme` consults this same set to
+ *  keep it inert at EDIT time too, rather than offering params that would
+ *  never be applied. One list, both ends. */
+export const RESERVED_EFFECT_TYPES: ReadonlySet<string> = new Set(['ken-burns']);
 
 /** Core generic effect renderers, keyed by effect type. `ken-burns` is absent
  *  by the rule above — see RESERVED_EFFECT_TYPES. */

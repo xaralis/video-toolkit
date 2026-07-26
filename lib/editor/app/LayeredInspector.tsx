@@ -631,16 +631,34 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
             <AccentEditor value={content.text ?? ''} onChange={(next) => patchContent({ text: next })} colors={slots} multiline />
           </div>
         )}
-        {/* Overlay kinds that carry reveal/hide + font size (e.g. a stacked pull-quote). */}
-        {(content.reveal !== undefined || content.hide !== undefined || content.fontSize !== undefined) && (
-          <>
-            <Row>
-              <SelectField lbl="Reveal" value={content.reveal ?? 'line'} options={['line', 'all', 'none']} onChange={(s) => patchContent({ reveal: s })} />
-              <SelectField lbl="Hide" value={content.hide ?? 'fade'} options={['fade', 'none']} onChange={(s) => patchContent({ hide: s })} />
-            </Row>
-            <NumberField lbl="Font size" step={4} value={content.fontSize} onCommit={(n) => patchContent({ fontSize: Math.round(n) })} />
-          </>
-        )}
+        {/* The overlay's `content` bag. Two paths, DECLARED first:
+              • the kind's registration declares `params` (meta.overlayProps,
+                derived from the theme by editorMetaFromTheme) → render exactly
+                those, typed by their declaration, so a brand's own overlay kind
+                is editable with no core UI knowing it;
+              • nothing declared → the value-presence editor core has always
+                shown (reveal/hide/font size when the item carries them). A
+                brand that declares nothing therefore sees today's inspector,
+                unchanged.
+            `text` is excluded from the declared path: it has the dedicated
+            accent-aware editor above, and a plain TextField for the same value
+            would be a second, accent-blind editor for it. */}
+        {(() => {
+          const declared = (meta?.overlayProps?.[content.kind ?? ''] ?? []).filter((f) => f.prop !== 'text');
+          if (!declared.length) {
+            return (content.reveal !== undefined || content.hide !== undefined || content.fontSize !== undefined) ? (
+              <>
+                <Row>
+                  <SelectField lbl="Reveal" value={content.reveal ?? 'line'} options={['line', 'all', 'none']} onChange={(s) => patchContent({ reveal: s })} />
+                  <SelectField lbl="Hide" value={content.hide ?? 'fade'} options={['fade', 'none']} onChange={(s) => patchContent({ hide: s })} />
+                </Row>
+                <NumberField lbl="Font size" step={4} value={content.fontSize} onCommit={(n) => patchContent({ fontSize: Math.round(n) })} />
+              </>
+            ) : null;
+          }
+          const { kind: _k, text: _t, ...values } = o.content as Record<string, unknown>;
+          return <ParamFields values={values} fields={declared} onPatch={patchContent} />;
+        })()}
         {o.position !== undefined && (
           <SelectField lbl="Position" value={o.position} options={OVERLAY_POSITIONS} onChange={(s) => patchItem('overlays', id, { position: s })} />
         )}
