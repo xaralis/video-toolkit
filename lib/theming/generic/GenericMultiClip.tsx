@@ -5,11 +5,17 @@ import type { VideoRenderProps } from '../types';
 import type { MultiClipTokens } from '../tokens';
 import { SegmentMedia } from '../segment/SegmentMedia';
 
-// ---- neutral defaults ------------------------------------------------------
-// Every value here is a NEUTRAL default for a token in ../tokens.ts, never a
-// brand's value. campaign-reels' own numbers are named in tokens.ts as examples
-// for a brand migrating; where its literal was an identity colour (its coal
-// `#0a0a0a`, its accent `#c6f432`) core uses plain black/white instead.
+// ---- defaults --------------------------------------------------------------
+// Every value here is a default for a token in ../tokens.ts, so a brand can
+// move any of them. Two different kinds of default live below:
+//  - COLOURS and FONTS are genuinely neutral — where campaign-reels' literal
+//    was an identity colour (its coal `#0a0a0a`, its accent `#c6f432`) core
+//    uses plain black/white instead, and the font is `monospace`.
+//  - GEOMETRY AND TYPOGRAPHY MAGNITUDES are campaign-reels' tuned numbers,
+//    carried over verbatim for render parity: the border widths, the PIP box,
+//    the label's `fontSize` 22 / `letterSpacing` '0.08em' / `textShadow`.
+//    They are PP-derived defaults, not values derived from nothing — every
+//    other brand overrides them through tokens.multiClip.
 const DEFAULT_BORDER_PX = 4;
 const DEFAULT_BORDER_COLOR = '#000000';
 const DEFAULT_BACKGROUND = '#000000';

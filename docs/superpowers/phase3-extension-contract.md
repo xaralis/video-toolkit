@@ -296,11 +296,17 @@ and it writes a **string** into what the renderer expects to be a number (`speed
 content bag is `z.record(z.unknown())`, so nothing rejects it — the config just goes type-dirty
 until a reload re-types the field from its now-string value.
 
+**Declaration is additive, per field.** A brand declaring one param on a kind that also
+carries `reveal`/`hide`/`fontSize` keeps core's typed editors for those three
+(`LayeredInspector.tsx:660-663`, six tests). Only a field the brand names is taken over, and
+it then renders through the brand's own `options`/`type` — the same explicit-wins rule
+`editorMetaFromTheme` applies. Once anything is declared, the kind's remaining undeclared keys
+surface in the generic bag editor too; a kind with no declaration at all keeps exactly today's
+inspector. (This was all-or-nothing per kind until `3af9b3a`; a doc claiming otherwise predates
+that fix.)
+
 **Known limits of the derived path**, disclosed rather than hidden:
 
-- The declared path replaces the value-presence editor **per kind, not per field**. A brand
-  declaring one param on a kind that also carries `reveal`/`hide`/`fontSize` downgrades those
-  three to untyped inputs.
 - `BrandTheme.brand` registrations may carry `params`, but the **brand lane has no param UI** —
   they are not derived. "Any registered kind is editable" does not reach that axis yet.
 - A derived **effect** entry carries no label or defaults (`Registration` has no such fields):

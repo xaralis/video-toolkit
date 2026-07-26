@@ -755,7 +755,7 @@ for the record:
   `host-duration.test.ts`'s floor assertions fail. Closed.
 - **The `650/650 passed` gate figure hid two deliberately-failing tests.** Vitest's summary
   (and its JSON reporter's `numPassedTests`) counts an `it.fails` pin as a pass, so
-  `lib/editor/src/at-cut-transitions.test.tsx:289,307`'s two known-defect pins (`checkerboard`
+  `lib/editor/src/at-cut-transitions.test.tsx`'s two known-defect pins (`checkerboard`
   exiting as a no-op, `pixelate`'s opaque root at a cut) were invisible in the gate table above
   a reader who reads counts, not test titles. The gate-table row and `CLAUDE.md`'s Quality
   Gates table now both say so explicitly. `CLAUDE.md`'s table carried no test counts to begin
@@ -948,9 +948,15 @@ now ordinary migration verification, not risk closure.
     which is what makes the third quality gate (`npm run typecheck` there) possible over
     `lib/render/` and `lib/transitions/` — see `docs/superpowers/core-typecheck-gate.md`.
   - A module importing `remotion` is unit-tested by mocking it: `vi.mock('remotion', …)`.
-    Five test files do this today — `segment-media`, `generic-watermark`, `text-overlay-base`,
-    `load-fonts`, and `at-cut-transitions`. `lib/editor/vitest.config.ts:51` documents the
-    resolution detail that makes it work.
+    **14** test files do this today (count them with
+    `grep -rln "vi.mock('remotion'" lib/editor/src`): `at-cut-transitions`, `brand-track`,
+    `effect-primitives`, `effects-registry`, `generic-captions`, `generic-card`,
+    `generic-multiclip`, `generic-outro`, `generic-watermark`, `load-fonts`,
+    `overlay-registry`, `segment-media`, `text-overlay-base`, `video-track-layout`. The
+    figure was **5** when `fix/core-has-remotion` first measured it; Phase 3 tripled it,
+    which is the point — mocking `remotion` is now the ordinary way to test a JSX module
+    here, not a trick. `lib/editor/vitest.config.ts:51` documents the resolution detail
+    that makes it work.
   - **Core CAN render.** `examples/layered-minimal` is a complete, installed Remotion project
     (`@remotion/cli`, `@remotion/renderer`, a platform compositor, `@remotion/web-renderer` all
     present) — `cd examples/layered-minimal && npx remotion still src/index.ts MinimalReel
@@ -977,7 +983,7 @@ now ordinary migration verification, not risk closure.
   historical; these are live:
   | Gate | Command | Now |
   |---|---|---|
-  | Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | **70 files / 905 tests**, green — **4** of them are `it.fails` known-defect pins (`at-cut-transitions.test.tsx:289,316,370,388`), so "all passed" is not full green |
+  | Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | **70 files / 905 tests**, green — **4** of them are `it.fails` known-defect pins (`at-cut-transitions.test.tsx:293,320,374,392` — re-derive with `grep -n 'it.fails'`, these shift whenever the file's comments change), so "all passed" is not full green |
   | Editor types | `cd lib/editor && npx tsc --noEmit` | **3** errors (`LayeredInspector.tsx:679`, `derive-layered.test.ts:277`, `../theming/envelope.test.ts:1`) |
   | Render/transition types | `cd examples/layered-minimal && npm run typecheck` | **0**, coverage guard ok |
   | Brand leak | the `grep -riE` above | exactly **2** hits — `lib/theming/effects/ken-burns.ts` and `lib/transitions/presentations/burn.tsx` |

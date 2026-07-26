@@ -161,11 +161,16 @@ or moved), update `EXPECTED_MINIMUMS` in the script and the counts in this doc's
 
 - **Never loosen `strict`** (or `noEmit`/`skipLibCheck` semantics) to make an
   error go away.
-- **Never change render behaviour to satisfy the checker.** Eleven transition
-  kinds still have no at-cut visual confirmation (`docs/superpowers/HANDOFF.md`);
-  a "cleanup" there is unverifiable. A narrowing check or a documented non-null
-  assertion that provably preserves behaviour is fine. Anything that could alter
-  output is a decision for the user, not a fix.
+- **Never change render behaviour to satisfy the checker.** All **20** catalog
+  transition kinds now DO have at-cut visual confirmation — 310 stills, both
+  directions, in `docs/superpowers/at-cut-transition-findings.md` (Phase 3,
+  Task 10) — so what a "cleanup" there would alter is now documented rather
+  than unknown, and four of the kinds are pinned as known defects whose look is
+  a decision the user has not yet made. That makes silent behaviour changes
+  worse, not safer: a narrowing check or a documented non-null assertion that
+  provably preserves behaviour is fine, but anything that could alter output is
+  a decision for the user, not a fix — and re-render the affected kind against
+  the findings doc before claiming it preserved anything.
 - **Keep `examples/layered-minimal/src/` at zero.** It is additionally pinned by
   `lib/editor/src/example-default-props.test.ts`, which runs the real
   `readDefaultProps` against its `Root.tsx`.

@@ -207,9 +207,26 @@ export interface CompositionTheme extends BrandTheme {
    *  brand (campaign-reels) registers one — dropping it would silently change
    *  its audio paths. New brands should register `resolveMediaSource` instead. */
   resolveAudioSource?: (raw: string) => string;
-  /** Wholesale override of core's ONE media-path rule (./media-source.ts) for
-   *  EVERY role — clip/broll/photo footage, audio, music and brand assets.
+  /** Wholesale override of core's ONE media-path rule (./media-source.ts).
    *  Absent → `resolveMediaSource` from ./media-source.
+   *
+   *  WHICH ROLES ACTUALLY HONOUR IT, precisely — `MediaRole` names six
+   *  ('clip' | 'broll' | 'photo' | 'audio' | 'music' | 'brand'), but the axes
+   *  that thread the override are not all of them:
+   *  - **video track** — yes. `layered-composition.tsx:96` passes it as
+   *    `VideoRenderProps.resolveMediaSource`, so `SegmentMedia` (clip/broll/
+   *    photo), `GenericMultiClip` and `GenericOutro` all honour it. Outro
+   *    assets resolve under role `'brand'`, so brand-role assets ON THIS AXIS
+   *    are covered.
+   *  - **audio and music** — yes (`layered-composition.tsx:132,168`), with
+   *    the deprecated `resolveAudioSource` still winning on audio.
+   *  - **brand LAYER track** — **no.** `BrandRenderProps` carries no resolver
+   *    field, so `defaultRenderBrandTrack` has nothing to thread and
+   *    `GenericWatermark` resolves through core's rule unconditionally (its
+   *    own comment says so). A brand needing a different watermark path
+   *    registers its own brand-layer renderer. Threading it here would be a
+   *    routing decision — whether a brand-layer override is even the same
+   *    override — not a mechanical change, so it is left open deliberately.
    *
    *  Like the default, it must resolve at RENDER TIME and never write back
    *  onto the item: `loadTranscriptSync` derives the caption sidecar path from

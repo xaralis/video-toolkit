@@ -4,10 +4,18 @@ import { interpolate, useCurrentFrame } from 'remotion';
 import type { VideoRenderProps } from '../types';
 import type { CardTokens } from '../tokens';
 
-// ---- neutral defaults ------------------------------------------------------
-// Every value is a NEUTRAL default for a token in ../tokens.ts. campaign-reels'
-// own values (coal `#0a0a0a`, paper `#f5f5f0`, accent `#c6f432`, `Geist`, its
-// endpoint colour `#2ad4c5`) are named there as migration examples only.
+// ---- defaults --------------------------------------------------------------
+// Every value is a default for a token in ../tokens.ts, so a brand can move any
+// of them. Two different kinds of default live below:
+//  - COLOURS and FONTS are genuinely neutral: campaign-reels' own values (coal
+//    `#0a0a0a`, paper `#f5f5f0`, accent `#c6f432`, `Geist`, its endpoint colour
+//    `#2ad4c5`) are named in tokens.ts as migration examples only, and nothing
+//    here is one of them.
+//  - GEOMETRY AND TYPOGRAPHY MAGNITUDES are campaign-reels' tuned numbers,
+//    carried over verbatim for render parity: `fontSize` 120, `lineHeight`
+//    1.05, `letterSpacing` '-0.02em', `paddingX` 80, the pattern `opacity`
+//    0.36, the stagger frames. PP-derived defaults, not values derived from
+//    nothing — a second brand overrides them through tokens.card.
 const DEFAULT_BACKGROUND = '#000000';
 const DEFAULT_PATTERN = { color: '#ffffff', accentColor: '#ffffff', opacity: 0.36 };
 const DEFAULT_TEXT = {

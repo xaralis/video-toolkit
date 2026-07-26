@@ -34,9 +34,10 @@ export interface GenericCaptionsProps {
   tokens?: CaptionTokens;
 }
 
-// Pop-focus pill geometry. Not tokens (yet): they are internal to the one mode
-// and the brief's CaptionTokens contract is deliberately closed. A second brand
-// that needs to move them is the signal to promote them.
+// Pop-focus pill geometry, campaign-reels' tuned numbers kept verbatim for
+// render parity. Not tokens (yet): they are internal to the one mode and the
+// brief's CaptionTokens contract is deliberately closed. A second brand that
+// needs to move them is the signal to promote them.
 const POP_FONT_MULTIPLIER = 1.04;
 const POP_PAD_X = 22;
 const POP_PAD_Y = 10;
@@ -76,8 +77,14 @@ const withAlpha = (color: string, alpha: number): string => {
  *     mode that exists only in a brand repo is the copy-paste channel Phase 3
  *     closes.
  *
- * Every colour, size, font and magnitude arrives from {@link CaptionTokens}
- * with a neutral default. Nothing here is any brand's value.
+ * Every colour and font arrives from {@link CaptionTokens} with a neutral
+ * default — no brand's identity colour or typeface is in this file.
+ * GEOMETRY AND TYPOGRAPHY MAGNITUDES ARE NOT ALL TOKENIZED YET: the pop-pill
+ * padding, the highlight envelope constants and the default sizes below are
+ * campaign-reels' tuned numbers, kept verbatim for render parity and not yet
+ * promoted to tokens. They are defaults a second brand cannot currently move
+ * (see the constants' own note). Read "neutral" as "carries no brand
+ * identity", not as "derived from nothing".
  */
 export const GenericCaptions: React.FC<GenericCaptionsProps> = ({
   words,
