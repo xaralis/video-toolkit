@@ -18,7 +18,7 @@ still being worked on you sometimes want them. `/toolkit:sync-template` does tha
 /toolkit:sync-template <project>                    # pull template fixes in
 /toolkit:sync-template <project> --dry-run          # preview — writes nothing
 /toolkit:sync-template <project> --template <name>  # if project.json has no `template` field
-/toolkit:sync-template <project> --strict           # also delete files the template no longer has
+/toolkit:sync-template <project> --strict           # also delete mirrored files the template no longer has
 /toolkit:sync-template <project> --src-only         # legacy: mirror src/ only
 ```
 
@@ -30,11 +30,18 @@ Runs `python3 -m video_toolkit.sync_template` from the toolkit root.
 |------|------|
 | `src/` | full mirror, minus the project-owned files below |
 | `.editor/` | full mirror — the reel editor is the template's, wholesale |
-| `remotion.config.ts`, `vitest.config.ts`, `tsconfig.json` | full mirror |
+| `remotion.config.ts`, `vitest.config.ts`, `tsconfig.json`, `tailwind.config.ts`, `.prettierrc.json` | full mirror (a file the template doesn't ship is skipped) |
 | `package.json` | **merged, never overwritten** — see below |
 
 Everything mirrored is compared by **content hash**, so unchanged files are skipped and genuine
 drift shows as `updated`. Idempotent: re-running is free.
+
+> **`--strict` blast radius.** `--strict` deletes files the template no longer has **from every
+> mirrored tree, which now includes `.editor/`** — the editor tree is the template's wholesale, so a
+> project's own `.editor/local-notes.md` or `.editor/brand-overrides.css` would be deleted. It never
+> reaches the project root (`CLAUDE.md`, `project.json`, `public/`, `out/` are all safe) and never
+> removes a dependency from `package.json`. It is opt-in, and `--dry-run` lists every `removed` file
+> before anything happens — check that list.
 
 `src/` alone used to be the whole story, and it was not enough: 8 of 11 PP project editors could not
 start at all, because the vendored `package.json` never inherited the template's editor

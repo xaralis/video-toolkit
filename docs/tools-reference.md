@@ -45,15 +45,20 @@ upgrade can't break a finished render. To pull a template fix into an **in-progr
 python3 -m video_toolkit.sync_template <project> --dry-run          # preview (writes nothing)
 python3 -m video_toolkit.sync_template <project>                    # sync
 python3 -m video_toolkit.sync_template <project> --template <name>  # if project.json has no `template`
-python3 -m video_toolkit.sync_template <project> --strict           # also delete files the template dropped
+python3 -m video_toolkit.sync_template <project> --strict           # also delete mirrored files the template dropped
 python3 -m video_toolkit.sync_template <project> --src-only         # legacy: mirror src/ only
 ```
 
 Carries `src/`, `.editor/` (the reel editor) and the build config (`remotion.config.ts`,
-`vitest.config.ts`, `tsconfig.json`); **merges** `package.json` — `dependencies`/`devDependencies`
-and any script the project lacks come from the template (a version mismatch resolves to the
-template's), while `name`, `version` and existing scripts are the project's and are never written.
-Every merged key is reported as `pkg add` / `pkg update` / `pkg keep`; run `npm install` after any.
+`vitest.config.ts`, `tsconfig.json`, `tailwind.config.ts`, `.prettierrc.json` — a file the template
+doesn't ship is skipped); **merges** `package.json` — `dependencies`/`devDependencies` and any
+script the project lacks come from the template (a version mismatch resolves to the template's),
+while `name`, `version` and existing scripts are the project's and are never written. Every merged
+key is reported as `pkg add` / `pkg update` / `pkg keep`; run `npm install` after any.
+
+`--strict` deletes from **every mirrored tree, `.editor/` included** — a project's own file under
+`.editor/` would go with it. It never touches the project root or removes a dependency, and
+`--dry-run` lists every `removed` file first.
 
 `src/Root.tsx` and `src/config/demo.config.json` are **project-owned and never written** (they are
 the project's actual cut) — reported as `preserved`. Compares by content hash; idempotent.

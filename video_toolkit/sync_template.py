@@ -53,8 +53,20 @@ PROJECT_OWNED = frozenset({"Root.tsx", "config/demo.config.json"})
 # project whose .editor/ drifted behind the template's cannot start at all.
 MIRROR_DIRS = (".editor",)
 
-# Vendored single files at the project root — the build config. Mirrored like src files.
-MIRROR_FILES = ("remotion.config.ts", "vitest.config.ts", "tsconfig.json")
+# Vendored single files at the project root — the build config. Mirrored like src files. A file the
+# template doesn't ship is skipped, so a template may carry any subset.
+#
+# tailwind.config.ts is here on evidence, not on principle: all 11 PP projects are byte-identical to
+# their template's, and roost's template ships none. "Brand-shaped" argues for the TEMPLATE owning
+# it, not the project. Divergence is never destroyed silently either way — it surfaces as `updated`
+# in --dry-run before anything is written, the same safety valve tsconfig.json relies on.
+MIRROR_FILES = (
+    "remotion.config.ts",
+    "vitest.config.ts",
+    "tsconfig.json",
+    "tailwind.config.ts",
+    ".prettierrc.json",
+)
 
 # package.json sections merged key-by-key from the template. The template owns the toolchain, so a
 # version mismatch resolves to the template's.

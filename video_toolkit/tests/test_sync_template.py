@@ -139,6 +139,8 @@ def _make_template_dir(root):
     (tpl / "remotion.config.ts").write_text("remotion config v2\n")
     (tpl / "vitest.config.ts").write_text("vitest config v2\n")
     (tpl / "tsconfig.json").write_text('{"compilerOptions": {"strict": true}}\n')
+    (tpl / "tailwind.config.ts").write_text("tailwind config v2\n")
+    (tpl / ".prettierrc.json").write_text('{"semi": true}\n')
     (tpl / "package.json").write_text(json.dumps(TEMPLATE_PKG, indent=2) + "\n")
     return tpl
 
@@ -164,6 +166,10 @@ def test_editor_and_build_config_are_carried(tmp_path):
     assert (proj / "remotion.config.ts").read_text() == "remotion config v2\n"
     assert (proj / "vitest.config.ts").read_text() == "vitest config v2\n"
     assert (proj / "tsconfig.json").exists()
+    # the formatting + tailwind toolchain is the template's too: .prettierrc.json is byte-identical
+    # in all 12 PP+roost projects, and all 11 PP projects match their template's tailwind.config.ts
+    assert (proj / "tailwind.config.ts").read_text() == "tailwind config v2\n"
+    assert (proj / ".prettierrc.json").read_text() == '{"semi": true}\n'
     assert set(report["copied"]) == {
         ".editor/index.html",
         ".editor/main.tsx",
@@ -171,6 +177,8 @@ def test_editor_and_build_config_are_carried(tmp_path):
         "remotion.config.ts",
         "vitest.config.ts",
         "tsconfig.json",
+        "tailwind.config.ts",
+        ".prettierrc.json",
     }
 
 
@@ -186,7 +194,33 @@ def test_editor_drift_is_pulled_forward_and_idempotent(tmp_path):
 
     again = sync_extras(tpl, proj)
     assert again["copied"] == [] and again["updated"] == []
-    assert len(again["skipped"]) == 6
+    assert len(again["skipped"]) == 8
+
+
+def test_diverged_build_config_surfaces_as_updated_before_anything_is_written(tmp_path):
+    """The safety valve: a project that diverged is never silently overwritten — --dry-run names
+    the file as `updated` first. This is what makes carrying tailwind.config.ts safe."""
+    tpl = _make_template_dir(tmp_path)
+    proj = _make_project_dir(tmp_path)
+    (proj / "tailwind.config.ts").write_text("project's own tailwind\n")
+    (proj / ".prettierrc.json").write_text('{"semi": false}\n')
+
+    preview = sync_extras(tpl, proj, dry_run=True)
+
+    assert "tailwind.config.ts" in preview["updated"]
+    assert ".prettierrc.json" in preview["updated"]
+    assert (proj / "tailwind.config.ts").read_text() == "project's own tailwind\n"  # not yet written
+
+
+def test_a_template_shipping_only_some_config_files_is_fine(tmp_path):
+    """roost's template ships no tailwind.config.ts — a missing file is skipped, not an error."""
+    tpl = _make_template_dir(tmp_path)
+    (tpl / "tailwind.config.ts").unlink()
+
+    report = sync_extras(tpl, _make_project_dir(tmp_path))
+
+    assert "tailwind.config.ts" not in report["copied"]
+    assert "vitest.config.ts" in report["copied"]
 
 
 def test_project_owns_nothing_inside_the_editor_tree(tmp_path):
@@ -326,6 +360,32 @@ def test_identity_guard_rails_reject_a_rename(tmp_path):
         check_identity_preserved(before, dict(before, name="demo-template"))
     with pytest.raises(RuntimeError, match="`version` would change"):
         check_identity_preserved(before, dict(before, version="1.0.0"))
+
+
+def test_the_merge_actually_runs_the_identity_guard_before_writing(tmp_path, monkeypatch):
+    """Testing the guard in isolation is not enough — deleting its CALL SITE must fail too. This is
+    the one operation that could rename 14 projects, so pin that it runs, and runs BEFORE the write."""
+    import video_toolkit.sync_template as st
+
+    tpl = _make_template_dir(tmp_path)
+    proj = _make_project_dir(tmp_path, pkg={"name": "pp-ricni-sauna", "version": "0.2.0"})
+    before = (proj / "package.json").read_text()
+
+    calls = []
+
+    def _spy(pre, post):
+        calls.append((pre, post))
+        raise RuntimeError("`name` would change")  # stand in for a real violation
+
+    monkeypatch.setattr(st, "check_identity_preserved", _spy)
+
+    with pytest.raises(RuntimeError, match="`name` would change"):
+        st.merge_package_json(tpl, proj)
+
+    assert len(calls) == 1
+    assert calls[0][0] == {"name": "pp-ricni-sauna", "version": "0.2.0"}  # the PRE-merge identity
+    # the guard ran before the write, so a violation leaves the file untouched
+    assert (proj / "package.json").read_text() == before
 
 
 def test_template_without_package_json_is_a_no_op(tmp_path):
