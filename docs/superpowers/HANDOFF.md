@@ -168,6 +168,37 @@ would fire on the one repo that is not broken) and must **warn, not throw** — 
 assertion turns a routine submodule bump into a hard stop. Recorded in
 `docs/zod-version.md`; no guard code exists yet.
 
+**New in the fix-pass-2 re-review, now a Phase 3 candidate:**
+- **`lib/transitions/TransitionGallery.tsx` and `showcase/transitions/src/TransitionGallery.tsx`
+  are a divergent fork, and only the second one runs.** `showcase/transitions/src/Root.tsx` (and
+  therefore `npm run render` in that project) imports the showcase copy exclusively; the lib copy
+  has no runtime consumer anywhere in this repo or in either brand repo
+  (`~/Workspace/progpce/video-toolkit`, `~/Workspace/roost/video-toolkit` — both only reference
+  `toolkit/lib/transitions/TransitionGallery.tsx` and `toolkit/showcase/transitions/src/*` via the
+  submodule, neither imports the lib copy directly). The lib copy's only reason to exist right now
+  is that `examples/layered-minimal/tsconfig.json` lists it directly in `include` so the type-check
+  gate (`docs/superpowers/core-typecheck-gate.md`) can reach it — meaning **the gate's "0 errors"
+  claim for `TransitionGallery.tsx` covers a file nothing renders.** The showcase copy still carries
+  the exact `TransitionDemo`'s `presentation: ReturnType<typeof glitch>` mis-typing that was just
+  fixed in the lib copy (fix-pass-1, `51150ad`) — every non-glitch entry in its `TRANSITIONS` array
+  is silently accepted only because the showcase project has no type-check gate of its own. The two
+  files have also drifted apart in content, not just typing: the showcase copy adds a `checkerboard`
+  transition entry (four variants) and a `TRANSITION_NOTES` block plus a materially reworked visual
+  layout (grid background, corner markers, per-scene labels) that the lib copy lacks entirely; the
+  lib copy in turn carries the generic `TransitionEntry`/`makeTransitionEntry` factory pattern and
+  the `transitionMap`/`SingleTransitionPreview` programmatic-access API (README-documented, fix-pass-2
+  above) that the showcase copy lacks.
+  **Recommendation:** make the showcase copy the single source (it is the one with real content —
+  `checkerboard`, notes, the richer layout — and the one actually exercised by a render), have
+  `showcase/transitions/src/Root.tsx` import it as today, and either (a) delete
+  `lib/transitions/TransitionGallery.tsx` and drop the `examples/layered-minimal/tsconfig.json`
+  `include` entry, accepting that the gallery/demo surface goes back to un-type-checked, or (b) keep
+  one copy in `lib/transitions/` as the canonical version (porting `checkerboard` + notes + layout
+  into it) and have the showcase project import it instead of vendoring its own — which restores a
+  single type-checked source and gives the showcase real coverage for free. (b) is preferable if the
+  gate is meant to mean what it currently implies. Not fixed here — this is a decision for the user,
+  and fix-pass-2's charter was explicitly not to delete/merge/rewrite either copy.
+
 **New in Phase 2, deferred:**
 - **`loadBrandFonts` dedupes on a module-level `handle`**, so a *second* call from a
   different composition in one JS realm is a silent no-op. This mirrors all three brand
@@ -280,7 +311,7 @@ regression to investigate, not noise to dismiss.
 - The brand-leak gate needs its exclusions or it walks `node_modules` and is permanently red:
   `grep -riE 'lime|teal|roost|progresivn|sand-brown' lib/ --exclude-dir=node_modules --exclude='*.test.*'`
 - **`examples/layered-minimal` is also a type-check gate**, over `lib/render` and
-  `lib/transitions` (`cd examples/layered-minimal && npx tsc --noEmit`, baseline 0) — the
+  `lib/transitions` (`cd examples/layered-minimal && npm run typecheck`, baseline 0) — the
   surface `lib/editor`'s own `tsc --noEmit` (baseline 29) doesn't reach. See
   `docs/superpowers/core-typecheck-gate.md` and the `CLAUDE.md` "Quality Gates" table. No CI
   runs any of these three gates; they are manual and easy to forget — run them before calling

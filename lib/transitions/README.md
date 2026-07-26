@@ -281,7 +281,8 @@ import { SingleTransitionPreview, transitionMap } from '@video-toolkit/lib/trans
 <SingleTransitionPreview transitionName="glitch" />
 
 // Access transition config programmatically
-const { presentation, duration } = transitionMap.lightLeak;
+const { duration, render } = transitionMap.lightLeak;
+const demo = render('lightLeak', duration); // React.ReactElement, e.g. for a custom preview
 ```
 
 ## Technical Notes

@@ -45,6 +45,16 @@ doesn't ride in for free the way the presentations do. It's added directly to th
 `@remotion/transitions` and its subpaths, five presentations) already resolve through the
 `paths` mappings below, so this was a clean addition — no contortion of `src/` needed.
 
+**Caveat: this covers a copy with no runtime consumer.** `showcase/transitions/src/TransitionGallery.tsx`
+is a separate, divergent fork of this file — it's what `showcase/transitions/src/Root.tsx` and
+`npm run render` in that project actually use, and it sits outside this gate entirely (nothing
+adds it to any `tsconfig.json` `include`). The showcase copy still has the exact `TransitionDemo`
+`presentation: ReturnType<typeof glitch>` mis-typing this gate caught and fixed in the *lib* copy
+below — this gate's "0 errors" says nothing about it. So: this gate type-checks
+`lib/transitions/TransitionGallery.tsx`, which nothing renders; the copy that does render is
+unchecked. See `docs/superpowers/HANDOFF.md` ("New in the fix-pass-2 re-review, now a Phase 3
+candidate") for the full diff and a recommendation on which copy should survive.
+
 Pulling it in surfaced one real, pre-existing type error: `TransitionDemo`'s `presentation`
 prop was pinned to `ReturnType<typeof glitch>` (i.e. `TransitionPresentation<GlitchProps>`)
 but the component renders whichever transition's presentation is passed to it — every other

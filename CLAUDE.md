@@ -309,7 +309,7 @@ Docker images, cuts releases, and syncs the Remotion skill from upstream).
 |---|---|---|
 | Editor tests | `cd lib/editor && npx vitest run` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports |
 | Editor types | `cd lib/editor && npx tsc --noEmit` | Same surface as above, minus render `.tsx` components and `lib/transitions` |
-| Render/transitions types | `cd examples/layered-minimal && npx tsc --noEmit` | `lib/render` and `lib/transitions` (including their `.tsx` components), via the example that actually imports them — see `docs/superpowers/core-typecheck-gate.md` |
+| Render/transitions types | `cd examples/layered-minimal && npm run typecheck` | `lib/render` and `lib/transitions` (including their `.tsx` components), via the example that actually imports them — see `docs/superpowers/core-typecheck-gate.md` |
 
 The brand-leak gate (`grep -riE 'lime|teal|roost|progresivn|sand-brown' lib/ --exclude-dir=node_modules --exclude='*.test.*'`) must keep returning only its known pre-existing hits.
 
