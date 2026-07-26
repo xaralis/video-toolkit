@@ -111,7 +111,7 @@ What Phase 2 landed, and what each brand does about it:
 | A | `lib/render/layered-composition-props.ts` | each layered `Root.tsx`'s hand-copied `calculateMetadata` + 60-frame floor | loud if mis-spelled, otherwise tsc-caught |
 | B | `lib/render/{fonts,load-fonts}.ts` | `src/lib/load-fonts.ts` (3 copies) | tsc-caught; **one silent behaviour change** |
 | C | `lib/project/{paths,remotion-config,vitest-config}.ts` + `tsconfig.base.json` | `remotion.config.ts`, `vitest.config.ts`, `tsconfig.json` boilerplate | loud |
-| D | — | the duplicate `roostReelDurationInFrames` floor | silent |
+| D | `lib/render/layered-composition-props.ts` (`layeredDurationInFrames`) | roost's duplicate `roostReelDurationInFrames` (deleted, both files) | tsc-caught |
 | E | `lib/editor/host/{EditorHost.tsx,mount.tsx}` | `.editor/main.tsx` (489/504 lines → ~13–16) | loud (bad module path) / silent (mistyped option key) — never tsc-caught |
 | F | `lib/editor/host/{editor-plugin.mts,vite-config.mts,prettier-format.ts}` | `.editor/vite.config.mts` + `.editor/editor-plugin.mts` (deleted) | loud |
 | G | `docs/zod-version.md` | the `zod` version range in `package.json` | **silent** |
@@ -187,6 +187,11 @@ export const RemotionRoot: React.FC = () => {
 `layeredCompositionProps` returns `{ id, component, fps, width, height, durationInFrames,
 calculateMetadata }` — the placeholder `durationInFrames` and the `Math.max(60, …)` floor are
 core's now, in one place (`lib/render/layered-composition-props.ts`).
+
+**The spread does not weaken your `defaultProps` type-check.** This was Phase 2's stated top
+residual risk (the unconstrained `<C>` possibly defeating Remotion's `Props` inference); it is
+now **closed**, settled in core against a real `<Composition>` — see the note under "Suggested
+order" step 6, and `docs/superpowers/HANDOFF.md`.
 
 > **⚠️ Spell the call literally, with an inline options object.**
 > The editor's surgical Save (`lib/editor/src/default-props-writer.ts`, `idOf()`) finds the
@@ -658,43 +663,77 @@ No `@brand-lib` entry.
 
 ---
 
-### D. `src/LayeredRoostReel.tsx` — drop the duplicate `roostReelDurationInFrames` *(silent)*
+### D. `src/LayeredRoostReel.tsx` — delete `roostReelDurationInFrames`, use core's *(tsc-caught)*
 
-`layeredDurationInFrames(reel, fps)` in `lib/render/layered-composition-props.ts` is now the ONE
-definition of a reel's length. roost carries a second one.
+**Decided by the user: the duplicate goes, replaced by core's `layeredDurationInFrames`.
+Bit-identity is explicitly NOT required.** This is a straight replacement, not a judgement
+call — do not keep a local unfloored helper "just in case".
 
-**In `templates/roost-reels/src/LayeredRoostReel.tsx:15`** — the export has **no consumer**
-anywhere in the template (verified). Delete it and its two-line comment outright:
+`layeredDurationInFrames(reel, fps)` in `lib/render/layered-composition-props.ts` is the ONE
+definition of a reel's length. roost carries a second one, in two files.
+
+**Severity is *tsc-caught*, not silent.** Once the local `export const` is deleted, any call
+site you miss is an unresolved identifier — `tsc` names the file and line. The old *silent*
+grade described a world where both definitions coexisted and you had to notice the difference
+by reading; deleting the export removes that world.
+
+**1. `templates/roost-reels/src/LayeredRoostReel.tsx:15`** — the export has **no consumer**
+anywhere in the template (re-verified: `roostReelDurationInFrames` appears in roost only at
+`templates/roost-reels/src/LayeredRoostReel.tsx:15`,
+`projects/roost-reel-01/src/LayeredRoostReel.tsx:68` and `:141`). Delete it and its two-line
+comment outright; nothing replaces it here:
 
 ```ts
-// DELETE:
+// DELETE — no import needed, nothing in the template calls it:
 // Single source of truth for the reel length — Root.tsx's calculateMetadata
 // MUST use this too so the composition duration and the render never drift.
 export const roostReelDurationInFrames = (reel: LayeredReel, fps: number): number =>
   Math.round((reel.meta.totalDurationMs / 1000) * fps);
 ```
 
-**In `projects/roost-reel-01/src/LayeredRoostReel.tsx:68`** the same export **is** used, at
-line 141, to size the music fade-out:
+(The comment's own premise is already obsolete: after item **A**, `Root.tsx` no longer has a
+hand-written `calculateMetadata` to keep in sync — it spreads `layeredCompositionProps`, whose
+`calculateMetadata` calls `layeredDurationInFrames`. Deleting this export is what actually
+makes the comment's claim true.)
+
+**2. `projects/roost-reel-01/src/LayeredRoostReel.tsx:68`** — the same export, and here it
+**is** used, once, at line 141, to size the music fade-out.
+
+**Before:**
 
 ```ts
-const totalFrames = roostReelDurationInFrames(reel, fps);
+// :68
+// Single source of truth for the reel length — Root.tsx's calculateMetadata
+// MUST use this too so the composition duration and this component never drift.
+export const roostReelDurationInFrames = (reel: LayeredReel, fps: number): number =>
+  Math.round((reel.meta.totalDurationMs / 1000) * fps);
+
+// … :141, inside the component:
+  const totalFrames = roostReelDurationInFrames(reel, fps);
 ```
 
-Replace the local definition with core's:
+**After** — delete the definition and its comment, add the import beside the file's other
+`@video-toolkit/lib` imports, and change the one call:
 
 ```ts
 import { layeredDurationInFrames } from '@video-toolkit/lib/render/layered-composition-props';
-…
-const totalFrames = layeredDurationInFrames(reel, fps);
+
+// … :141 (now, with the definition gone, a few lines earlier):
+  const totalFrames = layeredDurationInFrames(reel, fps);
 ```
 
-> **⚠️ This is not bit-identical.** roost's version is a bare
-> `Math.round((totalDurationMs / 1000) * fps)`; core's applies the 60-frame floor
-> (`Math.max(60, …)`). For any reel of 2 seconds or longer the two agree exactly — the current
-> reel is 17.5s, so nothing moves. A sub-2s reel would get a longer music-fade window than
-> before. If that ever matters, keep a local unfloored helper and say so in a comment; do not
-> reintroduce a second *floored* definition.
+`totalFrames` feeds `fadeStart = totalFrames - OUTRO_FADE_OUT_FRAMES` and the
+`f >= totalFrames → 0` cutoff in `musicVolumeAt` — nothing else reads it.
+
+> **The one real difference, and why it does not matter here.** roost's version is a bare
+> `Math.round((totalDurationMs / 1000) * fps)`; core's is
+> `Math.max(60, Math.round((totalDurationMs / 1000) * fps))` — a 60-frame (2 s at 30 fps)
+> floor. The two therefore return **different values only for reels shorter than 2 seconds**,
+> where core's floor would give the music a longer fade window. Neither roost reel is anywhere
+> near that: `projects/roost-reel-01` is `totalDurationMs: 18000` (18 s = 540 frames) and the
+> template's own literal is `17500` (17.5 s = 525 frames). Both are an order of magnitude above
+> the floor, so this replacement moves nothing that renders today. Bit-identity is not required
+> and no local helper should be kept to preserve it.
 
 ---
 
@@ -831,16 +870,26 @@ Per repo, per directory:
    exercises `readDefaultProps` against the new `Root.tsx` spread, which is the one thing that
    fails loudly if item **A** was spelled wrong), and one `npm run render:preview`.
 
-   **Top thing to check here, above all else: run `npx tsc --noEmit` on the brand project
-   itself, not just core.** `layeredCompositionProps` (item **A**) has never been type-checked
-   against a real Remotion `<Composition>` — core has no `remotion` installed and `examples/`
-   sits inside no tsconfig, so core's own `tsc --noEmit` cannot see this. Item **A** is graded
-   *tsc-caught* above, which is honest about severity but untested in direction: if the
-   unconstrained `<C>` type parameter on `LayeredCompositionOptions<C>['component']` defeats
-   Remotion's own `Props` inference from `component`, a brand's `defaultProps` type-check could
-   silently *loosen* instead of erroring — the opposite of what "tsc-caught" promises. The first
-   brand-side `npx tsc --noEmit` after the pin bump settles it in seconds; treat any change in
-   `defaultProps` type strictness on `<Composition>` there as a real regression, not noise.
+   **Top thing to check here: item E, by opening the editor.** It is the only item on this
+   list that **no** automated check on either side can reach. `.editor/` sits outside every
+   `tsconfig.json`'s `"include": ["src/**/*"]`, so a mistyped `mountEditorHost` option key
+   (`accentSlot:` for `accentSlots:`) is stripped by esbuild without complaint and the editor
+   simply loads with no palette. Run `npm run editor`, confirm the reel loads, make one edit,
+   and **Save** — Save is also what exercises `readDefaultProps` against item **A**'s new
+   spread form, the one thing that fails loudly if **A** was spelled wrong. Everything else
+   here has a compiler or a test behind it.
+
+   > **No longer a concern: `layeredCompositionProps` loosening `defaultProps`.** An earlier
+   > version of this document told you to treat the first brand-side `npx tsc --noEmit` as the
+   > thing that settles whether the unconstrained `<C>` type parameter on
+   > `LayeredCompositionOptions<C>['component']` defeats Remotion's own `Props` inference. It
+   > does not — settled in core on `fix/core-has-remotion`. `examples/layered-minimal` is a
+   > real Remotion project that spreads `layeredCompositionProps` onto a real `<Composition>`;
+   > it type-checks at **0 errors**, and changing its `defaultProps`' `meta.totalDurationMs`
+   > from `6000` to `'6000'` produces `error TS2322: Type 'string' is not assignable to type
+   > 'number'`. Inference survives the spread; item **A**'s *tsc-caught* grade is accurate in
+   > direction as well as severity. Run the brand-side `tsc` as ordinary verification, not as
+   > risk closure.
 
 ## Not carried by `sync_template.py`
 

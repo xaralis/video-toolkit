@@ -2,11 +2,13 @@
 // video-track.tsx (see lib/render/README.md's transition-record.ts /
 // at-cut-transitions.tsx split for the same reason): video-track.tsx also
 // imports Remotion + at-cut-transitions.tsx for the JSX assembly
-// (buildVideoNodes), and core has no `remotion`/`@remotion/transitions`
-// installed, so any module that transitively imports those can't be loaded
-// by vitest here. Keeping computeVideoLayout in its own Remotion-free file
-// lets it be unit-tested in core; video-track.tsx re-exports it so consumers
-// can still import everything from one path.
+// (buildVideoNodes). Keeping computeVideoLayout in its own Remotion-free file
+// lets it be unit-tested with no mock and no jsdom; video-track.tsx re-exports
+// it so consumers can still import everything from one path.
+// NOTE: this split is a convenience, not a necessity. Core DOES have
+// `remotion` and `@remotion/transitions` (4.0.498, lib/editor/package.json),
+// and a Remotion-importing module tests fine under `vi.mock('remotion')` —
+// see lib/editor/src/at-cut-transitions.test.tsx.
 import { getTransitionRecord, type TransitionRecord } from './transition-record';
 
 export interface VideoLayoutEntry {

@@ -89,7 +89,8 @@ describe('applyToolkitWebpack', () => {
 
   it('runs the caller-supplied tailwind wrapper before the alias merge', () => {
     // enableTailwind is @remotion/tailwind-v4's, a BRAND dependency — core takes
-    // it as a parameter rather than importing it (core has no remotion deps).
+    // it as a parameter rather than importing it (it is not a core dependency;
+    // core installs `remotion` itself, but not the brand's Remotion plugins).
     const { calls, api } = fakeConfig();
     const tailwind = vi.fn((c: Record<string, any>) => ({ ...c, tailwindApplied: true }));
     applyToolkitWebpack(api, {

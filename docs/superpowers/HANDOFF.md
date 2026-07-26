@@ -1,6 +1,7 @@
 # Handoff — core architecture rework
 
-**Last updated:** 2026-07-25, after Phase 2 completed on `refactor/phase2-core-shell`.
+**Last updated:** 2026-07-26, at the end of `fix/core-has-remotion` — a correction branch
+between Phase 2 and Phase 3. Phase 2 completed on `refactor/phase2-core-shell` (2026-07-25).
 
 This file is the durable record across sessions. The working ledger
 (`.superpowers/sdd/progress.md`) is **gitignored** and will not survive a
@@ -33,8 +34,9 @@ The full audit and phase plan live at
 ## Phase 1 outcome
 
 18 commits, 116 files, **+4197 / −6998 (net −2801)**. 47 test files / **485 tests**
-green. `tsc --noEmit` holds at its 34-error pre-existing baseline — verified by
+green. `tsc --noEmit` held at its then-34-error pre-existing baseline — verified by
 diffing error *sets* against a worktree at the branch point, not by comparing counts.
+(That 34 is **historical**. The live baseline is 4 — see "Working conventions" below.)
 
 What landed: the retired segment-era editor and the entire legacy theming system
 deleted; four definitions of a transition collapsed into one `CATALOG` in
@@ -56,9 +58,11 @@ earlier count: 18 commits (`bb9a89d..8351451` — every commit since Phase 1 mer
 Phase 2 plan doc's own commit), 40 files, **+4035 / −80**, excluding the 2007-line plan document
 committed at the branch point (`docs/superpowers/plans/2026-07-25-phase2-core-owns-brand-shell.md`);
 including that file, 41 files / **+6042 / −80**. 55 test files /
-**561 tests** green. `tsc --noEmit` in `lib/editor` holds at its 34-error
+**561 tests** green. `tsc --noEmit` in `lib/editor` held at its then-34-error
 pre-existing baseline — verified by diffing error *sets* against a worktree at the
-merge base (`bb9a89d`); the two sets are byte-identical, no line added or removed.
+merge base (`bb9a89d`); the two sets were byte-identical, no line added or removed.
+(Both figures are **historical**: the live numbers are 57 files / 650 tests and a
+4-error `tsc` baseline — see "Working conventions" below.)
 The brand-leak gate returns exactly its 2 known pre-existing hits (comments in
 `lib/theming/segment/SegmentMedia.tsx` and `lib/transitions/presentations/burn.tsx`).
 
@@ -94,6 +98,30 @@ What landed — five mechanisms that each brand repo had its own copy of:
 **Paste-ready brand migrations: `docs/superpowers/phase2-migrations.md`.** That file
 carries Phase 1's five pending items forward too, so it alone is enough to move a
 brand repo from its current pin.
+
+---
+
+## `fix/core-has-remotion` outcome (between Phase 2 and Phase 3)
+
+Not a phase — a correction. Phase 2 carried forward a **false premise**: that core has no
+`remotion`, therefore anything importing it cannot be tested here. That premise was written
+into this file, into `lib/` comments, and into the reasoning for Phase 2's top residual risk.
+It was wrong, and it cost coverage. Four tasks:
+
+1. **Declared what was already installed.** `remotion@4.0.498` and
+   `@remotion/transitions@4.0.498` in `lib/editor/package.json` — `remotion` had always
+   resolved there as `@remotion/player`'s hard dependency. Added `load-fonts` unit coverage
+   via `vi.mock('remotion')`, and a tsconfig `paths` entry for the out-of-tree bare
+   specifiers.
+2. **Made `examples/layered-minimal` a type-check gate** over `lib/render/` and
+   `lib/transitions/`, with a coverage guard that fails if the checked file count shrinks.
+   `docs/superpowers/core-typecheck-gate.md`.
+3. **Wiring coverage for every at-cut transition kind** (all 20, derived from the catalog),
+   which surfaced the two `it.fails`-pinned defects recorded further down.
+4. **This record**, corrected.
+
+Net effect on the gates: tests 561 → **650**, editor `tsc` 34 → **4**, and a third gate that
+did not exist before. Phase 2's top residual risk: **closed** (see below).
 
 ---
 
@@ -299,18 +327,32 @@ normal `it` the day it is addressed and the runner shouts if it starts passing:
 **Nothing that renders today can regress** — every one of those kinds was unreachable before
 Phase 1.
 
-**Top residual risk on this branch, needs the first brand-side `tsc` to close:**
-`layeredCompositionProps` (`lib/render/layered-composition-props.ts`) has never been
-type-checked against a real Remotion `<Composition>` — core has no `remotion` installed, and
-`examples/` sits inside no tsconfig, so core's own `tsc --noEmit` cannot see this at all.
-Migration item A in `docs/superpowers/phase2-migrations.md` is graded *tsc-caught*, which is
-honest about severity but untested in direction: if the unconstrained `<C>` type parameter on
-`LayeredCompositionOptions<C>['component']` defeats Remotion's own `Props` inference from
-`component`, a brand's `defaultProps` type-check could silently **loosen** instead of erroring —
-the opposite of what "tsc-caught" promises. The first brand-side `npx tsc --noEmit` after the
-submodule pin bumps settles it in seconds (see `phase2-migrations.md`'s "Suggested order" step
-6). Treat any change in `defaultProps` type strictness on `<Composition>` there as a real
-regression to investigate, not noise to dismiss.
+**✅ CLOSED — Phase 2's stated top residual risk, settled favorably in core.**
+Phase 2 recorded that `layeredCompositionProps` (`lib/render/layered-composition-props.ts`)
+had never been type-checked against a real Remotion `<Composition>`, and that its
+unconstrained `<C>` type parameter on `LayeredCompositionOptions<C>['component']` might defeat
+Remotion's own `Props` inference and silently **loosen** a brand's `defaultProps` check —
+the opposite of what migration item A's *tsc-caught* grade promises. It said only a brand-side
+`tsc` could settle it. That reasoning rested on the false "core has no `remotion`" premise
+above; core could settle it all along, and now has:
+
+- **Positive:** `examples/layered-minimal/src/Root.tsx` spreads
+  `{...layeredCompositionProps({ id, component, fps, width, height })}` onto a real
+  `<Composition>` from `remotion` 4.0.425 alongside its own `defaultProps` literal, and
+  `cd examples/layered-minimal && npm run typecheck` reports **0 errors**.
+- **Negative (the check is real, not vacuous):** temporarily changing `defaultProps`'
+  `meta.totalDurationMs` from `6000` to `'6000'` in that same file produces exactly
+
+  ```
+  src/Root.tsx(39,51): error TS2322: Type 'string' is not assignable to type 'number'.
+  ```
+
+  Re-verified on `fix/core-has-remotion`, then reverted; the tree is clean.
+
+So the spread does **not** loosen `defaultProps` type strictness — inference survives it, and
+item A's *tsc-caught* grade is accurate in direction as well as severity. Nothing about this
+needs a brand repo any more. The residual value of the first brand-side `npx tsc --noEmit` is
+now ordinary migration verification, not risk closure.
 
 ---
 
@@ -324,10 +366,28 @@ regression to investigate, not noise to dismiss.
   Improving what `deriveLayered`/`deriveMontageLayered` emit is intended.
 - **Signing is never a blocker.** If a commit fails on a 1Password error, re-commit with
   `--no-gpg-sign` immediately. (Also recorded in `~/.claude/CLAUDE.md`.)
-- Core has no `remotion` installed, so anything importing it cannot be unit tested here.
-  Keep the pure/JSX split documented in `lib/render/README.md`.
-- **`EditorHost`'s verification boundary, named explicitly** (the general rule above is true but
-  too coarse to tell you what's actually unverified): the Focus/Zoom crop-gesture overlay, the
+- **Core DOES have `remotion`, and a module importing it CAN be unit-tested here.** The
+  older claim in this file — "core has no `remotion` installed, so anything importing it
+  cannot be unit tested" — was false, and it cost real coverage before `fix/core-has-remotion`
+  disproved it. The measured facts:
+  - `remotion` **4.0.498** resolves in `lib/editor/node_modules`. It was always there as a
+    hard dependency of `@remotion/player`; Task 1 declared it outright in
+    `lib/editor/package.json` alongside `@remotion/transitions@4.0.498` so it stops being
+    an accident of hoisting.
+  - `examples/layered-minimal` is a complete Remotion **4.0.425** project inside this repo,
+    which is what makes the third quality gate (`npm run typecheck` there) possible over
+    `lib/render/` and `lib/transitions/` — see `docs/superpowers/core-typecheck-gate.md`.
+  - A module importing `remotion` is unit-tested by mocking it: `vi.mock('remotion', …)`.
+    Five test files do this today — `segment-media`, `generic-watermark`, `text-overlay-base`,
+    `load-fonts`, and `at-cut-transitions`. `lib/editor/vitest.config.ts:51` documents the
+    resolution detail that makes it work.
+  - **What core still cannot do is RENDER.** There is no render pipeline here, only jsdom.
+    "Does this look right at a cut / on screen" is the one question core genuinely cannot
+    answer; it needs a brand repo. That is the real and only limit.
+  Keep the pure/JSX split documented in `lib/render/README.md` — it is still worth having,
+  because a pure module needs no mock at all. It is a convenience, not a necessity.
+- **`EditorHost`'s verification boundary, named explicitly** ("core cannot render, only jsdom"
+  is true but too coarse to tell you what's actually unverified): the Focus/Zoom crop-gesture overlay, the
   `setFocal`/`setZoom` POSITIVE path (a real drag/pinch actually moving a clip's crop), the
   transport toolbar's play/pause/scrub controls, and Remotion `Player` playback events are all
   unreachable in jsdom — they need a real timeline selection and a real Player instance, neither
@@ -336,9 +396,23 @@ regression to investigate, not noise to dismiss.
   `lib/editor/host/README.md`, which otherwise advertises Focus/Zoom with no verification note.
 - The brand-leak gate needs its exclusions or it walks `node_modules` and is permanently red:
   `grep -riE 'lime|teal|roost|progresivn|sand-brown' lib/ --exclude-dir=node_modules --exclude='*.test.*'`
+- **Current gate numbers, measured on `fix/core-has-remotion` (2026-07-26).** Any figure
+  quoted elsewhere in this file from Phase 1 or Phase 2 is historical; these are live:
+  | Gate | Command | Now |
+  |---|---|---|
+  | Editor tests | `cd lib/editor && npx vitest run` | **57 files / 650 tests**, green |
+  | Editor types | `cd lib/editor && npx tsc --noEmit` | **4** errors |
+  | Render/transition types | `cd examples/layered-minimal && npm run typecheck` | **0**, coverage guard ok |
+
+  The editor `tsc` baseline was **34** through Phase 2 and briefly **29**; this branch took it
+  to **4** in two steps, without touching any of the code the errors were about — a `paths`
+  entry mapping the out-of-tree bare specifiers `remotion`, `react` and `@remotion/transitions`
+  into `lib/editor/node_modules`, plus `DOM.Iterable` in `lib`, resolved 29 errors that were
+  pure module-resolution noise rather than real type defects. Treat **4** as the baseline from
+  here on; if you read 29 or 34 in a doc, that doc is stale.
 - **`examples/layered-minimal` is also a type-check gate**, over `lib/render` and
   `lib/transitions` (`cd examples/layered-minimal && npm run typecheck`, baseline 0) — the
-  surface `lib/editor`'s own `tsc --noEmit` (baseline 29) doesn't reach. See
+  surface `lib/editor`'s own `tsc --noEmit` doesn't reach. See
   `docs/superpowers/core-typecheck-gate.md` and the `CLAUDE.md` "Quality Gates" table. No CI
   runs any of these three gates; they are manual and easy to forget — run them before calling
   render/transitions work in `lib/` done.
