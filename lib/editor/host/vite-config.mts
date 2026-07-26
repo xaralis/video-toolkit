@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { toolkitAliases, resolveToolkitPaths, assertToolkitLib } from '../../project/paths';
 import { defaultResolveZod } from '../../project/remotion-config';
+import { warnOnZodMismatch, type ZodGuardOptions } from '../../project/zod-guard';
 import { createEditorPlugin } from './editor-plugin.mts';
 
 /**
@@ -34,6 +35,8 @@ export interface EditorViteConfigOptions {
   /** Seam for testing — same purpose as `applyToolkitWebpack`'s `existsSync` option.
    *  Defaults to `fs.existsSync`. */
   existsSync?: (p: string) => boolean;
+  /** Seams for the zod version warning. */
+  zodGuard?: ZodGuardOptions;
 }
 
 export function createEditorViteConfig(opts: EditorViteConfigOptions): Record<string, unknown> {
@@ -62,6 +65,8 @@ export function createEditorViteConfig(opts: EditorViteConfigOptions): Record<st
   // the toolkit submodule instead, which is exactly the dual-instance crash this alias
   // exists to prevent, just deferred to a much more confusing point at runtime.
   const zodMain = (opts.resolveZod ?? defaultResolveZod)(templateRoot);
+  // Warns only — see lib/project/zod-guard.ts for why this must never throw.
+  warnOnZodMismatch(templateRoot, opts.zodGuard);
 
   // Everything under toolkit/lib that this editor loads — the host itself
   // (@remotion/player), the shared at-cut engine (remotion,

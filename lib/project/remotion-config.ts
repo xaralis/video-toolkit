@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { resolveToolkitPaths, toolkitAliases, assertToolkitLib } from './paths';
+import { warnOnZodMismatch, type ZodGuardOptions } from './zod-guard';
 
 export { resolveToolkitPaths, toolkitAliases };
 
@@ -23,6 +24,8 @@ export interface ApplyToolkitWebpackOptions {
   /** Seams for testing. */
   existsSync?: (p: string) => boolean;
   resolveZod?: (projectRoot: string) => string;
+  /** Seams for the zod version warning. */
+  zodGuard?: ZodGuardOptions;
 }
 
 /** Exported so the test suite can exercise the real resolution path — every
@@ -46,6 +49,8 @@ export function applyToolkitWebpack(
   assertToolkitLib(toolkitLib, projectRoot, exists);
 
   const zodMain = (opts.resolveZod ?? defaultResolveZod)(projectRoot);
+  // Warns only — see lib/project/zod-guard.ts for why this must never throw.
+  warnOnZodMismatch(projectRoot, opts.zodGuard);
   const aliases = toolkitAliases(projectRoot, { brandLib: opts.brandLib });
 
   config.overrideWebpackConfig((current) => {
