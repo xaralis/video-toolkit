@@ -3,8 +3,10 @@
 **Last updated:** 2026-07-26, at the end of `fix/core-has-remotion` — a correction branch
 between Phase 2 and Phase 3. Phase 2 completed on `refactor/phase2-core-shell` (2026-07-25).
 
-**Starting Phase 3? Read "Phase 3 — scope and starting state" below**, then the pending
-brand migrations and the working conventions. Everything else is history.
+**Next up is Phase 2.5 — apply the twelve pending brand migrations, which is also the first
+end-to-end validation that Phases 1–2 actually work.** Read that section below, then the
+pending-migrations index, `docs/superpowers/phase2-migrations.md`, and the working
+conventions. Phase 3's scope follows it. Everything else is history.
 
 This file is the durable record across sessions. The working ledger
 (`.superpowers/sdd/progress.md`) is **gitignored** and will not survive a
@@ -176,7 +178,66 @@ Phase 2 queues seven more (A–G in that document) and **retires Phase 1's #4**.
 
 ---
 
+## Phase 2.5 — apply the migrations, and thereby validate Phases 1–2
+
+**Decided 2026-07-26: this happens BEFORE Phase 3.** It is the first time this programme
+touches a brand repo, and the "core-only" rule that governed Phases 1, 2 and the correction
+branch does not apply to it.
+
+**It is not debt payment — it is the missing validation.** Everything Phases 1 and 2 landed
+was verified *inside core*: unit tests, type gates, one render of a minimal example. **Nothing
+has yet demonstrated that a real brand repo still works on top of it.** Whether the core editor
+host actually boots against a real project, whether a tuned reel still renders identically,
+whether Save still finds the `defaultProps` literal through the new spread — none of that is
+known. The migration is the experiment that answers it, and every further phase built on the
+unvalidated assumption that it does costs more to unwind.
+
+**Waiting also makes it strictly worse.** Twelve migrations are already queued (Phase 1's five,
+Phase 2's seven). Phase 3 changes what brands *render*, so its migrations will be visual rather
+than merely structural — far harder to review in a batch that also carries twelve structural
+ones.
+
+### Scope, measured
+
+| | PP (`~/Workspace/progpce/video-toolkit`) | roost (`~/Workspace/roost/video-toolkit`) |
+|---|---|---|
+| Current pin | `0c452362` | `0c452362` |
+| Templates | 2 (`campaign-reels`, `web-program-intro`) | 1 (`roost-reels`) |
+| Projects | 16 (11 with `.editor/`) | 2 (`roost-reel-01`, `roost-promo-01`) |
+
+Both pins sit at `0c452362` — **before Phase 1**. One bump therefore spans Phase 1, Phase 2
+*and* `fix/core-has-remotion`, so all twelve migrations land at once. Core's `main` is
+`3f83865` at the time of writing.
+
+`docs/superpowers/phase2-migrations.md` is the authoritative paste-ready document, including a
+suggested order (pin bump → **G** zod → **C** build config → **B**/**A**/**D** → **F** then
+**E** → Phase 1's items → verify).
+
+### Rules specific to this stage
+
+- **Never edit a project's `defaultProps` literal.** It is the tuned cut and the source of
+  truth. Every migration item changes the scaffolding around it; if a diff touches inside that
+  block, the migration was applied wrongly.
+- **`projects/roost-promo-01/` is untracked work in progress.** It is the user's own current
+  work, it is not committed, and git cannot restore it. Do not migrate it without asking, and
+  never `git clean`. It also holds a third copy of `roostReelDurationInFrames` (migration **D**).
+- **Item E is unreachable by every automated check on both sides.** `.editor/` sits outside every
+  `tsconfig.json`'s `"include": ["src/**/*"]`, so a mistyped `mountEditorHost` option key is
+  stripped by esbuild in silence and the editor simply loads with no palette. It is only caught
+  by opening the editor, making an edit and **saving** — Save is also what exercises
+  `readDefaultProps` against the new `Root.tsx` spread, which is the one thing that fails loudly
+  if item **A** was spelled wrong.
+- **Prove a render still matches.** For at least one real reel per brand, render before the
+  migration and after, and compare. Phases 1–2 promised that rendering a baked literal does not
+  change; this is where that promise is actually tested.
+- The **zod guard** may land in core only after roost's pin moves (it would otherwise fire on
+  the one repo that is not broken), and must warn rather than throw.
+
+---
+
 ## Phase 3 — scope and starting state
+
+**Phase 2.5 above comes first.** Phase 3 assumes both brand repos are migrated and green.
 
 **The goal of Phase 3 is what makes "a new brand only themes" actually true, including in
 the editor.** Phases 1 and 2 moved the *mechanisms* into core. What is still brand-side is
