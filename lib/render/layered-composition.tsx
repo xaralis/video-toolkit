@@ -59,8 +59,17 @@ const CORE_OVERLAY_GENERICS: Record<string, React.FC<{ item: OverlayItem; theme:
  *
  *  `ken-burns` is the one exception: it stays inside SegmentMedia, composing
  *  into the media element's own transform/objectPosition alongside the crop.
- *  It resolves to no wrapper in the effect registry, so it is skipped here
- *  rather than double-applied. */
+ *  applyEffects skips it explicitly (RESERVED_EFFECT_TYPES) so it can never be
+ *  double-applied, however a brand registers it.
+ *
+ *  SCOPE, chosen deliberately: effects wrap the renderer's WHOLE output, which
+ *  includes any anchoredOverlays the renderer draws inside itself. So a `grade`
+ *  or `grain` on an item tints that item's anchored title text too, not only
+ *  its media. Wrapping the media alone is not reachable from this seam — the
+ *  renderer returns one opaque node — and per-layer scoping would need the
+ *  effect entry to name a target layer. A brand porting an effect that used to
+ *  wrap only its media should expect this difference and, if it matters, keep
+ *  the effect inside its own renderer where it can choose the scope. */
 export function renderVideoItemNode(
   theme: CompositionTheme,
   item: VideoItem,

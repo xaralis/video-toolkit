@@ -65,6 +65,39 @@ describe('resolveEffectRenderer', () => {
     expect(applyEffects({ accentSlots: [] }, kb, NO_HANDLES, media)).toBe(media);
   });
 
+  // The registry is OPEN-KEYED, so "core registers no generic" is not enough:
+  // a brand can name any type it likes. ken-burns is applied inside
+  // SegmentMedia, so a wrapper here would apply the movement a second time.
+  it('does NOT apply a BRAND-registered ken-burns — the skip is a real invariant, not an accident', () => {
+    let invoked = 0;
+    const BrandKb: React.FC<EffectRenderProps> = ({ children }) => {
+      invoked += 1;
+      return <div data-w="brand-kb">{children}</div>;
+    };
+    const theme: BrandTheme = { accentSlots: [], effects: { 'ken-burns': { renderer: BrandKb } } };
+    const media = <span data-w="media" />;
+    const node = applyEffects(theme, item([{ type: 'ken-burns', direction: 'in' }]), NO_HANDLES, media);
+    render(<>{node}</>);
+    expect(invoked).toBe(0);
+    expect(node).toBe(media);
+  });
+
+  it('skips a reserved type but still applies the other effects around it', () => {
+    const theme: BrandTheme = {
+      accentSlots: [],
+      effects: { 'ken-burns': { renderer: Brand }, outer: { renderer: Outer } },
+    };
+    const node = applyEffects(
+      theme,
+      item([{ type: 'ken-burns', direction: 'in' }, { type: 'outer' }]),
+      NO_HANDLES,
+      <span data-w="media" />,
+    );
+    const { container } = render(<>{node}</>);
+    expect(container.querySelector('[data-w="brand"]')).toBeNull();
+    expect(container.querySelector('[data-w="outer"] [data-w="media"]')).not.toBeNull();
+  });
+
   it('returns undefined for a type neither the brand nor core has', () => {
     expect(resolveEffectRenderer({ accentSlots: [] }, 'no-such-effect')).toBeUndefined();
   });
@@ -124,6 +157,7 @@ describe('applyEffects', () => {
     expect(seen).toHaveLength(1);
     // The WHOLE entry, `type` included — not a stripped param bag.
     expect(seen[0].effect).toEqual({ type: 'spy', amount: 0.4 });
+    expect(seen[0].index).toBe(0);
     expect(seen[0].item).toBe(it0);
     expect(seen[0].handles).toEqual({ inHalf: 6, outHalf: 3 });
     expect(seen[0].config).toEqual({ brandKnob: 7 });
@@ -134,6 +168,17 @@ describe('applyEffects', () => {
     const node = applyEffects(theme, item([{ type: 'inner' }, { type: 'inner' }]), NO_HANDLES, <span />);
     const { container } = render(<>{node}</>);
     expect(container.querySelectorAll('[data-w="inner"]')).toHaveLength(2);
+  });
+
+  it('gives each entry its own index, so repeats can be told apart', () => {
+    const seen: number[] = [];
+    const Spy: React.FC<EffectRenderProps> = ({ index, children }) => {
+      seen.push(index);
+      return <>{children}</>;
+    };
+    const theme: BrandTheme = { accentSlots: [], effects: { spy: { renderer: Spy } } };
+    render(<>{applyEffects(theme, item([{ type: 'spy' }, { type: 'spy' }]), NO_HANDLES, <span />)}</>);
+    expect(seen.sort()).toEqual([0, 1]);
   });
 });
 

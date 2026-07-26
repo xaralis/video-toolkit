@@ -55,10 +55,13 @@ export function grainLayerStyle(effect: Record<string, unknown>, filterId: strin
   };
 }
 
-export const GrainEffect: React.FC<EffectRenderProps> = ({ effect, item, children }) => {
+export const GrainEffect: React.FC<EffectRenderProps> = ({ effect, index, item, children }) => {
   const frame = useCurrentFrame();
   const { baseFrequency, seed } = grainTurbulenceAttrs(effect, frame);
-  const filterId = `grain-${item.id}`;
+  // Keyed on the effect's INDEX as well as the item: the registry supports the
+  // same type twice on one item, and two <filter> defs sharing an id would
+  // silently collapse to whichever rendered last.
+  const filterId = `grain-${item.id}-${index}`;
   return (
     <>
       {children}
@@ -124,9 +127,10 @@ export function gradeFromEffect(effect: Record<string, unknown>): Grade {
   return rest as Grade;
 }
 
-export const GradeEffect: React.FC<EffectRenderProps> = ({ effect, item, children }) => {
+export const GradeEffect: React.FC<EffectRenderProps> = ({ effect, index, item, children }) => {
   const grade = gradeFromEffect(effect);
-  const filterId = `grade-effect-${item.id}`;
+  // Index-keyed for the same reason as grain's — see there.
+  const filterId = `grade-effect-${item.id}-${index}`;
   const filter = gradeFilter(grade, filterId);
   return (
     <div style={{ position: 'absolute', inset: 0, ...(filter ? { filter } : {}) }}>

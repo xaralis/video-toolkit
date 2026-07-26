@@ -25,6 +25,10 @@ import {
 export interface EffectRenderProps {
   /** The effect entry off the item's `effects[]`, minus nothing — `type` included. */
   effect: Effect;
+  /** This entry's position in the item's `effects[]`. The registry supports the
+   *  SAME type appearing more than once, so anything a renderer makes unique
+   *  per-effect (an SVG filter id, say) must key on item id AND this. */
+  index: number;
   /** The item the effect is attached to (for startMs-derived beat phase etc.). */
   item: VideoItem;
   /** Extra frames borrowed at each edge for cross-item transitions. */
@@ -40,15 +44,23 @@ export type EffectRenderer = React.FC<EffectRenderProps>;
  *  Registration primitive is the whole contract. */
 export type EffectRegistration = Registry<EffectRenderProps>[string];
 
-/** Core generic effect renderers, keyed by effect type.
+/** Effect types that are RESERVED: applied elsewhere in the pipeline, so
+ *  applyEffects must never wrap them however they are registered.
  *
- *  `ken-burns` is deliberately ABSENT. It is a STYLE effect, not a wrapper: it
- *  composes into the media element's own transform/objectPosition/transformOrigin
- *  alongside the crop (see SegmentMedia). Re-expressing it as a wrapper div
- *  would move pixels in both brands, which the still-render parity gate forbids.
- *  It lives in ./ken-burns.ts and is applied by SegmentMedia directly; because
- *  it resolves to no wrapper here, applyEffects skips it and it is never
- *  double-applied. */
+ *  `ken-burns` is a STYLE effect, not a wrapper: it composes into the media
+ *  element's own transform/objectPosition/transformOrigin alongside the crop,
+ *  inside SegmentMedia (see ./ken-burns.ts). If applyEffects ALSO wrapped it,
+ *  every ken-burns item would get the movement twice.
+ *
+ *  This list is the real invariant. Core not registering a `ken-burns` generic
+ *  is NOT sufficient: the registry is open-keyed, so a brand writing
+ *  `effects: { 'ken-burns': { renderer: X } }` would otherwise resolve and
+ *  double-apply. A brand that genuinely wants its own ken-burns replaces it on
+ *  the VIDEO axis (its own renderer, which owns the media transform), not here. */
+const RESERVED_EFFECT_TYPES: ReadonlySet<string> = new Set(['ken-burns']);
+
+/** Core generic effect renderers, keyed by effect type. `ken-burns` is absent
+ *  by the rule above — see RESERVED_EFFECT_TYPES. */
 const CORE_EFFECT_RENDERERS: Record<string, EffectRenderer> = {
   grain: GrainEffect,
   scanlines: ScanlinesEffect,
@@ -83,13 +95,23 @@ export function applyEffects(
   const effects = item.effects;
   if (!effects?.length) return media;
   let node = media;
-  for (const effect of effects) {
+  for (const [index, effect] of effects.entries()) {
+    // Reserved types are applied elsewhere in the pipeline. Skipped BEFORE
+    // resolution, so a brand registration cannot re-open the double-apply.
+    if (RESERVED_EFFECT_TYPES.has(effect.type)) continue;
     const Renderer = resolveEffectRenderer(theme, effect.type);
     if (!Renderer) continue;
     // `children` goes in the props bag, not as the third argument: the third
     // argument is typed as ReactNode[] and does not satisfy the required
     // `children` on EffectRenderProps.
-    node = createElement(Renderer, { effect, item, handles, config: effectConfig(theme, effect.type), children: node });
+    node = createElement(Renderer, {
+      effect,
+      index,
+      item,
+      handles,
+      config: effectConfig(theme, effect.type),
+      children: node,
+    });
   }
   return node;
 }

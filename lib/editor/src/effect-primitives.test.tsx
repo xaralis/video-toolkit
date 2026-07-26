@@ -30,8 +30,9 @@ import type { VideoItem } from '@video-toolkit/lib/reel-config-base/layered-sche
 const item: VideoItem = { id: 'v1', kind: 'photo', startMs: 0, endMs: 3000, source: 'photos/a.jpg' };
 const NO_HANDLES = { inHalf: 0, outHalf: 0 };
 
-const props = (effect: Record<string, unknown>): EffectRenderProps => ({
+const props = (effect: Record<string, unknown>, index = 0): EffectRenderProps => ({
   effect: effect as EffectRenderProps['effect'],
+  index,
   item,
   handles: NO_HANDLES,
   children: <span data-w="media" />,
@@ -73,6 +74,20 @@ describe('grain', () => {
     // Additive: the media is a SIBLING of the overlay, not wrapped by it.
     expect(container.querySelector('[data-w="media"] div')).toBeNull();
     expect(container.querySelector('feTurbulence')?.getAttribute('seed')).toBe('3');
+  });
+
+  // Two grain entries on one item must not emit two <filter> defs with the same
+  // id — the second would silently win and both layers would share its noise.
+  it('keys its filter id on the effect index, so a repeated grain does not collide', () => {
+    const a = render(<GrainEffect {...props({ type: 'grain', amount: 0.5 }, 0)} />);
+    const b = render(<GrainEffect {...props({ type: 'grain', amount: 0.5 }, 1)} />);
+    const idA = a.container.querySelector('filter')!.getAttribute('id');
+    const idB = b.container.querySelector('filter')!.getAttribute('id');
+    expect(idA).toBe('grain-v1-0');
+    expect(idB).toBe('grain-v1-1');
+    expect(idA).not.toBe(idB);
+    // ...and the layer must reference its OWN filter, not a stale id.
+    expect((b.container.querySelector('div') as HTMLElement).style.filter).toBe('url(#grain-v1-1)');
   });
 });
 
@@ -150,7 +165,13 @@ describe('grade', () => {
     expect(matrix).not.toBeNull();
     // gradeWbGains: r = 1 + 1*0.3, b = 1 - 1*0.3
     expect(matrix!.getAttribute('values')).toBe('1.3 0 0 0 0  0 1 0 0 0  0 0 0.7 0 0  0 0 0 1 0');
-    expect((wb.container.firstElementChild as HTMLElement).style.filter).toBe('url(#grade-effect-v1)');
+    expect((wb.container.firstElementChild as HTMLElement).style.filter).toBe('url(#grade-effect-v1-0)');
+  });
+
+  it('keys its filter id on the effect index, so a repeated grade does not collide', () => {
+    const second = render(<GradeEffect {...props({ type: 'grade', temperature: 1 }, 1)} />);
+    expect(second.container.querySelector('filter')!.getAttribute('id')).toBe('grade-effect-v1-1');
+    expect((second.container.firstElementChild as HTMLElement).style.filter).toBe('url(#grade-effect-v1-1)');
   });
 });
 
