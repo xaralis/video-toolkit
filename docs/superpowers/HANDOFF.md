@@ -144,7 +144,7 @@ applied; read it for the per-item detail. This section is the result.
 |---|---|---|
 | Branch | `chore/phase2.5-toolkit-migration` | `chore/phase2.5-toolkit-migration` |
 | Commits | `7a4d698` pin · `f8ff467` G+C · `f7f4095` B/A/items 2,5/endpoint · `ff955c6` E+F | `18953c3` pin · `aaa7279` pin→host fix · `cfe7bd5` everything else |
-| Directories migrated | 18 (2 templates + 16 projects), 12 with `.editor/` | 3 (1 template + 2 projects) |
+| Directories migrated | 18 (2 templates + 16 projects), 12 with `.editor/` | 3 at the time (1 template + 2 projects); `roost-promo-01` has since been deleted, leaving 2 |
 | `tsc --noEmit` | **0** in every installed dir except the pre-existing WPI `TS2322`s (see finding 3) | **0** in all three |
 | Tests | every test-bearing dir green; the 6 with a top-level `tests/` still run 2 files / 6 tests | green |
 | Render parity | `pp-ricni-sauna`, 5 frames **byte-identical** to the pre-migration baseline | `roost-reel-01`, 5 frames **byte-identical** |
@@ -250,7 +250,7 @@ as running them.
 3. Part 1 item 5 is **6** files, not 3 — and none of the six web themes declared `accentSlots`
    at all, so the instruction was not executable as written. Resolved by adding the same two slots
    campaign-reels declares; latent either way, no project uses a `wipe`.
-4. Part 1 item 3 is **3** roost files, not 2 (`roost-promo-01` is the third).
+4. Part 1 item 3 is **3** roost files, not 2 (`roost-promo-01` was the third — since deleted, so it is 2 again for anyone applying this now).
 5. Item E claimed roost declares no `accentSlots`. `roost-reel-01`'s editor did — roost's *own*
    palette — and dropping it would have been a real regression. Carried through the host option.
 6. Part 1 item 1 has **3** `withTransitionOverrides` sites, not 1: two more in
@@ -270,9 +270,11 @@ as running them.
   exit code. Related: four PP projects had `node_modules/.bin` entries that were regular files
   instead of symlinks (a `cp -r`'d `node_modules`); `npm install` does *not* repair that,
   `rm -rf node_modules/.bin && npm install` does.
-- **`git add -A` in the roost repo swept the untracked `roost-promo-01` into a commit.** Caught and
-  undone with `git rm --cached -r` + amend; files verified byte-identical on disk afterwards. If
-  you work in that repo, stage explicitly.
+- **`git add -A` in the roost repo swept the then-untracked `roost-promo-01` into a commit.**
+  Caught and undone with `git rm --cached -r` + amend; files verified byte-identical on disk
+  afterwards, and `git log --all -- projects/roost-promo-01` confirmed it never entered history.
+  That directory is gone now, but the habit stands: in a repo with untracked work, stage
+  explicitly rather than `-A`.
 
 ### Carried out of Phase 2.5
 
@@ -283,9 +285,14 @@ as running them.
   `pp-druzstevni-parkovani`, `pp-plovarna-napojeni` (no `node_modules`, by explicit decision).
   Their `package.json` now says `zod: 3.22.3` while their lockfile still records `^3.22.0` as the
   root spec, so `npm ci` fails there until someone runs `npm install`.
-- **`roost-promo-01` is migrated but still untracked** — the user's WIP, backed up at
-  `~/roost-promo-01-pre-phase2.5.tgz` before anything was touched. `tsc` 0 errors. Never
-  `git clean` in that repo.
+- ~~`roost-promo-01`~~ — **deleted by the user after Phase 2.5, along with its backup tarball.**
+  It had been migrated and was at `tsc` 0, but inspection showed it was an empty scaffold created
+  the same day, not work in progress: `public/recordings/` held only a `.gitkeep`, there were no
+  renders, and its `src/` was byte-identical to `templates/roost-reels/src`. The only unique
+  content was a 7-line `project.json`. **Note for the record:** this document and
+  `phase2-migrations.md` both described it as "the user's own in-progress work" — accurate about
+  its git status, overstated about its contents, and nobody had opened it. roost now has one
+  project, `roost-reel-01`.
 - **Finding 5** (8 PP editors missing devDependencies) and **finding 3** (WPI literal errors) are
   both unfixed and both pre-existing.
 - The **zod guard** is done — `b02669c`, `lib/project/zod-guard.ts`. It warns and never throws, and
@@ -410,8 +417,8 @@ captions). Its scope is the section above.
 `video_toolkit/sync_template.py:136,141` still mirrors only
 `templates/<t>/src → projects/<p>/src`, so it does **not** carry `.editor/`. With the
 host in core, `.editor/` is 45 (PP) / 41 (roost) lines across three files that rarely change, which
-lowers the cost a lot — but the next `.editor/` change still hits **15 directories**
-by hand (12 PP, 3 roost — `roost-promo-01` has one too).
+lowers the cost a lot — but the next `.editor/` change still hits **14 directories**
+by hand (12 PP, 2 roost).
 The same gap covers `remotion.config.ts`, `vitest.config.ts`, `tsconfig.json` and
 `package.json`, none of which the mirror carries either. Phase 2.5 showed what that costs:
 8 of 11 PP project editors cannot start because the vendored `package.json` never inherited the
@@ -516,9 +523,9 @@ submodule bump into a hard stop on a repo that still renders fine.
   against the real (read-only) roost working tree, there are **three** copies of
   `roostReelDurationInFrames` — the two D named plus
   `~/Workspace/roost/video-toolkit/projects/roost-promo-01/src/LayeredRoostReel.tsx:15`,
-  byte-identical to the template's, no consumer. `roost-promo-01` is untracked
-  (`?? projects/roost-promo-01/`) and is the user's own current work — recorded as a fact, not
-  touched. Worse: D's premise that the local helper is a live single source of truth was
+  byte-identical to the template's, no consumer. (`roost-promo-01` was untracked at the time and
+  was believed to be work in progress, so it was recorded and not touched; it turned out to be an
+  empty scaffold and the user deleted it after Phase 2.5 — see "Carried out of Phase 2.5" above.) Worse: D's premise that the local helper is a live single source of truth was
   **already false** before this correction — `templates/roost-reels/src/Root.tsx:195` and both
   projects' `Root.tsx` (`roost-reel-01:201`, `roost-promo-01:195`) already inline
   `Math.max(60, Math.round(…))` directly in `calculateMetadata` and never call the helper at
