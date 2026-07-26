@@ -108,7 +108,7 @@ function effectsFromTheme(theme: CompositionTheme): EffectDefinition[] {
   const out: EffectDefinition[] = [];
   for (const [type, reg] of Object.entries(theme.effects ?? {})) {
     if (RESERVED_EFFECT_TYPES.has(type)) continue;
-    out.push(reg.params ? { type, params: reg.params } : { type });
+    out.push(reg?.params ? { type, params: reg.params } : { type });
   }
   return out;
 }
@@ -121,7 +121,9 @@ function paramsByKind(
 ): Record<string, readonly ParamField[]> {
   const out: Record<string, readonly ParamField[]> = {};
   for (const [kind, reg] of Object.entries(registry ?? {})) {
-    if (reg.params?.length) out[kind] = reg.params;
+    // `reg?` — the axis casts erase `| undefined`, and an explicitly-undefined
+    // key would otherwise throw here rather than simply declaring nothing.
+    if (reg?.params?.length) out[kind] = reg.params;
   }
   return out;
 }

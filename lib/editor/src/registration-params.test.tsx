@@ -114,6 +114,75 @@ describe('overlay params, declared by the theme', () => {
   });
 });
 
+// THE mixed case: a kind that declares a param of its own AND carries the three
+// content fields core knows. Declaration is ADDITIVE — if declaring one param
+// swapped the whole bag over to the generic value-typed editor, `reveal` and
+// `hide` would become free-text inputs over a `z.record(z.unknown())` bag that
+// rejects nothing, so `reveal: "lien"` would save clean. Core's typed controls
+// must survive for the fields core knows.
+describe('overlay params, mixed with the content fields core knows', () => {
+  const theme: CompositionTheme = {
+    ...bareTheme,
+    overlays: { chevron: { params: [{ prop: 'weight', label: 'Weight', options: ['light', 'heavy'] }] } },
+  };
+  const meta = editorMetaFromTheme(theme);
+  const mixed = overlayReel({ kind: 'chevron', weight: 'light', reveal: 'line', hide: 'fade', fontSize: 72 });
+
+  it('keeps reveal and hide as SELECTs — not the text inputs value-typing gives', () => {
+    render(<LayeredInspector reel={mixed} selectedId="overlays:ov1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
+    expect((screen.getByLabelText('Reveal') as HTMLSelectElement).tagName).toBe('SELECT');
+    expect((screen.getByLabelText('Hide') as HTMLSelectElement).tagName).toBe('SELECT');
+    // Core's real enum, not whatever string the item happens to hold.
+    const reveal = screen.getByLabelText('Reveal') as HTMLSelectElement;
+    expect([...reveal.options].map((o) => o.value)).toEqual(['line', 'all', 'none']);
+  });
+
+  it('keeps font size on core’s step of 4, not the generic bag editor’s 0.1', () => {
+    render(<LayeredInspector reel={mixed} selectedId="overlays:ov1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
+    const f = screen.getByLabelText('Font size') as HTMLInputElement;
+    expect(f.step).toBe('4');
+    expect(f.value).toBe('72');
+  });
+
+  it('renders the brand’s declared param alongside them', () => {
+    render(<LayeredInspector reel={mixed} selectedId="overlays:ov1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
+    expect((screen.getByLabelText('Weight') as HTMLSelectElement).value).toBe('light');
+  });
+
+  it('shows each core field exactly once — no second, value-typed control', () => {
+    render(<LayeredInspector reel={mixed} selectedId="overlays:ov1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
+    expect(screen.getAllByLabelText('Reveal')).toHaveLength(1);
+    expect(screen.getAllByLabelText('Font size')).toHaveLength(1);
+  });
+
+  it('still commits a valid enum through core’s control', () => {
+    const onChange = vi.fn();
+    render(<LayeredInspector reel={mixed} selectedId="overlays:ov1" onChange={onChange} onSeek={() => {}} fps={30} meta={meta} />);
+    fireEvent.change(screen.getByLabelText('Reveal'), { target: { value: 'all' } });
+    const content = (onChange.mock.calls.at(-1)![0] as LayeredReel).tracks.overlays[0].content as Record<string, unknown>;
+    expect(content.reveal).toBe('all');
+    expect(content.weight).toBe('light');
+  });
+
+  // Explicit-wins, the same rule editorMetaFromTheme applies: a brand that
+  // declares one of core's three BY NAME takes it over, and core steps aside
+  // for that field ONLY — the other two keep their typed controls.
+  it('lets a brand declare `reveal` itself and take it over, keeping hide/fontSize core-typed', () => {
+    const ownTheme: CompositionTheme = {
+      ...bareTheme,
+      overlays: { chevron: { params: [{ prop: 'reveal', label: 'Reveal', options: ['line', 'stagger'] }] } },
+    };
+    render(
+      <LayeredInspector reel={mixed} selectedId="overlays:ov1" onChange={() => {}} onSeek={() => {}} fps={30}
+        meta={editorMetaFromTheme(ownTheme)} />);
+    expect(screen.getAllByLabelText('Reveal')).toHaveLength(1);
+    expect(screen.getByRole('option', { name: 'stagger' })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: 'all' })).toBeNull(); // core's list gone
+    expect((screen.getByLabelText('Hide') as HTMLSelectElement).tagName).toBe('SELECT'); // core still owns it
+    expect((screen.getByLabelText('Font size') as HTMLInputElement).step).toBe('4');
+  });
+});
+
 // A brand that declares NOTHING must see exactly today's inspector. This is the
 // fallback the declared path sits in front of, so it is asserted, not assumed.
 describe('overlay fallback: a theme that declares no overlay params', () => {

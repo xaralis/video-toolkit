@@ -340,7 +340,15 @@ export const compositionTheme: CompositionTheme = {
   // Per-kind video renderer. clip/broll/photo already fall back to core's
   // SegmentMedia (trim, crop, focal point, grade, Ken Burns); card/outro/
   // multi-clip render ONLY when you register them.
-  video: { outro: { renderer: OutroSegment }, card: { renderer: CardSegment } },
+  // `params` declares a kind's editable fields ONCE, here. The editor derives
+  // its vocabulary from these registrations (editorMetaFromTheme), so a kind
+  // you register renders AND is editable — no second declaration to keep in
+  // sync. Declare `type` for any field the item may not carry yet; without it
+  // an absent field has nothing to be typed from and saves a string.
+  video: {
+    outro: { renderer: OutroSegment, params: [{ prop: 'style', options: ['organic', 'fade'] }] },
+    card: { renderer: CardSegment },
+  },
 
   // How a kind reaches the screen: 'track' (its own absolute Sequence, the
   // default) or 'anchored' (handed to the owning video renderer instead).
@@ -358,6 +366,41 @@ export const compositionTheme: CompositionTheme = {
   brand: { watermark: { renderer: BrandMark } },
 };
 ```
+
+### Effects, and the reserved types
+
+An effect is a **wrapper**: it receives the media node and returns a decorated
+one. Register a type and it both renders and becomes addable in the editor's
+"+ Add effect":
+
+```tsx
+effects: { vintage: { renderer: VintageEffect, params: [{ prop: 'mode', options: ['film', 'vhs'] }] } },
+```
+
+Core already draws `grain`, `scanlines`, `vignette`, `grade` and `transform`
+generically; a type neither you nor core has is **silently skipped**, never
+thrown, so a typo'd effect leaves the reel rendering.
+
+**`ken-burns` is RESERVED and cannot be overridden on this axis.** It is not a
+wrapper — it composes into the media element's own transform inside
+`SegmentMedia`, alongside the crop. `applyEffects` therefore skips it *before*
+resolution, so writing `effects: { 'ken-burns': { renderer: MyKenBurns } }` does
+nothing: your renderer never runs, and (because the editor derives its catalog
+from the same reserved list) your `params` never appear in the inspector either.
+The silence is deliberate and symmetric — the editor shows exactly what will
+render — but it is silence, so it is worth knowing about before you spend an
+afternoon on it.
+
+**The escape is the video axis, not the effect axis.** A brand that wants its
+own Ken Burns registers a video renderer for the footage kinds, because the
+renderer that owns the media element is what owns its transform:
+
+```tsx
+video: { clip: { renderer: MyFootage }, broll: { renderer: MyFootage }, photo: { renderer: MyFootage } },
+```
+
+`RESERVED_EFFECT_TYPES` in `lib/theming/effects/index.ts` is the list, and it is
+consulted at both ends — render and edit.
 
 ### What core already does for you
 
