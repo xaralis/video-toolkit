@@ -385,7 +385,10 @@ await browser.close({ silent: true });
 // A gate that silently covers less than it claims is worse than no gate. These
 // guards are the reason `--update-goldens` cannot be used to make a shrinking
 // matrix disappear.
-if (only.length === 0) {
+// These run even on a FILTERED run: they compare the catalog against the golden
+// file and never depend on what was rendered, so `node … fade` still tells you
+// the matrix has stopped covering what it claims to.
+{
   const expectedKinds = goldens.kindCount ?? 0;
   if (allKinds.length < expectedKinds && !(UPDATE && ALLOW_SHRINK)) {
     fail(`COVERAGE SHRANK: goldens were taken over ${expectedKinds} kinds, this run found ${allKinds.length}. If that is intended, re-baseline with --update-goldens --allow-shrink.`);
