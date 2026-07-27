@@ -7,6 +7,9 @@
     "render": "npx remotion render src/index.ts MinimalReel out/reel.mp4",
     "still": "npx remotion still src/index.ts MinimalReel out/frame.png --frame=45",
     "upgrade": "npx remotion upgrade",
+    "pixel-gate": "node scripts/render-transition-matrix.mjs",
+    "pixel-gate:self-test": "node scripts/render-transition-matrix.mjs --self-test",
+    "pixel-gate:update": "node scripts/render-transition-matrix.mjs --update-goldens",
     "typecheck": "tsc --noEmit && node scripts/verify-typecheck-coverage.mjs",
     "verify-coverage": "node scripts/verify-typecheck-coverage.mjs"
   },
