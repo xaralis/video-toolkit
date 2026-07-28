@@ -119,6 +119,32 @@ describe('a brand transition kind is offered by the picker', () => {
   });
 });
 
+describe('the picker’s kind list is derived from the theme, not hand-fed', () => {
+  it('offers a brand kind whose registration declares NO params', () => {
+    // The transition axis' derivation deliberately keeps a param-less kind (the
+    // other axes drop one) — the key set IS the answer to "which kinds exist",
+    // and a look with nothing to tune must still be choosable.
+    const meta = editorMetaFromTheme({
+      background: '#000', accentSlots: [],
+      transitions: { 'plain-brand-kind': { renderer: () => null } },
+    });
+    expect(meta.transitionProps?.['plain-brand-kind']).toEqual([]);
+    render(<TransitionFields t={{ kind: 'cut' }} onChange={() => {}} meta={meta} />);
+    const kinds = Array.from((screen.getByLabelText('Kind') as HTMLSelectElement).options).map((o) => o.value);
+    expect(kinds).toContain('plain-brand-kind');
+  });
+
+  it('does not duplicate a core kind the brand merely OVERRIDES', () => {
+    const meta = editorMetaFromTheme({
+      background: '#000', accentSlots: [],
+      transitions: { dissolve: { renderer: () => null } },
+    });
+    render(<TransitionFields t={{ kind: 'cut' }} onChange={() => {}} meta={meta} />);
+    const kinds = Array.from((screen.getByLabelText('Kind') as HTMLSelectElement).options).map((o) => o.value);
+    expect(kinds.filter((k) => k === 'dissolve')).toHaveLength(1);
+  });
+});
+
 describe('a brand transition kind is edited through its registration params', () => {
   const meta = editorMetaFromTheme(brandTheme);
 

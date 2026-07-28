@@ -385,14 +385,13 @@ export function TransitionFields({
   // picker used to run off the catalog alone, which is why a brand kind
   // could render (Task 1.2) and still not be choosable.
   const choices = transitionKindChoices(meta?.transitionProps);
-  const labelFor = (k: string) => choices.find((c) => c.kind === k)?.label ?? humanizeKey(k);
   return (
     <>
       <SelectField
         lbl="Kind"
         value={kind}
         options={choices.map((k) => k.kind)}
-        optionLabel={labelFor}
+        optionLabel={(k) => transitionKindLabel(k, meta?.transitionProps)}
         // `frames` AND `alignment` are threaded through: both are kind-independent
         // timing, and `defaultTransition` builds a fresh object that the caller
         // then writes over the old one wholesale, so anything not named here is
