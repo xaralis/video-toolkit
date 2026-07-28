@@ -73,7 +73,10 @@ export interface TransitionRenderProps {
  *  edges fall out of the model instead of needing special cases: a trailing-edge
  *  transition is one with `to === null`, a leading-edge one has `from === null`,
  *  and a dissolve against `null` is a dissolve to the composition background.
- *  Core passes the null; what a node does with it is the node's decision. */
+ *  Core passes the null; what a node does with it is the node's decision — and
+ *  since Task 2.2 core's own answer, for every kind it lifts and for
+ *  `checkerboard`, is `edgeInput(input, background)`: the missing neighbour is
+ *  a plate of `background`. */
 export interface TransitionNodeProps {
   /** The OUTGOING clip (A), already carrying its own time base. Null at the
    *  reel's leading edge — there is no predecessor. */
@@ -92,6 +95,16 @@ export interface TransitionNodeProps {
   fps: number;
   /** The brand's accent palette. Empty (never undefined) when there is none. */
   palette: readonly AccentSlot[];
+  /** The composition background — `CompositionTheme.background`, threaded down
+   *  by `buildVideoNodes`. This is what a null input RESOLVES TO: at the reel's
+   *  trailing edge a fade fades to this colour, at its leading edge it fades
+   *  out of it. `'transparent'` when the caller has none in scope, which paints
+   *  nothing and leaves whatever is behind the video track showing.
+   *
+   *  A node must never substitute a colour of its own — core owns no colour
+   *  vocabulary. `edgeInput` (lib/transitions/edge-plate.tsx) is the shared
+   *  helper that turns a null input into this plate. */
+  background: string;
 }
 
 /** A natively TWO-INPUT transition: one component that composites both inputs

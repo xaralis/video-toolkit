@@ -24,6 +24,12 @@
  * ```
  */
 
+// The reel's leading/trailing edge, as a picture a two-input node can
+// composite against (Phase 4 Task 2.2). Shared by core's lifter
+// (lib/render/at-cut-transitions.tsx) and by the native nodes under
+// ./presentations, and available to a brand writing its own node.
+export { EdgePlate, edgeInput } from './edge-plate';
+
 // Custom transitions
 export { glitch } from './presentations/glitch';
 export type { GlitchProps } from './presentations/glitch';

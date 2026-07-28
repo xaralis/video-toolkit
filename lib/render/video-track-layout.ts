@@ -34,7 +34,12 @@ export interface VideoLayoutEntry {
 //   reads its PREDECESSOR's transitionOut (a boundary is rendered once, by
 //   the item entering it).
 // - outRecord: every item reads its OWN transitionOut (including the last —
-//   that's the reel's trailing edge fade).
+//   that's the reel's trailing edge fade). TRUE SINCE PHASE 4 TASK 2.2, and a
+//   wish before it: the last item's boundary has `to === null`, and until 2.2
+//   the missing input was drawn as nothing, so seven kinds whose exiting branch
+//   is the identity function ended the reel with no fade at all. A null input
+//   now resolves to a plate of the composition background (`edgeInput`), which
+//   is what makes this sentence describe what renders.
 // - inHalf/outHalf: the frames each side lends, per the transition's own
 //   `alignment` (default `center` — floor on the "before" side, ceil on the
 //   "after" side), but only between two REAL items — isFirst/isLast suppress

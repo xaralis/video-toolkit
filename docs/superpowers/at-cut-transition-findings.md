@@ -11,8 +11,13 @@
 > `knownDefective` and `semanticXfail` both empty. Graded, with the before/after
 > in words, in `docs/superpowers/phase4-migrations.md` § Task 2.1.
 >
-> Everything else here still stands, including the **seven kinds that no-op when
-> exiting** and the **trailing edge** — those are Task 2.2's, not 2.1's.
+> **AND THE EXITING NO-OPS ARE FIXED TOO, SINCE TASK 2.2.** The `exit` column
+> below reads `no-op` for `fade`, `dissolve`, `fade-coal`, `burn`, `clock-wipe`,
+> `iris` and `gradient-wipe` — plus `checkerboard`, which 2.1 left that way on
+> purpose. A reel edge now resolves its missing input to the composition
+> background (`edgeInput`, lib/transitions/edge-plate.tsx), so all EIGHT render.
+> See "The trailing-edge caveat" below, which is annotated in place, and
+> `phase4-migrations.md` § Task 2.2.
 >
 > Read the paragraph below with that in mind: the one-sided "entering presentation
 > drawn over the exiting one" composite it describes is still how the SIXTEEN
@@ -208,6 +213,13 @@ pin's comment names the fix shape it assumes.
 ## Two cross-cutting observations
 
 ### The trailing-edge caveat — `no-op` exiting directions
+
+> **RESOLVED BY PHASE 4 TASK 2.2.** Everything below is an accurate account of
+> why the family existed; the last paragraph's "recorded here rather than
+> changed" no longer holds. The look decision was made: a missing neighbour is
+> the composition background, so the trailing edge fades to `theme.background`
+> and the leading edge fades out of it. Re-measured at the time, the family was
+> **eight**, not seven — `checkerboard` joined it in Task 2.1.
 
 Seven kinds do nothing at all in the exiting direction: `fade`, `dissolve`,
 `fade-coal`, `burn` (all four are Remotion's `fade()`, whose

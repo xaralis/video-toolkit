@@ -121,6 +121,11 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
     // unrecognised. Same narrow threading as `palette` — the theme itself does
     // not go down.
     transitions: theme.transitions,
+    // What a transition at the reel's leading or trailing edge resolves its
+    // missing input to (Task 2.2). The SAME value the root AbsoluteFill below
+    // is painted with, so "fade to background" is the brand's background and
+    // never a colour core invented.
+    background: theme.background,
     renderItem: (item, handles) =>
       renderVideoItemNode(theme, item, handles, {
         anchoredOverlays: anchored.get(item.id) ?? [],

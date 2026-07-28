@@ -653,7 +653,8 @@ it is renderer non-determinism, **not** a harness state-leak; do not chase brows
 > the same draw. One cell was 6/12 in one pass and 0/24 in the next (p ≈ 6e-8 if stationary).
 > **Separate processes are the enumerating axis.** Hence the **union rule**: a re-seed can never
 > *drop* a recorded attractor on absence — without it, a re-seed de-listed three genuinely
-> bimodal cells. The committed list is **19 cells**, a **lower bound**, and **machine-specific**.
+> bimodal cells. The committed list is **15 cells** (19 until Phase 4 Task 2.2 re-baselined the
+> reel-edge goldens), a **lower bound**, and **machine-specific**.
 > `--audit-bimodal` will **XPASS spuriously** on `light-leak` for the same reason: treat an XPASS
 > as "re-run in a fresh process", **never** as grounds to de-list.
 

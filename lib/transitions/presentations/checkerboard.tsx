@@ -14,13 +14,19 @@
  * and at a cut the two layers together laid out the grid twice.
  *
  * There is ONE implementation now: B clipped into cells, over an intact A.
- * The direction branch is gone, and with it the empty cells — a cell exists
- * only to carry the incoming clip, so when there is no incoming clip (a reel's
- * trailing edge) no cells are drawn at all.
+ * The direction branch is gone, and with it the empty cells.
+ *
+ * Task 2.1 answered "no incoming clip" (a reel's TRAILING edge) with "draw no
+ * cells", which left `checkerboard` doing nothing as a `transitionOut` — the
+ * eighth member of the exiting-no-op family the model had no answer for yet.
+ * Task 2.2 gives it one: a missing input IS the composition background
+ * (`edgeInput`), so the grid checkers OUT to the brand's background exactly as
+ * it checkers IN from it at the leading edge. No null case survives here.
  */
 import React, { useMemo } from 'react';
 import { AbsoluteFill, interpolate, Easing } from 'remotion';
 import type { TransitionNode, TransitionNodeProps } from '../../theming/transitions';
+import { edgeInput } from '../edge-plate';
 
 export type CheckerboardPattern =
   | 'sequential'    // Left-to-right, top-to-bottom
@@ -131,7 +137,7 @@ export const checkerboard = (props: CheckerboardProps = {}): TransitionNode => {
     easing = Easing.out(Easing.cubic),
   } = props;
 
-  const composite: React.FC<TransitionNodeProps> = ({ from, to, progress }) => {
+  const composite: React.FC<TransitionNodeProps> = ({ from, to, progress, background }) => {
     // Generate grid cells
     const cells = useMemo(() => {
       const result: Array<{
@@ -158,88 +164,91 @@ export const checkerboard = (props: CheckerboardProps = {}): TransitionNode => {
 
     return (
       <AbsoluteFill>
-        {/* The OUTGOING clip, drawn once and whole, beneath the grid. */}
-        <AbsoluteFill>{from}</AbsoluteFill>
+        {/* The OUTGOING clip, drawn once and whole, beneath the grid. At the
+            reel's LEADING edge there is none, and it resolves to the
+            composition background (Task 2.2). */}
+        <AbsoluteFill>{edgeInput(from, background)}</AbsoluteFill>
 
         {/* Grid layer — each cell carries the INCOMING clip, clipped to itself.
-            A cell has no meaning without an incoming clip, so at a reel's
-            trailing edge there is no grid rather than a grid of empty boxes. */}
-        {to === null ? null : (
-          <AbsoluteFill style={{ overflow: 'hidden' }}>
-            {cells.map(({ row, col, order }) => {
-              // Calculate when this cell should animate
-              // With stagger, cells animate in sequence
-              // stagger=0 means all at once, stagger=1 means fully sequential
-              const cellStart = order * stagger;
-              const cellEnd = cellStart + (1 - stagger);
+            AT THE REEL'S TRAILING EDGE that clip is the composition background:
+            Task 2.1 drew no grid at all there, which made `checkerboard` the
+            eighth kind that did nothing as a `transitionOut`. It now checkers
+            OUT to the background, the same answer the seven lifted kinds get —
+            so there is no direction branch and no null case left here. */}
+        <AbsoluteFill style={{ overflow: 'hidden' }}>
+          {cells.map(({ row, col, order }) => {
+            // Calculate when this cell should animate
+            // With stagger, cells animate in sequence
+            // stagger=0 means all at once, stagger=1 means fully sequential
+            const cellStart = order * stagger;
+            const cellEnd = cellStart + (1 - stagger);
 
-              // Individual cell progress
-              const cellProgress = interpolate(
-                progress,
-                [cellStart, cellEnd],
-                [0, 1],
-                {
-                  extrapolateLeft: 'clamp',
-                  extrapolateRight: 'clamp',
-                }
-              );
-
-              const easedProgress = easing(cellProgress);
-
-              // Calculate animation values based on type
-              let opacity = 1;
-              let scale = 1;
-              let rotateY = 0;
-
-              switch (squareAnimation) {
-                case 'fade':
-                  opacity = easedProgress;
-                  break;
-                case 'scale':
-                  scale = easedProgress;
-                  opacity = easedProgress > 0 ? 1 : 0;
-                  break;
-                case 'flip':
-                  rotateY = interpolate(easedProgress, [0, 1], [90, 0]);
-                  opacity = easedProgress > 0.1 ? 1 : 0;
-                  break;
+            // Individual cell progress
+            const cellProgress = interpolate(
+              progress,
+              [cellStart, cellEnd],
+              [0, 1],
+              {
+                extrapolateLeft: 'clamp',
+                extrapolateRight: 'clamp',
               }
+            );
 
-              // No direction branch. The old `!isEntering` inverse — which flipped
-              // opacity, scale and rotation on a cell that carried no content — is
-              // gone with the second implementation it belonged to.
-              return (
+            const easedProgress = easing(cellProgress);
+
+            // Calculate animation values based on type
+            let opacity = 1;
+            let scale = 1;
+            let rotateY = 0;
+
+            switch (squareAnimation) {
+              case 'fade':
+                opacity = easedProgress;
+                break;
+              case 'scale':
+                scale = easedProgress;
+                opacity = easedProgress > 0 ? 1 : 0;
+                break;
+              case 'flip':
+                rotateY = interpolate(easedProgress, [0, 1], [90, 0]);
+                opacity = easedProgress > 0.1 ? 1 : 0;
+                break;
+            }
+
+            // No direction branch. The old `!isEntering` inverse — which flipped
+            // opacity, scale and rotation on a cell that carried no content — is
+            // gone with the second implementation it belonged to.
+            return (
+              <div
+                key={`${row}-${col}`}
+                style={{
+                  position: 'absolute',
+                  left: `${col * cellSize}%`,
+                  top: `${row * cellSize}%`,
+                  width: `${cellSize}%`,
+                  height: `${cellSize}%`,
+                  overflow: 'hidden',
+                  opacity,
+                  transform: `scale(${scale}) perspective(500px) rotateY(${rotateY}deg)`,
+                  transformOrigin: 'center center',
+                }}
+              >
+                {/* Clip the incoming clip to this cell */}
                 <div
-                  key={`${row}-${col}`}
                   style={{
                     position: 'absolute',
-                    left: `${col * cellSize}%`,
-                    top: `${row * cellSize}%`,
-                    width: `${cellSize}%`,
-                    height: `${cellSize}%`,
-                    overflow: 'hidden',
-                    opacity,
-                    transform: `scale(${scale}) perspective(500px) rotateY(${rotateY}deg)`,
-                    transformOrigin: 'center center',
+                    left: `${-col * 100}%`,
+                    top: `${-row * 100}%`,
+                    width: `${gridSize * 100}%`,
+                    height: `${gridSize * 100}%`,
                   }}
                 >
-                  {/* Clip the incoming clip to this cell */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: `${-col * 100}%`,
-                      top: `${-row * 100}%`,
-                      width: `${gridSize * 100}%`,
-                      height: `${gridSize * 100}%`,
-                    }}
-                  >
-                    {to}
-                  </div>
+                  {edgeInput(to, background)}
                 </div>
-              );
-            })}
-          </AbsoluteFill>
-        )}
+              </div>
+            );
+          })}
+        </AbsoluteFill>
       </AbsoluteFill>
     );
   };

@@ -13,6 +13,7 @@ import { iris } from '@remotion/transitions/iris';
 import {
   glitch, whipPan, zoomThrough, wipe as customWipe, gradientWipe, burn,
   rgbSplit, scanlineGlitch, lightLeak, zoomBlur, pixelate, checkerboard,
+  edgeInput,
 } from '../transitions';
 import { useCurrentFrame } from 'remotion';
 import { getTransitionRecord, type TransitionRecord } from './transition-record';
@@ -264,22 +265,28 @@ export function presentationFor(t: TransitionRecord | undefined, dims: Dims): An
  *  This is the compatibility route, not a compromise: the five official
  *  `@remotion/transitions` presentations are one-sided by design and keep
  *  working unchanged, as does every brand registration written against Task
- *  1.2's contract. A null input renders NOTHING on that side — which is how the
- *  leading and trailing edges reproduce their pre-1.3 pixels, where the missing
- *  neighbour simply had no `Sequence` on screen. */
+ *  1.2's contract.
+ *
+ *  A NULL INPUT IS THE COMPOSITION BACKGROUND (Task 2.2), not nothing. Task 1.3
+ *  drew nothing on the missing side, which reproduced the pre-1.3 pixels
+ *  exactly — and preserved the defect that came with them: a one-sided
+ *  presentation whose EXITING branch is the identity function (`fade`,
+ *  `dissolve`, `fade-coal`, `burn`, `clock-wipe`, `iris`, `gradient-wipe`) did
+ *  literally nothing as a `transitionOut`, because the only branch that draws
+ *  had no input. Feeding it a plate of `background` is what makes the reel's
+ *  trailing edge actually fade — and it is the same operation at the leading
+ *  edge, where the incoming clip now resolves OUT of the background rather than
+ *  out of nothing. `background` is `transparent` when the caller has none, so
+ *  that route still paints exactly what 1.3 did. */
 export function fromRemotionPresentation(p: AnyPresentation): TransitionNode {
-  const composite: React.FC<TransitionNodeProps> = ({ from, to, progress, durationInFrames }) => (
+  const composite: React.FC<TransitionNodeProps> = ({ from, to, progress, durationInFrames, background }) => (
     <>
-      {from === null ? null : (
-        <TransitionLayer presentation={p} direction="exiting" progress={progress} durationInFrames={durationInFrames}>
-          {from}
-        </TransitionLayer>
-      )}
-      {to === null ? null : (
-        <TransitionLayer presentation={p} direction="entering" progress={progress} durationInFrames={durationInFrames}>
-          {to}
-        </TransitionLayer>
-      )}
+      <TransitionLayer presentation={p} direction="exiting" progress={progress} durationInFrames={durationInFrames}>
+        {edgeInput(from, background)}
+      </TransitionLayer>
+      <TransitionLayer presentation={p} direction="entering" progress={progress} durationInFrames={durationInFrames}>
+        {edgeInput(to, background)}
+      </TransitionLayer>
     </>
   );
   return { composite };
@@ -323,7 +330,15 @@ export const AtCutTransition: React.FC<{
   to: React.ReactNode | null;
   /** The boundary's length in frames. */
   frames: number;
-  dims: { width: number; height: number; fps: number; palette?: readonly AccentSlot[] };
+  dims: {
+    width: number; height: number; fps: number;
+    palette?: readonly AccentSlot[];
+    /** `CompositionTheme.background` — what a null input resolves to (Task
+     *  2.2). Optional so a caller with no theme in scope still composes;
+     *  absent becomes `transparent`, which paints nothing. Core never
+     *  substitutes a colour of its own. */
+    background?: string;
+  };
 }> = ({ node, from, to, frames, dims }) => {
   const frame = useCurrentFrame();
   const progress = frames > 0 ? Math.max(0, Math.min(1, frame / frames)) : 1;
@@ -344,6 +359,7 @@ export const AtCutTransition: React.FC<{
       height={dims.height}
       fps={dims.fps}
       palette={dims.palette ?? []}
+      background={dims.background ?? 'transparent'}
     />
   );
 };

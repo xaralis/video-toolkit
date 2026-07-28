@@ -307,7 +307,7 @@ Docker images, cuts releases, and syncs the Remotion skill from upstream).
 
 | Gate | Command | Covers | Baseline (measured 2026-07-28) |
 |---|---|---|---|
-| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **87 files / 1144 tests** — 1140 passed, **4 skipped**, ~41 s |
+| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **88 files / 1166 tests** — 1162 passed, **4 skipped**, ~42 s |
 | Editor types | `cd lib/editor && npx tsc --noEmit` | Same surface as above, plus all of `lib/render` (declared directly in `lib/editor/tsconfig.json`'s `include`, or reached transitively) and 13 of `lib/transitions`' 14 files — `index.ts` plus all 12 presentations, but **not** `TransitionGallery.tsx`, which only `examples/layered-minimal` reaches (verify with `npx tsc --noEmit --listFiles`) | **3** pre-existing errors, **exit code 2** |
 | Render/transitions types | `cd examples/layered-minimal && npm run typecheck` | `lib/render` and `lib/transitions` (including their `.tsx` components), via the example that actually imports them — see `docs/superpowers/core-typecheck-gate.md` | **0**, plus a coverage guard |
 | Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` | Every at-cut transition kind × mode × progress — 300 stills, hash-compared against committed goldens | **PASS**, ~45 s: `300 accepted, 0 same-picture-different-bytes, 0 drifted, 0 missing`, **zero** semantic xfails, `knownDefective` and `semanticXfail` both **empty** |
@@ -340,7 +340,9 @@ deleting `scanlines: t.scanlines` from that table previously passed every gate, 
 the editor suite skipped the kind and the pixel harness only ever renders catalog
 defaults.
 
-The pixel harness has 19 known-**bimodal** cells with two accepted hashes each, so the
+The pixel harness has **15** known-**bimodal** cells with two accepted hashes each (19 until
+Task 2.2, which re-baselined six `light-leak` edge cells whose recorded pictures no longer
+exist and observed two new ones), so the
 parenthesised "N matched a bimodal cell's SECOND recorded hash" varies legitimately between runs.
 `0 drifted, 0 missing` is the gate; that count is not.
 

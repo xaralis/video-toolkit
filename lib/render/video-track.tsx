@@ -95,6 +95,12 @@ export function buildVideoNodes(
      *  Absent → core's generic presentations are the only tier, exactly as
      *  before the axis existed. */
     transitions?: TransitionRegistry;
+    /** `CompositionTheme.background`, threaded the same narrow way `palette`
+     *  is. It is what a transition at the reel's LEADING or TRAILING edge
+     *  resolves its missing input to (Phase 4 Task 2.2) — the trailing-edge
+     *  fade this file's layout comment has always claimed. Absent → the edge
+     *  paints nothing, which is the pre-2.2 pixel. */
+    background?: string;
   },
 ): React.ReactNode[] {
   // The registry's KEYS are also the set of kinds the unrecognised-kind warning
@@ -103,7 +109,10 @@ export function buildVideoNodes(
   const brandKinds = opts.transitions ? new Set(Object.keys(opts.transitions)) : undefined;
   const layout = computeVideoLayout(items, opts.fps, { brandKinds });
   const dims = { width: opts.width, height: opts.height, palette: opts.palette, transitions: opts.transitions };
-  const nodeDims = { width: opts.width, height: opts.height, fps: opts.fps, palette: opts.palette };
+  const nodeDims = {
+    width: opts.width, height: opts.height, fps: opts.fps,
+    palette: opts.palette, background: opts.background,
+  };
 
   const drawn = (i: number) => i >= 0 && i < items.length && layout[i].seqDuration > 0;
   const content = (i: number) =>

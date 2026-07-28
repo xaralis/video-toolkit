@@ -294,6 +294,7 @@ describe.each(KINDS)('transition kind %s', (kind) => {
               height={1920}
               fps={30}
               palette={[]}
+              background="transparent"
             />,
           ).unmount(),
         ).not.toThrow();
@@ -370,6 +371,7 @@ describe.each(NODE_KINDS)('two-input node %s delivers every authored param', (ki
           height={1920}
           fps={30}
           palette={PALETTE}
+          background="transparent"
         />,
       );
       const html = container.innerHTML;
@@ -414,7 +416,7 @@ describe('accent-slot resolution', () => {
   const sheetColorFor = (t: TransitionRecord, dims: Parameters<typeof transitionNodeFor>[1]) => {
     const Composite = transitionNodeFor(t, dims)!.composite;
     const { container, unmount } = render(
-      <Composite from={null} to={null} progress={0.5} durationInFrames={15} width={1080} height={1920} fps={30} palette={[]} />,
+      <Composite from={null} to={null} progress={0.5} durationInFrames={15} width={1080} height={1920} fps={30} palette={[]} background="transparent" />,
     );
     const sheet = [...container.querySelectorAll('div')].find((d) => d.style.backgroundColor !== '');
     const color = sheet?.style.backgroundColor;
@@ -484,6 +486,7 @@ describe('the four two-input nodes render what their name promises', () => {
         height={1920}
         fps={30}
         palette={[]}
+        background="transparent"
       />,
     );
   };
@@ -554,10 +557,24 @@ describe('the four two-input nodes render what their name promises', () => {
     unmount();
   });
 
-  it('checkerboard draws no cells at all when there is no incoming clip — no empty-cell artefact', () => {
+  // TASK 2.1's "no cells when there is no incoming clip" PIN IS GONE, replaced
+  // rather than deleted. 2.1 answered the trailing edge with "draw nothing",
+  // which is what made `checkerboard` the eighth exiting no-op; Task 2.2's
+  // model answers it with the composition background, so the grid IS drawn and
+  // its cells carry a background plate. The replacement lives in
+  // 'a reel edge resolves the missing input to the theme background' below —
+  // and the empty-cell artefact 2.1 actually removed (a cell drawn with no
+  // content AND no background) stays impossible, because there is no longer a
+  // code path that puts nothing inside a cell.
+  it('checkerboard never draws a cell with nothing in it', () => {
     const node = nodeFor({ kind: 'checkerboard', frames: 15, gridSize: 3 });
     const { container, unmount } = mountNode(node, 0.5, { to: null });
-    expect({ cells: cellsOf(container).length, a: count(container, 'a') }).toEqual({ cells: 0, a: 1 });
+    const cells = cellsOf(container);
+    expect({
+      cells: cells.length,
+      empty: cells.filter((c) => c.childElementCount === 0).length,
+      a: count(container, 'a'),
+    }).toEqual({ cells: 9, empty: 0, a: 1 });
     unmount();
   });
 
@@ -723,6 +740,7 @@ describe('fromRemotionPresentation lifts a one-sided presentation', () => {
         height={1920}
         fps={30}
         palette={[]}
+        background="transparent"
       />,
     );
     expect(order).toEqual(['exiting', 'entering']);
@@ -730,11 +748,18 @@ describe('fromRemotionPresentation lifts a one-sided presentation', () => {
     expect(container.querySelectorAll('[data-testid="b"]')).toHaveLength(1);
   });
 
-  it('renders NOTHING on a null side — which is how a reel edge keeps its pixels', () => {
+  // TASK 1.3's "renders NOTHING on a null side" IS DELIBERATELY REVERSED HERE.
+  // Drawing nothing reproduced the pre-1.3 pixels exactly — and, with them, the
+  // defect: a presentation whose exiting branch is the identity function had no
+  // input to draw, so seven kinds did nothing at all as a `transitionOut`. Both
+  // branches now always run; a null side is a plate of `background`. With
+  // `background: 'transparent'` (the no-theme caller) that plate paints
+  // nothing, which is how the old pixels survive where no theme is threaded.
+  it('runs BOTH branches on a null side, feeding it the background plate', () => {
     const order: string[] = [];
     const node = fromRemotionPresentation(trace(order));
     const Composite = node.composite;
-    render(
+    const { container } = render(
       <Composite
         from={null}
         to={<div data-testid="b" />}
@@ -744,9 +769,13 @@ describe('fromRemotionPresentation lifts a one-sided presentation', () => {
         height={1920}
         fps={30}
         palette={[]}
+        background="#123456"
       />,
     );
-    expect(order).toEqual(['entering']);
+    expect(order).toEqual(['exiting', 'entering']);
+    expect(
+      [...container.querySelectorAll('div')].filter((d) => d.style.backgroundColor === 'rgb(18, 52, 86)'),
+    ).toHaveLength(1);
   });
 
   it('forwards the presentation’s own props as passedProps', () => {
@@ -760,7 +789,7 @@ describe('fromRemotionPresentation lifts a one-sided presentation', () => {
     });
     const Composite = node.composite;
     render(
-      <Composite from={null} to={<div />} progress={0.25} durationInFrames={12} width={1} height={2} fps={30} palette={[]} />,
+      <Composite from={null} to={<div />} progress={0.25} durationInFrames={12} width={1} height={2} fps={30} palette={[]} background="transparent" />,
     );
     expect(seen[0].passedProps).toEqual({ marker: 42 });
     expect(seen[0].presentationProgress).toBe(0.25);
@@ -786,5 +815,214 @@ describe('transitionNodeFor is the render path', () => {
       transitions: { 'brand-x': { renderer: () => ({ composite }) } },
     });
     expect(node!.composite).toBe(composite);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// THE REEL'S TWO EDGES (Phase 4 Task 2.2).
+//
+// A boundary with `to === null` is the reel's TRAILING edge; one with
+// `from === null` is its LEADING edge. Until this task the missing side was
+// simply not drawn, and every kind whose EXITING branch is the identity
+// function therefore did nothing at all as a `transitionOut` — measured, not
+// assumed: `fade`, `dissolve`, `fade-coal`, `burn`, `clock-wipe`, `iris`,
+// `gradient-wipe` (the brief's seven) and `checkerboard`, which Task 2.1
+// deliberately left drawing no grid there.
+//
+// The model's answer is that the missing neighbour IS the composition
+// background: a fade against `null` is a fade to `theme.background`. The
+// colour is THREADED (AtCutTransition → TransitionNodeProps.background), never
+// hardcoded — a literal `#000` here would be the exact brand-leak class this
+// programme exists to remove, and `reel-edge-background.test.tsx` pins the
+// thread end to end.
+//
+// EIGHT near-identical per-kind tests, deliberately. One generic category test
+// would stay green while an individual kind regressed, and these are eight
+// independent presentations, not eight instances of one.
+// ---------------------------------------------------------------------------
+describe('a reel edge resolves the missing input to the theme background', () => {
+  const BG = '#123456';
+  const BG_RGB = 'rgb(18, 52, 86)';
+  const OTHER_BG = '#654321';
+  const OTHER_RGB = 'rgb(101, 67, 33)';
+
+  const CLIP = <div data-testid="clip" />;
+
+  const mount = (
+    kind: string,
+    inputs: { from?: React.ReactNode | null; to?: React.ReactNode | null },
+    progress: number,
+    background = BG,
+  ) => {
+    const t = defaultTransition(kind, { frames: 20 }) as unknown as TransitionRecord;
+    const Composite = transitionNodeFor(t, DIMS)!.composite;
+    return render(
+      <Composite
+        from={inputs.from === undefined ? CLIP : inputs.from}
+        to={inputs.to === undefined ? CLIP : inputs.to}
+        progress={progress}
+        durationInFrames={20}
+        width={1080}
+        height={1920}
+        fps={30}
+        palette={[]}
+        background={background}
+      />,
+    );
+  };
+
+  /** Every element painted with the given background colour. The edge plate is
+   *  the ONLY thing core paints, so this locates it without knowing the
+   *  presentation's own DOM shape. */
+  const platesOf = (container: HTMLElement, rgb = BG_RGB) =>
+    [...container.querySelectorAll('div')].filter((d) => d.style.backgroundColor === rgb);
+
+  /** What the presentation did TO the plate: the style its parent carries.
+   *  A no-op exiting branch leaves this constant across progress; a working
+   *  one does not. */
+  const trailingSample = (kind: string, progress: number) => {
+    const { container, unmount } = mount(kind, { to: null }, progress);
+    const plate = platesOf(container)[0];
+    const out = {
+      plates: platesOf(container).length,
+      opacity: plate?.parentElement?.style.opacity ?? null,
+      style: plate?.parentElement?.getAttribute('style') ?? null,
+    };
+    unmount();
+    return out;
+  };
+
+  // ---- the seven lifted one-sided presentations ---------------------------
+  //
+  // Their entering branch reveals the incoming picture; at the trailing edge
+  // that picture is now the background plate, so the outgoing clip visibly
+  // resolves to it. The observable is per-kind on purpose: `opacity` for the
+  // four opacity reveals, a gradient mask for `gradient-wipe`, a clip path for
+  // the two shape wipes.
+
+  it.each(['fade', 'dissolve', 'fade-coal', 'burn'] as const)(
+    '%s fades the theme background IN over the outgoing clip at the trailing edge',
+    (kind) => {
+      const at = (p: number) => {
+        const s = trailingSample(kind, p);
+        return { plates: s.plates, opacity: s.opacity };
+      };
+      expect([at(0.25), at(0.75)]).toEqual([
+        { plates: 1, opacity: '0.25' },
+        { plates: 1, opacity: '0.75' },
+      ]);
+    },
+  );
+
+  it('gradient-wipe sweeps the theme background in along its gradient at the trailing edge', () => {
+    const a = trailingSample('gradient-wipe', 0.25);
+    const b = trailingSample('gradient-wipe', 0.75);
+    expect({ plates: a.plates, gradient: a.style?.includes('linear-gradient') }).toEqual({
+      plates: 1,
+      gradient: true,
+    });
+    expect(a.style).not.toBe(b.style);
+  });
+
+  it.each(['clock-wipe', 'iris'] as const)(
+    '%s clips the theme background over the outgoing clip at the trailing edge',
+    (kind) => {
+      const a = trailingSample(kind, 0.25);
+      const b = trailingSample(kind, 0.75);
+      expect({ plates: a.plates, clipped: a.style?.includes('path(') }).toEqual({
+        plates: 1,
+        clipped: true,
+      });
+      expect(a.style).not.toBe(b.style);
+    },
+  );
+
+  // ---- the native node Task 2.1 left for this task ------------------------
+  //
+  // 2.1 made `checkerboard` draw NO grid when `to === null`, explicitly
+  // deferring "what should a checkerboard to nowhere look like?" here. It is
+  // cells of background: the same answer the other seven get.
+  it('checkerboard reveals the theme background cell by cell at the trailing edge', () => {
+    const cellsAt = (p: number) => {
+      const { container, unmount } = mount('checkerboard', { to: null }, p);
+      const plates = platesOf(container);
+      const lit = plates.filter((d) => {
+        const cell = d.parentElement?.parentElement;
+        return cell !== null && cell !== undefined && cell.style.opacity !== '0';
+      }).length;
+      unmount();
+      return { plates: plates.length, lit };
+    };
+    const early = cellsAt(0.25);
+    const late = cellsAt(0.9);
+    // The default 8x8 grid, every cell carrying the background plate, and more
+    // of them lit late than early.
+    expect(early.plates).toBe(64);
+    expect(late.plates).toBe(64);
+    expect(late.lit).toBeGreaterThan(early.lit);
+  });
+
+  // ---- the LEADING edge, the mirror case ----------------------------------
+  //
+  // `from === null`. The plate goes through the EXITING branch, which for these
+  // eight is the identity — so the incoming clip resolves out of the background
+  // rather than out of nothing. Same mechanism, so one pin per family is enough
+  // here; what must not happen is the plate silently disappearing.
+  it.each(['fade', 'dissolve', 'fade-coal', 'burn', 'gradient-wipe', 'clock-wipe', 'iris'] as const)(
+    '%s draws the theme background beneath the incoming clip at the leading edge',
+    (kind) => {
+      const { container } = mount(kind, { from: null }, 0.5);
+      expect(platesOf(container)).toHaveLength(1);
+    },
+  );
+
+  it('checkerboard draws the theme background beneath its cells at the leading edge', () => {
+    const { container } = mount('checkerboard', { from: null }, 0.5);
+    // One beneath the grid; the cells carry the real incoming clip.
+    expect(platesOf(container)).toHaveLength(1);
+    expect(container.querySelectorAll('[data-testid="clip"]')).toHaveLength(64);
+  });
+
+  // ---- the colour FOLLOWS THE THEME ---------------------------------------
+  //
+  // The mutation that matters: a hardcoded `#000` would satisfy every
+  // assertion above if BG happened to be black. It is not, and this says why.
+  it.each(['fade', 'checkerboard'] as const)(
+    '%s paints the edge with whatever background it was handed, not a fixed colour',
+    (kind) => {
+      const one = mount(kind, { to: null }, 0.5, BG);
+      const two = mount(kind, { to: null }, 0.5, OTHER_BG);
+      expect({
+        first: platesOf(one.container, BG_RGB).length > 0,
+        firstIsOther: platesOf(one.container, OTHER_RGB).length > 0,
+        second: platesOf(two.container, OTHER_RGB).length > 0,
+      }).toEqual({ first: true, firstIsOther: false, second: true });
+    },
+  );
+
+  // A caller with no background in scope must not have a colour invented for
+  // it — `transparent` paints nothing and leaves whatever is behind the video
+  // track showing, which is the pre-2.2 pixel.
+  it('paints nothing when the caller supplies no background', () => {
+    const { container } = mount('fade', { to: null }, 0.5, 'transparent');
+    expect(platesOf(container, BG_RGB)).toHaveLength(0);
+    expect(platesOf(container, OTHER_RGB)).toHaveLength(0);
+  });
+
+  // The first link of the thread. `reel-edge-background.test.tsx` pins the rest
+  // of it (theme.background → LayeredReelComposition → buildVideoNodes → here).
+  it('AtCutTransition hands the node the background it was given, and `transparent` when it has none', () => {
+    const seen: TransitionNodeProps[] = [];
+    const node: TransitionNode = {
+      composite: (props: TransitionNodeProps) => {
+        seen.push(props);
+        return null;
+      },
+    };
+    clock.frame = 5;
+    const base = { width: 1080, height: 1920, fps: 30 };
+    render(<AtCutTransition node={node} from={<div />} to={null} frames={10} dims={{ ...base, background: BG }} />);
+    render(<AtCutTransition node={node} from={<div />} to={null} frames={10} dims={base} />);
+    expect(seen.map((p) => p.background)).toEqual([BG, 'transparent']);
   });
 });

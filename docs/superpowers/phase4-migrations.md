@@ -732,3 +732,158 @@ of its own will now get a **type error** (the factories return `TransitionNode`,
 not `TransitionPresentation`) — a compile-time failure, not a silent one.
 Verified: **neither brand repo imports any of the four** outside its `toolkit/`
 submodule.
+
+---
+
+## Task 2.2 — the exiting no-ops, and the reel's two edges
+
+### 2.2-a The measured list is EIGHT, not the plan's seven
+
+The plan carried a Phase-3 list of seven "no-op when exiting" kinds. Re-derived
+against the current tree (post-1.3, post-2.1) by mounting every catalog kind's
+node with `to = null` at progress 0 / 0.5 / 1 and comparing the rendered HTML,
+the list is:
+
+| kind | trailing edge (`to === null`) before 2.2 |
+|---|---|
+| `fade` | NO-OP |
+| `dissolve` | NO-OP |
+| `fade-coal` | NO-OP |
+| `burn` | NO-OP |
+| `clock-wipe` | NO-OP |
+| `iris` | NO-OP |
+| `gradient-wipe` | NO-OP |
+| **`checkerboard`** | **NO-OP** — Task 2.1 made it draw no grid there, deliberately deferring the look decision to this task |
+
+The other twelve kinds animate at the trailing edge and were never in the
+family. The LEADING edge (`from === null`) was a no-op for **no** kind: the
+entering branch always had its input.
+
+The common cause is one line, not eight bugs: every one of these has an EXITING
+branch that is the identity function, so with nothing to draw on the entering
+side the whole boundary was inert.
+
+### 2.2-b The model's answer: a missing neighbour IS the composition background
+
+**Grade: deliberate look change** — but see 2.2-d, which measures it to be
+**zero pixels in every existing brand project today**.
+
+`TransitionNodeProps` gained `background: string`, threaded
+`CompositionTheme.background` → `LayeredReelComposition` → `buildVideoNodes` →
+`AtCutTransition` → the node. `edgeInput(input, background)`
+(`lib/transitions/edge-plate.tsx`) turns a null input into a full-frame plate of
+that colour. It is used in exactly two places: `fromRemotionPresentation` (which
+covers all 16 lifted one-sided kinds) and `checkerboard`.
+
+**The colour is never chosen by core.** A literal `#000` here would be the exact
+brand-leak class this programme exists to remove; a caller with no background in
+scope gets `'transparent'`, which paints nothing and reproduces the pre-2.2
+pixel. Both ends are mutation-pinned (see the task report).
+
+`lib/render/video-track-layout.ts`'s long-standing comment "that's the reel's
+trailing edge fade" is true for the first time.
+
+### 2.2-c Six kinds OUTSIDE the eight also change at a reel edge
+
+**Grade: deliberate look change.**
+
+The lifter is generic, so every kind it lifts now composites the plate. For the
+eight above that is the fix; for six others it is a genuine (and, we judge,
+correct) change, because their branches do something to the picture they are
+handed rather than just moving it:
+
+`glitch`, `rgb-split`, `light-leak`, `whip-pan`, `zoom-through`, `zoom-blur`.
+
+`slide` and `flip` are lifted too and came through **byte-identical** — pure
+geometry over a uniform plate reveals the same uniform colour. `wipe`,
+`pixelate` and `scanline-glitch` are native nodes that were not touched.
+
+**Measured on the 300-cell pixel harness: 68 cells moved, 55 in `exit` mode and
+13 in `enter` mode, and ZERO in `cut` mode.** No mid-reel boundary changes for
+any kind. That is the containment guarantee worth remembering: this task can
+only affect the first and last transition of a reel.
+
+`examples/layered-minimal`'s five `MinimalReel` reference hashes are all
+**unchanged** (its only transition is mid-reel).
+
+### 2.2-d Affected brand projects — measured, and it is currently NONE
+
+Two independent reasons, both verified by command rather than inferred.
+
+**1. Almost no authored transition sits at a reel edge.** Parsing every
+`projects/*/src/Root.tsx` and `templates/*/src/Root.tsx` in both repos for
+`transitionOut` on the LAST video item and `transitionIn` on the FIRST:
+
+| repo / project | edge | kind | grade |
+|---|---|---|---|
+| PP `pp-namesti-republiky` | leading (`seg-001`) | `fade` | **parity-preserving** — no `fade__enter` harness cell moved |
+| PP `pp-namesti-republiky` | trailing (`seg-008`) | `fade-coal` | **deliberate look change** — 4 harness cells moved |
+| everything else | — | — | no edge transition at all |
+
+Every other authored `transitionOut` in either repo (`dissolve` ×4, `glitch`,
+`fade`, `gradient-wipe`, `burn`, `cut` ×2) sits between two clips — a `cut`-mode
+boundary, where nothing moved. roost's last item (`outro`) authors no
+`transitionOut`, so roost has no trailing edge at all.
+
+**2. No project threads `background` yet, so even that one project is
+unchanged.** Every project in both repos calls `buildVideoNodes` DIRECTLY from
+its vendored `LayeredCampaignReel.tsx` / `LayeredRoostReel.tsx` (11 PP + 1
+roost, verified), and none passes `background` — so `background` is
+`'transparent'` and the plate paints nothing.
+
+```bash
+# in each brand repo
+grep -rn --include='*.tsx' 'buildVideoNodes(' . | grep -v node_modules | grep -vE '^(\./)?toolkit/'
+```
+
+Only the TEMPLATES (`templates/campaign-reels`, `templates/roost-reels`) go
+through `LayeredReelComposition`, which does thread it — so a project vendored
+*after* this lands, or one that takes the change via `/toolkit:sync-template`,
+gets the trailing-edge fade automatically.
+
+**What a brand does to opt in:** add one line to its `buildVideoNodes` call,
+naming the same colour its root `AbsoluteFill` already uses (campaign-reels:
+`#0a0a0a`):
+
+```tsx
+const videoNodes = buildVideoNodes(videoTrack, {
+  width, height, fps,
+  palette: theme.accentSlots,
+  background: theme.background,   // ← the reel's edges resolve to this
+  renderItem: …,
+});
+```
+
+Recommended, and the reason it is not urgent: the only visible consequence today
+would be `pp-namesti-republiky` gaining a real fade-to-coal at its end, which is
+what its author wrote `transitionOut: { kind: 'fade-coal' }` on the last item
+intending to get.
+
+### 2.2-e `presentationFor`'s blast radius did NOT widen
+
+**Grade: no action.**
+
+Task 2.1's warning covers the four kinds that became native nodes. Task 2.2 adds
+**none** — all seven lifted kinds are still one-sided `TransitionPresentation`s,
+so `presentationFor` still returns them, and `NODE_KINDS` is still pinned to
+exactly `checkerboard`, `pixelate`, `scanline-glitch`, `wipe`. Re-measured: PP
+still has exactly 6 `presentationFor` call sites (the five
+`projects/*/src/WebProgramIntro.tsx` plus `templates/web-program-intro/`), roost
+0.
+
+The consequence that IS worth writing down: those six drive `TransitionSeries`,
+which has no concept of a reel edge and never passes a null input, so **they get
+none of this**. A WPI reel cannot fade to background at its end until it moves
+onto `buildVideoNodes` / `AtCutTransition` — the same Phase-4.5 decision 2.1-e
+already recorded, now with one more reason on its side.
+
+### 2.2-f `checkerboard`'s "no cells at a trailing edge" pin was REPLACED
+
+**Grade: deliberate look change** (and see 2.2-d: nothing renders it today).
+
+Task 2.1 answered "no incoming clip" with "draw no grid", and mutation-pinned
+it. That pin is gone, replaced with `checkerboard never draws a cell with
+nothing in it` — which is the property 2.1 actually cared about (the empty-cell
+artefact) and is now structurally impossible, since no code path puts nothing
+inside a cell. The grid is drawn at a trailing edge and its cells carry the
+background plate.
