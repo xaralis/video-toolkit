@@ -675,12 +675,43 @@ const VALUE_LABELS: Record<string, string> = {
 // null on an unbounded number, and a `.min()` with no `.max()` yields one of
 // each — so each is emitted independently, and neither key appears when the
 // schema does not constrain it.
-function numericBounds(t: z.ZodNumber): Pick<ParamField, 'min' | 'max'> {
-  const out: Pick<ParamField, 'min' | 'max'> = {};
+function numericBounds(t: z.ZodNumber): Pick<ParamField, 'min' | 'max' | 'step'> {
+  const out: Pick<ParamField, 'min' | 'max' | 'step'> = {};
   const { minValue, maxValue } = t;
   if (typeof minValue === 'number' && Number.isFinite(minValue)) out.min = minValue;
   if (typeof maxValue === 'number' && Number.isFinite(maxValue)) out.max = maxValue;
+  const step = numericStep(t, out.min, out.max);
+  if (step !== undefined) out.step = step;
   return out;
+}
+
+// A `step` to go WITH the bounds. Emitting min/max without one is worse than
+// emitting neither: `<input type=number>` defaults `step` to 1, and 1 does not
+// divide a 0–1 range into anything — `light-leak.intensity` arrived bounded
+// `0..1` with a spinner that could only produce 0 or 1, and a typed `0.5` was
+// `:invalid` by step-mismatch. Bounding a field made it LESS usable.
+//
+// The rule, in order:
+//   - `.int()` → 1. The schema says whole numbers; a finer step would offer
+//     values it will reject.
+//   - a finite span → `10 ** ceil(log10(span) - 2)`, clamped to [0.01, 1]:
+//     the coarsest power of ten that still divides the range into between ~10
+//     and ~100 stops. `light-leak.intensity` (0–1) → 0.01;
+//     `pixelate.gridSize` (2–32) → 1; `dissolve.blurAmount` (0–100) → 1;
+//     `pixelate.maxBlockSize` (8–200) → 1 (the clamp; 10 would be too coarse
+//     to type past).
+//   - unbounded → nothing, so the caller's own default still applies. There is
+//     no range to reason from, and inventing a step is not better than the
+//     control's own.
+function numericStep(t: z.ZodNumber, min?: number, max?: number): number | undefined {
+  if (t.isInt) return 1;
+  if (min === undefined || max === undefined) return undefined;
+  const span = Math.abs(max - min);
+  if (!Number.isFinite(span) || span <= 0) return undefined;
+  // 10 ** ceil(log10(span) - 2) is the coarsest power of ten leaving ≥ 100
+  // stops; the clamp keeps it inside what a human wants to type.
+  const raw = 10 ** Math.ceil(Math.log10(span) - 2);
+  return Math.min(1, Math.max(0.01, raw));
 }
 
 // The schema's declared fallback, when it has one. Read off the OUTERMOST

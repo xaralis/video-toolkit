@@ -270,19 +270,45 @@ describe('percent and angle', () => {
 
 // ---------------------------------------------------------------------------
 // The schema's own bounds arrive at the control, so a bounded transition param
-// is bounded in the UI without anyone restating the range.
+// is bounded in the UI without anyone restating the range — WITH a step the
+// range can actually be traversed in. min/max without a step is worse than
+// neither: `<input type=number>` defaults step to 1, so a 0–1 field could only
+// spin between 0 and 1 and a typed `0.5` was rejected as a step mismatch.
 // ---------------------------------------------------------------------------
+function transitionReel(transitionOut: Record<string, unknown>): LayeredReel {
+  return {
+    ...burnReel,
+    tracks: { ...burnReel.tracks, video: [{ ...burnReel.tracks.video[0], transitionOut }] },
+  };
+}
+
 describe('schema bounds reach the transition control', () => {
-  it('gives light-leak’s intensity the schema’s 0..1 range', () => {
-    const reel: LayeredReel = {
-      ...burnReel,
-      tracks: {
-        ...burnReel.tracks,
-        video: [{ ...burnReel.tracks.video[0], transitionOut: { kind: 'light-leak', frames: 20 } }],
-      },
-    };
-    render(<LayeredInspector reel={reel} selectedId="transition:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+  it('gives light-leak’s intensity the schema’s 0..1 range AND a step that fits it', () => {
+    render(
+      <LayeredInspector reel={transitionReel({ kind: 'light-leak', frames: 20 })} selectedId="transition:v1" onChange={() => {}} onSeek={() => {}} fps={30} />,
+    );
     const intensity = screen.getByLabelText('Intensity') as HTMLInputElement;
-    expect([intensity.min, intensity.max]).toEqual(['0', '1']);
+    expect([intensity.min, intensity.max, intensity.step]).toEqual(['0', '1', '0.01']);
+  });
+
+  it('accepts a fractional value on that control — the whole point of the step', () => {
+    const onChange = vi.fn();
+    render(
+      <LayeredInspector reel={transitionReel({ kind: 'light-leak', frames: 20 })} selectedId="transition:v1" onChange={onChange} onSeek={() => {}} fps={30} />,
+    );
+    const intensity = screen.getByLabelText('Intensity') as HTMLInputElement;
+    fireEvent.change(intensity, { target: { value: '0.5' } });
+    // jsdom implements validity.stepMismatch; with the pre-fix step of 1 this
+    // is `true` and the value cannot be committed by a real browser.
+    expect(intensity.validity.stepMismatch).toBe(false);
+    expect((onChange.mock.calls.at(-1)![0] as LayeredReel).tracks.video[0].transitionOut).toMatchObject({ intensity: 0.5 });
+  });
+
+  it('keeps a whole-number step on a wide range — 8..200 does not become 10', () => {
+    render(
+      <LayeredInspector reel={transitionReel({ kind: 'pixelate', frames: 20 })} selectedId="transition:v1" onChange={() => {}} onSeek={() => {}} fps={30} />,
+    );
+    const block = screen.getByLabelText('Max block size') as HTMLInputElement;
+    expect([block.min, block.max, block.step]).toEqual(['8', '200', '1']);
   });
 });

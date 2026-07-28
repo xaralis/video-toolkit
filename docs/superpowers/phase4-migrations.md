@@ -90,7 +90,15 @@ A brand's inspector will show controls it did not show before:
   0–100 field, a whole-degree step).
 - any numeric transition param now carries the **schema's own min/max** into the
   control (e.g. `light-leak.intensity` is bounded 0–1 in the UI), without anyone
-  restating the range.
+  restating the range — **and a `step` derived from that range**. The bounds
+  shipped without one at first, which made the control *less* usable, not more:
+  `<input type=number>` defaults `step` to 1, so a 0–1 field spun only between
+  0 and 1 and a typed `0.5` was rejected as a step mismatch. `numericStep`
+  (`transition-schema.ts`, beside `numericBounds`) now emits
+  `10 ** ceil(log10(span) - 2)` clamped to `[0.01, 1]` — 0.01 for
+  `light-leak.intensity`, 1 for `pixelate.maxBlockSize` (8–200) — and 1 for any
+  `.int()` field. An unbounded number still gets no step, so the control's own
+  default applies.
 
 Nothing is written into a config that was not written before, so no render
 changes. Verified: `npm run pixel-gate:strict` in `examples/layered-minimal`.
