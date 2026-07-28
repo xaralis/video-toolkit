@@ -23,8 +23,8 @@ import {
 const fps = 30;
 
 /** Two 1s clips meeting at frame 30, with one transition on the cut between
- *  them. Three clips when `trailing` is asked for, so the middle cut is a real
- *  interior cut with a real clip on each side. */
+ *  them — a real INTERIOR cut, with real footage on both sides, which is the
+ *  only place alignment has anything to align to. */
 const pair = (t: Record<string, unknown>) => [
   { startMs: 0, endMs: 1000, transitionOut: t },
   { startMs: 1000, endMs: 2000 },
