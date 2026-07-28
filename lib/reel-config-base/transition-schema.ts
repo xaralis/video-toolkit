@@ -64,8 +64,9 @@ export const TransitionFrames = z
  *  - `end`    — the whole transition BEFORE the cut; the outgoing clip carries
  *    it, and the incoming clip is pulled in early.
  *
- *  Honoured in `lib/render/video-track-layout.ts` (`handleBefore`/`handleAfter`),
- *  which is where the frames each side lends are decided. */
+ *  The frames each side lends are decided by {@link transitionHandles} below —
+ *  read by the renderer (`lib/render/video-track-layout.ts`) and by the editor's
+ *  transitions lane, so the ruler and the render can never disagree. */
 export const TRANSITION_ALIGNMENTS = ['center', 'start', 'end'] as const;
 
 export const TransitionAlignmentSchema = z
@@ -76,13 +77,50 @@ export const TransitionAlignmentSchema = z
 export type TransitionAlignment = (typeof TRANSITION_ALIGNMENTS)[number];
 
 /** True when `v` is one of the three alignments. THE one place that decides it:
- *  both the renderer's defaulting (`alignmentOf` in
+ *  both the renderer's defaulting ({@link transitionAlignmentOf}, read by
  *  `lib/render/video-track-layout.ts`) and the editor's kind-switch threading
  *  (`defaultTransition` below) read a value that was never re-parsed — a
  *  hand-edited `Root.tsx`, a config persisted by an older editor — so both need
  *  to ask, and neither should carry its own copy of the literal list. */
 export function isTransitionAlignment(v: unknown): v is TransitionAlignment {
   return (TRANSITION_ALIGNMENTS as readonly unknown[]).includes(v);
+}
+
+/** The alignment a transition-like value asks for, DEFAULTED. Read defensively
+ *  rather than off the parsed type: a project's `Root.tsx` is hand-edited and
+ *  never re-parsed at render time, so an unknown string here must mean "the
+ *  default", not "undefined behaviour". */
+export function transitionAlignmentOf(t: unknown): TransitionAlignment {
+  const a = (t as { alignment?: unknown } | null | undefined)?.alignment;
+  return isTransitionAlignment(a) ? a : 'center';
+}
+
+/** Where a boundary's transition window sits relative to its cut, as the frames
+ *  claimed on each side: `before` is what the INCOMING clip lends BACKWARDS,
+ *  `after` what the OUTGOING clip lends FORWARDS. The window at a cut at frame
+ *  `c` is therefore `[c - before, c + after]`, and `before + after === frames`
+ *  for every alignment.
+ *
+ *  THE one decider — same rule as {@link isCut} and {@link isTransitionAlignment}.
+ *  Two places need this answer and they must not disagree: the RENDERER
+ *  (`computeVideoLayout` in `lib/render/video-track-layout.ts`, which turns it
+ *  into each clip's handle frames) and the EDITOR (the transitions lane in
+ *  `lib/editor/src/timeline/layered-adapter.ts`, which draws the block on the
+ *  ruler). The lane used to reimplement the split as an unconditional
+ *  `[c - f/2, c + f/2]`, so a `start`- or `end`-aligned boundary rendered offset
+ *  and was DRAWN centred.
+ *
+ *  `center`'s `Math.floor` is load-bearing and paired with the `Math.ceil`: on
+ *  an odd frame count the extra frame goes to the OUTGOING side, and every baked
+ *  reel in every brand repo is cut that way. Do not "tidy" the pair into one
+ *  rounding helper. */
+export function transitionHandles(
+  frames: number,
+  alignment: TransitionAlignment,
+): { before: number; after: number } {
+  if (alignment === 'start') return { before: 0, after: frames };
+  if (alignment === 'end') return { before: frames, after: 0 };
+  return { before: Math.floor(frames / 2), after: Math.ceil(frames / 2) };
 }
 
 /** The kind that means "no transition at all". THE literal — every site that

@@ -8,8 +8,11 @@
 //   a transition can sit ENTIRELY AFTER the cut (`start`) or ENTIRELY BEFORE
 //   it (`end`), instead of always straddling it half-and-half.
 //
-// The implementation is `handleBefore`/`handleAfter` in
-// lib/render/video-track-layout.ts; `start` and `end` are pinned separately
+// The implementation is `transitionHandles` in
+// lib/reel-config-base/transition-schema.ts, consumed by `computeVideoLayout`
+// (lib/render/video-track-layout.ts) and by the editor's transitions lane —
+// one decider, two readers (see src/timeline/transition-lane-alignment.test.ts).
+// `start` and `end` are pinned separately
 // because they are not symmetric in effect (one borrows handles from the
 // incoming clip, the other from the outgoing), and each is pinned at an ODD
 // frame count too, which is where an off-by-one hides.

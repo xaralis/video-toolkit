@@ -10,35 +10,12 @@
 // and a Remotion-importing module tests fine under `vi.mock('remotion')` —
 // see lib/editor/src/at-cut-transitions.test.tsx.
 import { getTransitionRecord, type TransitionRecord, type TransitionRecordOptions } from './transition-record';
-import { isTransitionAlignment, type TransitionAlignment } from '../reel-config-base/transition-schema';
-
-/** The alignment a record asks for, defaulted. Read defensively rather than off
- *  the parsed type: a project's Root.tsx is hand-edited and never re-parsed at
- *  render time (see `getTransitionRecord`), so an unknown string here must mean
- *  "the default", not "undefined behaviour". */
-function alignmentOf(record: TransitionRecord | undefined): TransitionAlignment {
-  const a = (record as { alignment?: unknown } | undefined)?.alignment;
-  return isTransitionAlignment(a) ? a : 'center';
-}
-
-/** Frames the INCOMING clip lends BACKWARDS, before the cut.
- *
- *  `center`'s `Math.floor` is load-bearing and paired with `handleAfter`'s
- *  `Math.ceil`: on an odd frame count the extra frame goes to the OUTGOING
- *  side, and every baked reel in every brand repo is cut that way. Do not
- *  "tidy" the pair into one rounding helper. */
-function handleBefore(frames: number, alignment: TransitionAlignment): number {
-  if (alignment === 'start') return 0;
-  if (alignment === 'end') return frames;
-  return Math.floor(frames / 2);
-}
-
-/** Frames the OUTGOING clip lends FORWARDS, past the cut. @see handleBefore */
-function handleAfter(frames: number, alignment: TransitionAlignment): number {
-  if (alignment === 'start') return frames;
-  if (alignment === 'end') return 0;
-  return Math.ceil(frames / 2);
-}
+// `transitionHandles` is the ONE decider for where a boundary's window sits
+// relative to its cut — shared with the editor's transitions lane so the ruler
+// and the render cannot disagree. `transitionAlignmentOf` defaults an unparsed
+// value (see `getTransitionRecord`: a project's Root.tsx is hand-edited and
+// never re-parsed at render time).
+import { transitionAlignmentOf, transitionHandles } from '../reel-config-base/transition-schema';
 
 export interface VideoLayoutEntry {
   index: number;
@@ -102,8 +79,8 @@ export function computeVideoLayout(
     // `center` would have used, rather than reaching for frames that do not
     // exist. Alignment describes how a cut is straddled; at a reel edge there
     // is no cut to straddle.
-    const inHalf = !isFirst && inRecord ? handleBefore(inFrames, alignmentOf(inRecord)) : 0;
-    const outHalf = !isLast && outRecord ? handleAfter(outFrames, alignmentOf(outRecord)) : 0;
+    const inHalf = !isFirst && inRecord ? transitionHandles(inFrames, transitionAlignmentOf(inRecord)).before : 0;
+    const outHalf = !isLast && outRecord ? transitionHandles(outFrames, transitionAlignmentOf(outRecord)).after : 0;
 
     const seqFrom = itemStartF - inHalf;
     const seqDuration = normalDuration + inHalf + outHalf;
