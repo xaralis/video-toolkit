@@ -235,15 +235,46 @@ function catalog<T extends CatalogEntry[]>(...entries: T): T {
 // union's member order — both derive from this list.
 const CATALOG = catalog(
   { schema: z.object({ kind: z.literal(CUT_KIND) }), label: 'Cut' },
+  // `dissolve` is the CANONICAL name for the A→B blend — the standard NLE word
+  // for it, and what these two actually do. `fade` is its synonym and renders
+  // identically; both are kept because `{kind:'fade'}` is baked into brand
+  // `Root.tsx` literals, and REINTERPRETING a baked literal is the one risk
+  // Task 2.3 exists to avoid. The `fade` → `dissolve` migration is written up
+  // (parity-preserving, a safe rename) in docs/superpowers/phase4-migrations.md
+  // and deliberately NOT applied. Reclaiming the name `fade` for something else
+  // is a Phase 5 decision; do not do it here.
   { schema: z.object({ kind: z.literal('dissolve'), frames: TransitionFrames }), label: 'Dissolve' },
   { schema: z.object({ kind: z.literal('fade'), frames: TransitionFrames }), label: 'Fade' },
-  // NAME NOTE: `fade-coal` is a leftover from one brand's colour vocabulary
-  // ("coal" was its near-black). Behaviourally it is brand-neutral — it is a
-  // plain fade, and what shows through is whatever `theme.background` is — and
-  // its editor label already says "Fade to black". Renaming the KIND would
-  // change every baked `Root.tsx` literal that uses it, so it stands; if it is
-  // ever renamed, that is a render-affecting brand migration, not a cleanup.
-  { schema: z.object({ kind: z.literal('fade-coal'), frames: TransitionFrames }), label: 'Fade to black' },
+  // DEPRECATED, and kept only so baked literals keep parsing and rendering.
+  // `fade-coal` was one brand's colour word ("coal" was its near-black) frozen
+  // into core's PUBLIC vocabulary because, before Task 1.2, a brand had nowhere
+  // else to put a look of its own — and it never dipped to anything: it was the
+  // same plain crossfade as `fade`, under a label that read "Fade to black".
+  //
+  // The successor is `fade-to-color` below, which is what it always should have
+  // been: a fade whose COLOUR is a parameter. `fade-coal` renders as that kind
+  // with NO colour, which is exactly the crossfade it always drew — so every
+  // baked literal keeps its pixels — and warns once in dev
+  // (lib/render/at-cut-transitions.tsx). Its label says so rather than
+  // continuing to promise a black it never delivered.
+  { schema: z.object({ kind: z.literal('fade-coal'), frames: TransitionFrames }), label: 'Fade to black (deprecated — use Fade to colour)' },
+  {
+    // THE MISSING PARAMETER, exposed. `color` is a brand ACCENT-SLOT KEY, not a
+    // literal — same convention as `wipe.color`, and the reason the field is
+    // NAMED `color`: `ACCENT_FIELDS` (below) is what gives it a palette picker
+    // in the editor, and core cannot enumerate a vocabulary the brand owns.
+    //
+    // OPTIONAL, with no seed, and that is the whole compatibility story: with
+    // no colour there is nothing to dip through, so the renderer falls back to
+    // the plain crossfade — which is what `fade-coal` is. Core has no black to
+    // default to; a brand that wants one declares it in its own palette.
+    schema: z.object({
+      kind: z.literal('fade-to-color'),
+      frames: TransitionFrames,
+      color: AccentKey.optional().describe('Colour dipped through, as a brand accent-slot key. Unset = a plain crossfade.'),
+    }),
+    label: 'Fade to colour',
+  },
   { schema: z.object({ kind: z.literal('glitch'), frames: TransitionFrames }), label: 'Glitch' },
   {
     // Chromatic aberration: two hue-rotated ghosts of the frame pull apart and

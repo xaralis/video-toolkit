@@ -238,7 +238,19 @@ Not a defect in any presentation; a mismatch between that comment and what
 renders. Recorded here rather than changed, because "should a reel fade out at
 the end" is a look decision too.
 
-### `fade-coal` does not dip to black
+### `fade-coal` does not dip to black — ANSWERED by Phase 4 Task 2.3
+
+> **Resolved, and NOT by making it dip.** The finding below stands as a
+> description of what `fade-coal` renders — that has not changed, and its 15
+> golden cells are byte-identical through the change, which is the point. What
+> changed is the vocabulary: the missing thing was never a black tint, it was an
+> exposed **colour parameter**. `fade-to-color` now carries one (a brand
+> accent-slot key, so core still names no colour), `fade-coal` is its
+> **deprecated alias with no colour** — hence the identical pixels — and warns
+> once in dev. Its editor label no longer promises a black it does not deliver.
+> `fade` and `dissolve` both still mean crossfade; `dissolve` is the canonical
+> name and the migration is written up, not applied
+> (`docs/superpowers/phase4-migrations.md` § 2.3).
 
 The kind is labelled "Fade to black" and at a cut it renders as a plain
 **crossfade** between the two clips — no dip to black. That is exactly what the

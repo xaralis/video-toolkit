@@ -105,12 +105,17 @@ function plate(id: string, startMs: number, look: { color: string; label: string
 }
 
 /** The kind's CATALOG default, with `frames` forced to PROBE_FRAMES so every
- *  probe shares one progress→frame mapping. `wipe` additionally gets an accent
- *  KEY (the catalog seeds none, since the vocabulary is the brand's) so the
- *  sweep is visible rather than falling back to the presentation's neutral. */
+ *  probe shares one progress→frame mapping. `wipe` and `fade-to-color`
+ *  additionally get an accent KEY (the catalog seeds none, since the vocabulary
+ *  is the brand's) so the sweep / the dip is visible rather than falling back to
+ *  a colourless default. */
 function probeTransition(kind: string): Record<string, unknown> {
   const t = defaultTransition(kind, { frames: PROBE_FRAMES }) as Record<string, unknown>;
-  if (kind === 'wipe') t.color = 'accent';
+  // `fade-to-color` for the same reason as `wipe`: its colour is an accent-slot
+  // KEY the catalog cannot seed (the vocabulary is the brand's), and with none
+  // it deliberately renders the plain crossfade — which would make its 15
+  // goldens a duplicate of `fade`'s and pin nothing about the dip.
+  if (kind === 'wipe' || kind === 'fade-to-color') t.color = 'accent';
   return t;
 }
 

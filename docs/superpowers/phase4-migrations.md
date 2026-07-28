@@ -915,3 +915,120 @@ nothing in it` — which is the property 2.1 actually cared about (the empty-cel
 artefact) and is now structurally impossible, since no code path puts nothing
 inside a cell. The grid is drawn at a trailing edge and its cells carry the
 background plate.
+
+---
+
+## Task 2.3 — honest vocabulary, via parameters not renames
+
+Core gained ONE kind, `fade-to-color`, and deprecated one, `fade-coal`. **No
+brand repo has to do anything**, and nothing changes on the submodule bump: the
+whole point of the design is that every baked literal keeps its pixels. The
+entries below are the migrations a brand *may* choose, each graded.
+
+### 2.3-a `fade-coal` → `fade-to-color` — PARITY-PRESERVING, and MEASURED
+
+**Grade: parity-preserving.** Verified with the pixel harness rather than
+argued, because this is the claim most worth checking:
+
+```bash
+cd examples/layered-minimal && npm run pixel-gate     # against the UNCHANGED 300 goldens
+# → 300 accepted, 0 same-picture-different-bytes, 0 drifted, 15 missing
+#   (the 15 are the NEW fade-to-color cells; not one existing cell moved,
+#    fade-coal's 15 included)
+```
+
+`fade-coal` is now implemented **as** `fade-to-color` with no colour, and
+"no colour" resolves to the very same `fade()` presentation it always used —
+not to a node imitating it. Core has no black to default to (it owns no colour
+vocabulary), and defaulting to one WOULD have moved pixels: today's `fade-coal`
+does not dip to anything, so a black dip is a look change, not parity. The
+brief's "colour defaults to black, so existing literals keep their pixels
+exactly" cannot be true of both halves at once; parity won, because
+reinterpreting a baked literal is the risk this task exists to avoid.
+
+Migrating a literal:
+
+```diff
+- transitionOut: { kind: 'fade-coal', frames: 30 }
++ transitionOut: { kind: 'fade-to-color', frames: 30 }                    // identical pixels
++ transitionOut: { kind: 'fade-to-color', frames: 30, color: 'coal' }     // the dip it was named for
+```
+
+The second form is a **deliberate look change** and needs a brand accent slot
+called `coal` (or whatever the brand names it) in `theme.accentSlots` — which is
+the entire point: the colour word belongs to the brand, not to core's public
+vocabulary. An unresolvable key renders the plain crossfade; core never invents a
+colour.
+
+**Affected projects — verified, not assumed** (both repos read-only, at PP
+`5a9cc1e` / roost `c498f8c`, exclusions anchored):
+
+```bash
+grep -rnE --include='*.ts' --include='*.tsx' "['\"](fade|dissolve|fade-coal)['\"]" . \
+  | grep -v '/node_modules/' | grep -vE '^(\./)?toolkit/' | grep -v '\.claude/worktrees/'
+```
+
+| kind | PP | roost |
+|---|---|---|
+| `fade-coal` | **1 authored** — `projects/pp-namesti-republiky/src/Root.tsx:155` (the last item's `transitionOut`, i.e. the reel's trailing edge) — plus **1 type-union member**, `projects/pp-05-zastupitelsky-klub/src/config/types.ts:14`, which is not an authored transition | **0** |
+| `fade` | **1 authored** — `projects/pp-namesti-republiky/src/Root.tsx:37` (the first item's `transitionIn`) | **1 authored** — `projects/roost-reel-01/src/Root.tsx:46` |
+| `dissolve` | **5 authored** — `pp-program-mobilita-reel:207`, `pp-program-klima-reel:229`, `pp-ricni-sauna:40`, `pp-namesti-republiky:144`, `pp-mov-koalice:103` — plus the same type-union member at `pp-05-zastupitelsky-klub/src/config/types.ts:13` | **0** |
+
+roost's other `'fade'` hits are unrelated: they are `style`/`hide` string unions
+in its outro and text overlays (`LogoReveal.tsx`, `TextOverlay.tsx`, and their
+`templates/roost-reels/` originals), not transition kinds. Checked by reading
+them, because a bare `grep 'fade'` is exactly how a false claim gets written
+down.
+
+### 2.3-b `fade` → `dissolve` — PARITY-PRESERVING, a SAFE RENAME (not applied)
+
+**Grade: parity-preserving.** `dissolve` is the canonical name for the A→B blend
+— the standard NLE word, and what both kinds actually do. They are the same
+renderer (`() => fade()`), so the two are **byte-identical**: a migrator should
+know this is a rename, not a look change.
+
+```diff
+- transitionIn: { kind: 'fade', frames: 15 }
++ transitionIn: { kind: 'dissolve', frames: 15 }
+```
+
+Two authored literals in total (PP `pp-namesti-republiky/src/Root.tsx:37`, roost
+`roost-reel-01/src/Root.tsx:46`), listed above.
+
+**`fade` is NOT removed and NOT reinterpreted.** It keeps working and keeps
+meaning crossfade. Reclaiming the name for the colour fade would silently change
+real cuts in real projects, which is why the new kind ships under a name that
+has never existed. Retiring `fade` is a **Phase 5** decision.
+
+### 2.3-c `fade-coal` now warns once in dev
+
+**Grade: no action; visible, not fatal.** Rendering is unchanged. A dev build
+emits one `warnOnce` per process naming the kind, why it is deprecated (it never
+dipped to black), and what to use instead. No schema rejection — a deprecation
+that stops a render is a worse trade than the one it fixes.
+
+### 2.3-d `presentationFor`'s blast radius — RE-GRADED, and it does NOT widen today
+
+**Grade: latent, unchanged.** `fade-to-color` resolves to a **native two-input
+node only when a colour actually resolves**; with no colour it is still a
+one-sided presentation. So:
+
+- `fade`, `dissolve` and `fade-coal` all still return a presentation from
+  `presentationFor` — the six PP `WebProgramIntro.tsx` call sites are unaffected,
+  and `NODE_KINDS` is still exactly `checkerboard`, `pixelate`,
+  `scanline-glitch`, `wipe` (pinned by test);
+- a WPI reel that authors `{kind:'fade-to-color', color:'…'}` **with** a colour
+  WOULD get `null` — a silent hard cut — and the Task 2.1 `warnOnce` fires,
+  naming the kind. None of the six authors any transition at all today
+  (measured in 2.1-e), so this is latent.
+
+### 2.3-e Editor: the "Fade to black" label changed, and a palette picker appeared
+
+**Grade: editor-only.** `fade-coal`'s label is now
+`Fade to black (deprecated — use Fade to colour)` — it stopped promising a black
+it never delivered. `fade-to-color` appears in the Kind dropdown as
+`Fade to colour`, with ONE control: an accent-slot picker filled from the brand's
+own palette. That control comes from `ACCENT_FIELDS` — the field is named
+`color`, exactly like `wipe.color`, and Task 1.6's mark is by NAME. `fade-coal`
+deliberately gets no colour control of its own: it is the alias, and a knob there
+would invite configuring a kind one should be migrating off.

@@ -27,10 +27,20 @@ import {
   subOptionsFor,
 } from '../../reel-config-base/transition-schema';
 
-// The one accent-valued field core's catalog declares today, and the one
+// The accent-valued fields core's catalog declares today, and the one
 // literal-colour field. Written out rather than derived, so the completeness
 // test below has something independent to compare the derived set against.
-const EXPECTED_ACCENT = ['wipe.color'];
+//
+// `fade-to-color.color` joined in Phase 4 Task 2.3, and it is the FIRST field
+// to arrive here since the mark became a NAME list — so it is the first live
+// exercise of Task 1.6's known trade-off: the field gets a palette picker
+// because it is CALLED `color`, not because its schema says so. That is the
+// intended outcome here (it carries an accent-slot key, exactly like
+// `wipe.color`, and follows that convention rather than inventing a second
+// one), and this line is the deliberate acknowledgement — the guard fired, and
+// was answered, rather than being widened by reflex. A field named `color` that
+// is NOT an accent key must be renamed, not added to this list.
+const EXPECTED_ACCENT = ['fade-to-color.color', 'wipe.color'];
 const EXPECTED_COLOR = ['burn.glowColor'];
 
 /** Every `kind.prop` in the catalog whose control is `type`. */

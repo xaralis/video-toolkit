@@ -106,12 +106,17 @@ describe('catalog is derived from TransitionSchema', () => {
 });
 
 describe('TRANSITION_KINDS', () => {
-  it('lists all 20 kinds with human-readable labels', () => {
-    expect(TRANSITION_KINDS).toHaveLength(20);
+  it('lists all 21 kinds with human-readable labels', () => {
+    // 20 until Phase 4 Task 2.3 added `fade-to-color` — the parameterised
+    // successor to `fade-coal`, whose deprecated label is pinned below.
+    expect(TRANSITION_KINDS).toHaveLength(21);
     const byKind = Object.fromEntries(TRANSITION_KINDS.map((k) => [k.kind, k.label]));
     expect(byKind['cut']).toBe('Cut');
     expect(byKind['dissolve']).toBe('Dissolve');
-    expect(byKind['fade-coal']).toBe('Fade to black');
+    // Deprecated in Task 2.3: it never dipped to black, so the label stopped
+    // promising it and points at the kind that can.
+    expect(byKind['fade-coal']).toBe('Fade to black (deprecated — use Fade to colour)');
+    expect(byKind['fade-to-color']).toBe('Fade to colour');
     expect(byKind['glitch']).toBe('Glitch');
     expect(byKind['whip-pan']).toBe('Whip pan');
     expect(byKind['zoom-through']).toBe('Zoom');
@@ -256,6 +261,9 @@ describe('presetForFrames', () => {
 
 describe('subOptionsFor', () => {
   it('returns no sub-options for cut, dissolve, fade-coal, and glitch', () => {
+    // `fade-coal` deliberately keeps NO colour control of its own: it is the
+    // deprecated alias, and a control there would invite authors to configure
+    // a kind they should be migrating off. `fade-to-color` carries the knob.
     expect(subOptionsFor('cut')).toEqual([]);
     expect(subOptionsFor('dissolve')).toEqual([]);
     expect(subOptionsFor('fade-coal')).toEqual([]);

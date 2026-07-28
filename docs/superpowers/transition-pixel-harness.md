@@ -29,7 +29,7 @@ Files:
 ```bash
 cd examples/layered-minimal
 
-npm run pixel-gate              # the gate: 300 stills, ~45s, exit 0 = green
+npm run pixel-gate              # the gate: 315 stills, ~48s, exit 0 = green
 npm run pixel-gate:strict       # …with NEAR fatal — REQUIRED for any parity claim
 npm run pixel-gate:self-test    # ~0.1s, no rendering — proves the checks go red
 npm run pixel-gate:update       # re-baseline: 600 stills, ~90s (see below)
@@ -46,7 +46,7 @@ a `NEAR` result fatal. There is no exempted kind: the renderer's (real, measured
 nondeterminism is recorded per cell as a second accepted hash instead. See "the renderer
 flake" for what lenient mode forgives and why that matters for a compositing rewrite.
 
-Measured on this machine, 2026-07-27: **300 stills in 44s** (46s wall including the
+Measured on this machine, 2026-07-28 (21 kinds): **315 stills in 48s** (46s wall including the
 one-off webpack bundle) for a full gate run. Per kind that is ~2.2s, so
 `node scripts/render-transition-matrix.mjs <kind>` while iterating on one presentation
 takes about 5s end to end. `--update-goldens` renders everything twice: ~88s.
@@ -89,7 +89,7 @@ will fail rather than quietly cover less.
 
 **Golden hashes.** One per `kind__mode__progress`, taken over the **decoded RGBA
 buffer** rather than the PNG file, so a PNG-encoder change is not reported as a
-rendering change. 300 entries today.
+rendering change. 315 entries today (21 kinds × 3 modes × 5 progress points).
 
 **Semantic checks** (`pixel-metrics.mjs`), which hold for any correct kind and are
 independent of its golden:
@@ -194,7 +194,7 @@ Because the flake is bimodal and globally stable, both attractors are **recorded
 ```
 
 A frame matching **either** accepted hash is `ok`; anything else is `near`/`drift` exactly
-as before. So **byte-exact enforcement still applies to all 300 cells** — there is no
+as before. So **byte-exact enforcement still applies to all 315 cells** — there is no
 exempted kind and no blind spot, and `--strict` is reliably green on an unchanged tree.
 
 The cells that carry a second hash are listed in `bimodalCells` in the golden file. Two
@@ -312,4 +312,4 @@ is never skipped). Both alternatives were measured and are worse:
 
 **If a run hangs at startup, check for stray `chrome-headless-shell` processes first.**
 The one 105-still hang seen while building this was on a machine still holding orphans
-from a killed run; on a clean machine a single instance carries all 300 stills.
+from a killed run; on a clean machine a single instance carries all 315 stills.

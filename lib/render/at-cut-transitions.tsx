@@ -13,7 +13,7 @@ import { iris } from '@remotion/transitions/iris';
 import {
   glitch, whipPan, zoomThrough, wipe as customWipe, gradientWipe, burn,
   rgbSplit, scanlineGlitch, lightLeak, zoomBlur, pixelate, checkerboard,
-  edgeInput,
+  fadeToColor, edgeInput,
 } from '../transitions';
 import { useCurrentFrame } from 'remotion';
 import { getTransitionRecord, type TransitionRecord } from './transition-record';
@@ -88,13 +88,41 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   // `cut` is the absence of a transition; the gate in ./transition-record
   // filters it out long before here, but the map must still cover it.
   [CUT_KIND]: () => null,
+  // `dissolve` is the canonical name for the A→B blend; `fade` is its synonym
+  // and renders identically. Both stay — a baked `{kind:'fade'}` literal must
+  // keep meaning crossfade (see the catalog note).
   'fade': () => fade() as AnyPresentation,
   'dissolve': () => fade() as AnyPresentation,
-  // A plain fade IS the "fade to background" look: opacity<1 reveals the
-  // composition's own background colour (theme.background), whatever the brand
-  // set it to — no tinting needed. See the note on the kind's name in
-  // transition-schema.ts.
-  'fade-coal': () => fade() as AnyPresentation,
+  // THE MISSING PARAMETER (Task 2.3). `t.color` is a brand accent-slot KEY,
+  // resolved here where the palette is in scope — exactly as `wipe` does.
+  //
+  // NO COLOUR → THE PLAIN CROSSFADE, and this branch is the compatibility
+  // guarantee, not a defensive nicety: it is what `fade-coal` renders through,
+  // and returning the very same `fade()` presentation (rather than a node that
+  // imitates it) is what keeps every baked `fade-coal` literal byte-identical.
+  // An unresolvable key lands here too — core inventing a colour would be the
+  // brand leak this programme exists to remove.
+  'fade-to-color': (t, dims) => {
+    const color = resolveAccentColor(dims.palette ?? [], t.color ?? null);
+    return color === null ? (fade() as AnyPresentation) : fadeToColor({ color });
+  },
+  // DEPRECATED ALIAS of `fade-to-color`, with no colour — which is precisely the
+  // plain crossfade it has always drawn, despite its "Fade to black" label. The
+  // delegation is the point: the alias has no rendering of its own to drift
+  // from its successor's, and the one thing this line must never do is invent a
+  // colour, which would silently repaint every baked literal that uses it.
+  'fade-coal': (t, dims) => {
+    warnOnce(
+      'transition:deprecated:fade-coal',
+      () =>
+        '[video-toolkit] transition kind "fade-coal" is DEPRECATED: it is one brand’s colour word ' +
+        'in core’s vocabulary, and it never dipped to black — it renders a plain crossfade. Use ' +
+        '"fade-to-color" (with a `color` accent-slot key for a real dip, or without one for exactly ' +
+        'this crossfade), or "dissolve" if a crossfade is what you meant. Rendering unchanged. ' +
+        'See docs/superpowers/phase4-migrations.md.',
+    );
+    return PRESENTATIONS['fade-to-color']({ ...t, kind: 'fade-to-color' }, dims);
+  },
   'glitch': () => glitch() as AnyPresentation,
   'burn': (t) => burn({ mask: t.mask, glowColor: t.glowColor, edgeContrast: t.edgeContrast, glowBand: t.glowBand }) as AnyPresentation,
   'slide': (t) => slide({ direction: DIRECTION_4WAY[t.direction] ?? 'from-left' }) as AnyPresentation,

@@ -1,0 +1,68 @@
+// lib/transitions/presentations/fade-to-color.tsx
+//
+// A DIP TO COLOUR — the outgoing clip is covered by a colour, and the incoming
+// one resolves out of it. A native two-input node (Phase 4 Task 2.3).
+//
+// WHY THIS EXISTS. Core's catalog carried `fade-coal`: one brand's colour word
+// ("coal" was its near-black) frozen permanently into core's PUBLIC vocabulary,
+// because before Task 1.2 there was nowhere else for a brand to put a look of
+// its own. Worse, it never dipped to anything — it was `() => fade()`, the same
+// plain crossfade as `fade` and `dissolve`, byte for byte, while its editor
+// label read "Fade to black".
+//
+// The fix is not a rename. A MISLEADING NAME IS USUALLY A MISSING PARAMETER:
+// what `fade-coal` lacked was an exposed COLOUR. That colour is a brand
+// ACCENT-SLOT KEY, resolved against the brand's own palette in
+// `lib/render/at-cut-transitions.tsx` before it reaches this file — so a brand
+// that wants a coal dip declares `coal` in its own palette and writes
+// `{ kind: 'fade-to-color', color: 'coal' }`, and core never learns the word.
+//
+// NO COLOUR MEANS NO DIP, and that is load-bearing rather than defensive: the
+// renderer only builds this node when a colour actually resolved, and falls
+// back to the plain `fade()` presentation otherwise. That is what lets
+// `fade-coal` be implemented AS this kind — with its colour unset — while every
+// baked `{kind:'fade-coal'}` literal in every brand repo keeps its pixels
+// EXACTLY. Core owns no colour vocabulary, so it has no black to default to.
+import React from 'react';
+import { AbsoluteFill } from 'remotion';
+import type { TransitionNode, TransitionNodeProps } from '../../theming/transitions';
+import { edgeInput } from '../edge-plate';
+
+export type FadeToColorProps = {
+  /** The colour dipped through, as a CSS colour (hex, `rgb()`, …). Already
+   *  resolved: the SCHEMA carries a brand accent-slot key, and
+   *  `lib/render/at-cut-transitions.tsx` turns it into this hex where the
+   *  palette is in scope. */
+  color: string;
+};
+
+/** The colour's opacity, and the incoming clip's, at `progress`. Two beats over
+ *  one window, the shape every NLE's "dip to colour" uses:
+ *
+ *  - first half — the colour covers the outgoing clip (0 → 1);
+ *  - second half — the colour holds at full, and the incoming clip resolves out
+ *    of it (0 → 1).
+ *
+ *  Exported for the test that pins the curve; the node is the only caller. */
+export function fadeToColorOpacities(progress: number): { color: number; incoming: number } {
+  return {
+    color: Math.min(1, progress * 2),
+    // Held at 0 until the colour has fully covered, so the midpoint IS the
+    // colour and nothing of the outgoing clip bleeds through the second beat.
+    incoming: Math.max(0, progress * 2 - 1),
+  };
+}
+
+export const fadeToColor = ({ color }: FadeToColorProps): TransitionNode => {
+  const composite: React.FC<TransitionNodeProps> = ({ from, to, progress, background }) => {
+    const opacity = fadeToColorOpacities(progress);
+    return (
+      <AbsoluteFill>
+        <AbsoluteFill>{edgeInput(from, background)}</AbsoluteFill>
+        <AbsoluteFill style={{ backgroundColor: color, opacity: opacity.color }} />
+        <AbsoluteFill style={{ opacity: opacity.incoming }}>{edgeInput(to, background)}</AbsoluteFill>
+      </AbsoluteFill>
+    );
+  };
+  return { composite };
+};

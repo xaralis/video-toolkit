@@ -1030,3 +1030,183 @@ describe('a reel edge resolves the missing input to the theme background', () =>
     expect(seen.map((p) => p.background)).toEqual([BG, 'transparent']);
   });
 });
+
+// ---------------------------------------------------------------------------
+// HONEST VOCABULARY: A FADE'S COLOUR IS A PARAMETER (Phase 4 Task 2.3).
+//
+// Three kinds rendered byte-identically — `fade`, `dissolve` and `fade-coal`
+// were all `() => fade()` — and `fade-coal`'s label promised a dip to black
+// that never happened. The plan's reading, and the point of the task: A
+// MISLEADING NAME IS USUALLY A MISSING PARAMETER. `fade-coal` is not a rename,
+// it is a fade whose COLOUR was never exposed.
+//
+// So the ADDED capability, and the only thing here that is new, is the first
+// four `it`s: `fade-to-color` dips through a colour the author chose, resolved
+// through the BRAND's palette. Everything after them is the PARITY half — what
+// the change must not break — and is green before the change as well as after.
+// Both halves are here on purpose, labelled, so a reader can tell which is
+// which.
+// ---------------------------------------------------------------------------
+describe('a fade’s colour is a parameter (fade-to-color)', () => {
+  const A = <div data-testid="a" />;
+  const B = <div data-testid="b" />;
+
+  const mountKind = (
+    t: Record<string, unknown>,
+    progress: number,
+    palette: readonly AccentSlot[] = PALETTE,
+  ) => {
+    const node = transitionNodeFor(t as unknown as TransitionRecord, { ...DIMS, palette })!;
+    const Composite = node.composite;
+    return render(
+      <Composite
+        from={A}
+        to={B}
+        progress={progress}
+        durationInFrames={15}
+        width={1080}
+        height={1920}
+        fps={30}
+        palette={palette}
+        background="transparent"
+      />,
+    );
+  };
+
+  /** Every painted layer in the tree — a `fade` paints none at all, so this is
+   *  both "is there a colour plate" and "what colour is it". */
+  const paintedIn = (container: HTMLElement) =>
+    [...container.querySelectorAll('div')].filter((d) => d.style.backgroundColor !== '');
+
+  const htmlAt = (t: Record<string, unknown>, progresses = [0, 0.25, 0.5, 0.75, 1]) =>
+    progresses
+      .map((p) => {
+        const { container, unmount } = mountKind(t, p);
+        const html = container.innerHTML;
+        unmount();
+        return html;
+      })
+      .join('\n');
+
+  // ---- THE ADDED CAPABILITY ----------------------------------------------
+
+  // Deliberately a NON-BLACK colour. A test that `fade-coal` still renders
+  // black would be testing what this change PRESERVES; what it ADDS is that the
+  // colour is the author's to choose.
+  it('dips through the NON-BLACK colour it is given, resolved through the brand palette', () => {
+    const t = { kind: 'fade-to-color', frames: 15, color: 'secondary' };
+    const at = (p: number) => {
+      const { container, unmount } = mountKind(t, p);
+      const painted = paintedIn(container);
+      const out = {
+        progress: p,
+        plates: painted.length,
+        color: painted[0]?.style.backgroundColor,
+        opacity: painted[0]?.style.opacity,
+      };
+      unmount();
+      return out;
+    };
+    // #abcdef — the brand's `secondary` slot, not a colour core chose.
+    const C = 'rgb(171, 205, 239)';
+    expect([at(0), at(0.25), at(0.5), at(1)]).toEqual([
+      { progress: 0, plates: 1, color: C, opacity: '0' },
+      { progress: 0.25, plates: 1, color: C, opacity: '0.5' },
+      // The midpoint IS the colour: fully opaque, with the incoming clip not
+      // yet ramping. That is what makes it a dip rather than a crossfade.
+      { progress: 0.5, plates: 1, color: C, opacity: '1' },
+      { progress: 1, plates: 1, color: C, opacity: '1' },
+    ]);
+  });
+
+  it('holds the incoming clip back until the colour has covered', () => {
+    const opacityOfB = (p: number) => {
+      const { container, unmount } = mountKind({ kind: 'fade-to-color', frames: 15, color: 'primary' }, p);
+      const layer = container.querySelector('[data-testid="b"]')!.parentElement!;
+      const o = layer.style.opacity;
+      unmount();
+      return o;
+    };
+    expect([opacityOfB(0), opacityOfB(0.5), opacityOfB(0.75), opacityOfB(1)]).toEqual(['0', '0', '0.5', '1']);
+  });
+
+  // The differential discipline the four two-input nodes get for their tunable
+  // params, applied to this kind's ONE param. `accent`-typed params are skipped
+  // by that generic check (they have no in-bounds probe value to invent), so
+  // the new colour needs its own.
+  it('renders differently for two different palette slots, and differently again with none', () => {
+    const primary = htmlAt({ kind: 'fade-to-color', frames: 15, color: 'primary' });
+    const secondary = htmlAt({ kind: 'fade-to-color', frames: 15, color: 'secondary' });
+    const none = htmlAt({ kind: 'fade-to-color', frames: 15 });
+    expect(primary).not.toBe(secondary);
+    expect(primary).not.toBe(none);
+  });
+
+  it('invents no colour when the key is not in the brand’s palette', () => {
+    const { container, unmount } = mountKind({ kind: 'fade-to-color', frames: 15, color: 'no-such-slot' }, 0.5);
+    expect(paintedIn(container)).toHaveLength(0);
+    unmount();
+    // …and the same when there is no palette in scope at all.
+    const bare = mountKind({ kind: 'fade-to-color', frames: 15, color: 'primary' }, 0.5, []);
+    expect(paintedIn(bare.container)).toHaveLength(0);
+    bare.unmount();
+  });
+
+  // ---- THE PARITY HALF: what must NOT change ------------------------------
+  //
+  // Green before this task as well as after. `fade-coal` is implemented AS
+  // `fade-to-color` with no colour, so every baked `{kind:'fade-coal'}` literal
+  // in every brand repo keeps its pixels exactly.
+
+  it('fade-coal renders exactly what fade renders — no colour plate anywhere', () => {
+    expect(htmlAt({ kind: 'fade-coal', frames: 15 })).toBe(htmlAt({ kind: 'fade', frames: 15 }));
+    const { container, unmount } = mountKind({ kind: 'fade-coal', frames: 15 }, 0.5);
+    expect(paintedIn(container)).toHaveLength(0);
+    unmount();
+  });
+
+  it('fade and dissolve both still render the crossfade, and still mean the same thing', () => {
+    expect(htmlAt({ kind: 'dissolve', frames: 15 })).toBe(htmlAt({ kind: 'fade', frames: 15 }));
+    for (const kind of ['fade', 'dissolve', 'fade-coal'] as const) {
+      // Still a ONE-SIDED presentation, so the six `presentationFor` call sites
+      // in the PP repo keep working for all three.
+      expect({ kind, oneSided: presentationFor({ kind, frames: 15 } as TransitionRecord, DIMS) !== null }).toEqual({
+        kind,
+        oneSided: true,
+      });
+    }
+  });
+
+  // ---- THE DEPRECATION IS AUDIBLE, NOT FATAL ------------------------------
+
+  it('warns once that fade-coal is a deprecated alias, without refusing to render it', () => {
+    resetWarnOnce();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const t = { kind: 'fade-coal', frames: 15 } as TransitionRecord;
+      expect(transitionNodeFor(t, DIMS)).not.toBeNull();
+      expect(transitionNodeFor(t, DIMS)).not.toBeNull();
+      expect(warn.mock.calls).toHaveLength(1);
+      const message = String(warn.mock.calls[0][0]);
+      expect(message).toContain('fade-coal');
+      expect(message).toContain('fade-to-color');
+    } finally {
+      warn.mockRestore();
+      resetWarnOnce();
+    }
+  });
+
+  it('says nothing about the kinds that are not deprecated', () => {
+    resetWarnOnce();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      for (const kind of ['fade', 'dissolve', 'fade-to-color'] as const) {
+        expect(transitionNodeFor({ kind, frames: 15 } as TransitionRecord, DIMS)).not.toBeNull();
+      }
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+      resetWarnOnce();
+    }
+  });
+});

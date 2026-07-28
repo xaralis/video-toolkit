@@ -307,10 +307,10 @@ Docker images, cuts releases, and syncs the Remotion skill from upstream).
 
 | Gate | Command | Covers | Baseline (measured 2026-07-28) |
 |---|---|---|---|
-| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **88 files / 1166 tests** — 1162 passed, **4 skipped**, ~42 s |
-| Editor types | `cd lib/editor && npx tsc --noEmit` | Same surface as above, plus all of `lib/render` (declared directly in `lib/editor/tsconfig.json`'s `include`, or reached transitively) and 13 of `lib/transitions`' 14 files — `index.ts` plus all 12 presentations, but **not** `TransitionGallery.tsx`, which only `examples/layered-minimal` reaches (verify with `npx tsc --noEmit --listFiles`) | **3** pre-existing errors, **exit code 2** |
+| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **88 files / 1177 tests** — 1173 passed, **4 skipped**, ~42 s |
+| Editor types | `cd lib/editor && npx tsc --noEmit` | Same surface as above, plus all of `lib/render` (declared directly in `lib/editor/tsconfig.json`'s `include`, or reached transitively) and 15 of `lib/transitions`' 16 files — `index.ts`, `edge-plate.tsx` and all 13 presentations, but **not** `TransitionGallery.tsx`, which only `examples/layered-minimal` reaches (verify with `npx tsc --noEmit --listFiles`; the counts grow as presentations are added — re-derive, do not trust) | **3** pre-existing errors, **exit code 2** |
 | Render/transitions types | `cd examples/layered-minimal && npm run typecheck` | `lib/render` and `lib/transitions` (including their `.tsx` components), via the example that actually imports them — see `docs/superpowers/core-typecheck-gate.md` | **0**, plus a coverage guard |
-| Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` | Every at-cut transition kind × mode × progress — 300 stills, hash-compared against committed goldens | **PASS**, ~45 s: `300 accepted, 0 same-picture-different-bytes, 0 drifted, 0 missing`, **zero** semantic xfails, `knownDefective` and `semanticXfail` both **empty** |
+| Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` | Every at-cut transition kind × mode × progress — 315 stills, hash-compared against committed goldens | **PASS**, ~48 s: `315 accepted, 0 same-picture-different-bytes, 0 drifted, 0 missing`, **zero** semantic xfails, `knownDefective` and `semanticXfail` both **empty** |
 
 **There are no `it.fails` pins left.** Four known-defect pins used to live in
 `lib/editor/src/at-cut-transitions.test.tsx` (`checkerboard`, `pixelate`, `scanline-glitch`,
@@ -333,14 +333,17 @@ DOM assertions" and that was **false** for 9 of the 11 params): the
 the kind twice, catalog default vs an in-bounds probe value for that one param, at three
 progress points, and requires the rendered output to differ. All **11** tunable params are
 covered (`pixelate` ×5, `checkerboard` ×4, `scanline-glitch.rgbShiftPx`, `wipe.direction`;
-`wipe.color` by the accent tests), it is derived so a new param is covered the day it is
+`wipe.color` and `fade-to-color.color` by the accent tests — an `accent`-typed param has no
+in-bounds probe value to invent, so it gets a differential test of its own instead), it is derived so a new param is covered the day it is
 added, and it fails whether the value is dropped at the forwarding table in
 `lib/render/at-cut-transitions.tsx` or ignored inside the node. **This hole was real:**
 deleting `scanlines: t.scanlines` from that table previously passed every gate, because
 the editor suite skipped the kind and the pixel harness only ever renders catalog
 defaults.
 
-The pixel harness has **18** known-**bimodal** cells with two accepted hashes each (19 until
+The pixel harness has **24** known-**bimodal** cells with two accepted hashes each (18 until
+Phase 4 Task 2.3 confirmed six more at 24 samples each — one `iris` and five `light-leak`
+edge cells, each of which had been failing `--strict` intermittently; 19 until
 Task 2.2, which re-baselined six `light-leak` edge cells whose recorded pictures no longer
 exist and seeded five new ones at `--repeat=12`), so the
 parenthesised "N matched a bimodal cell's SECOND recorded hash" varies legitimately between runs.

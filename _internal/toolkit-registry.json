@@ -997,6 +997,17 @@
       "status": "beta",
       "created": "2026-05-19"
     },
+    "fadeToColor": {
+      "path": "lib/transitions/presentations/fade-to-color.tsx",
+      "kind": "fade-to-color",
+      "description": "Dip to a colour the BRAND names (an accent-slot key, resolved via the theme's accentSlots); with no colour it is the plain crossfade, which is what the deprecated `fade-coal` renders",
+      "options": [
+        "color"
+      ],
+      "bestFor": "Section breaks, a beat of black/brand colour between clips, migrating off `fade-coal`",
+      "status": "beta",
+      "created": "2026-07-28"
+    },
     "gradientWipe": {
       "path": "lib/transitions/presentations/gradient-wipe.tsx",
       "kind": "gradient-wipe",
@@ -1020,7 +1031,7 @@
       "created": "2026-05-19"
     }
   },
-  "transitionAxisNote": "What EVERY transition carries, whatever its kind, plus how a brand adds a kind of its own. Added in Phase 4 (Workstream 1); brand migration notes in docs/superpowers/phase4-migrations.md. The `transitions` map above lists CORE presentations only and is not a complete index of the catalog — `lib/reel-config-base/transition-schema.ts` is (19 kinds; `dissolve`, `fade`, `fade-coal`, `slide`, `flip`, `clock-wipe` and `iris` have no entry above).",
+  "transitionAxisNote": "What EVERY transition carries, whatever its kind, plus how a brand adds a kind of its own. Added in Phase 4 (Workstream 1); brand migration notes in docs/superpowers/phase4-migrations.md. The `transitions` map above lists CORE presentations only and is not a complete index of the catalog — `lib/reel-config-base/transition-schema.ts` is (21 kinds counting `cut`; `cut`, `dissolve`, `fade`, `fade-coal`, `slide`, `flip`, `clock-wipe` and `iris` have no entry above). Phase 4 Task 2.3 added `fade-to-color` and DEPRECATED `fade-coal` (an alias of it with no colour — same pixels, one dev warning).",
   "transitionAxis": {
     "timingFields": {
       "frames": {
