@@ -213,6 +213,35 @@ generalisation tried here turned out to be false somewhere:
 A per-cell list needs no theory of *why* a cell flakes, and cannot be wrong about a cell
 it has actually sampled. Goldens are keyed per cell already, so the scoping is free.
 
+### The rate is not stationary — so absence never shrinks the list
+
+Measured while re-seeding: `light-leak__exit__p075` was recorded at a **6/12** minority in
+one seeding pass and then produced **one hash in 24 renders** in the next. Under a
+stationary p=0.5 that has probability 6e-8. So the two attractor *values* per cell are
+stable, but the *rate* at which the minority one comes up is **not stationary between
+processes**. `iris` and `clock-wipe` reproduced identically across both passes; only
+`light-leak`'s cells churned.
+
+Two rules follow, and they are the reason a re-seed is safe to run:
+
+- A seeding pass **unions** what it observes with what is already recorded for a listed
+  cell. It never drops an attractor merely because that attractor did not come up — doing
+  so would silently un-record a genuinely bimodal cell and hand back the false reds this
+  whole mechanism exists to remove.
+- It *does* drop the old values when **none** of the observed hashes matches the record:
+  that is not absence, it is a different picture, and the cell is re-baselined and
+  de-listed.
+
+De-listing on absence is therefore a decision a human asks for explicitly, via
+`--audit-bimodal`, never something a re-baseline does on its own. And more than two
+accepted values for one cell is a hard `NOT BIMODAL` failure — it would refute the
+strictly-bimodal finding, which is important either way and must not be absorbed quietly.
+
+**Practical consequence for sample counts:** listing a cell is cheap (two distinct hashes
+is evidence of *presence*), de-listing is expensive (one hash is weak evidence of
+*absence*). `BIMODAL_RECORD_SAMPLES` is 8 and `BIMODAL_DELIST_SAMPLES` is 24, and
+`--audit-bimodal` defaults to 24 for the same reason.
+
 Three further behaviours, all visible in output, never silent:
 
 1. A mismatch triggers **one re-render** before it is called drift, printed as `RETRY …`.
