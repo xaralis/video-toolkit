@@ -7,8 +7,7 @@ import { TRANSITION_KINDS, defaultTransition, kindNeedsFrames, subOptionsFor, ty
 import { parseActionId, type LaneId } from '../src/timeline/layered-adapter';
 import type { AccentSlot } from '../../theming/palette';
 import { PLACEMENTS } from '../../theming/placement';
-import { effectCatalog, effectDefinition, humanizeKey, type EditorMeta, type ParamField } from './editor-meta';
-import { paramChoices } from '../../theming/registry';
+import { effectCatalog, effectDefinition, humanizeKey, paramChoices, type EditorMeta, type ParamField } from './editor-meta';
 
 // Routes the selected timeline item (by lane) to its editable properties,
 // reusing the existing content editors. Edits produce a new LayeredReel via
@@ -216,6 +215,7 @@ function ColorField({ lbl, value, onCommit }: { lbl: string; value: string | und
 // `numberStep` is the fallback step for a field that declares none — a UI
 // affordance of the surrounding context (effect params are tuned in hundredths,
 // transition sub-options in whole units), not a property of the parameter.
+//
 // Called as a plain FUNCTION, not rendered as `<ParamControl/>`: it must be
 // able to answer "this parameter gets no control at all" as a `null` the caller
 // can count, and a component that returns null internally is indistinguishable
@@ -280,7 +280,7 @@ function renderParamControl({
     // `percent` and `angle` change the CONTROL, never the stored value: no
     // ×100, no wrap. A percent is offered as a bounded 0–100 field and an angle
     // in whole degrees, and an explicit min/max/step on the field still wins.
-    const preset =
+    const preset: { min?: number; max?: number; step?: number } =
       t === 'percent' ? { min: 0, max: 100, step: 1 } : t === 'angle' ? { step: 1 } : {};
     return (
       <NumberField

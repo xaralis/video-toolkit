@@ -880,6 +880,8 @@
       "kind": "burn",
       "description": "Cloud-masked burn-through with a hot glowing edge; brand supplies the mask and glow colour",
       "options": [
+        "mask",
+        "glowColor",
         "edgeContrast",
         "glowBand"
       ],
