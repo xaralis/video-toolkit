@@ -33,16 +33,18 @@ npm run pixel-gate              # the gate: 300 stills, ~45s, exit 0 = green
 npm run pixel-gate:strict       # …with NEAR fatal — REQUIRED for any parity claim
 npm run pixel-gate:self-test    # ~0.1s, no rendering — proves the checks go red
 npm run pixel-gate:update       # re-baseline: 600 stills, ~90s (see below)
+npm run pixel-gate:audit        # re-sample the recorded bimodal cells
 
 node scripts/render-transition-matrix.mjs wipe iris   # only these kinds
 node scripts/render-transition-matrix.mjs --sheets    # also write contact sheets (ImageMagick)
+node scripts/render-transition-matrix.mjs --update-goldens --repeat=12   # re-seed bimodal cells
 ```
 
 **If you are claiming a change left rendering unchanged, run `--strict`.** The default
 is lenient so a rasteriser wobble does not redden day-to-day iteration; `--strict` makes
-a `NEAR` result fatal everywhere except the two measured-flaky kinds listed as
-`flakyUnderStrict` in the golden file. See "the iris flake" for exactly what lenient mode
-forgives, why that matters for a compositing rewrite, and what the exemption costs.
+a `NEAR` result fatal. There is no exempted kind: the renderer's (real, measured)
+nondeterminism is recorded per cell as a second accepted hash instead. See "the renderer
+flake" for what lenient mode forgives and why that matters for a compositing rewrite.
 
 Measured on this machine, 2026-07-27: **300 stills in 44s** (46s wall including the
 one-off webpack bundle) for a full gate run. Per kind that is ~2.2s, so
@@ -57,9 +59,10 @@ safety model:** a re-baseline is a committed edit a reviewer sees, not a silent
 overwrite. It refuses to reduce the number of covered kinds unless you also pass
 `--allow-shrink`.
 
-It renders every still **twice** and requires the two to agree (a third render breaks a
+It renders every still `--repeat=N` times (default **2**) and requires them to agree (a third render breaks a
 tie, and the key is reported; three mutually different renders fail as `UNSTABLE` rather
-than inventing a majority). That is not paranoia — see "the iris flake" below. It also
+than inventing a majority; at `--repeat=8` or more, two hashes are *recorded* as a
+bimodal cell instead). That is not paranoia — see "the renderer flake" below. It also
 refuses to write the file at all if the run recorded any failure, so `--update-goldens`
 cannot be used to launder a red run.
 
@@ -144,71 +147,94 @@ golden hashes alone. Claiming otherwise would be a gate that covers less than it
 `examples/layered-minimal`'s own `MinimalReel` uses `wipe` at its first cut, so the
 repo's frame-45 render-parity hash is expected to be re-baselined by the same work.
 
-## The iris flake — measured, not assumed
+## The renderer flake — characterised, not guessed at
 
-Renders here are **almost** byte-deterministic. `iris` in `cut` mode is the exception:
+Renders here are **not** byte-deterministic. That was chased down over ~2,070 renders,
+and the result is specific enough to be *recorded* rather than tolerated:
 
-- The first seeding run produced one hash for `iris__cut__p05`; six consecutive
-  re-renders of the same still then produced a different hash, six times out of six.
-- The next re-baseline (double-rendering everything) caught the same bimodality on
-  `iris__cut__p075` instead.
-- Then it was measured properly: **four consecutive `--strict` runs over the full matrix
-  on an unchanged tree gave 5, 2, 1 and 2** same-picture-different-bytes results. That is
-  **1–2% of stills**, not the one-in-500 the early sample suggested. Every one was on
-  `clock-wipe` or `iris`; every one at max cell delta 0.
+- **Where.** Every differing pixel in every pair sits in the **rightmost 8 columns** of
+  the 540px frame — 16–28 pixels out of 518,400. Alpha never changes.
+- **How many values.** Strictly **bimodal**: exactly two globally stable hashes per
+  affected cell. The same two recur across independent runs, both orderings, and 16 fresh
+  processes, with byte-identical diffs every time. Never a third (max n=27 per cell).
+- **How often.** A **per-render coin flip**, 9–50% depending on the cell. (An earlier
+  version of this doc claimed eight consecutive isolated renders agree 8/8. That was
+  wrong: measured in one process, one browser, `clock-wipe:cut:0.5` → A A B A A B B B and
+  `iris:cut:0.5` → A A B A B A B A.)
+- **How big.** The worst 8×8 cell mean shift it can produce is **0.0183/255**, so it
+  always reports fingerprint delta **0** — two orders of magnitude below `FP_TOLERANCE`.
+- **Whose fault.** It reproduces in a **fresh process with a single render**, so it is
+  renderer nondeterminism, not harness state. The browser lifecycle is exonerated.
+- **Not "curved edges".** Antialiasing is the *site*, not the explanation: on
+  `iris__cut__p05` the antialiased boundary spans 1,522 pixels across the full width and
+  only 61 of those are in the rightmost 8 columns — 96% of the curve is perfectly
+  deterministic. `clock-wipe`'s flaking boundary is a straight radial ray, and
+  `light-leak` has no clip path at all.
 
-So it is a cell-local flake confined to curved-edge presentations — not a regression, and
-not general non-determinism, but common enough that a gate must plan for it. It is
-run-scoped rather than per-render random: eight consecutive renders of an affected still
-in isolation agree 8/8, and a within-run retry usually reproduces the same deviant bytes.
-Four consequences are built in:
+### What the harness does about it
 
-1. On a verify run, a mismatch triggers **one re-render** before it is called drift, and
-   the retry is printed (`RETRY …`) — never silent. If the second render matches, a
-   `FLAKE RECOVERED` note is emitted.
-2. If the two renders inside one run disagree with each other, a `NON-DETERMINISTIC
-   render` note names the still.
-3. If a mismatch *survives* the retry but the 8×8 picture still agrees within
-   `FP_TOLERANCE` (2 per channel), it is reported as `NEAR` and counted. By default that
-   is **not** fatal.
-4. `--strict` makes `NEAR` fatal — **except** on the kinds listed as `flakyUnderStrict`
-   in the golden file, today `clock-wipe` and `iris`. Without that exemption `--strict`
-   could never pass on an unchanged tree (measured: it failed 4 runs out of 4) and would
-   be decoration. With it, a `NEAR` on any *other* kind fails, which is what a parity
-   claim actually needs. The summary line reports the split
-   (`N same-picture-different-bytes (M on flakyUnderStrict kinds)`).
+Because the flake is bimodal and globally stable, both attractors are **recorded**:
 
-   The cost, stated plainly: a real *sub-tolerance* regression inside `clock-wipe` or
-   `iris` would be a warning rather than a strict failure. Those two are still pinned by
-   their exact goldens on a normal run, where such a change appears as drift.
+```
+"iris__cut__p05": "<hashA>|<hashB> <fingerprint>"
+```
+
+A frame matching **either** accepted hash is `ok`; anything else is `near`/`drift` exactly
+as before. So **byte-exact enforcement still applies to all 300 cells** — there is no
+exempted kind and no blind spot, and `--strict` is reliably green on an unchanged tree.
+
+The cells that carry a second hash are listed in `bimodalCells` in the golden file. Two
+guards keep that list honest:
+
+- a golden may **not** carry a second hash unless its cell is listed — a newly bimodal
+  cell is information, and must arrive as a reviewable one-line addition rather than
+  hiding in a hash column;
+- `--audit-bimodal[=N]` re-renders each listed cell N times (default 12) and **fails** if
+  it produced only one hash — a cell that stopped flaking has to be de-listed, mirroring
+  what `semanticXfail` demands of a fixed defect. It also fails on any hash outside the
+  accepted pair.
+
+This replaced an earlier kind-level `flakyUnderStrict` exemption, which was wrong three
+ways: it blinded 30 cells to cover 10 (every `exit`-mode cell is *structurally* incapable
+of the flake — both presentations apply their clip path only when
+`presentationDirection !== 'exiting'`), it keyed on the wrong predictor, and it was
+incomplete, so `--strict` could still go red on an unchanged tree roughly 1 run in 125.
+
+Three further behaviours, all visible in output, never silent:
+
+1. A mismatch triggers **one re-render** before it is called drift, printed as `RETRY …`.
+2. If the two renders inside one run disagree, a `NON-DETERMINISTIC render` note names the
+   still.
+3. `--update-goldens` renders each still `--repeat=N` times (default 2) so a one-off is
+   never baked in; at `--repeat=8` or more it *records* a two-hash cell instead of
+   majority-voting one away. Two samples cannot distinguish "bimodal" from "unlucky" when
+   the flip is 9–50% per render — which is exactly why the old majority vote produced a
+   baseline that could not then be verified.
 
 ### What lenient mode forgives — and why `--strict` is not optional for a parity claim
 
-The tolerance is wide, and it is worth knowing exactly how wide before trusting a green
-run. At 540×960 an 8×8 grid gives ~8,100 pixels per cell, so `delta ≤ 2` absorbs a
-per-cell channel-sum change of ~16,200. Two real regression classes fit inside that:
+`NEAR` (bytes differ, 8×8 picture agrees within `FP_TOLERANCE`) is non-fatal by default
+and fatal under `--strict`. It is worth knowing exactly how wide that tolerance is. At
+540×960 an 8×8 grid gives ~8,100 pixels per cell, so `delta ≤ 2` absorbs a per-cell
+channel-sum change of ~16,200. Two real regression classes fit inside that:
 
 - **localised**: roughly 4,000–5,400 pixels — about 1% of the frame — can change
-  *completely* and still report as a warning. A badge, a numeral, a chevron, a one-pixel
-  offset on an iris arc.
+  *completely* and still report as a warning. A badge, a numeral, a chevron.
 - **global**: a uniform ±1–2/255 shift across the entire frame is `NEAR`. That is exactly
   the artefact a two-input compositing rewrite produces — restacked layers, premultiplied
   vs straight alpha, one extra `AbsoluteFill`. **The single most likely real regression
   from the rewrite this harness exists to police is the one the tolerance is shaped to
   swallow.**
 
-That is not hypothetical calibration. The deliberate `zoom-blur` perturbation used to
-prove the harness bites produced `zoom-blur__exit__p1` at **max cell delta 3** — a real
-change landing one unit outside tolerance. The drift/near boundary sits *inside* the
-range real changes occupy, not comfortably above it.
+That is not hypothetical. The deliberate `zoom-blur` perturbation used to prove the
+harness bites produced `zoom-blur__exit__p1` at **max cell delta 3** — a real change
+landing one unit outside tolerance. The drift/near boundary sits *inside* the range real
+changes occupy, not comfortably above it.
 
-`FP_TOLERANCE` is deliberately **not** lowered: nobody has measured the actual delta the
-flake produces, so retuning it would be guesswork trading one failure mode for another.
-`--strict` is the answer instead — it is a flag rather than a convention, so it is
-enforced by the runner and not by whoever remembers to read the summary line. Reference
-runs on an unchanged tree (2026-07-28): `--strict` passes, with the flake showing up as
-0–5 exempted `NEAR` lines on `clock-wipe` / `iris`. A `NEAR` on any other kind is a
-finding — re-run once before concluding anything, then treat it as real.
+`FP_TOLERANCE` is deliberately **not** lowered. The flake is already at delta 0, so
+lowering the tolerance cannot exclude it and would only convert real drift into a
+different failure mode. `--strict` is the answer instead — a flag enforced by the runner,
+not a convention enforced by whoever remembers to read the summary line.
 
 The harness sets **no** Chromium OpenGL renderer, and neither does
 `examples/layered-minimal/remotion.config.ts`. Do not add one: the one configuration in

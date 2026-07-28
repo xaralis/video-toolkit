@@ -218,7 +218,13 @@ const semanticXfail = new Set(goldens.semanticXfail ?? []);
 // ("curved edge" — `clock-wipe`'s flaking boundary is a straight radial ray and
 // `light-leak` has no clip path at all), and it was incomplete, so `--strict`
 // could still go red on an unchanged tree.
-const bimodalCells = new Set(goldens.bimodalCells ?? []);
+// Two sets, deliberately. `declaredBimodal` is what the COMMITTED file says and
+// is what the guards below validate against; `bimodalCells` is the set that will
+// be WRITTEN, which a seeding pass adds to. Conflating them made the guards
+// validate the old goldens against a list the same run had just extended, so a
+// seeding pass failed against its own findings.
+const declaredBimodal = new Set(goldens.bimodalCells ?? []);
+const bimodalCells = new Set(declaredBimodal);
 
 // ---------------------------------------------------------------- render ----
 rmSync(OUT, { recursive: true, force: true });
@@ -548,10 +554,10 @@ await browser.close({ silent: true });
   // newly bimodal cell is information, not noise, and must reach a reviewer as a
   // one-line addition to `bimodalCells` rather than hiding inside a hash column.
   for (const [key, value] of Object.entries(oldFrames)) {
-    if (isBimodalGolden(value) && !bimodalCells.has(key))
+    if (isBimodalGolden(value) && !declaredBimodal.has(key))
       fail(`UNDECLARED BIMODAL GOLDEN: "${key}" carries two accepted hashes but is not listed in bimodalCells`);
   }
-  for (const key of bimodalCells) {
+  for (const key of declaredBimodal) {
     if (!(key in oldFrames)) fail(`bimodalCells lists "${key}", which has no golden at all`);
     else if (!isBimodalGolden(oldFrames[key]))
       fail(`bimodalCells lists "${key}" but its golden carries only one accepted hash — re-seed with --update-goldens --repeat=${BIMODAL_MIN_SAMPLES} or de-list it`);
