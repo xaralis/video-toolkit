@@ -112,6 +112,114 @@ out of scope for Phase 4; the editor exposes constants only.
 
 ---
 
+## Task 1.2 — `BrandTheme.transitions`, the sixth extension axis
+
+### 1.2-a The registry is purely additive — nothing to do
+
+**Grade: parity-preserving. No action.**
+
+Transitions were the one extension axis with no theme surface: kinds resolved
+through a module-private `PRESENTATIONS` table in `at-cut-transitions.tsx`, so
+adding a look meant editing three core files. `BrandTheme` now carries an
+optional `transitions?: TransitionRegistry`, resolved by the same
+`resolveRegistered` the other five axes use — **brand wins, core's generic
+beneath, and a config-only registration does not mask the generic**.
+
+**Neither brand repo registers a transition today.** Verified: `grep -rn
+'transitions:' templates projects brands --exclude-dir=node_modules
+--exclude-dir=build` over both repos returns nothing. Every transition either
+repo authors is a core catalog kind or `cut` — PP: `dissolve`, `fade`,
+`fade-coal`, `glitch`, `whip-pan`, `wipe`, `zoom-through`, `cut`; roost:
+`burn`, `gradient-wipe`, `fade`, `cut`. So the axis ships unused in both, and
+the resolution order cannot change any of them.
+
+### 1.2-b What a brand WRITES to register one
+
+```ts
+// brands/<brand>/…/composition-theme.tsx
+transitions: {
+  'my-swipe': {
+    render: ({ frames, width }) => ({ component: MySwipe, props: { frames, width } }),
+    params: [{ prop: 'softness', type: 'number', min: 0, max: 1 }],
+    config: { /* theme-level, read with transitionConfig(theme, kind) */ },
+  },
+}
+```
+
+`params` is the shared `ParamField` descriptor from Task 1.1 — the SAME one the
+effect axis and `EditorMeta` use. Declaring the kind here is the whole
+declaration: `editorMetaFromTheme` derives `EditorMeta.transitionProps` from the
+registry, so the kind becomes selectable and editable without a second
+hand-written copy (see 1.2b below).
+
+### 1.2-c `fade-coal` stays in core's catalog
+
+**Grade: unchanged, but worth knowing.** `fade-coal` is one brand's colour word
+frozen into core's public vocabulary — exactly what the axis exists to prevent.
+It is NOT retired here: PP authors it (2 sites), and retiring it would be a
+brand-visible rename. The axis is what makes a *future* look a brand's own; the
+existing catalog is untouched.
+
+---
+
+## Task 1.2b — the editor learned about brand kinds
+
+### 1.2b-a "Transition out" no longer DESTROYS a brand transition
+
+**Grade: deliberate — a bug fix, user-visible, and the reason this task exists.**
+
+The video lane's "Transition out" section tested the authored kind against
+`TRANSITION_CATALOG` and fell back to `{kind:'cut'}` otherwise. Once Task 1.2
+let a brand register its own kinds, that fallback started firing on transitions
+that **render perfectly**: the kind was DISPLAYED as "Cut", and the first touch
+of any control in the section wrote the coercion back through `onChange`. Silent
+data loss, the same class as the dropped `alignment` (1.4-e) and `enabled`
+(1.5-a).
+
+Now ANY authored kind is shown as itself; only a genuinely absent or kind-less
+value reads as a cut.
+
+**Affected projects: none today, all tomorrow.** Verified over both repos'
+`templates/` and `projects/` (excluding `node_modules` and generated `build/`):
+every authored `transitionIn`/`transitionOut` kind is a core catalog member or
+`cut` (lists in 1.2-a), so the coercion never fired on a baked literal. It
+would fire on the *first* kind either brand registers — which is why the fix
+ships with the axis rather than after it.
+
+### 1.2b-b The Kind picker gains the brand's registered kinds
+
+**Grade: deliberate — additive; new entries appear in an existing dropdown.**
+
+The picker ran off `TRANSITION_KINDS` alone, so a brand kind could render (Task
+1.2) and still not be choosable. It is now `transitionKindChoices` = the core
+catalog **∪** the keys of `theme.transitions`, core entries keeping their
+catalog position and label, brand entries appended and labelled by
+`humanizeKey` (a registration has no label field). A brand override of a core
+kind does not duplicate the entry — it keeps the catalog's position and label.
+
+`transitionKindLabel` is the one decider for a kind's display name, so the
+picker's option text and the transitions-lane heading cannot disagree.
+
+**Neither brand repo sees a changed dropdown until it registers a kind** — with
+an empty registry the union is exactly the old catalog.
+
+### 1.2b-c A brand kind's controls come from its registration
+
+**Grade: purely additive. No action.**
+
+`transitionParamsFor(kind, declared)` composes BOTH sources: core's structural
+fields read off the catalog entry's zod shape (`subOptionsFor`, which returns
+`[]` for a kind core does not have) plus the registration's declared `params`,
+a declared field winning **by `prop`, in place**. So a brand overriding a core
+kind may relabel or re-type one field without losing the rest, and a core kind
+with nothing declared gets exactly the controls it always had.
+
+The theme reaches the editor the way it already did, through
+`editorMetaFromTheme` — no second mechanism, and an explicit `EditorMeta`
+still wins per field.
+
+---
+
 ## Task 1.3 — Two-input transition rendering
 
 ### 1.3-a Brand transition registrations keep working, unchanged
@@ -234,8 +342,13 @@ odd frame count gets the extra frame. Verified byte-for-byte by the transition
 pixel harness (`examples/layered-minimal`, `npm run pixel-gate:strict`):
 `300 accepted, 0 same-picture-different-bytes, 0 drifted, 0 missing`.
 
-Grep over both repos' `templates/` and `projects/`: **zero** mentions of
-`TransitionSchema` or `alignment`. The one brand-side `Transition` type
+Grep over both repos' `templates/` and `projects/`, excluding `node_modules/`
+**and generated `build/` output**: **zero** mentions of `TransitionSchema` or
+`alignment` in authored source. (The bare grep is not zero — PP's
+`projects/pp-program-klima/build/bundle.js` and its sourcemaps contain both, as
+a bundled copy of core plus an SVG attribute list. Generated artefacts are not
+authored config and nothing migrates them; they are rebuilt.) The one
+brand-side `Transition` type
 (`projects/pp-05-zastupitelsky-klub/src/config/types.ts`) is a project-local
 hand-written union that imports nothing from core, so it is untouched.
 
@@ -327,6 +440,25 @@ than just that field, that is worth knowing before more schemas move to
 non-discriminated shapes. Core's own reel editor is unaffected — it does not use
 Remotion's sidebar.
 
+### 1.4-g The transitions LANE now draws where the boundary actually renders
+
+**Grade: parity-preserving (latent defect; no brand action).**
+
+The editor's transitions lane drew every block as
+`[cut - frames/2, cut + frames/2]`, unconditionally centred, while the renderer
+split the window per `alignment`. Two answers to "where does this transition
+sit", and the lane's was wrong off `center` — a `start`- or `end`-aligned
+boundary rendered offset and was drawn centred, with nothing failing.
+
+`transitionHandles(frames, alignment)` now lives in `transition-schema.ts` as
+the one exported decider both sides read (the `isCut` / `isTransitionAlignment`
+pattern), with `transitionAlignmentOf` carrying the defensive default. Nothing
+renders differently — the renderer's arithmetic is unchanged, only its home.
+No brand is affected: no editor control writes `alignment` and no baked literal
+carries one (1.4-a).
+
+---
+
 ## Task 1.5 — `enabled`, `config`, one `cut` constant
 
 ### 1.5-a `enabled` on effects and transitions — PARITY-PRESERVING (no action)
@@ -372,7 +504,11 @@ Seven independently written `kind === 'cut'` checks collapsed onto one exported
 predicate. Brands author the string `'cut'` in their `defaultProps` exactly as
 before; the constant is core's, not a required import.
 
-### 1.6 Accent/colour field marking — PARITY-PRESERVING (no action)
+---
+
+## Task 1.6 — the accent/colour mark
+
+### 1.6-a Accent/colour field marking — PARITY-PRESERVING (no action)
 
 `AccentKey` and `ColorHex` no longer carry a `WeakSet` mark installed by a
 patched `.describe()`. Which fields get an accent picker / a colour swatch is now
