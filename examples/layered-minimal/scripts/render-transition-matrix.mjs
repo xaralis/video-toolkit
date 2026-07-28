@@ -164,15 +164,22 @@ const SELF_TEST = flag('--self-test');
 const STRICT = flag('--strict');
 const WANT_SHEETS = flag('--sheets');
 // How many times each still is rendered while re-baselining. 2 is enough to
-// reject a one-off; >= BIMODAL_MIN_SAMPLES is what it takes to RECORD a cell as
-// bimodal rather than guess a majority — the flake runs at 9-50% per render, so
-// twelve samples miss a bimodal cell with probability < 1%.
-const BIMODAL_MIN_SAMPLES = 8;
+// reject a one-off; the two thresholds below decide when an observation is
+// strong enough to RECORD a bimodal cell, and when it is strong enough to
+// DE-LIST one.
+// ASYMMETRIC on purpose. Observing two distinct hashes is evidence of PRESENCE
+// and needs only enough samples to rule out a one-off, so recording a cell as
+// bimodal is cheap. Observing one hash is evidence of ABSENCE, which is much
+// weaker: measured minorities here run as low as 1 in 24, and at p=0.1 twelve
+// samples miss a flaking cell ~28% of the time. So de-listing a cell demands far
+// more samples than listing one.
+const BIMODAL_RECORD_SAMPLES = 8;
+const BIMODAL_DELIST_SAMPLES = 24;
 const repeatArg = argv.find((a) => a.startsWith('--repeat='));
 const REPEAT = repeatArg ? Math.max(1, Number(repeatArg.split('=')[1])) : 2;
 const auditArg = argv.find((a) => a.startsWith('--audit-bimodal'));
 const AUDIT = Boolean(auditArg);
-const AUDIT_N = auditArg?.includes('=') ? Math.max(2, Number(auditArg.split('=')[1])) : 12;
+const AUDIT_N = auditArg?.includes('=') ? Math.max(2, Number(auditArg.split('=')[1])) : BIMODAL_DELIST_SAMPLES;
 const only = argv.filter((a) => !a.startsWith('--'));
 
 if (SELF_TEST) {
@@ -384,7 +391,7 @@ for (const kind of kinds) {
         // Every still is rendered `--repeat=N` times (default 2) while
         // re-baselining, so a one-off is never baked into the baseline.
         //
-        // With N >= BIMODAL_MIN_SAMPLES the pass is also the SEEDING pass: two
+        // With N >= BIMODAL_RECORD_SAMPLES the pass is also the SEEDING pass: two
         // distinct hashes are then not a flake to be majority-voted away but a
         // measured property of the cell, and BOTH are recorded as accepted. The
         // renderer's nondeterminism is a per-render coin flip at 9-50% per
@@ -407,14 +414,14 @@ for (const kind of kinds) {
             // the cell's existing second hash is CARRIED FORWARD rather than
             // dropped, so an ordinary `--repeat=2` re-baseline cannot silently
             // un-record a bimodal cell.
-            if (REPEAT >= BIMODAL_MIN_SAMPLES) {
+            if (REPEAT >= BIMODAL_DELIST_SAMPLES) {
               fail(`BIMODAL XPASS: "${key}" is listed in bimodalCells but produced ONE hash in ${REPEAT} renders. Remove it from bimodalCells in the same commit.`);
             } else if (wasAccepted.includes(distinct[0])) {
               newFrames[key] = `${[...new Set(wasAccepted)].sort().join('|')} ${newFrames[key].split(' ')[1]}`;
-              notes.push(`${key} is listed bimodal and showed one hash in ${REPEAT} renders — too few samples to conclude, so its recorded pair is kept. Re-run with --repeat=${BIMODAL_MIN_SAMPLES} or more to settle it.`);
+              notes.push(`${key} is listed bimodal and showed one hash in ${REPEAT} renders — too few samples to conclude, so its recorded pair is kept. Re-run with --repeat=${BIMODAL_DELIST_SAMPLES} or more to settle it.`);
             }
           }
-        } else if (distinct.length === 2 && REPEAT >= BIMODAL_MIN_SAMPLES) {
+        } else if (distinct.length === 2 && REPEAT >= BIMODAL_RECORD_SAMPLES) {
           const minority = Math.min(...distinct.map((h) => samples.filter((s) => hashFrame(s) === h).length));
           newFrames[key] = encodeGolden(samples);
           bimodalCells.add(key);
@@ -422,7 +429,7 @@ for (const kind of kinds) {
         } else if (distinct.length === 2) {
           const counts = distinct.map((h) => samples.filter((s) => hashFrame(s) === h).length);
           const winner = samples.find((s) => hashFrame(s) === distinct[counts[0] >= counts[1] ? 0 : 1]);
-          notes.push(`FLAKY UNDER RE-BASELINE: ${key} rendered two different images in ${REPEAT}; took the majority. Re-run with --repeat=${BIMODAL_MIN_SAMPLES} to record it as bimodal instead.`);
+          notes.push(`FLAKY UNDER RE-BASELINE: ${key} rendered two different images in ${REPEAT}; took the majority. Re-run with --repeat=${BIMODAL_RECORD_SAMPLES} to record it as bimodal instead.`);
           newFrames[key] = encodeGolden(winner);
           frame = winner;
         } else {
@@ -574,7 +581,7 @@ await browser.close({ silent: true });
   for (const key of declaredBimodal) {
     if (!(key in oldFrames)) fail(`bimodalCells lists "${key}", which has no golden at all`);
     else if (!isBimodalGolden(oldFrames[key]))
-      fail(`bimodalCells lists "${key}" but its golden carries only one accepted hash — re-seed with --update-goldens --repeat=${BIMODAL_MIN_SAMPLES} or de-list it`);
+      fail(`bimodalCells lists "${key}" but its golden carries only one accepted hash — re-seed with --update-goldens --repeat=${BIMODAL_RECORD_SAMPLES} or de-list it`);
   }
   const probe = goldens.probe ?? {};
   const now = { width: refEntry.comp.width, height: refEntry.comp.height, frames: FRAMES, clipFrames: CLIP_F, progress: PROGRESS, modes: MODES };
