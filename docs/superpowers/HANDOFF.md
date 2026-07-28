@@ -736,11 +736,30 @@ Say which half is done, not that it is done:
 
 ## Workstream 2 outcome — every kind behaves as its name promises
 
-**Tasks 2.1–2.7, all complete and independently reviewed.** Re-derived from `git log` /
-`git diff --stat` over `6dbd60e..dbfc16b` — the range from Workstream 1's close to Workstream
-2's, never carried forward from a running total: **16 commits, 43 files, +4129 / −1002**.
-Re-derive rather than trust this after any further commit; a commit cannot state its own
-diffstat.
+**Tasks 2.1–2.7, all complete and independently reviewed, plus a final whole-workstream review
+whose fix wave has landed.** Re-derived from `git log` / `git diff --stat` over
+`6dbd60e..20bfc36` — the range from Workstream 1's close to Workstream 2's, never carried
+forward from a running total: **18 commits, 44 files, +4389 / −1046**. Re-derive rather than
+trust this after any further commit; a commit cannot state its own diffstat.
+
+**The final review's verdict: mergeable, no Critical, no wrong picture, and — the thing it was
+sent to find — the render path carries no cross-task fork.** It reconstructed the golden
+sequence at all seven task SHAs (0 cells lost, all 9 bimodal value changes strictly additive,
+end state 315 cells / 24 bimodal with zero orphans), reproduced `TS2741` by deleting
+`'dissolve'`, confirmed 8 bad-payload core kinds still fail parsing after all three schema
+edits, and confirmed `grep 'frames / 2'` still returns exactly **one** hit. It raised two
+Important and six promoted minors; a single fix wave (`20bfc36`) closed all six and a scoped
+re-review verified each, including by re-introducing the registry staleness and watching the
+widened pin go red.
+
+**The cross-task defect it did find was in a JSON file, not in code.** `_internal/toolkit-registry.json`'s
+`zoomThrough` entry still advertised `from` — Task 2.4 edited that entry, Task 2.5 changed the
+fact, and nothing connected them, so `/toolkit:cut` reading the registry (which `CLAUDE.md`
+calls canonical for options) would have authored the exact literal 2.5 exists to retire. It
+survived seven per-task reviews because the options pin enumerated **six hardcoded kinds**. The
+pin now **derives** its kind set from the registry map itself. That is the Workstream 2 analogue
+of Workstream 1's timeline-lane finding: two places holding one fact, and the one nobody was
+watching went stale.
 
 ### Gates at Workstream 2's close (2026-07-28), each run by the controller, not taken on report
 
