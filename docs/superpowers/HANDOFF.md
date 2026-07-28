@@ -1,18 +1,22 @@
 # Handoff — core architecture rework
 
-**Last updated:** 2026-07-26, at the end of **Phase 3** — close the extension contract.
+**Last updated:** 2026-07-28, on `refactor/phase4-node-contract` — **Phase 4, Workstream 1
+complete, Workstreams 2–5 not started.** Phase 3 (close the extension contract) preceded it,
 Phase 2.5 (the brand migration, and the first end-to-end validation that Phases 1–2 work)
-preceded it; Phase 2 completed on `refactor/phase2-core-shell` (2026-07-25) and
+before that; Phase 2 completed on `refactor/phase2-core-shell` (2026-07-25) and
 `fix/core-has-remotion` corrected it the same week.
 
-**Next up is Phase 3.5 — apply the Phase 3 brand migrations.** Read "Phase 3 outcome"
-immediately below, then `docs/superpowers/phase3-migrations.md` (the adoption list) and
-`docs/superpowers/phase3-extension-contract.md` (the contract itself), then the working
-conventions. Everything else is history.
+**Start with "Phase 4 outcome" below** — it is the live state, and it says exactly which half
+of Phase 4 is done. Then `docs/superpowers/plans/2026-07-26-phase4-node-contract.md` for the
+workstreams still open, `docs/superpowers/phase4-migrations.md` for what a brand pin bump will
+need, and the working conventions at the end of this file. Phase 3.5 (`phase3-migrations.md`)
+is **still pending** and was not touched by Phase 4.
 
 **The twelve Phase 2 brand migrations are APPLIED.** `docs/superpowers/phase2-migrations.md` is
 now a record and a reference for the next brand repo, not pending work. **The seventeen Phase 3
 migrations are NOT** — `phase3-migrations.md` is pending work, and it says so at the top.
+**The Phase 4 migration notes** (`phase4-migrations.md`) are likewise pending and cover
+Workstream 1 only.
 
 This file is the durable record across sessions. The working ledger
 (`.superpowers/sdd/progress.md`) is **gitignored** and will not survive a
@@ -37,8 +41,8 @@ The full audit and phase plan live at
 | 2 | Core owns the brand shell (editor host, composition wiring, config, fonts) | ✅ `refactor/phase2-core-shell` |
 | 2.5 | Apply the brand migrations — the validation of 1–2 | ✅ both brand repos green, 2026-07-26 |
 | 3 | Close the extension contract (registries, effects, generators, captions) | ✅ core-side, `refactor/phase3-extension-contract` |
-| 3.5 | Apply the Phase 3 brand migrations — the validation of 3 | ⬜ **next**, `docs/superpowers/phase3-migrations.md` |
-| 4 | Tighten the model (real schemas, pre-save validation) | ⬜ |
+| 3.5 | Apply the Phase 3 brand migrations — the validation of 3 | ⬜ still pending, `docs/superpowers/phase3-migrations.md` |
+| 4 | One node contract for effects and transitions (the model tightening) | 🟡 **in progress**, `refactor/phase4-node-contract` — Workstream 1 ✅ complete, 6.1 ✅; Workstreams 2, 3 (bar 3.1), 4, 5 and 6.2–6.4 **not started** |
 | 5 | NLE alignment (effect stack, music track, transition entities, media pool) | ⬜ |
 | 6 | `brand.json` becomes the theming contract | ⬜ |
 
@@ -269,11 +273,16 @@ as running them.
 
 ### Method notes worth keeping
 
-- **Still renders are byte-deterministic and make an excellent parity gate** — `remotion still` at
-  fixed frames, compared by `shasum`. This is what caught finding 1, which no test would have.
-  **Caveat:** one render in ~20 flaked on a video-decode-heavy frame. A mismatch is not a finding
+- **Still renders make an excellent parity gate** — `remotion still` at fixed frames, compared by
+  `shasum`. This is what caught finding 1, which no test would have. A mismatch is not a finding
   until it has been re-rendered and reproduced. Two mismatches in this stage; one was real
   (reproduced exactly), one was noise (re-rendered twice, both matched the original).
+  **Corrected in place by Phase 4: "byte-deterministic" is false, and "one render in ~20 flakes"
+  understates it.** Phase 4 measured ~2070 renders and found the non-determinism is **bimodal** —
+  an affected cell has exactly two stable attractor hashes, at per-cell rates of 9–50 %. The
+  practical advice above is unchanged (re-render before believing a mismatch); what changes is
+  that a *single* re-render is not enough to establish a cell is stable. See "Phase 4 outcome →
+  The findings that must survive", finding 1.
 - **`npx tsc --noEmit | grep -c 'error TS'` returns 0 when tsc *crashes*.** Hit twice. Check the
   exit code. Related: four PP projects had `node_modules/.bin` entries that were regular files
   instead of symlinks (a `cp -r`'d `node_modules`); `npm install` does *not* repair that,
@@ -498,6 +507,273 @@ especially, against the branch you are actually on before applying it.**
 
 ---
 
+## 🟡 Phase 4 outcome — Workstream 1 is complete; four workstreams are untouched
+
+**Branch:** `refactor/phase4-node-contract`, merge base `9202e79`. **Not merged.**
+
+**Status, plainly: this is a deliberate hand-off at a clean seam, not an abandoned branch.**
+Workstream 1 — the node contract itself — is **complete and reviewed**. At the point where
+Workstream 2 would have started, the user chose to close Workstream 1 and hand off rather than
+leave several workstreams half-done. Everything below the line "Carried out of Phase 4" is
+therefore *not started*, not *in flight*.
+
+**Tasks landed:** 1.0, 1.1, 1.2, **1.2b** (added mid-phase, not in the plan, user-approved),
+1.3, 1.4, 1.5, 1.6, 3.1, 6.1.
+**Tasks not started:** 2.1–2.7, 3.2–3.4, 4.1–4.3, all of Workstream 5, and 6.2–6.4.
+
+Re-derived from `git log` / `git diff --stat` against the merge base, never carried forward from
+a running total: **44 commits**, **55 files, +7926 / −553**. Excluding the 676-line plan document
+(`docs/superpowers/plans/2026-07-26-phase4-node-contract.md`, committed at `9dfd51d` on the
+branch): 54 files, **+7250 / −553**.
+
+> **As in Phase 3, the range cannot include the commit that carries this text** — a commit
+> cannot state its own diffstat. Re-derive rather than trust the figures above after any
+> further commit:
+> ```bash
+> git log --oneline $(git merge-base main HEAD)..HEAD | wc -l
+> git diff --stat $(git merge-base main HEAD)..HEAD | tail -1
+> ```
+
+### Gates, measured fresh at the hand-off (2026-07-28)
+
+Every figure recorded for Phase 3 is now stale; these replace them. Exit codes were captured
+**separately** from error counts, because `grep -c 'error TS'` reports 0 when tsc *crashes*.
+
+| Gate | Command | Value |
+|---|---|---|
+| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | **86 files / 1113 tests** green, 53 s — **4** are `it.fails` known-defect pins, so "all passed" is *not* full green |
+| Editor types | `cd lib/editor && npx tsc --noEmit` | **3** errors, **exit 2** (tsc ran; it did not crash) |
+| Render/transition types | `cd examples/layered-minimal && npm run typecheck` | **0**, coverage guard ok (render 10 / transitions 14 / theming 24 / reel-config-base 10 / transcripts 1 — each at or above its recorded floor) |
+| **Pixel harness (NEW in Phase 4)** | `cd examples/layered-minimal && npm run pixel-gate:strict` | **PASS**, 300 stills in **52 s** (~55 s wall). `300 accepted (8 on a bimodal cell's second recorded hash), 0 same-picture-different-bytes, 0 drifted, 0 missing`, plus **3 expected semantic xfails** (`scanline-glitch`, `wipe`, `pixelate` — all `cut@p0-shows-outgoing`) |
+| Brand leak | the `grep -riE` under Working conventions | exactly **2** known hits |
+| Python — `sync_template` | `./.venv/bin/python -m pytest video_toolkit/tests/test_sync_template.py -q` | **36 passed**, 0.42 s. **Use the venv** — the system `python3` has no `pytest` |
+
+The editor `tsc` baseline is still **3**, but two of the three moved line: they are now
+`app/LayeredInspector.tsx:791` (`hide`), `src/derive-layered.test.ts:277`, and
+`../theming/envelope.test.ts:1` (`Cannot find module 'vitest'`). The four `it.fails` pins are at
+`lib/editor/src/at-cut-transitions.test.tsx:323,350,404,422` — **re-derive with
+`grep -n 'it.fails' lib/editor/src/at-cut-transitions.test.tsx`**, never hardcode; they shifted
+twice within Phase 4 alone.
+
+> `CLAUDE.md`'s Quality Gates table still records the Phase 3 baseline (70 files / 905 tests) and
+> does not know about the pixel harness. Phase 4 was scoped to leave it alone; updating it is a
+> one-line job for whoever picks this up.
+
+### What landed — Workstream 1, the node contract
+
+A brand can now add a transition kind in **~5 lines** of theme (`transitions: { 'sand-sweep':
+{ renderer, params } }`) with **zero core edits**, and that kind is pickable and editable in the
+editor.
+
+1. **The transition schema is open** (Task 1.0). `Transition` is now `CoreTransition |
+   BrandTransition` — a **plain union**, so `t.kind === 'slide'` no longer narrows and anything
+   needing a core member must say `CoreTransition`. `BrandTransitionSchema.kind` carries a
+   `.refine(!isCoreTransitionKind)`; without it, a core kind that fails its own member falls
+   through the union and parses shape-only. Exhaustiveness survived: deleting an entry from
+   `Record<TransitionKind, Renderer>` still gives `TS2741`, reproduced by the reviewer.
+   New shared `lib/render/warn-once.ts` (Task 6.3 must reuse it, not duplicate it).
+2. **One `ParamField` for both axes, plus `Animatable`** (Task 1.1). The descriptor lives in
+   `lib/reel-config-base/param-field.ts`, *beneath* both axes — `lib/theming` imports
+   `lib/reel-config-base` and never the reverse. New controls that did not exist before:
+   `burn.mask`, `burn.glowColor`, accent params on the effect/bag path, `percent`, `angle`,
+   `color`; numeric transition sub-options now carry the schema's own min/max.
+3. **`BrandTheme.transitions` + shared resolution** (Task 1.2), and **the editor surface for
+   them** (Task 1.2b, added mid-phase). 1.2's review found a live **data-loss** defect:
+   `LayeredInspector.tsx` coerced any unrecognised kind to `{kind:'cut'}`, so a brand transition
+   authored in `Root.tsx` displayed as "Cut" and was *destroyed* the moment a user touched any
+   control in that section. Fixed, plus a picker and controls derived from
+   `theme.transitions` via `EditorMeta.transitionProps` — no new threading mechanism was needed,
+   the theme already reached the inspector as `EditorMeta`.
+4. **Two-input transition rendering** (Task 1.3) — the structural change. First run against
+   **untouched** goldens: **293/300 byte-identical** through a full compositing-model rewrite.
+   All 7 that moved were `glitch`, and that re-baseline was **proven** legitimate (below).
+5. **`alignment`** (`'center' | 'start' | 'end'`, Task 1.4). `center` is byte-identical. Odd
+   frame counts split floor/ceil. The schema moved `ZodUnion → ZodIntersection` with all four
+   Task 1.0 properties verified to survive. Edge behaviour is **clamp** — a reel edge is not a
+   cut, and overrunning would make a *look* setting change *reel length*.
+6. **`enabled`, `config`, and one `cut` predicate** (Task 1.5). There were **seven** cut
+   special-cases, not the plan's five — two more lived in the editor's transitions lane
+   (`lib/editor/src/timeline/layered-adapter.ts:63,69`). All now read `isCut` / `CUT_KIND`.
+   `isNodeEnabled` is `!== false`, not `!enabled`, so an absent flag means enabled.
+7. **A declarative accent mark** (Task 1.6) replacing the `AccentKey` `WeakSet`, which silently
+   lost its mark through `.min()` / `.nullable()` / `.readonly()` / `.catch()` / `.transform()`
+   chains — the failure mode being a field with *no editor control at all*. The colour axis was
+   replaced too, deliberately: one shared `marker()` served both, so doing accent alone would
+   have left the identical defect alive for colour.
+8. **The pixel-regression harness** (Task 6.1) — 300 goldens = 20 kinds × 3 modes × 5 progress
+   points, kind list derived from `TRANSITION_CATALOG` via `getCompositions()`, not hardcoded.
+   This is the new gate in the table above.
+9. **An effect-merge baseline** (Task 3.1, test-only) — all 18 cells of 2 crop × 3 ken-burns ×
+   3 grade, exact strings, literals dumped from a run. It pins three findings **as-is rather
+   than fixing them**, for Workstream 3 to decide: a no-crop + `direction` ken-burns pivots
+   `50% 50%` while `objectPosition` is the focal point; a from/to ken-burns discards the crop's
+   `objectPosition` entirely; and `transform` + `transformOrigin` spread as a unit, so an origin
+   without a transform is silently dropped.
+
+### The findings that must survive
+
+These cost real measurement. A fresh session should not pay for them twice.
+
+**1. Render non-determinism is BIMODAL, not noisy — and its rate is NON-STATIONARY and
+PROCESS-DEPENDENT.** ~2070 renders were spent establishing this. Every differing pixel in every
+pair sits in the **rightmost 8 columns** of the 540 px frame; 16–28 px of 518,400 differ; alpha
+never changes. Each affected cell has exactly **two globally stable attractor hashes**, identical
+across runs, orderings and fresh processes. The worst 8×8 cell mean shift ever observed was
+**0.0183/255**, which always reports delta 0 — so the flake and the regressions the harness fears
+(delta 1–2) are **cleanly separated**. It reproduces in a fresh process with a single render, so
+it is renderer non-determinism, **not** a harness state-leak; do not chase browser lifecycle.
+"Curved edge" is the wrong predictor — `clock-wipe`'s boundary is a straight radial ray and
+`light-leak` has no clip path at all.
+
+> **The consequence for methodology:** raising `--repeat` *within one process* just re-samples
+> the same draw. One cell was 6/12 in one pass and 0/24 in the next (p ≈ 6e-8 if stationary).
+> **Separate processes are the enumerating axis.** Hence the **union rule**: a re-seed can never
+> *drop* a recorded attractor on absence — without it, a re-seed de-listed three genuinely
+> bimodal cells. The committed list is **19 cells**, a **lower bound**, and **machine-specific**.
+> `--audit-bimodal` will **XPASS spuriously** on `light-leak` for the same reason: treat an XPASS
+> as "re-run in a fresh process", **never** as grounds to de-list.
+
+Two agents reached 19 cells by different sampling designs — corroboration, not collision. Zero
+three-hash cells were ever seen; a third value still fails under `--strict` (tested
+synthetically), and `--update-goldens` cannot silently add a second hash.
+
+**2. roost's frame-45 flake was NOT a bump regression.** Measured n=20 at each pin: frame 45
+gives two distinct hashes at **both** the old and the new pin (14/6 and 17/3), and **the two hash
+values are byte-identical across pins** — only possible if the source is orthogonal to what
+changed. Frame 0 flips too, so it is not frame-specific, and the differing region is a
+ken-burns-panned photo, not text (font-race ruled out). **Correlation:**
+`projects/roost-reel-01/remotion.config.ts:12` sets
+`Config.setChromiumOpenGlRenderer('angle')`; core's example and PP set no OpenGL renderer at all,
+and both hold byte-identical. Not proven causal, but it is the one config difference. **Do not
+adopt roost's ANGLE setting in the harness.**
+
+**3. The `glitch` re-baseline was proven a pure clock rebase, not accepted on trust.** The
+reviewer patched `glitch.tsx` to `useCurrentFrame() + 40` — the exact old→new clock offset — and
+**reproduced all four deleted exit golden hashes byte-for-byte**. So the drift is a frame-origin
+shift: no restacking, no alpha, no geometry. Boundary-relative is the *right* clock; the same
+authored transition now renders identically wherever it sits. `glitch__enter__*` did not move,
+because boundary and clip share an origin at a leading edge.
+
+**4. ⚠️ The `presentationFor` trap — the single most important thing for whoever does
+Workstream 2.** `presentationFor`'s blast radius is **6 files**, not the 2 originally believed:
+five `projects/*/src/WebProgramIntro.tsx` plus `templates/web-program-intro/`. When Task 2.1
+makes `checkerboard` / `pixelate` / `scanline-glitch` / `wipe` native two-input, `presentationFor`
+returns `null` for them and **all six sites silently degrade to hard cuts with NO type error**.
+Related: fixing `scanline-glitch`'s opaque third `AbsoluteFill` will **unmask** the identical
+frame-origin shift `glitch` just had — expect its goldens to move for the same clock reason.
+
+**5. The grep bug that produced a false negative.** `grep -vE 'toolkit/'` matched *every* path in
+a repo **named** `video-toolkit`, so the exclusion ate all of its own hits. It produced a
+confident, false "no brand authors `glitch`" claim in the migration doc. The corrected sweep:
+exactly **one** real authored `glitch` cut (`pp-mov-koalice/src/Root.tsx:76-79`, at a genuinely
+contiguous boundary — that reel's noise *will* change), one type-union member
+(`pp-05-zastupitelsky-klub/src/config/types.ts:15`), and **zero** in roost. Anchor your
+exclusions.
+
+**6. The overlapping-boundary defect NEEDS ITS OWN TASK.** Task 1.3 assumed Task 1.4 would own
+it; that premise was **wrong**, and the reviewer derived why from the code rather than the prose.
+Overlap ⇔ `inFrames + outFrames > normalDuration + inHalf + outHalf`, which reduces to "windows
+longer than the clip" for **all three alignments** — *alignment cancels out of the magnitude*.
+The only fix is **shortening** a transition, which changes the progress curve: a render-changing
+policy call (shrink both? favour the earlier? refuse?) needing its own parity assessment. What
+shipped is a dev `warnOnce` diagnostic at `lib/render/video-track.tsx` so it is a message rather
+than a mystery. **No reel in either brand repo is affected today** — every video track in all 11
+PP projects and in `roost-reel-01` is contiguous with zero gaps, verified.
+
+### Known gaps in what shipped
+
+Say which half is done, not that it is done:
+
+- **`enabled` has editor SURVIVAL but no editor CONTROL.** Authorable in `defaultProps` only, on
+  both axes. The contract is delivered; the UI is not. The editor's transitions lane also draws a
+  disabled transition identically to an enabled one — the render path is correct, the UI
+  treatment needs a design decision.
+- **`alignment` likewise: survival, no control.** Task 1.4's fix round made it survive a kind
+  switch (it was previously destroyed by `defaultTransition` carrying only `frames` forward — the
+  same defect class as 1.2b's), but there is still no row for it beside the length field.
+- **`Animatable` ships entirely dead** — ~92 lines and 11 tests, zero references outside its own
+  module. Brief-mandated, so not a spec violation; if the ken-burns migration slips past Phase 4
+  it stays dead.
+- **Task 1.6's trade-off, accepted knowingly:** the accent/colour decision moved from schema
+  identity to **field name**, inverting a documented principle in `param-field.ts` ("a field is
+  color because its schema says so, never because of its name"). New failure mode: a future core
+  kind naming a non-accent field `color` silently gets a palette picker. Guarded by three
+  assertions, and scoped to core's **closed** catalog only.
+- **Tasks 1.6 and 1.2b had their reviews deferred to a final whole-branch review that never
+  ran** — the branch was handed off first. Both were mutation-verified by their implementers, but
+  neither has an independent review.
+
+### Carried out of Phase 4
+
+**Not started — read the plan, `docs/superpowers/plans/2026-07-26-phase4-node-contract.md`:**
+
+- **Workstream 2** (2.1–2.7) — every kind behaves as its name promises. Start with the
+  `presentationFor` trap above.
+- **Workstream 3** (3.2–3.4) — effects: one contract, no exceptions. **3.1 is done** and is the
+  merge baseline 3.2 must not break; carry its four deferred minors into the 3.2 brief, notably
+  that the video/`OffthreadVideo` branch is pinned on `filter` **only** (the matrix reads
+  `img[0].style`), and Workstream 3 rebuilds exactly that construction.
+- **Workstream 4** (4.1–4.3) — close the write-only props.
+- **Workstream 5** — tokens cover proportion, not just paint.
+- **6.2–6.4** — conformance example, theme validation + dev warnings, gate documentation.
+  **6.3 has two concrete inputs already:** it must reuse `lib/render/warn-once.ts` rather than
+  duplicate it, and it needs an **eighth** warning — a config-only registration for a
+  **brand-only** kind renders nothing, silently: it declares the kind (so `brandKinds` silences
+  the typo warning) but has no renderer and no core generic beneath, so the boundary is a hard
+  cut. "Declared" ≠ "handled". The fix is 2 lines at `lib/render/video-track.tsx:44`.
+- **The overlapping-boundary fix** — its own task, as argued above.
+
+**Two brand-repo findings from the pin bump that opened this phase** (both repos read-only for
+Phase 4, both bumped to core `9202e79`, both **committed and NOT pushed**):
+
+- **PP** (`~/Workspace/progpce/video-toolkit`, `main` @ **`5a9cc1e`**) — **clean.** 15 installed
+  directories, `tsc` unchanged (the 18 pre-existing WPI `TS2322`s), 5/5 reference frames
+  byte-identical.
+- **roost** (`~/Workspace/roost/video-toolkit`, `main` @ **`c498f8c`**) —
+  `projects/roost-reel-01` went `tsc` **0 → 2**: `TS2604` / `TS2786` at
+  `src/LayeredRoostReel.tsx:142`. **Cause:** Phase 3 collapsed `resolveVideoRenderer`'s overloads
+  to a single signature returning `VideoRenderer | undefined`, and that project is **un-migrated**
+  while its own template already moved to the thin wrapper. A Phase 3.5 item, **not a core
+  defect**.
+
+**Deferred minors, carried across from the gitignored ledger — this is their only durable
+record:**
+
+- `param-field.ts:68-72` documents precedence as "options first, else type", but the code checks
+  **accent first** (`LayeredInspector.tsx:241`) and options second (`:259`). A field declared
+  `{type:'accent', options:[…]}` silently ignores its options. No such field exists today, but
+  this file is what brands read.
+- `subOptionForField` emits `min`/`max` but never `step`, so `light-leak.intensity` arrives
+  bounded 0..1 with step 1 — the spinner can only produce 0 or 1, and a typed `0.5` is
+  `:invalid`.
+- `at-cut-transitions.test.tsx:129` skips string/color sub-options, so nothing pins that an edited
+  `glowColor` reaches `burn`'s presentation. `'#ff8800'` would be a fine probe.
+- `lib/theming/transitions.ts`'s `TransitionRegistration` redundantly re-declares
+  `renderer?: TransitionRenderer` that its own `extends` clause already supplies.
+- A brand kind's editor label is `humanizeKey(kind)` — `TransitionRegistration` has no `label`
+  field, and adding one is a contract widening, deliberately not done. The timeline's transition
+  markers do not consult `transitionProps` (cosmetic). `TRANSITION_KINDS` in
+  `lib/editor/app/transitions.ts` now has no non-test consumer.
+- Two non-null assertions at `layered-adapter.ts:66,74` — `!isCut(x)` implies a truthy kind, but a
+  predicate over `unknown` cannot narrow. Verified sound.
+- `ClipSegmentBaseSchema` carries `TransitionSchema.optional()`, and live PP projects pass that
+  tree to `<Composition schema={…}>`; **Remotion's zod sidebar has no `z.intersection` support**.
+  Likely not a regression (Task 1.0 already moved it off `discriminatedUnion`), but worth **one
+  Studio screenshot** during the brand-migration pass.
+- `derive-montage.ts:19`'s `'cut' | 'fade'` is the **input config's** vocabulary and was correctly
+  left alone (the code branches only on `'fade'`) — recorded so nobody thinks it was missed.
+- Task 6.1's own report (`task-6.1-report.md`, gitignored) still claims "no kind name is written
+  anywhere in the harness" while `isInstant: kind === 'cut'` is hardcoded. **The code is fine**;
+  only the report is stale. Do not carry the false claim forward.
+- Two **controller** errors worth not repeating: two implementers were once dispatched
+  concurrently against the same tree (harmless here — disjoint files — but against the rule), and
+  a live agent was replaced because file mtime suggested it had stalled. **Check agent liveness by
+  its own channel, not by file mtime.** Also: a review brief cited
+  `lib/theming/effects/grade.ts:43` when the real path is `lib/reel-config-base/grade.ts:43` —
+  verify paths before putting them in briefs.
+
+---
+
 ## Phase 3 — scope and starting state (historical: what Phase 3 set out to do)
 
 > The four factual corrections this section needed are made **in place** below, not appended —
@@ -538,10 +814,11 @@ three times in this programme.
   a brand project reports **0**, not ~160. Phase 3 changes what brands render, so this is the gate
   that will catch a broken registration.
 - **Still-render parity is a working regression test.** `npx remotion still` at fixed frames,
-  compared by `shasum`, is byte-deterministic and caught the one rendering regression Phases 1–2
-  had shipped. Phase 3's "prove parity with a still render" requirement now has a proven procedure
-  — including the caveat that a single render can flake on a video-heavy frame, so reproduce
-  before believing a mismatch.
+  compared by `shasum`, caught the one rendering regression Phases 1–2 had shipped. Phase 3's
+  "prove parity with a still render" requirement now has a proven procedure — including the
+  caveat that a single render can flake, so reproduce before believing a mismatch.
+  (**"byte-deterministic" was claimed here and is false** — corrected in place; Phase 4 measured
+  the flake as bimodal. See the Phase 4 outcome.)
 
 ### The seams Phase 3 closes
 
@@ -637,10 +914,13 @@ Read these before scoping — they are decided or half-decided, not open questio
 
 ## Carried into later phases
 
-**Phase 3.5 is next** — apply the seventeen brand migrations in
+**Phase 3.5 is still pending** — apply the seventeen brand migrations in
 `docs/superpowers/phase3-migrations.md`, which is the validation of Phase 3 the way Phase 2.5 was
 the validation of Phases 1–2. Phase 3's own outcome is recorded above; the section immediately
-above this one is its historical scope.
+above this one is its historical scope. **Phase 4 went ahead of it** (core-only, both brand repos
+read-only), so Phase 3.5's list is now joined by `docs/superpowers/phase4-migrations.md` — and by
+the one thing the Phase 4 pin bump surfaced, roost's un-migrated `roost-reel-01` going `tsc`
+0 → 2. See "Carried out of Phase 4".
 
 **Deliberately NOT done in Phase 2, ✅ DONE in Phase 3 (`3e3b4a6`, `49647bd`, `66fff5f`) — the
 description below is the problem as it stood, kept for the record.** `sync_template` now mirrors
@@ -792,11 +1072,16 @@ for the record:
   nothing test-only left to delete out from under them.
 
 **Deferred, judged genuinely fine to carry:**
-- The `AccentKey` marker in `transition-schema.ts` patches zod's `describe()` so clones stay
+- ~~The `AccentKey` marker in `transition-schema.ts` patches zod's `describe()` so clones stay
   marked. Tested and correct for its one use, but `.min()`, `.nullable()`, `.readonly()` and
   `.catch()` chains silently lose the mark — and the failure mode is a field with *no editor
   control at all*, with no warning. Replace with an `_def` mark (every zod-3 clone path spreads
-  `_def`) or a declarative `ACCENT_FIELDS` set beside the existing `PROP_LABELS`.
+  `_def`) or a declarative `ACCENT_FIELDS` set beside the existing `PROP_LABELS`.~~
+  **✅ CLOSED in Phase 4, Task 1.6**, by the declarative route. The predicted failure was
+  confirmed by measurement before the fix — `.nullable()` / `.readonly()` / `.catch()` /
+  `.transform()` produced `undefined`, i.e. no control at all — and the **colour** axis was
+  replaced along with accent, because one shared `marker()` served both. Read the trade-off note
+  under "Known gaps in what shipped" in the Phase 4 outcome before extending it.
 - Test fixtures still speak PP's `{lime:…}`/`{teal:…}` vocabulary. Mechanical rename — worth
   doing because that very vocabulary is what hid the `ACCENT_RE` leak Phase 1 found in
   production code.
@@ -948,8 +1233,9 @@ now ordinary migration verification, not risk closure.
     which is what makes the third quality gate (`npm run typecheck` there) possible over
     `lib/render/` and `lib/transitions/` — see `docs/superpowers/core-typecheck-gate.md`.
   - A module importing `remotion` is unit-tested by mocking it: `vi.mock('remotion', …)`.
-    **14** test files do this today (count them with
-    `grep -rln "vi.mock('remotion'" lib/editor/src`): `at-cut-transitions`, `brand-track`,
+    **20** test files do this as of the Phase 4 hand-off (count them with
+    `grep -rln "vi.mock('remotion'" lib/editor/src`; it was **14** at the end of Phase 3, and
+    the list below is that Phase 3 list, not the current one): `at-cut-transitions`, `brand-track`,
     `effect-primitives`, `effects-registry`, `generic-captions`, `generic-card`,
     `generic-multiclip`, `generic-outro`, `generic-watermark`, `load-fonts`,
     `overlay-registry`, `segment-media`, `text-overlay-base`, `video-track-layout`. The
@@ -978,15 +1264,17 @@ now ordinary migration verification, not risk closure.
   `lib/editor/host/README.md`, which otherwise advertises Focus/Zoom with no verification note.
 - The brand-leak gate needs its exclusions or it walks `node_modules` and is permanently red:
   `grep -riE 'lime|teal|roost|progresivn|sand-brown' lib/ --exclude-dir=node_modules --exclude='*.test.*'`
-- **Current gate numbers, measured fresh at the end of Phase 3 (2026-07-26).** Any figure
-  quoted elsewhere in this file from Phase 1, Phase 2, `fix/core-has-remotion` or Phase 2.5 is
-  historical; these are live:
+- **Current gate numbers, measured fresh at the Phase 4 hand-off (2026-07-28).** Any figure
+  quoted elsewhere in this file from Phase 1, Phase 2, `fix/core-has-remotion`, Phase 2.5 or
+  Phase 3 is historical; these are live:
   | Gate | Command | Now |
   |---|---|---|
-  | Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | **70 files / 905 tests**, green — **4** of them are `it.fails` known-defect pins (`at-cut-transitions.test.tsx:293,320,374,392` — re-derive with `grep -n 'it.fails'`, these shift whenever the file's comments change), so "all passed" is not full green |
-  | Editor types | `cd lib/editor && npx tsc --noEmit` | **3** errors (`LayeredInspector.tsx:679`, `derive-layered.test.ts:277`, `../theming/envelope.test.ts:1`) |
-  | Render/transition types | `cd examples/layered-minimal && npm run typecheck` | **0**, coverage guard ok |
+  | Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | **86 files / 1113 tests**, green, 53 s — **4** of them are `it.fails` known-defect pins (`at-cut-transitions.test.tsx:323,350,404,422` — re-derive with `grep -n 'it.fails'`, these shift whenever the file's comments change, twice in Phase 4 alone), so "all passed" is not full green |
+  | Editor types | `cd lib/editor && npx tsc --noEmit` | **3** errors, exit 2 (`LayeredInspector.tsx:791`, `derive-layered.test.ts:277`, `../theming/envelope.test.ts:1`) |
+  | Render/transition types | `cd examples/layered-minimal && npm run typecheck` | **0**, coverage guard ok (render 10 / transitions 14 / theming 24 / reel-config-base 10 / transcripts 1) |
+  | Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` | **PASS** in ~55 s — 300 stills, 0 drifted / 0 missing, 3 expected semantic xfails. New in Phase 4 |
   | Brand leak | the `grep -riE` above | exactly **2** hits — `lib/theming/effects/ken-burns.ts` and `lib/transitions/presentations/burn.tsx` |
+  | Python — `sync_template` | `./.venv/bin/python -m pytest video_toolkit/tests/test_sync_template.py -q` | **36 passed**. The **system `python3` has no `pytest`** — use `./.venv/bin/python` |
 
   The editor `tsc` baseline was **34** through Phase 2 and briefly **29**; `fix/core-has-remotion`
   took it to **4** in two steps, without touching any of the code the errors were about — a
@@ -1002,6 +1290,17 @@ now ordinary migration verification, not risk closure.
   the existing suite already covers it; the new capability is the half nobody wrote a test for.
   Concretely: before writing the mutation, point at the specific line (file:line) that is the
   reason the task exists, break *that*, and require a red test.
+  **Phase 4 is where this finally held — and the method that made it hold is worth copying.**
+  Tasks 1.1 through 1.6 each pinned what the change *added*, and reviewers reproduced the
+  mutations independently. The technique was not "remember to mutate the right line"; it was
+  **write the test FIRST and confirm it goes RED against the pre-change tree**. That is what
+  distinguishes pinning a new capability from pinning an accident, and it produced hard evidence
+  every time: Task 1.6's `.min(1)` test was red on the old implementation with the exact message
+  *"expected 'string' to be 'accent'"*, and 8 of its 9 new tests were red pre-change; Task 1.2b's
+  new file ran **6 of 9 red** against the unmodified tree before any implementation existed;
+  Task 1.2's mutation was *asymmetric* — breaking the brand tier turned 5 new tests red while the
+  pre-existing at-cut suite stayed 81/81 green, which is direct proof the new tests pin the new
+  thing. Record it as the **method**, not just the rule.
 - **Python mutation testing in this repo needs `__pycache__` cleared before every run.** A
   mutation that swaps two statements produces a byte-length-identical file, and CPython's
   `(mtime, size)` `.pyc` invalidation then happily reuses the **mutated** bytecode after the
@@ -1034,8 +1333,15 @@ now ordinary migration verification, not risk closure.
   was asserted through Phases 1 and 2 and was **false** — `applyBrandEndpoint`'s dropped default
   changed every PP caption. No test caught it; comparing `remotion still` hashes before and after
   did, in minutes. The procedure: pick ~5 frames spanning a real reel, `npx remotion still` each,
-  `shasum -a 256`. It is byte-deterministic. One render in ~20 flakes on a video-decode-heavy
-  frame, so re-render and reproduce before calling a mismatch a finding.
+  `shasum -a 256`. **It is NOT byte-deterministic** — an earlier version of this bullet said it
+  was, and Phase 4 disproved it over ~2070 renders: the flake is **bimodal** (two stable
+  attractor hashes per affected cell, 9–50 % per render) and its rate is **non-stationary and
+  process-dependent**, so re-running with a higher repeat count *inside one process* re-samples
+  the same draw. Re-render **in a fresh process** and reproduce before calling a mismatch a
+  finding. The separation that keeps the technique useful: the flake's worst 8×8 mean shift ever
+  measured is 0.0183/255, while a real change lands at 1–3. See the Phase 4 outcome.
+  `examples/layered-minimal`'s `pixel-gate` harness encodes all of this, including the union rule
+  for re-seeding.
 - **Capability claims must carry the command that demonstrates them, or not be written down.**
   This branch exists because "core has no `remotion`, so anything importing it can't be
   unit-tested" was written into this file unmeasured and false. The same pattern recurred twice
@@ -1046,3 +1352,11 @@ now ordinary migration verification, not risk closure.
   unwind once decisions were built on it. Going forward: don't write "core cannot X" (or "core
   has no Y") without the command you ran to check, in the same sentence or the one after it. If
   you haven't run it, say "unverified," not "cannot."
+  **The same rule applies to claims about your own tests, and Phase 4 supplied the example.**
+  Task 1.5's report claimed a mutation proved `videoConfig` routes through a shared helper.
+  Review showed the test bundled **four accessors in one `it`**, and one of the other three
+  already routed through that helper before the task — so the mutation went red regardless and
+  proved nothing about the one that changed. The claim was **retracted**, and the honest
+  statement written down instead: that routing is **unpinned and unpinnable** (both forms are the
+  same expression; no input distinguishes them). A mutation is evidence only for the assertion it
+  uniquely kills — one assertion per `it`, or the red tells you nothing.
