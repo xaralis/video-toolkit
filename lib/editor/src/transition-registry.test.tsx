@@ -37,7 +37,13 @@ vi.mock('remotion', async () => {
 import { presentationFor, type TransitionRecord } from '@video-toolkit/lib/render/at-cut-transitions';
 import { buildVideoNodes } from '@video-toolkit/lib/render/video-track';
 import { resetWarnOnce } from '@video-toolkit/lib/render/warn-once';
-import type { AnyPresentation, TransitionRegistry, TransitionRenderProps } from '@video-toolkit/lib/theming/transitions';
+import { registrationParams } from '@video-toolkit/lib/theming/registry';
+import type {
+  AnyPresentation,
+  TransitionRegistration,
+  TransitionRegistry,
+  TransitionRenderProps,
+} from '@video-toolkit/lib/theming/transitions';
 import type { AccentSlot } from '@video-toolkit/lib/theming/palette';
 import type { VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
@@ -128,6 +134,18 @@ describe('registry semantics — the same four the other axes settled', () => {
       presentationFor({ kind: 'sand-sweep', frames: 20 } as unknown as TransitionRecord, { ...DIMS, transitions }),
     ).not.toThrow();
     expect(presentationFor({ kind: 'sand-sweep', frames: 20 } as unknown as TransitionRecord, { ...DIMS, transitions })).toBeNull();
+  });
+
+  it('declares its editable fields with the SHARED param descriptor (one vocabulary, both axes)', () => {
+    // Not decoration: this is the field Task 1.1 unified, and it is what makes
+    // a brand kind editable without any core UI knowing the kind exists.
+    const registration: TransitionRegistration = {
+      renderer: brandRenderer(),
+      params: [{ prop: 'grains', label: 'Grains', type: 'number', min: 1, max: 64 }],
+    };
+    expect(registrationParams({ 'sand-sweep': registration }, 'sand-sweep')).toEqual([
+      { prop: 'grains', label: 'Grains', type: 'number', min: 1, max: 64 },
+    ]);
   });
 
   it('an unknown kind still SKIPS silently with a registry in scope', () => {
