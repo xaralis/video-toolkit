@@ -8,6 +8,7 @@ import { parseActionId, type LaneId } from '../src/timeline/layered-adapter';
 import type { AccentSlot } from '../../theming/palette';
 import { PLACEMENTS } from '../../theming/placement';
 import { effectCatalog, effectDefinition, humanizeKey, type EditorMeta, type ParamField } from './editor-meta';
+import { paramChoices } from '../../theming/registry';
 
 // Routes the selected timeline item (by lane) to its editable properties,
 // reusing the existing content editors. Edits produce a new LayeredReel via
@@ -66,7 +67,7 @@ function useLiveField(external: string) {
   };
 }
 
-function NumberField({ lbl, value, step = 1, onCommit, disabled, title }: { lbl: string; value: number | undefined; step?: number; onCommit: (n: number) => void; disabled?: boolean; title?: string }) {
+function NumberField({ lbl, value, step = 1, min, max, onCommit, disabled, title }: { lbl: string; value: number | undefined; step?: number; min?: number; max?: number; onCommit: (n: number) => void; disabled?: boolean; title?: string }) {
   const f = useLiveField(value === undefined ? '' : String(value));
   return (
     <div style={field} title={title}>
@@ -76,6 +77,8 @@ function NumberField({ lbl, value, step = 1, onCommit, disabled, title }: { lbl:
         style={disabled ? { ...input, opacity: 0.45, cursor: 'not-allowed' } : input}
         type="number"
         step={step}
+        min={min}
+        max={max}
         disabled={disabled}
         value={f.text}
         onFocus={f.onFocus}
@@ -155,6 +158,150 @@ function CheckboxField({ lbl, value, onChange }: { lbl: string; value: boolean |
   );
 }
 
+// A literal colour: the text input stays authoritative (it is the only control
+// that can hold `''`, a CSS name, or a value a native picker would silently
+// round), with a native swatch beside it for picking. The text input keeps
+// `aria-label={lbl}` so a colour field is queried exactly like any other; the
+// swatch is labelled separately.
+function ColorField({ lbl, value, onCommit }: { lbl: string; value: string | undefined; onCommit: (s: string) => void }) {
+  const f = useLiveField(value ?? '');
+  const swatch = /^#[0-9a-fA-F]{6}$/.test(f.text) ? f.text : '#000000';
+  return (
+    <div style={field}>
+      <label style={label}>{lbl}</label>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <input
+          aria-label={`${lbl} swatch`}
+          type="color"
+          value={swatch}
+          onChange={(e) => {
+            f.setText(e.target.value);
+            onCommit(e.target.value);
+          }}
+          style={{ width: 28, height: 26, padding: 0, border: '1px solid #34363e', borderRadius: 4, background: '#1c1e22', flex: '0 0 auto' }}
+        />
+        <input
+          aria-label={lbl}
+          style={input}
+          type="text"
+          value={f.text}
+          onFocus={f.onFocus}
+          onBlur={f.onBlur}
+          onChange={(e) => {
+            f.setText(e.target.value);
+            onCommit(e.target.value);
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ---- THE parameter control -------------------------------------------------
+// ONE dispatch from a `ParamField` to a control, for BOTH extension axes.
+//
+// There used to be two, and they disagreed. The declared-params path (opaque
+// `props` / effect bags) understood `number | string | boolean` plus a bare
+// `string[]` dropdown but had no `accent`; the transition path understood
+// `enum | number | boolean | accent` but had no `string`, which is why burn's
+// `mask` and `glowColor` had no control on either. Collapsing them means a
+// brand's own registered kind gets the same vocabulary core's kinds get —
+// including, now, text, colour, percent and angle.
+//
+// `accentSlots` is the BRAND's palette, and it is the only possible source for
+// an `accent` field's choices: core's schema names the field but not its values
+// (see `AccentKey` in transition-schema.ts). With no palette in scope there is
+// nothing to choose from, so the control is omitted rather than shown empty.
+//
+// `numberStep` is the fallback step for a field that declares none — a UI
+// affordance of the surrounding context (effect params are tuned in hundredths,
+// transition sub-options in whole units), not a property of the parameter.
+// Called as a plain FUNCTION, not rendered as `<ParamControl/>`: it must be
+// able to answer "this parameter gets no control at all" as a `null` the caller
+// can count, and a component that returns null internally is indistinguishable
+// from one that renders — which is what `ParamFields`' "No editable params."
+// fallback and the transition path's omit-an-accent-with-no-palette rule both
+// need to see. It uses no hooks of its own; the controls it returns own theirs.
+function renderParamControl({
+  field,
+  value,
+  onCommit,
+  accentSlots,
+  numberStep = 1,
+}: {
+  field: ParamField;
+  value: unknown;
+  onCommit: (v: unknown) => void;
+  accentSlots?: readonly AccentSlot[];
+  numberStep?: number;
+}): ReactNode {
+  const lbl = field.label ?? humanizeKey(field.prop);
+  const asString = typeof value === 'string' ? value : undefined;
+
+  if (field.type === 'accent') {
+    const slots = accentSlots ?? [];
+    if (!slots.length) return null;
+    return (
+      <SelectField
+        key={field.prop}
+        lbl={lbl}
+        value={asString}
+        options={slots.map((s) => s.key)}
+        optionLabel={(v) => slots.find((s) => s.key === v)?.label ?? v}
+        onChange={onCommit}
+      />
+    );
+  }
+
+  // `options` before `type`: a declaration that carries both has always been
+  // read as a dropdown, and an `enum` without options is unrenderable as
+  // anything else anyway.
+  if (field.options || field.type === 'enum') {
+    const choices = paramChoices(field.options) ?? [];
+    return (
+      <SelectField
+        key={field.prop}
+        lbl={lbl}
+        value={asString}
+        options={choices.map((c) => c.value)}
+        optionLabel={(v) => choices.find((c) => c.value === v)?.label ?? v}
+        onChange={onCommit}
+      />
+    );
+  }
+
+  // A DECLARED type wins over the value's own — it is the only thing that can
+  // type a field whose key the item does not carry yet. Without it an absent
+  // numeric prop falls through to TextField and commits a string ("0.5") into
+  // the bag; the renderer coerces, but the saved config goes type-dirty.
+  const t = field.type ?? typeof value;
+
+  if (t === 'number' || t === 'percent' || t === 'angle') {
+    // `percent` and `angle` change the CONTROL, never the stored value: no
+    // ×100, no wrap. A percent is offered as a bounded 0–100 field and an angle
+    // in whole degrees, and an explicit min/max/step on the field still wins.
+    const preset =
+      t === 'percent' ? { min: 0, max: 100, step: 1 } : t === 'angle' ? { step: 1 } : {};
+    return (
+      <NumberField
+        key={field.prop}
+        lbl={lbl}
+        step={field.step ?? preset.step ?? numberStep}
+        min={field.min ?? preset.min}
+        max={field.max ?? preset.max}
+        value={typeof value === 'number' ? value : undefined}
+        onCommit={onCommit}
+      />
+    );
+  }
+  if (t === 'boolean')
+    return <CheckboxField key={field.prop} lbl={lbl} value={typeof value === 'boolean' ? value : undefined} onChange={onCommit} />;
+  if (t === 'color') return <ColorField key={field.prop} lbl={lbl} value={asString} onCommit={onCommit} />;
+  if (t === 'string' || value === undefined || value === null)
+    return <TextField key={field.prop} lbl={lbl} value={asString ?? ''} onCommit={onCommit} />;
+  return null; // nested object/array — not editable as a single field
+}
+
 // ---- Generic bag editor ----------------------------------------------------
 // The schema keeps a video item's `props` and an effect's params as opaque
 // records on purpose (core knows the mechanism, the brand owns the vocabulary).
@@ -168,61 +315,27 @@ function ParamFields({
   values,
   fields,
   onPatch,
+  accentSlots,
 }: {
   values: Record<string, unknown>;
   fields?: readonly ParamField[];
   onPatch: (patch: Record<string, unknown>) => void;
+  accentSlots?: readonly AccentSlot[];
 }) {
   const declared = fields ?? [];
   const declaredProps = new Set(declared.map((f) => f.prop));
   const rest = Object.keys(values).filter((k) => !declaredProps.has(k));
 
-  const renderOne = (prop: string, field?: ParamField) => {
-    const lbl = field?.label ?? humanizeKey(prop);
-    const val = values[prop];
-    if (field?.options) {
-      return (
-        <SelectField
-          key={prop}
-          lbl={lbl}
-          value={typeof val === 'string' ? val : undefined}
-          options={[...field.options]}
-          onChange={(s) => onPatch({ [prop]: s })}
-        />
-      );
-    }
-    // A DECLARED type wins over the value's own — it is the only thing that can
-    // type a field whose key the item does not carry yet. Without it an absent
-    // numeric prop falls through to TextField and commits a string ("0.5") into
-    // the bag; the renderer coerces, but the saved config goes type-dirty.
-    const t = field?.type ?? typeof val;
-    if (t === 'number')
-      return (
-        <NumberField
-          key={prop}
-          lbl={lbl}
-          step={0.1}
-          value={typeof val === 'number' ? val : undefined}
-          onCommit={(n) => onPatch({ [prop]: n })}
-        />
-      );
-    if (t === 'boolean')
-      return (
-        <CheckboxField key={prop} lbl={lbl} value={typeof val === 'boolean' ? val : false} onChange={(b) => onPatch({ [prop]: b })} />
-      );
-    if (t === 'string' || val === undefined || val === null)
-      return (
-        <TextField
-          key={prop}
-          lbl={lbl}
-          value={typeof val === 'string' ? val : ''}
-          onCommit={(s) => onPatch({ [prop]: s })}
-        />
-      );
-    return null; // nested object/array — not editable as a single field
-  };
+  const renderOne = (f: ParamField) =>
+    renderParamControl({
+      field: f,
+      value: values[f.prop],
+      onCommit: (v) => onPatch({ [f.prop]: v }),
+      accentSlots,
+      numberStep: 0.1,
+    });
 
-  const nodes = [...declared.map((f) => renderOne(f.prop, f)), ...rest.map((p) => renderOne(p))].filter(Boolean);
+  const nodes = [...declared.map(renderOne), ...rest.map((p) => renderOne({ prop: p }))].filter(Boolean);
   if (!nodes.length) return <div style={{ fontSize: 11, color: '#7a7d85', padding: '3px 0' }}>No editable params.</div>;
   return <>{nodes}</>;
 }
@@ -262,57 +375,18 @@ function TransitionFields({
         optionLabel={(k) => TRANSITION_LABEL[k] ?? k}
         onChange={(nextKind) => onChange(defaultTransition(nextKind, { frames: t.frames }))}
       />
-      {/* One control per SubOption.kind. Dispatch explicitly (not
-          enum-or-else-number) so a kind added to SubOption without a control
-          here renders nothing visible instead of a wrong-typed field. */}
-      {subOptionsFor(kind).map((opt) => {
-        // A brand-palette dropdown: the schema supplies no `options` for an
-        // accent field, so the brand's slots are the option list. With no
-        // brand palette in scope there is nothing to choose from, so the
-        // control is omitted rather than shown empty.
-        if (opt.kind === 'accent') {
-          const slots = accentSlots ?? [];
-          if (!slots.length) return null;
-          return (
-            <SelectField
-              key={opt.prop}
-              lbl={opt.label}
-              value={t[opt.prop] as string | undefined}
-              options={slots.map((s) => s.key)}
-              optionLabel={(v) => slots.find((s) => s.key === v)?.label ?? v}
-              onChange={(s) => onChange({ ...t, [opt.prop]: s })}
-            />
-          );
-        }
-        if (opt.kind === 'enum')
-          return (
-            <SelectField
-              key={opt.prop}
-              lbl={opt.label}
-              value={t[opt.prop] as string | undefined}
-              options={(opt.options ?? []).map((o) => o.value)}
-              optionLabel={(v) => opt.options?.find((o) => o.value === v)?.label ?? v}
-              onChange={(s) => onChange({ ...t, [opt.prop]: s })}
-            />
-          );
-        if (opt.kind === 'boolean')
-          return (
-            <CheckboxField
-              key={opt.prop}
-              lbl={opt.label}
-              value={t[opt.prop] as boolean | undefined}
-              onChange={(b) => onChange({ ...t, [opt.prop]: b })}
-            />
-          );
-        return (
-          <NumberField
-            key={opt.prop}
-            lbl={opt.label}
-            value={t[opt.prop] as number | undefined}
-            onCommit={(n) => onChange({ ...t, [opt.prop]: n })}
-          />
-        );
-      })}
+      {/* One control per declared parameter, through the SAME dispatch the
+          opaque-bag editor uses (`renderParamControl`). Until Task 1.1 this was
+          a second, hand-written switch over a second vocabulary — which is how
+          burn's `mask`/`glowColor` ended up with no control on either path. */}
+      {subOptionsFor(kind).map((opt) =>
+        renderParamControl({
+          field: opt,
+          value: t[opt.prop],
+          onCommit: (v) => onChange({ ...t, [opt.prop]: v }),
+          accentSlots,
+        }),
+      )}
       {kindNeedsFrames(kind) && (
         <NumberField
           lbl="Length (frames)"
@@ -342,10 +416,12 @@ function EffectEditor({
   eff,
   fields,
   onPatch,
+  accentSlots,
 }: {
   eff: Record<string, unknown>;
   fields?: readonly ParamField[];
   onPatch: (patch: Record<string, unknown>) => void;
+  accentSlots?: readonly AccentSlot[];
 }) {
   const type = eff.type as string;
   const num = (k: string) => (typeof eff[k] === 'number' ? (eff[k] as number) : undefined);
@@ -391,7 +467,7 @@ function EffectEditor({
     );
   }
   const { type: _t, ...params } = eff;
-  return <ParamFields values={params} fields={fields} onPatch={onPatch} />;
+  return <ParamFields values={params} fields={fields} onPatch={onPatch} accentSlots={accentSlots} />;
 }
 
 const seekBtn: React.CSSProperties = { ...input, cursor: 'pointer', marginBottom: 10, width: 'auto', padding: '4px 10px' };
@@ -555,6 +631,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                 values={props}
                 fields={declared}
                 onPatch={(patch) => patchItem('video', id, { props: { ...props, ...patch } })}
+                accentSlots={accentSlots}
               />
             </>
           );
@@ -585,6 +662,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                 <EffectEditor
                   eff={eff as Record<string, unknown>}
                   fields={effectDefinition(meta, type)?.params}
+                  accentSlots={accentSlots}
                   onPatch={(patch) =>
                     patchItem('video', id, { effects: v.effects!.map((e, j) => (j === i ? { ...(e as Record<string, unknown>), ...patch } : e)) })
                   }
@@ -687,7 +765,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
               )}
               {/* Undeclared leftovers surface only once something IS declared —
                   a kind with no declaration keeps exactly today's inspector. */}
-              {declared.length > 0 && <ParamFields values={values} fields={declared} onPatch={patchContent} />}
+              {declared.length > 0 && <ParamFields values={values} fields={declared} onPatch={patchContent} accentSlots={accentSlots} />}
             </>
           );
         })()}

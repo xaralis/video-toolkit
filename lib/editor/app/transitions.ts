@@ -23,6 +23,9 @@ export {
   kindNeedsFrames,
   subOptionsFor,
   defaultTransition,
+  // `SubOption`/`SubOptionChoice` are now deprecated aliases of the ONE shared
+  // descriptor (Phase 4 Task 1.1). Kept exported so existing importers resolve;
+  // new code should say `ParamField` / `ParamChoice`.
   type SubOption,
   type SubOptionChoice,
   type Transition,

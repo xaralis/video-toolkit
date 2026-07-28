@@ -59,6 +59,7 @@ import {
   type TransitionRecord,
 } from '@video-toolkit/lib/render/at-cut-transitions';
 import type { AccentSlot } from '@video-toolkit/lib/theming/palette';
+import { paramChoices, type ParamOption } from '@video-toolkit/lib/reel-config-base/param-field';
 
 const KINDS = TRANSITION_CATALOG.map((e) => e.kind);
 const DIMS = { width: 1080, height: 1920 };
@@ -100,8 +101,16 @@ function shapeFor(kind: string): Record<string, LooseZod> {
 /** A value inside the field's own bounds, deliberately NOT the presentation's
  *  own default, so "the param arrived" is distinguishable from "the default
  *  happened to match". */
-function probeValueFor(kind: string, prop: string, control: 'enum' | 'number' | 'boolean', options?: { value: string }[]): unknown {
-  if (control === 'enum') return options![options!.length - 1].value;
+function probeValueFor(
+  kind: string,
+  prop: string,
+  control: 'enum' | 'number' | 'boolean',
+  options?: readonly ParamOption[],
+): unknown {
+  if (control === 'enum') {
+    const choices = paramChoices(options)!;
+    return choices[choices.length - 1].value;
+  }
   if (control === 'boolean') return false; // every optional boolean defaults to true
   const num = unwrap(shapeFor(kind)[prop]);
   const min = num.minValue;
@@ -117,8 +126,12 @@ function probeTransitionFor(kind: TransitionKind): { transition: Transition; pro
   const t = defaultTransition(kind) as Record<string, unknown>;
   const probes: Record<string, unknown> = {};
   for (const opt of subOptionsFor(kind)) {
-    if (opt.kind === 'accent') continue; // covered by the palette test below
-    const v = probeValueFor(kind, opt.prop, opt.kind, opt.options);
+    // `accent` is covered by the palette test below. `string`/`color` are
+    // brand-supplied assets (burn's mask path, its glow hex) with no
+    // in-bounds probe value to invent — they became sub-options in Phase 4
+    // Task 1.1 and are pinned by the editor tests, not by this render probe.
+    if (opt.type === 'accent' || opt.type === 'string' || opt.type === 'color') continue;
+    const v = probeValueFor(kind, opt.prop, opt.type as 'enum' | 'number' | 'boolean', opt.options);
     t[opt.prop] = v;
     probes[opt.prop] = v;
   }

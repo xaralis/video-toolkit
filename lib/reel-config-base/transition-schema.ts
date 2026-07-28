@@ -42,6 +42,7 @@
 //
 // 30 fps assumption baked into copy text ("30 frames = 1 sec").
 import { z } from 'zod';
+import type { ParamChoice, ParamField } from './param-field';
 
 export const TransitionFrames = z
   .number()
@@ -63,18 +64,29 @@ const Direction4 = z.enum(['left', 'right', 'up', 'down']);
 // the marked instance's own `describe` so every clone it produces (in any
 // chain, any order, any depth) gets added to the set too.
 const ACCENT_SCHEMAS = new WeakSet<z.ZodTypeAny>();
+const COLOR_SCHEMAS = new WeakSet<z.ZodTypeAny>();
 
-function markAsAccentKey<T extends z.ZodTypeAny>(schema: T): T {
-  ACCENT_SCHEMAS.add(schema);
-  const originalDescribe = schema.describe.bind(schema);
-  // Cast through `unknown`: the patched method's real signature (returning
-  // whatever `originalDescribe` returns, marked) is narrower than the base
-  // `describe(description: string): this` zod declares, which is all the
-  // rest of this module ever calls it through.
-  (schema as z.ZodTypeAny).describe = ((description: string) =>
-    markAsAccentKey(originalDescribe(description))) as unknown as z.ZodTypeAny['describe'];
-  return schema;
+/** Marks `schema` (and every clone `.describe()` makes of it, at any depth) as
+ *  a member of `set`. Factored out of `markAsAccentKey` when `ColorHex` needed
+ *  the same trick: two hand-written copies of a describe-patching recursion is
+ *  exactly how the `.describe()`-then-`.optional()` bug got in the first time. */
+function marker(set: WeakSet<z.ZodTypeAny>): <T extends z.ZodTypeAny>(schema: T) => T {
+  const mark = <T extends z.ZodTypeAny>(schema: T): T => {
+    set.add(schema);
+    const originalDescribe = schema.describe.bind(schema);
+    // Cast through `unknown`: the patched method's real signature (returning
+    // whatever `originalDescribe` returns, marked) is narrower than the base
+    // `describe(description: string): this` zod declares, which is all the
+    // rest of this module ever calls it through.
+    (schema as z.ZodTypeAny).describe = ((description: string) =>
+      mark(originalDescribe(description))) as unknown as z.ZodTypeAny['describe'];
+    return schema;
+  };
+  return mark;
 }
+
+const markAsAccentKey = marker(ACCENT_SCHEMAS);
+const markAsColor = marker(COLOR_SCHEMAS);
 
 /**
  * A BRAND accent-slot key — the brand-neutral way for a core schema to name a
@@ -95,6 +107,18 @@ function markAsAccentKey<T extends z.ZodTypeAny>(schema: T): T {
 export const AccentKey = markAsAccentKey(
   z.string().describe('Brand accent-slot key (see the brand theme’s accentSlots); resolved to a hex at render time.'),
 );
+
+/**
+ * A LITERAL colour (a hex string), as opposed to `AccentKey`'s indirection
+ * through the brand palette. Recognised by set membership for exactly the same
+ * reason: to zod both are `z.string()`, and so is burn's `mask` file path.
+ *
+ * Validation is deliberately unchanged from the plain `z.string()` it replaces
+ * — this marks the field for the EDITOR (it gets a colour control instead of a
+ * plain text box), it does not start rejecting values that used to parse.
+ * Derive from this constant; never re-declare an equivalent `z.string()`.
+ */
+export const ColorHex = markAsColor(z.string().describe('A literal colour (hex).'));
 
 /** One entry in the catalog: the kind's zod member plus the presentation
  *  metadata the zod schema cannot express (a human label, and the seed values
@@ -177,11 +201,12 @@ const CATALOG = catalog(
       kind: z.literal('burn'),
       frames: TransitionFrames,
       // Optional brand-supplied look: cloud mask image, hot-edge glow colour, and
-      // burn-edge shaping. Absent mask → plain opacity reveal. The two string
-      // fields get no editor control (no free-text sub-option kind exists — see
-      // subOptionsFor); the two numbers do.
+      // burn-edge shaping. Absent mask → plain opacity reveal. All four are
+      // editable as of Phase 4 Task 1.1: `mask` as text, `glowColor` as a colour
+      // (hence `ColorHex`, not a bare string — see subOptionForField), the two
+      // numbers as numeric fields.
       mask: z.string().optional().describe('Cloud-texture mask image (staticFile path).'),
-      glowColor: z.string().optional().describe('Hot burn-edge glow colour (hex).'),
+      glowColor: ColorHex.optional().describe('Hot burn-edge glow colour (hex).'),
       edgeContrast: z.number().optional().describe('Burn-edge hardness. Default 14.'),
       glowBand: z.number().optional().describe('Glow lead distance in luma. Default 0.1.'),
     }),
@@ -455,26 +480,22 @@ export function kindNeedsFrames(kind: string): boolean {
   return e ? 'frames' in e.schema.shape : kind !== 'cut';
 }
 
-/** A single enum option (value + human label) for a `subOptionsFor` field. */
-export interface SubOptionChoice {
-  value: string;
-  label: string;
-}
+/** @deprecated Alias of `ParamChoice`. The transition axis and the effect axis
+ *  share ONE vocabulary as of Phase 4 Task 1.1; this name survives only so the
+ *  re-export in `lib/editor/app/transitions.ts` keeps resolving. */
+export type SubOptionChoice = ParamChoice;
 
-/** Describes one contextual control a transition kind needs beyond `frames`.
- *  `enum` → dropdown (see `options`), `number` → numeric field, `boolean` →
- *  checkbox, `accent` → dropdown over the BRAND's accent slots. Anything else
- *  in a member's shape gets no control (see `subOptionsFor`).
+/** @deprecated Alias of `ParamField` — see `./param-field.ts`.
  *
- *  `accent` is the one kind that carries no `options`: core doesn't know the
- *  brand's palette, so the editor fills the choices from the accentSlots it
- *  was handed. */
-export interface SubOption {
-  prop: string;
-  label: string;
-  kind: 'enum' | 'number' | 'boolean' | 'accent';
-  options?: SubOptionChoice[];
-}
+ *  This interface used to be the transition axis' OWN parameter vocabulary
+ *  (`enum | number | boolean | accent`, options as `{value,label}[]`), separate
+ *  from and incompatible with the effect axis' `ParamField`
+ *  (`number | string | boolean`, options as `string[]`). Neither was a superset,
+ *  which is why burn's `mask` and `glowColor` had no control on EITHER path.
+ *  Task 1.1 merged them; the field formerly called `kind` here is `type` on the
+ *  merged descriptor, matching the effect axis' spelling and freeing `kind` for
+ *  what it means everywhere else in this file. */
+export type SubOption = ParamField;
 
 // Unwraps ZodOptional/ZodDefault so a field's underlying type is inspectable.
 function innerType(t: z.ZodTypeAny): z.ZodTypeAny {
@@ -507,12 +528,42 @@ const VALUE_LABELS: Record<string, string> = {
   'br-tl': 'Bottom-right → top-left',
 };
 
+// The schema's own bounds, as NLE parameter metadata. `minValue`/`maxValue` are
+// null on an unbounded number, and a `.min()` with no `.max()` yields one of
+// each — so each is emitted independently, and neither key appears when the
+// schema does not constrain it.
+function numericBounds(t: z.ZodNumber): Pick<ParamField, 'min' | 'max'> {
+  const out: Pick<ParamField, 'min' | 'max'> = {};
+  const { minValue, maxValue } = t;
+  if (typeof minValue === 'number' && Number.isFinite(minValue)) out.min = minValue;
+  if (typeof maxValue === 'number' && Number.isFinite(maxValue)) out.max = maxValue;
+  return out;
+}
+
+// The schema's declared fallback, when it has one. Read off the OUTERMOST
+// ZodDefault rather than the unwrapped inner type, since that is where zod
+// stores it. Informational only — nothing writes it into a config.
+function declaredDefault(field: z.ZodTypeAny): Pick<ParamField, 'default'> {
+  let cur: z.ZodTypeAny = field;
+  while (cur instanceof z.ZodOptional) cur = cur._def.innerType;
+  if (cur instanceof z.ZodDefault) return { default: cur._def.defaultValue() };
+  return {};
+}
+
 /**
  * The control ONE schema field maps to, or `null` when the field gets no
  * control. Enums become dropdowns over exactly the schema's options; numbers
- * become numeric fields; booleans become checkboxes. Every other type —
- * notably burn's `mask`/`glowColor` strings — is skipped: there is no free-text
- * sub-option control, and those two are brand-supplied rather than hand-tuned.
+ * become numeric fields (carrying the schema's own min/max); booleans become
+ * checkboxes; strings become text, or a colour swatch when the schema says the
+ * string is a colour. Only genuinely unrenderable shapes — a nested object, a
+ * record, an array — still map to `null`.
+ *
+ * CHANGED IN PHASE 4 (Task 1.1). Strings used to return `null`: the transition
+ * axis' vocabulary had no `string` member, so burn's `mask` and `glowColor` —
+ * real, authored-in-config properties — had no control anywhere in the editor.
+ * The merged `ParamField` has one, and the `z.ZodString` branch below is what
+ * makes those two renderable. That branch IS the capability; the tests that
+ * cover it are the ones that go red when it is removed.
  *
  * Exported (rather than inlined into `subOptionsFor`) so the mapping can be
  * pinned by test for a field SHAPE no catalog kind carries yet — the boolean
@@ -520,24 +571,30 @@ const VALUE_LABELS: Record<string, string> = {
  * land, and a rule that only becomes testable after something depends on it is
  * a rule that gets discovered broken.
  */
-export function subOptionForField(prop: string, field: z.ZodTypeAny): SubOption | null {
+export function subOptionForField(prop: string, field: z.ZodTypeAny): ParamField | null {
   const t = innerType(field);
   const label = PROP_LABELS[prop] ?? humanize(prop);
+  const def = declaredDefault(field);
   // Set membership, not shape: an accent key IS a string, and so is burn's
-  // `mask`. Only a schema derived from the shared `AccentKey` (see
-  // `ACCENT_SCHEMAS`/`markAsAccentKey` above) means "pick one of the brand's slots".
-  if (ACCENT_SCHEMAS.has(t)) return { prop, label, kind: 'accent' };
+  // `mask`, and so is its `glowColor`. Only a schema derived from the shared
+  // `AccentKey` / `ColorHex` instances (see `ACCENT_SCHEMAS` / `COLOR_SCHEMAS`
+  // above) means "a brand palette slot" / "a literal colour"; everything else
+  // that is a string is just a string.
+  if (ACCENT_SCHEMAS.has(t)) return { prop, label, type: 'accent', ...def };
+  if (COLOR_SCHEMAS.has(t)) return { prop, label, type: 'color', ...def };
   if (t instanceof z.ZodEnum) {
     const values = (t as z.ZodEnum<[string, ...string[]]>).options;
     return {
       prop,
       label,
-      kind: 'enum',
+      type: 'enum',
       options: values.map((value) => ({ value, label: VALUE_LABELS[value] ?? humanize(value) })),
+      ...def,
     };
   }
-  if (t instanceof z.ZodNumber) return { prop, label, kind: 'number' };
-  if (t instanceof z.ZodBoolean) return { prop, label, kind: 'boolean' };
+  if (t instanceof z.ZodNumber) return { prop, label, type: 'number', ...numericBounds(t), ...def };
+  if (t instanceof z.ZodBoolean) return { prop, label, type: 'boolean', ...def };
+  if (t instanceof z.ZodString) return { prop, label, type: 'string', ...def };
   return null;
 }
 
@@ -547,10 +604,10 @@ export function subOptionForField(prop: string, field: z.ZodTypeAny): SubOption 
  *
  *  `kind` and `frames` are excluded (the picker renders those itself); every
  *  other field goes through `subOptionForField`. */
-export function subOptionsFor(kind: string): SubOption[] {
+export function subOptionsFor(kind: string): ParamField[] {
   const e = entryFor(kind);
   if (!e) return [];
-  const out: SubOption[] = [];
+  const out: ParamField[] = [];
   for (const [prop, field] of Object.entries(e.schema.shape)) {
     if (prop === 'kind' || prop === 'frames') continue;
     const opt = subOptionForField(prop, field as z.ZodTypeAny);
