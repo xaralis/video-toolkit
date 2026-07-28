@@ -1,6 +1,6 @@
 // lib/theming/transitions — the TRANSITION extension axis.
 //
-// The sixth axis, and the last one to get a registry. Until Phase 4 a
+// The last extension axis to get a registry. Until Phase 4 a
 // transition resolved through a module-private table in
 // lib/render/at-cut-transitions.tsx with NO theme surface at all: a brand that
 // wanted its own look had to edit three core files, which is how `fade-coal`

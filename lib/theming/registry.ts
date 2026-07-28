@@ -51,8 +51,8 @@ export type Registry<P, R = React.FC<P>> = Record<string, Registration<P, R>>;
  *  `R` (the renderer TYPE) is a parameter, defaulting to `React.FC<P>`, because
  *  the TRANSITION axis' renderer is not a component: it returns a
  *  `{ component, props }` presentation for `AtCutTransition` to drive, which is
- *  not a `ReactNode` and so cannot be an FC. Four axes take the default; the
- *  fifth supplies its own. The RULE below is untouched by that — which is the
+ *  not a `ReactNode` and so cannot be an FC. Every other axis takes the
+ *  default; the transition axis supplies its own. The RULE below is untouched by that — which is the
  *  point, since a sixth bespoke lookup is exactly what this module exists to
  *  prevent. */
 export function resolveRegistered<P, R>(

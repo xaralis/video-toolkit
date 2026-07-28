@@ -145,8 +145,8 @@ const CORE_TRANSITIONS: Record<string, TransitionRenderer> = Object.fromEntries(
 // THE BRAND TIER LIVES IN THE `resolveRegistered` CALL BELOW. That one line is
 // the whole of what this task added: brand registration wins, core's generic
 // sits beneath it, and a registration carrying only `config` falls through to
-// the generic rather than masking it — the same rule the other five axes use,
-// not a sixth bespoke lookup.
+// the generic rather than masking it — the same rule every other extension
+// axis uses, not a bespoke lookup of its own.
 export function presentationFor(t: TransitionRecord | undefined, dims: Dims): AnyPresentation | null {
   if (!t) return null;
   // The index is deliberately widened to `string` before the lookup: `t.kind` is
