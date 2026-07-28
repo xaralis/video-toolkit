@@ -1,8 +1,18 @@
+import type React from 'react';
 import { describe, it, expect } from 'vitest';
 import { resolveRegistered, registrationConfig, type Registration } from '@video-toolkit/lib/theming/registry';
 
-const Generic = () => null;
-const Brand = () => null;
+// ANNOTATED as components, not left as bare `() => null`. Phase 4 Task 1.2 made
+// the RENDERER TYPE a parameter of `resolveRegistered` (the transition axis'
+// renderer returns a presentation object, which cannot be a React.FC), so the
+// renderer type is now inferred from the arguments instead of being pinned to
+// `React.FC<P>`. A bare `() => null` in the generics table would infer the
+// zero-arg type and then reject the `Registration<unknown>` fixtures below,
+// which are the real shape. Every real core generics table is explicitly typed
+// (`Record<string, OverlayRenderer>` and friends), so this only ever bit the
+// ad-hoc literals here.
+const Generic: React.FC<unknown> = () => null;
+const Brand: React.FC<unknown> = () => null;
 
 // Registration is deliberately CLOSED (no index signature), so a typo'd
 // `renderer` is a compile error rather than a brand renderer that silently

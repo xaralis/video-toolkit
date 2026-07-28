@@ -7,6 +7,7 @@ import type { AccentSlot } from './palette';
 import type { ThemeTokens } from './tokens';
 import type { Placement } from './placement';
 import type { MediaSourceResolver } from './media-source';
+import type { TransitionRegistry } from './transitions';
 import type { VideoItem, AudioItem, OverlayItem, BrandLayerItem } from '../reel-config-base/layered-schema';
 
 /** The static prop bag every text-overlay renderer receives. Frame-derived
@@ -57,6 +58,13 @@ export interface BrandTheme {
    *  them, core never enumerates them. Absent type → core generic primitive
    *  (grain/scanlines/vignette/grade/transform) → silently skipped. */
   effects?: Registry<EffectRenderProps>;
+  /** ONE open-keyed transition registry. Transition kinds are OPEN as of
+   *  Phase 4 — core's catalog (lib/reel-config-base/transition-schema.ts) is
+   *  core's vocabulary, not THE vocabulary. Absent kind → core's generic
+   *  presentation for that kind → hard cut (plus one dev warning naming the
+   *  kind, from `getTransitionRecord`). Registering a kind here is what makes a
+   *  brand-authored transition render AND what stops it warning. */
+  transitions?: TransitionRegistry;
   /** ONE open-keyed brand-layer registry (watermark / disclaimer / whatever a
    *  brand names). Absent kind → core generic (GenericWatermark /
    *  GenericDisclaimer) → silently skipped. Consumed by

@@ -17,22 +17,34 @@ import {
 import { useCurrentFrame } from 'remotion';
 import { getTransitionRecord, type TransitionRecord } from './transition-record';
 import { resolveAccentColor, type AccentSlot } from '../theming/palette';
+import { resolveRegistered, registrationConfig } from '../theming/registry';
+import type { AnyPresentation, TransitionRegistry, TransitionRenderer } from '../theming/transitions';
 import type { CoreTransition, TransitionKind } from '../reel-config-base/transition-schema';
 
 export { getTransitionRecord, type TransitionRecord };
 
-export type AnyPresentation = { component: React.ComponentType<any>; props: Record<string, unknown> };
+// Re-exported: the type is DEFINED in lib/theming (BrandTheme has to name it,
+// and lib/theming may not import lib/render), but this has been its import path
+// since before the transition axis had a theme surface.
+export type { AnyPresentation, TransitionRegistry, TransitionRenderer, TransitionRenderProps } from '../theming/transitions';
 
 export const DIRECTION_4WAY: Record<string, 'from-left' | 'from-right' | 'from-top' | 'from-bottom'> = {
   left: 'from-left', right: 'from-right', up: 'from-top', down: 'from-bottom',
 };
 
 /** What a presentation may need beyond the transition itself: the composition's
- *  pixel size, and the BRAND's accent palette — the only place a core schema's
- *  colour KEY (see `AccentKey`) can become an actual hex. `palette` is optional
- *  so a renderer that has no theme in scope still composes; a colour key that
- *  can't be resolved simply falls back to the presentation's own neutral. */
-type Dims = { width: number; height: number; palette?: readonly AccentSlot[] };
+ *  pixel size, the BRAND's accent palette — the only place a core schema's
+ *  colour KEY (see `AccentKey`) can become an actual hex — and, since Phase 4,
+ *  the brand's own transition registry. All three are optional so a renderer
+ *  that has no theme in scope still composes: no palette means a colour key
+ *  falls back to the presentation's own neutral, and no registry means core's
+ *  generics are the only tier, exactly as before the axis existed. */
+type Dims = {
+  width: number;
+  height: number;
+  palette?: readonly AccentSlot[];
+  transitions?: TransitionRegistry;
+};
 
 // One renderer per transition kind, keyed by TransitionKind — so the COMPILER
 // demands an entry for every kind in the catalog (lib/reel-config-base/
@@ -106,11 +118,35 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   }) as AnyPresentation,
 };
 
+/** Core's own presentations, adapted to the shared axis signature — ONE prop
+ *  bag in, a presentation out — so they can be the `generics` argument of the
+ *  shared `resolveRegistered`. The per-kind narrowing above is preserved by
+ *  keeping `PRESENTATIONS` as the typed map and wrapping it here: the compiler
+ *  still demands an entry per `TransitionKind`, and each entry still receives
+ *  its own narrowed union member.
+ *
+ *  The cast is the widening of that narrowed parameter back to the axis' open
+ *  `Transition`, and nothing else — a core entry only ever runs for its own
+ *  key, which `PRESENTATIONS`' key type guarantees. */
+const CORE_TRANSITIONS: Record<string, TransitionRenderer> = Object.fromEntries(
+  (Object.entries(PRESENTATIONS) as Array<[string, Renderer<TransitionKind>]>).map(([kind, render]) => [
+    kind,
+    ({ transition, width, height, palette }) =>
+      render(transition as Extract<CoreTransition, { kind: TransitionKind }>, { width, height, palette }),
+  ]),
+);
+
 // `cut`/absent/unrecognised → null (hard cut, no wrap). "Unrecognised" now covers
 // two cases: a hand-edited Root.tsx literal that is not schema-validated, and a
-// BRAND kind that core legitimately has no renderer for. Either way the lookup
-// misses and the boundary is a hard cut; `getTransitionRecord` is what says so
-// out loud (once per kind, in dev).
+// BRAND kind neither core nor the brand's own registry has a renderer for. Either
+// way the lookup misses and the boundary is a hard cut; `getTransitionRecord` is
+// what says so out loud (once per kind, in dev).
+//
+// THE BRAND TIER LIVES IN THE `resolveRegistered` CALL BELOW. That one line is
+// the whole of what this task added: brand registration wins, core's generic
+// sits beneath it, and a registration carrying only `config` falls through to
+// the generic rather than masking it — the same rule the other five axes use,
+// not a sixth bespoke lookup.
 export function presentationFor(t: TransitionRecord | undefined, dims: Dims): AnyPresentation | null {
   if (!t) return null;
   // The index is deliberately widened to `string` before the lookup: `t.kind` is
@@ -121,10 +157,23 @@ export function presentationFor(t: TransitionRecord | undefined, dims: Dims): An
   // schema was closed, no authored kind could reach `Object.prototype`; now any
   // non-core string parses, and `{kind:'constructor', frames:20}` would otherwise
   // return an inherited FUNCTION that this code would then call as a renderer.
+  // It has to gate BOTH tiers: `resolveRegistered` indexes the generics record
+  // directly, so the guard cannot move inside it.
   const kind: string = t.kind;
-  if (!Object.prototype.hasOwnProperty.call(PRESENTATIONS, kind)) return null;
-  const render = (PRESENTATIONS as Record<string, Renderer<TransitionKind> | undefined>)[kind];
-  return render ? render(t as Extract<CoreTransition, { kind: TransitionKind }>, dims) : null;
+  const registry = dims.transitions;
+  const known =
+    Object.prototype.hasOwnProperty.call(CORE_TRANSITIONS, kind) ||
+    (registry !== undefined && Object.prototype.hasOwnProperty.call(registry, kind));
+  if (!known) return null;
+  const render = resolveRegistered(registry, kind, CORE_TRANSITIONS);
+  if (!render) return null;
+  return render({
+    transition: t,
+    width: dims.width,
+    height: dims.height,
+    palette: dims.palette ?? [],
+    config: registrationConfig(registry, kind),
+  });
 }
 
 // Invokes one presentation's component directly (not via TransitionSeries —

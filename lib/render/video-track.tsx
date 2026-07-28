@@ -11,6 +11,7 @@ import { Sequence } from 'remotion';
 import { AtCutTransition, presentationFor } from './at-cut-transitions';
 import { computeVideoLayout, type VideoLayoutEntry } from './video-track-layout';
 import type { AccentSlot } from '../theming/palette';
+import type { TransitionRegistry } from '../theming/transitions';
 import type { VideoItem } from '../reel-config-base/layered-schema';
 
 export { computeVideoLayout, type VideoLayoutEntry };
@@ -30,10 +31,19 @@ export function buildVideoNodes(
      *  colour by KEY rather than by hex (today: `wipe`). Optional — omitting it
      *  just means those presentations fall back to their own neutral. */
     palette?: readonly AccentSlot[];
+    /** The brand's transition registry (`BrandTheme.transitions`), threaded the
+     *  same narrow way `palette` is — one typed field, not the whole theme.
+     *  Absent → core's generic presentations are the only tier, exactly as
+     *  before the axis existed. */
+    transitions?: TransitionRegistry;
   },
 ): React.ReactNode[] {
-  const layout = computeVideoLayout(items, opts.fps);
-  const dims = { width: opts.width, height: opts.height, palette: opts.palette };
+  // The registry's KEYS are also the set of kinds the unrecognised-kind warning
+  // must stay quiet about. A Set because `declaredByBrand` reads it once per
+  // rendered frame per boundary and takes the allocation-free path for one.
+  const brandKinds = opts.transitions ? new Set(Object.keys(opts.transitions)) : undefined;
+  const layout = computeVideoLayout(items, opts.fps, { brandKinds });
+  const dims = { width: opts.width, height: opts.height, palette: opts.palette, transitions: opts.transitions };
 
   return items.map((item, i) => {
     const entry = layout[i];

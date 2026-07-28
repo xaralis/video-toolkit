@@ -116,6 +116,11 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
     fps,
     // Lets a transition name a colour by brand accent-slot key (see `wipe`).
     palette: theme.accentSlots,
+    // The brand's own transition kinds: what makes them RENDER (resolved above
+    // core's generics by presentationFor) and what stops them warning as
+    // unrecognised. Same narrow threading as `palette` — the theme itself does
+    // not go down.
+    transitions: theme.transitions,
     renderItem: (item, handles) =>
       renderVideoItemNode(theme, item, handles, {
         anchoredOverlays: anchored.get(item.id) ?? [],

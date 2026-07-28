@@ -44,6 +44,13 @@ export type {
   CompositionTheme,
 } from './types';
 export { overlayRegistry, resolveOverlayRenderer, overlayConfig, resolveVideoRenderer, videoConfig } from './brand-theme';
+export type {
+  AnyPresentation,
+  TransitionRenderProps,
+  TransitionRenderer,
+  TransitionRegistration,
+  TransitionRegistry,
+} from './transitions';
 export {
   resolveEffectRenderer,
   effectConfig,

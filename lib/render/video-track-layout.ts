@@ -9,7 +9,7 @@
 // `remotion` and `@remotion/transitions` (4.0.498, lib/editor/package.json),
 // and a Remotion-importing module tests fine under `vi.mock('remotion')` —
 // see lib/editor/src/at-cut-transitions.test.tsx.
-import { getTransitionRecord, type TransitionRecord } from './transition-record';
+import { getTransitionRecord, type TransitionRecord, type TransitionRecordOptions } from './transition-record';
 
 export interface VideoLayoutEntry {
   index: number;
@@ -35,6 +35,7 @@ export interface VideoLayoutEntry {
 export function computeVideoLayout(
   items: Array<{ startMs: number; endMs: number; transitionIn?: unknown; transitionOut?: unknown }>,
   fps: number,
+  opts: TransitionRecordOptions = {},
 ): VideoLayoutEntry[] {
   const msToFrames = (ms: number) => Math.round((ms / 1000) * fps);
 
@@ -47,10 +48,16 @@ export function computeVideoLayout(
     const isLast = i === items.length - 1;
     const prev = items[i - 1];
 
+    // `opts` carries the brand's declared transition kinds (and the warn sink).
+    // FEEDING IT IS NOT OPTIONAL POLISH: this is the only production call site
+    // of `getTransitionRecord`, so an unfed `brandKinds` means every
+    // brand-registered kind warns as unrecognised on the very reels it renders
+    // correctly — a warning that cries wolf is a warning nobody reads when the
+    // real typo arrives.
     const inRecord = isFirst
-      ? getTransitionRecord(item.transitionIn as Record<string, unknown> | undefined)
-      : getTransitionRecord(prev?.transitionOut as Record<string, unknown> | undefined);
-    const outRecord = getTransitionRecord(item.transitionOut as Record<string, unknown> | undefined);
+      ? getTransitionRecord(item.transitionIn as Record<string, unknown> | undefined, opts)
+      : getTransitionRecord(prev?.transitionOut as Record<string, unknown> | undefined, opts);
+    const outRecord = getTransitionRecord(item.transitionOut as Record<string, unknown> | undefined, opts);
     const inFrames = inRecord ? Number(inRecord.frames) || 0 : 0;
     const outFrames = outRecord ? Number(outRecord.frames) || 0 : 0;
 

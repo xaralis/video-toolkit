@@ -17,8 +17,12 @@ import { warnOnce, type WarnOnceOptions } from './warn-once';
 export type TransitionRecord = Exclude<Transition, { kind: 'cut' }>;
 
 /** The set of kinds this gate should treat as "known" beyond core's catalog —
- *  a brand's own registry keys. Task 1.2 wires `BrandTheme.transitions` in here;
- *  until then every non-core kind is unrecognised and warns. */
+ *  a brand's own registry keys. FED IN PRODUCTION as of Phase 4 Task 1.2:
+ *  `buildVideoNodes` derives it from `BrandTheme.transitions` and hands it to
+ *  `computeVideoLayout`, which is the only production caller of the gate. If
+ *  that thread is ever cut, every brand-registered kind starts warning on reels
+ *  that render it perfectly well — and a warning that cries wolf is worthless
+ *  for the typo it exists to catch. */
 export interface TransitionRecordOptions extends WarnOnceOptions {
   brandKinds?: Iterable<string>;
 }

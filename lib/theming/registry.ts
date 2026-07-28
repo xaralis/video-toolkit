@@ -34,35 +34,43 @@ export { paramChoices } from '../reel-config-base/param-field';
  *  from the render into the core generic with no signal — the exact silent
  *  brand regression Phase 3 exists to close. Fresh object literals that carry a
  *  per-axis field must be typed as that superset. */
-export interface Registration<P> {
+export interface Registration<P, R = React.FC<P>> {
   /** The renderer for this kind. Absent = routing-only (the owning body draws it). */
-  renderer?: React.FC<P>;
+  renderer?: R;
   /** Opaque brand config, threaded to the renderer as `config`. */
   config?: unknown;
   /** Declared editable fields — what makes a brand kind editable without core UI. */
   params?: readonly ParamField[];
 }
 
-export type Registry<P> = Record<string, Registration<P>>;
+export type Registry<P, R = React.FC<P>> = Record<string, Registration<P, R>>;
 
 /** THE resolution order for every axis: brand registration wins, core generic
- *  beneath. Returns undefined only when neither has the kind. */
-export function resolveRegistered<P>(
-  registry: Registry<P> | undefined,
+ *  beneath. Returns undefined only when neither has the kind.
+ *
+ *  `R` (the renderer TYPE) is a parameter, defaulting to `React.FC<P>`, because
+ *  the TRANSITION axis' renderer is not a component: it returns a
+ *  `{ component, props }` presentation for `AtCutTransition` to drive, which is
+ *  not a `ReactNode` and so cannot be an FC. Four axes take the default; the
+ *  fifth supplies its own. The RULE below is untouched by that — which is the
+ *  point, since a sixth bespoke lookup is exactly what this module exists to
+ *  prevent. */
+export function resolveRegistered<P, R>(
+  registry: Registry<P, R> | undefined,
   kind: string,
-  generics: Record<string, React.FC<P>>,
-): React.FC<P> | undefined {
+  generics: Record<string, R>,
+): R | undefined {
   return registry?.[kind]?.renderer ?? generics[kind];
 }
 
 /** The opaque brand config registered for a kind (undefined when none). */
-export function registrationConfig<P>(registry: Registry<P> | undefined, kind: string): unknown {
+export function registrationConfig<P, R>(registry: Registry<P, R> | undefined, kind: string): unknown {
   return registry?.[kind]?.config;
 }
 
 /** The editable fields declared for a kind (undefined when none). */
-export function registrationParams<P>(
-  registry: Registry<P> | undefined,
+export function registrationParams<P, R>(
+  registry: Registry<P, R> | undefined,
   kind: string,
 ): readonly ParamField[] | undefined {
   return registry?.[kind]?.params;
