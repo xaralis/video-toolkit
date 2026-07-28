@@ -51,6 +51,7 @@ vi.mock('remotion', async () => {
 
 import { useCurrentFrame } from 'remotion';
 import { buildVideoNodes } from '@video-toolkit/lib/render/video-track';
+import { resetWarnOnce } from '@video-toolkit/lib/render/warn-once';
 import type { TransitionNodeProps, TransitionRegistry } from '@video-toolkit/lib/theming/transitions';
 import type { VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
@@ -186,5 +187,46 @@ describe('the boundary owns its window, the clips do not', () => {
       seen.push(calls[0]?.progress);
     }
     expect(seen).toEqual([0, 0.5, 1]);
+  });
+});
+
+// A clip shorter than its own in+out transition windows is claimed by TWO
+// boundaries at once, so it is composited twice where they overlap. The real
+// fix is Task 1.4's (it re-times the windows for `alignment` anyway); until
+// then the failure mode is a double image with nothing to explain it, so core
+// says so out loud. Diagnostic only — it must not change what renders.
+describe('overlapping boundaries are diagnosed, not silently double-drawn', () => {
+  const short = () => [
+    // 300ms = 9 frames, with a 10-frame transition on BOTH edges: the leading
+    // window is [0,10] and the trailing one [-1,9], which overlap.
+    clip('tiny', 0, 300, { transitionIn: spyT(), transitionOut: spyT() }),
+  ];
+
+  beforeEach(() => resetWarnOnce());
+
+  it('warns once, naming the item and both overlapping windows', () => {
+    const warned: string[] = [];
+    const spy = vi.spyOn(console, 'warn').mockImplementation((m: string) => void warned.push(m));
+    try {
+      draw(short(), 5);
+      draw(short(), 6); // a second frame of the same render must NOT warn again
+    } finally {
+      spy.mockRestore();
+    }
+    expect(warned).toHaveLength(1);
+    expect(warned[0]).toContain('"tiny"');
+    expect(warned[0]).toContain('[0, 10]');
+    expect(warned[0]).toContain('[-1, 9]');
+  });
+
+  it('stays quiet for a clip that comfortably fits its transitions', () => {
+    const warned: string[] = [];
+    const spy = vi.spyOn(console, 'warn').mockImplementation((m: string) => void warned.push(m));
+    try {
+      draw([clip('roomy', 0, 2000, { transitionIn: spyT(), transitionOut: spyT() })], 30);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(warned).toEqual([]);
   });
 });

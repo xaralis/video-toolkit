@@ -121,13 +121,40 @@ transition today; when one does, the 1.2 shape remains valid.
 
 **Grade: parity-preserving. No action.**
 
-`projects/pp-program-*/src/WebProgramIntro.tsx` (PP repo, 2 projects) calls
-`presentationFor(t, {width, height, palette})` and feeds the result to
+**SIX call sites, not two.** `grep -rln presentationFor` over the PP repo's
+`projects/` AND `templates/` (roost has none — its only mentions are comments in
+`LayeredRoostReel.tsx`, which goes through `buildVideoNodes`):
+
+| # | file |
+|---|---|
+| 1 | `projects/pp-program-verejny-prostor/src/WebProgramIntro.tsx` |
+| 2 | `projects/pp-program-obvody/src/WebProgramIntro.tsx` |
+| 3 | `projects/pp-program-bydleni/src/WebProgramIntro.tsx` |
+| 4 | `projects/pp-program-mobilita/src/WebProgramIntro.tsx` |
+| 5 | `projects/pp-program-klima/src/WebProgramIntro.tsx` |
+| 6 | **`templates/web-program-intro/src/WebProgramIntro.tsx`** — the template, so every future project inherits it |
+
+Each calls `presentationFor(t, {width, height, palette})` and feeds the result to
 `TransitionSeries.Transition`. That accessor keeps its name, its signature and
-its `{component, props}` return for every core kind, so those projects are
-untouched. It returns `null` for a kind that resolves to a natively two-input
-node — no core kind does yet; Task 2.1 will make four of them do so, and that is
-where this call site needs revisiting.
+its `{component, props}` return for every core kind, so all six are
+untouched **by Task 1.3**. It returns `null` for a kind that resolves to a natively two-input
+node — no core kind does yet.
+
+> ### ⚠ HAZARD FOR TASK 2.1 — silent degradation to hard cuts
+>
+> The moment Task 2.1 makes `checkerboard`, `pixelate`, `scanline-glitch` and
+> `wipe` **native** two-input nodes, `presentationFor` starts returning `null`
+> for those four kinds. All six call sites above then feed `null` to
+> `TransitionSeries.Transition` and those transitions **silently become hard
+> cuts**. There is no type error: the signature is unchanged and `null` is
+> already a legal return.
+>
+> Task 2.1 must therefore migrate all six — not "the two projects" — as part of
+> its own scope. The template (#6) is the one that matters most: leaving it
+> stale reproduces the bug into every project created afterwards. The likely
+> shape is a two-input-aware wrapper for the `TransitionSeries` path, or keeping
+> a lifted one-sided form available for it; either way it is a decision Task 2.1
+> owns, and it cannot be discovered by compiling.
 
 ### 1.3-c `AtCutTransition`'s props CHANGED — breaking, but unused by any brand
 
@@ -162,5 +189,23 @@ at `--repeat=8`. The crossfade underneath is progress-driven and unchanged; only
 the noise pattern moved. `glitch__enter__*` did not move, because at a leading
 edge the boundary and the clip start on the same frame.
 
-Neither brand repo authors a `glitch` transition today (`grep -r "'glitch'"`
-over both `projects/` trees), so no baked cut changes.
+**One baked cut IS affected.** `projects/pp-mov-koalice/src/Root.tsx:76-79`
+authors `transitionOut: { kind: 'glitch', frames: 18 }` on `seg-002`, at a real
+contiguous cut (`seg-002` ends at 6467ms, `seg-003` starts there). That reel's
+noise pattern at that one cut will change when it is next re-rendered; the
+crossfade under it, the timing and every other cut are unaffected. Nothing needs
+editing — this is the graded look change landing where it was always going to
+land — but a re-render of `pp-mov-koalice` is not bit-identical to its last one.
+
+roost authors no `glitch` (`grep -rl glitch` over its `projects/` and
+`templates/` → nothing). No other PP project does either: the only other hit is
+`projects/pp-05-zastupitelsky-klub/src/config/types.ts:15`, a *type* member, not
+an authored transition.
+
+**Method note, because the first pass got this wrong.** The original check was
+`grep -rl glitch <repo>/projects | grep -v node_modules | grep -vE 'toolkit/'`,
+and the last filter silently ate every hit — the repo path itself is
+`…/video-toolkit/projects/…`, so `toolkit/` matches every line. It returned
+nothing and was read as "no brand uses glitch". Any exclusion pattern applied to
+a full path must be anchored (`--exclude-dir=node_modules`, or `grep -v
+'/node_modules/'`), never a bare substring that can match the repo name.

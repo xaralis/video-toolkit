@@ -29,6 +29,7 @@ import React from 'react';
 import { Sequence, useCurrentFrame } from 'remotion';
 import { AtCutTransition, transitionNodeFor } from './at-cut-transitions';
 import { computeVideoLayout, type VideoLayoutEntry } from './video-track-layout';
+import { warnOnce } from './warn-once';
 import type { AccentSlot } from '../theming/palette';
 import type { TransitionRegistry } from '../theming/transitions';
 import type { VideoItem } from '../reel-config-base/layered-schema';
@@ -157,6 +158,30 @@ export function buildVideoNodes(
   for (const b of boundaries) {
     blank(b.fromIndex, b);
     blank(b.toIndex, b);
+  }
+
+  // OVERLAPPING BOUNDARIES — a clip shorter than its own in+out transition
+  // windows is claimed by two boundaries at once, so it is composited TWICE on
+  // the frames they share. The one-sided model had its own pathology here (both
+  // wrappers mid-progress over one Sequence); this one shows up as a double
+  // image, which is a mystery unless something says so. Task 1.4 owns the real
+  // fix — it re-times the windows for `alignment` anyway — so this is a
+  // DIAGNOSTIC, not a guard: it never changes what renders.
+  //
+  // warnOnce because buildVideoNodes runs on every frame of every render (see
+  // warn-once.ts), and the message is a thunk for the same reason.
+  for (const [i, ranges] of blanked) {
+    for (let a = 0; a < ranges.length; a += 1) {
+      for (let b = a + 1; b < ranges.length; b += 1) {
+        if (ranges[a][0] > ranges[b][1] || ranges[b][0] > ranges[a][1]) continue;
+        const abs = (r: Range) => `[${r[0] + layout[i].seqFrom}, ${r[1] + layout[i].seqFrom}]`;
+        warnOnce(`overlapping-boundaries:${items[i].id}`, () =>
+          `[video-toolkit] Video item "${items[i].id}" is shorter than its own transitions: two boundaries ` +
+          `claim overlapping frame windows ${abs(ranges[a])} and ${abs(ranges[b])} (composition frames), so the ` +
+          'clip is composited twice where they meet and may show as a double image. Shorten the transitions or ' +
+          'lengthen the clip. (Warning only; nothing is blocked, and this is reported once per item.)');
+      }
+    }
   }
 
   /** An item's content re-based into the boundary's coordinates. `layout="none"`
