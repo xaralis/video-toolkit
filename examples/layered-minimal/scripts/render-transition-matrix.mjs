@@ -359,7 +359,7 @@ console.log(`${kinds.length} kinds × ${MODES.length} modes × ${PROGRESS.length
 
 const started = Date.now();
 const newFrames = {};
-const results = { ok: 0, minority: 0, near: 0, drift: 0, missing: 0, retried: 0, nondeterministic: 0 };
+const results = { ok: 0, secondHash: 0, near: 0, drift: 0, missing: 0, retried: 0, nondeterministic: 0 };
 const semanticFailures = [];
 const xfail = [];
 const xpass = [];
@@ -489,11 +489,14 @@ for (const kind of kinds) {
           fail(`NO GOLDEN for ${key} — a kind is covered by the matrix but not baselined; run --update-goldens and review the diff`);
         } else {
           results.ok++;
-          // A cell with two accepted hashes matched one of them. Counted so the
-          // summary shows how often the recorded second attractor is actually
-          // being exercised — a bimodal cell whose second hash never comes up is
-          // what `--audit-bimodal` exists to catch.
-          if (v.accepted > 1) results.minority++;
+          // Count matches on the cell's SECOND recorded hash — `matchedIndex`,
+          // not `accepted`. An earlier version incremented on ANY accepted match
+          // on a bimodal cell, which made the number a constant (16 on every full
+          // sweep) dressed up as a measurement, and printed a false summary line
+          // on every single run. It is a measurement now: it varies run to run,
+          // and a bimodal cell whose second hash never comes up is what
+          // `--audit-bimodal` exists to catch.
+          if (v.matchedIndex === 1) results.secondHash++;
         }
       }
 
@@ -613,7 +616,11 @@ if (UPDATE) {
     console.log(`\nNOT writing goldens: this run recorded ${problems.length} failure(s). Fix them, then re-baseline.`);
   } else {
     const next = {
-      $comment: goldens.$comment ?? DEFAULT_COMMENT,
+      // Unconditional, NOT `goldens.$comment ?? …`. With the `??` the constant was
+      // dead the moment the file had a comment at all, so a corrected description
+      // shipped in source while the committed artifact — the thing a reviewer reads
+      // first — went on documenting a mechanism that no longer existed.
+      $comment: DEFAULT_COMMENT,
       generatedBy: 'examples/layered-minimal/scripts/render-transition-matrix.mjs --update-goldens',
       probe: {
         width: refEntry.comp.width,
@@ -643,7 +650,7 @@ if (UPDATE) {
 console.log(`\n${n} stills in ${elapsed.toFixed(0)}s → ${path.relative(ROOT, OUT)}`);
 if (!UPDATE)
   console.log(
-    `goldens: ${results.ok} accepted (${results.minority} on a bimodal cell's second hash), ` +
+    `goldens: ${results.ok} accepted (${results.secondHash} matched a bimodal cell's SECOND recorded hash), ` +
       `${results.near} same-picture-different-bytes, ${results.drift} drifted, ` +
       `${results.missing} missing, ${results.retried} retried`,
   );

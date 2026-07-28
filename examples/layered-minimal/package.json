@@ -1,7 +1,7 @@
 {
   "name": "layered-minimal",
   "version": "1.0.0",
-  "description": "Minimal layered reel \u2014 CompositionTheme + LayeredReel + LayeredReelComposition, no API keys",
+  "description": "Minimal layered reel — CompositionTheme + LayeredReel + LayeredReelComposition, no API keys",
   "scripts": {
     "studio": "npx remotion studio",
     "render": "npx remotion render src/index.ts MinimalReel out/reel.mp4",
