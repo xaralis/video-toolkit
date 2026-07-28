@@ -318,3 +318,48 @@ transition field renders as. If it degrades the whole segment editor rather
 than just that field, that is worth knowing before more schemas move to
 non-discriminated shapes. Core's own reel editor is unaffected — it does not use
 Remotion's sidebar.
+
+## Task 1.5 — `enabled`, `config`, one `cut` constant
+
+### 1.5-a `enabled` on effects and transitions — PARITY-PRESERVING (no action)
+
+Both axes gained an optional per-node `enabled`. **Absent means enabled**, and
+every baked `defaultProps` literal in both brand repos omits the field, so
+nothing changes for either brand until someone opts in. Verified by the pixel
+harness (`300 accepted … 0 drifted`) and the 5-frame `MinimalReel` still check —
+frame 45 still hashes `7c1512ed…`.
+
+What a brand GETS, for free, on the next submodule pin bump:
+
+```ts
+effects: [{ type: 'grain', enabled: false, opacity: 0.3 }]   // skipped, params kept
+transitionOut: { kind: 'wipe', frames: 20, enabled: false }  // hard cut, params kept
+```
+
+A disabled transition also stops lending handle frames, so the two clips return
+to their authored positions — the same layout as `{ kind: 'cut' }`, which is
+what a disabled transition should look like.
+
+**Type note, not a migration:** `Effect` gains an optional `enabled?: boolean`
+and `Transition` gains it via `TransitionTimingSchema`. Both are optional
+additions to types brands only ever read, so no brand code needs to change.
+
+### 1.5-b `transitionConfig` — PURELY ADDITIVE (no action)
+
+The transition axis now has the theme-level config accessor the other three had
+(`transitionConfig(theme, kind)`, exported from `lib/theming`). Nothing existing
+called anything else — the render path resolves config off the registry directly
+and still does.
+
+### 1.5-c `videoConfig` routed through `registrationConfig` — NO BEHAVIOUR CHANGE
+
+It was the one accessor of four that restated `theme.video?.[kind]?.config`
+inline. Routing it through the shared helper is a de-duplication only; a test
+now pins all four axes answering identically for a registered config, a
+config-less registration, and an absent registry. No brand is affected.
+
+### 1.5-d `CUT_KIND` / `isCut` — INTERNAL (no action)
+
+Seven independently written `kind === 'cut'` checks collapsed onto one exported
+predicate. Brands author the string `'cut'` in their `defaultProps` exactly as
+before; the constant is core's, not a required import.
