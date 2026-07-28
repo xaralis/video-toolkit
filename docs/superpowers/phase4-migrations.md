@@ -1169,3 +1169,50 @@ the only difference is the field's spelling: the rendered value is whatever the
 control was showing. Nothing renders differently, and no brand config is
 rewritten by opening a section. Zero brand literals carry `from` today (2.5-a),
 so no brand file will move at all.
+
+## Task 2.6 — the gallery's three tables became one, derived from the catalog
+
+### 2.6-a One catalog-derived table — GALLERY-FACING ONLY, no reel pixels
+
+`lib/transitions/TransitionGallery.tsx` hand-maintained **three** parallel
+kind→presentation tables (`TRANSITIONS`, `transitionMap`, `TRANSITION_NOTES`)
+keyed in three different spellings, plus a `noteFor` helper whose only job was
+reconciling them. Together they covered **8 of the catalog's 21 kinds**, and only
+one of those 8 (`wipe`, Task 2.5) actually claimed a catalog kind — the other
+seven hand-picked a presentation under a camelCase label (`rgbSplit`,
+`lightLeak`) no reel could author.
+
+`buildGalleryEntries()` now walks `TRANSITION_CATALOG`, skips `cut` (the absence
+of a transition — `resolveTransition` returns null for it by design) and
+resolves everything else through the reel's own `transitionNodeFor`. Coverage:
+**8 → 20**. `noteFor` is gone; notes are keyed by catalog kind and fall back to
+the catalog's own label.
+
+**The render path did not change at all.** Nothing in `lib/render`,
+`lib/theming` or `lib/reel-config-base` was touched: 315/315 pixel-harness
+goldens accepted, 0 drifted, and all five `MinimalReel` frame hashes match
+CONSTRAINTS.md. **The gallery is not a reel — this task moves zero reel pixels.**
+
+**What a viewer of `showcase/transitions` sees does change**, deliberately:
+
+- **Twelve kinds appear that never had an entry** — `dissolve`, `fade-coal`,
+  `fade-to-color`, `scanline-glitch`, `burn`, `whip-pan`, `zoom-through`,
+  `clock-wipe`, `iris`, `gradient-wipe`, `pixelate`, `checkerboard`.
+- **Entries are labelled by catalog kind** (`light-leak`, not `lightLeak()`), so
+  the label is copy-pasteable into a reel config.
+- **Demos show catalog DEFAULTS, not authored values.** The gallery used to call
+  `glitch({intensity: 0.9})`, `rgbSplit({direction:'horizontal'})`,
+  `zoomBlur({direction:'in'})`, `lightLeak({temperature:'warm'})` — settings no
+  reel could express until Task 2.4 exposed them. It now shows what
+  `{kind, frames}` alone renders, which is what a reel author gets by default.
+- **One demo length for every kind** (45 frames). The old per-entry 40/45/60 was
+  a fourth thing the parallel tables carried; a gallery is a comparison, and the
+  same window for every kind is what makes two demos comparable.
+  `transitionGalleryConfig.durationInFrames` moves from 1135 to 2760 as a
+  result of the extra kinds and the uniform length.
+
+**No brand action.** Re-verified with the anchored grep Task 2.5 used
+(`grep -rn --include='*.ts*' --include='*.json' 'TransitionGallery|transitionMap|SingleTransitionPreview|TransitionName' . | grep -v '/node_modules/' | grep -vE '^(\./)?toolkit/'`):
+**0 hits in both brand repos** outside their vendored `toolkit/`. The renamed
+`transitionMap` keys (`lightLeak` → `light-leak`) and the changed
+`SingleTransitionPreview` prop type therefore break no brand consumer.

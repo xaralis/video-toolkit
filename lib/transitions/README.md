@@ -106,6 +106,14 @@ baked literals keep rendering (it warns once and has no editor control). The gal
 `transitionNodeFor`, so it cannot drift into showing a different component under a catalog
 kind's name again.
 
+**One table, derived from the catalog** (Task 2.6). The gallery no longer lists kinds at
+all: `buildGalleryEntries()` walks `TRANSITION_CATALOG`, skips `cut` (the absence of a
+transition) and resolves everything else through `transitionNodeFor`. Adding a kind to the
+catalog puts it in the gallery with no gallery edit; entries, notes and `transitionMap` keys
+are all the catalog kind, so the old camelCase spellings (`rgbSplit`, `lightLeak`) and the
+`noteFor` helper that translated between them are gone. `transitionMap.lightLeak` is now
+`transitionMap['light-leak']`.
+
 A kind's tunable params are exactly its schema fields minus `kind`/`frames` (and any
 deprecated alias); the editor derives its sub-option controls from that shape, so the two
 can't disagree. Every param of the six
@@ -312,12 +320,13 @@ For interactive previews (e.g., with `@remotion/player`):
 ```tsx
 import { SingleTransitionPreview, transitionMap } from '@video-toolkit/lib/transitions/TransitionGallery';
 
-// Preview a specific transition
+// Preview a specific transition — a CATALOG KIND, the same string a reel authors
 <SingleTransitionPreview transitionName="glitch" />
 
-// Access transition config programmatically
-const { duration, render } = transitionMap.lightLeak;
-const demo = render('lightLeak', duration); // React.ReactElement, e.g. for a custom preview
+// Access a gallery entry programmatically. Keyed by catalog kind since Task 2.6
+// (`transitionMap.lightLeak` was the old camelCase spelling and is gone).
+const { kind, label, note, duration, node, render } = transitionMap['light-leak'];
+const demo = render(); // React.ReactElement, e.g. for a custom preview
 ```
 
 ## Technical Notes

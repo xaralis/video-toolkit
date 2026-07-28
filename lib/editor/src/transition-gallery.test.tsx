@@ -45,6 +45,17 @@ import { TRANSITIONS, transitionMap } from '@video-toolkit/lib/transitions/Trans
  *  file's RED is an assertion about behaviour and not a missing export. */
 const GALLERY_DIMS = { width: 1920, height: 1080, fps: 30 };
 
+/** `glitch` and `burn` mint a per-MOUNT id for their SVG filter/mask
+ *  (`String(random(null)).slice(2, 10)`), so two mounts of the SAME component
+ *  differ in those digits and in nothing else. Normalised here — anchored to
+ *  `id="…"` and `url(#…)` so ordinary numbers inside styles are untouched —
+ *  because otherwise this pin would be testing Remotion's `random(null)`
+ *  rather than which component the gallery shows. A gallery showing a
+ *  different component still differs in structure and style, which is what the
+ *  comparison is for. */
+const normalizeMountIds = (html: string): string =>
+  html.replace(/(\bid="|url\(#)[^"')]*/g, '$1UID');
+
 /** The picture a node draws across its whole window, as one comparable string.
  *  Both inputs are inert markers, so any difference is the TRANSITION's. */
 const pictureOf = (node: TransitionNode): string =>
@@ -64,7 +75,7 @@ const pictureOf = (node: TransitionNode): string =>
           background="transparent"
         />,
       );
-      const html = container.innerHTML;
+      const html = normalizeMountIds(container.innerHTML);
       unmount();
       return `p=${progress} ${html}`;
     })
@@ -86,8 +97,15 @@ type Claim = { label: string; kind?: TransitionKind; node?: TransitionNode };
 // `makeTransitionEntry('wipe()', fade(), 40)`) with every test green: the
 // surviving `transitionMap` entry kept satisfying a union-shaped check. A
 // per-table `it.each` is what makes each table answer for itself.
+//
+// Task 2.6 collapsed the two tables' CONTENTS into one derivation (`transitionMap`
+// is now an index into `TRANSITIONS`), and this stayed per-table anyway: they are
+// still two distinct SURFACES — the composition and the interactive preview — and
+// nothing but this shape stops a future hand-picked entry being slipped back into
+// one of them. A union-shaped `claimed` list would let either surface answer on
+// the other's behalf, which is exactly how the fork survived round one.
 const TABLES: ReadonlyArray<readonly [string, readonly Claim[]]> = [
-  ['TRANSITIONS (the gallery composition)', TRANSITIONS.map((e) => ({ label: e.name, kind: e.kind, node: e.node }))],
+  ['TRANSITIONS (the gallery composition)', TRANSITIONS.map((e) => ({ label: e.kind, kind: e.kind, node: e.node }))],
   [
     'transitionMap (SingleTransitionPreview)',
     Object.entries(transitionMap).map(([label, e]) => ({ label, kind: e.kind, node: e.node })),

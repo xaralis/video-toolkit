@@ -62,6 +62,11 @@ export type { LightLeakProps } from './presentations/light-leak';
 // from core entirely, and the gallery now resolves through the reel's own
 // `transitionNodeFor` — so the answer to "which component is `wipe`?" is
 // production's, and there is only one.
+//
+// Task 2.6 finished the job: the gallery imports NO presentation from this file
+// any more. It derives its entries from `TRANSITION_CATALOG` and resolves every
+// one of them through `transitionNodeFor`, so the same guarantee now covers all
+// 20 demonstrable kinds rather than just `wipe`.
 
 export { pixelate } from './presentations/pixelate';
 export type { PixelateProps } from './presentations/pixelate';
