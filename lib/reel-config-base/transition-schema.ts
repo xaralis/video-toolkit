@@ -10,7 +10,7 @@
 //   CoreTransitionSchema = the zod discriminated union, built from the catalog
 //   TransitionSchema     = (CoreTransitionSchema ∪ BrandTransitionSchema)
 //                          ∩ TransitionTimingSchema (the kind-independent
-//                          fields: `alignment`)
+//                          fields: `alignment`, `enabled`)
 //   Transition           = z.infer of that union (see ./base-types)
 //   TransitionKind       = the CORE kinds only — see the note on the type
 //   TRANSITION_KINDS     = catalog kinds + labels (lib/editor/app/transitions)
@@ -45,6 +45,7 @@
 // 30 fps assumption baked into copy text ("30 frames = 1 sec").
 import { z } from 'zod';
 import type { ParamChoice, ParamField } from './param-field';
+import { NodeEnabledSchema } from './node-enabled';
 
 export const TransitionFrames = z
   .number()
@@ -84,6 +85,35 @@ export function isTransitionAlignment(v: unknown): v is TransitionAlignment {
   return (TRANSITION_ALIGNMENTS as readonly unknown[]).includes(v);
 }
 
+/** The kind that means "no transition at all". THE literal — every site that
+ *  asks "is this a cut?" goes through {@link isCut}, and every site that BUILDS
+ *  one uses this constant, so the string exists once.
+ *
+ *  Before Phase 4 Task 1.5 it was written out independently in five places
+ *  (this file's catalog entry and `kindNeedsFrames`, `transition-record.ts`'s
+ *  type and its runtime gate, and the render map's key) plus two more in the
+ *  editor's timeline adapter — all of them in the path that decides whether a
+ *  boundary renders anything at all. */
+export const CUT_KIND = 'cut';
+
+/** True when a transitionIn/transitionOut field means NO TRANSITION at this
+ *  boundary: absent, kind-less, or explicitly `cut`. All three are the same
+ *  answer to every caller, which is why they are one predicate rather than a
+ *  `kind === 'cut'` sprinkled next to an ad-hoc null check.
+ *
+ *  Accepts a kind STRING or the whole transition object, and takes `unknown`
+ *  deliberately: a rendered literal is not necessarily schema-validated (a
+ *  project's `Root.tsx` is hand-edited), so this has to survive whatever it is
+ *  handed. Same rule as {@link isTransitionAlignment} — one exported decider,
+ *  no site keeping its own copy of the literal. */
+export function isCut(t: unknown): boolean {
+  const kind = typeof t === 'string' ? t : (t as { kind?: unknown } | null | undefined)?.kind;
+  // Falsy — not just nullish — because that is exactly what the gate in
+  // `transition-record.ts` did before the collapse (`!kind || kind === 'cut'`),
+  // and `{ kind: '' }` off a hand-edited literal is "no kind", not a kind.
+  return !kind || kind === CUT_KIND;
+}
+
 /**
  * The TIMING fields every transition carries, whatever its kind — core-catalog
  * or brand-authored. Kept OUT of the catalog members on purpose:
@@ -99,6 +129,12 @@ export function isTransitionAlignment(v: unknown): v is TransitionAlignment {
  */
 export const TransitionTimingSchema = z.object({
   alignment: TransitionAlignmentSchema.optional(),
+  // The node contract's own switch, shared with the effect axis (see
+  // ./node-enabled.ts). It rides here for the same reason
+  // `alignment` does: a brand transition is no less entitled to it than a core
+  // one, it is not a look parameter, and this is the one declaration that
+  // reaches BOTH branches of the union. Honoured in `getTransitionRecord`.
+  enabled: NodeEnabledSchema,
 });
 
 const Direction4 = z.enum(['left', 'right', 'up', 'down']);
@@ -199,7 +235,7 @@ function catalog<T extends CatalogEntry[]>(...entries: T): T {
 // then the directional/geometric ones. Order here IS the dropdown order and the
 // union's member order — both derive from this list.
 const CATALOG = catalog(
-  { schema: z.object({ kind: z.literal('cut') }), label: 'Cut' },
+  { schema: z.object({ kind: z.literal(CUT_KIND) }), label: 'Cut' },
   { schema: z.object({ kind: z.literal('dissolve'), frames: TransitionFrames }), label: 'Dissolve' },
   { schema: z.object({ kind: z.literal('fade'), frames: TransitionFrames }), label: 'Fade' },
   // NAME NOTE: `fade-coal` is a leftover from one brand's colour vocabulary
@@ -548,7 +584,7 @@ export const TRANSITION_CATALOG: ReadonlyArray<{ kind: TransitionKind; label: st
 /** True when the kind's schema declares a `frames` field. Only `cut` doesn't. */
 export function kindNeedsFrames(kind: string): boolean {
   const e = entryFor(kind);
-  return e ? 'frames' in e.schema.shape : kind !== 'cut';
+  return e ? 'frames' in e.schema.shape : !isCut(kind);
 }
 
 /** @deprecated Alias of `ParamChoice`. The transition axis and the effect axis
@@ -742,7 +778,7 @@ export function defaultValueForField(field: z.ZodTypeAny): unknown {
  */
 export function defaultTransition(
   kind: string,
-  opts?: { frames?: number; alignment?: unknown },
+  opts?: { frames?: number; alignment?: unknown; enabled?: unknown },
 ): DraftTransition {
   const e = entryFor(kind);
   const frames = opts?.frames ?? DEFAULT_TRANSITION_FRAMES;
@@ -755,8 +791,14 @@ export function defaultTransition(
   // warning to show where it went. Only a RECOGNISED value is carried, so a
   // stale or hand-typo'd one is dropped here rather than propagated into a
   // fresh object.
+  //
+  // `enabled` survives for the same reason and with the same asymmetry as
+  // `alignment`: only a DISABLED node carries the field (absent means enabled),
+  // so only `false` is worth threading — copying `true` would bake the default
+  // into every literal the picker touches.
   const timing = (t: DraftTransition): DraftTransition => {
     if (isTransitionAlignment(opts?.alignment)) t.alignment = opts.alignment;
+    if (opts?.enabled === false) t.enabled = false;
     return t;
   };
   if (!e) return timing({ kind, frames });

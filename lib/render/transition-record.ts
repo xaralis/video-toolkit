@@ -8,13 +8,14 @@
 // "mirroring" lib/editor/app/transitions.ts. It no longer does: the vocabulary
 // has one home (lib/reel-config-base/transition-schema.ts) and this module just
 // narrows it.
-import { isCoreTransitionKind, type Transition } from '../reel-config-base/transition-schema';
+import { isCoreTransitionKind, isCut, CUT_KIND, type Transition } from '../reel-config-base/transition-schema';
+import { isNodeEnabled } from '../reel-config-base/node-enabled';
 import { warnOnce, type WarnOnceOptions } from './warn-once';
 
 /** A transition that actually renders something — everything except `cut`.
  *  Includes BRAND kinds since Phase 4: they are exactly what must reach the
  *  renderer rather than be dropped here. */
-export type TransitionRecord = Exclude<Transition, { kind: 'cut' }>;
+export type TransitionRecord = Exclude<Transition, { kind: typeof CUT_KIND }>;
 
 /** The set of kinds this gate should treat as "known" beyond core's catalog —
  *  a brand's own registry keys. FED IN PRODUCTION as of Phase 4 Task 1.2:
@@ -53,9 +54,18 @@ export function getTransitionRecord(
   raw: Transition | Record<string, unknown> | undefined,
   opts: TransitionRecordOptions = {},
 ): TransitionRecord | undefined {
-  if (!raw) return undefined;
+  // ONE predicate for all three "there is nothing here" cases (absent, kindless,
+  // `cut`) — see `isCut` in the schema. This used to be two hand-rolled checks
+  // carrying their own copy of the literal.
+  if (isCut(raw)) return undefined;
+  // A DISABLED node is skipped entirely, exactly as if the boundary were a hard
+  // cut: the record never reaches the renderer, so `computeVideoLayout` also
+  // stops lending handle frames for it and the clips sit at their authored
+  // positions. Authored params are untouched — flipping the switch back
+  // restores the look. Absent means enabled (see `isNodeEnabled`), so every
+  // baked literal is unchanged.
+  if (!isNodeEnabled(raw)) return undefined;
   const kind = (raw as { kind?: unknown }).kind;
-  if (!kind || kind === 'cut') return undefined;
   if (typeof kind === 'string' && !isCoreTransitionKind(kind) && !declaredByBrand(kind, opts.brandKinds)) {
     // A THUNK, not a string: this runs on every rendered frame of the boundary,
     // and an eagerly-built message would allocate ~350 chars on every one of them

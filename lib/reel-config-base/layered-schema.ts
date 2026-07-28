@@ -11,6 +11,7 @@
 // template/derivation supply the concrete union.
 import { z } from 'zod';
 import { TransitionSchema } from './transition-schema';
+import { NodeEnabledSchema } from './node-enabled';
 
 const OverlayContent = z.record(z.string(), z.unknown()); // { kind, text?, number?, placement?, ... }
 
@@ -23,7 +24,12 @@ const TimeSpan = { startMs: Ms, endMs: Ms };
 // are effects. Kept permissive (a `type` discriminant + passthrough params) so core stays
 // generic and new effect kinds — or brand-preset params — need no schema change. This is
 // the real-NLE "clip carries a stack of effects" model; simplification lives in brand presets.
-export const EffectSchema = z.object({ type: z.string() }).passthrough();
+//
+// `enabled` is DECLARED rather than left to the passthrough: it is not a param
+// of any one effect type, it is the node contract's own field (see
+// ./node-enabled.ts), and the schema is where the editor and every reader learn
+// that it exists. Absent means enabled, so no baked literal changes.
+export const EffectSchema = z.object({ type: z.string(), enabled: NodeEnabledSchema }).passthrough();
 export type Effect = z.infer<typeof EffectSchema>;
 
 const SubSource = z.object({

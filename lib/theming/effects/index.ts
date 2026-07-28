@@ -14,6 +14,7 @@ import { createElement } from 'react';
 import { resolveRegistered, registrationConfig, type Registry } from '../registry';
 import type { BrandTheme } from '../types';
 import type { Effect, VideoItem } from '../../reel-config-base/layered-schema';
+import { isNodeEnabled } from '../../reel-config-base/node-enabled';
 import {
   GrainEffect,
   ScanlinesEffect,
@@ -104,6 +105,12 @@ export function applyEffects(
     // Reserved types are applied elsewhere in the pipeline. Skipped BEFORE
     // resolution, so a brand registration cannot re-open the double-apply.
     if (RESERVED_EFFECT_TYPES.has(effect.type)) continue;
+    // A DISABLED effect is skipped ENTIRELY — no wrapper is allocated, so the
+    // node is referentially what it would be if the entry were deleted, while
+    // the entry's authored params stay in the config for the toggle back. Also
+    // skipped BEFORE resolution, so it costs nothing beyond the test. Absent
+    // means enabled (see `isNodeEnabled`), so no baked literal changes.
+    if (!isNodeEnabled(effect)) continue;
     const Renderer = resolveEffectRenderer(theme, effect.type);
     if (!Renderer) continue;
     // `children` goes in the props bag, not as the third argument: the third

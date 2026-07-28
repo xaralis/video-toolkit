@@ -3,7 +3,7 @@ import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-sc
 import { withTotalDuration } from '@video-toolkit/lib/reel-config-base/total-duration';
 import { AccentEditor } from './AccentEditor';
 import { Collapsible } from './Collapsible';
-import { TRANSITION_KINDS, defaultTransition, kindNeedsFrames, subOptionsFor, type DraftTransition } from './transitions';
+import { CUT_KIND, TRANSITION_KINDS, defaultTransition, kindNeedsFrames, subOptionsFor, type DraftTransition } from './transitions';
 import { parseActionId, type LaneId } from '../src/timeline/layered-adapter';
 import type { AccentSlot } from '../../theming/palette';
 import { PLACEMENTS } from '../../theming/placement';
@@ -369,7 +369,7 @@ export function TransitionFields({
   onChange: (next: DraftTransition) => void;
   accentSlots?: readonly AccentSlot[];
 }) {
-  const kind = t.kind ?? 'cut';
+  const kind = t.kind ?? CUT_KIND;
   return (
     <>
       <SelectField
@@ -382,7 +382,9 @@ export function TransitionFields({
         // then writes over the old one wholesale, so anything not named here is
         // silently lost. The kind's own look params SHOULD be lost — they
         // belonged to the old kind — which is exactly why this list is explicit.
-        onChange={(nextKind) => onChange(defaultTransition(nextKind, { frames: t.frames, alignment: t.alignment }))}
+        onChange={(nextKind) =>
+          onChange(defaultTransition(nextKind, { frames: t.frames, alignment: t.alignment, enabled: t.enabled }))
+        }
       />
       {/* One control per declared parameter, through the SAME dispatch the
           opaque-bag editor uses (`renderParamControl`). Until Task 1.1 this was
@@ -550,8 +552,8 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     const v = reel.tracks.video.find((x) => x.id === id);
     if (!v) return null;
     const edgeField = edge === 'in' ? 'transitionIn' : 'transitionOut';
-    const t = (v[edgeField] ?? { kind: 'cut' }) as DraftTransition;
-    const kind = t.kind ?? 'cut';
+    const t = (v[edgeField] ?? { kind: CUT_KIND }) as DraftTransition;
+    const kind = t.kind ?? CUT_KIND;
     return (
       <div style={panel}>
         <h3 style={heading}>
@@ -687,7 +689,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
         )}
         {(() => {
           const raw = v.transitionOut as { kind?: string } | undefined;
-          const t: DraftTransition = raw && TRANSITION_KINDS.some((k) => k.kind === raw.kind) ? (raw as DraftTransition) : { kind: 'cut' };
+          const t: DraftTransition = raw && TRANSITION_KINDS.some((k) => k.kind === raw.kind) ? (raw as DraftTransition) : { kind: CUT_KIND };
           return (
             <>
               <div style={section}>Transition out</div>

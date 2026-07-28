@@ -20,6 +20,8 @@ import {
 } from '@video-toolkit/lib/reel-config-base/transition-schema';
 
 export {
+  CUT_KIND,
+  isCut,
   kindNeedsFrames,
   subOptionsFor,
   defaultTransition,

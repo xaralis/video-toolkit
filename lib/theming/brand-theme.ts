@@ -80,7 +80,26 @@ export function resolveVideoRenderer(theme: BrandTheme, kind: VideoKind): VideoR
   return resolveRegistered(theme.video as Registry<VideoRenderProps> | undefined, kind, GENERIC_VIDEO_RENDERERS);
 }
 
-/** The brand config registered for a kind (undefined when none). */
+/** The brand config registered for a kind (undefined when none).
+ *
+ *  Routed through `registrationConfig` like every other axis' accessor. It was
+ *  the ONE of four that restated the rule inline (`theme.video?.[kind]?.config`)
+ *  — identical behaviour, but a fifth hand-rolled lookup is exactly what
+ *  registry.ts exists to prevent. The cast is the same key-type widening as in
+ *  `resolveVideoRenderer` above: `theme.video` is keyed by the closed
+ *  `VideoKind` union, the shared helper takes an open `Registry`. */
 export function videoConfig(theme: BrandTheme, kind: VideoKind): unknown {
-  return theme.video?.[kind]?.config;
+  return registrationConfig(theme.video as Registry<VideoRenderProps> | undefined, kind);
+}
+
+/** The brand config registered for a TRANSITION kind (undefined when none) —
+ *  the fourth axis' accessor, mirroring `overlayConfig`/`videoConfig`/
+ *  `effectConfig` so all four read the same way.
+ *
+ *  The render path resolves config off the registry directly
+ *  (`lib/render/at-cut-transitions.tsx` is handed a `TransitionRegistry`, not a
+ *  theme, so a renderer with no theme in scope still composes); this is the
+ *  theme-level accessor for everything that DOES have one. */
+export function transitionConfig(theme: BrandTheme, kind: string): unknown {
+  return registrationConfig(theme.transitions, kind);
 }

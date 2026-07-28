@@ -23,6 +23,7 @@ import type {
   AnyPresentation, ResolvedTransition, TransitionNode, TransitionNodeProps,
   TransitionRegistry, TransitionRenderer,
 } from '../theming/transitions';
+import { CUT_KIND } from '../reel-config-base/transition-schema';
 import type { CoreTransition, TransitionKind } from '../reel-config-base/transition-schema';
 
 export { getTransitionRecord, type TransitionRecord };
@@ -79,7 +80,7 @@ type Renderer<K extends TransitionKind> = (t: Extract<CoreTransition, { kind: K 
 const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   // `cut` is the absence of a transition; the gate in ./transition-record
   // filters it out long before here, but the map must still cover it.
-  'cut': () => null,
+  [CUT_KIND]: () => null,
   'fade': () => fade() as AnyPresentation,
   'dissolve': () => fade() as AnyPresentation,
   // A plain fade IS the "fade to background" look: opacity<1 reveals the

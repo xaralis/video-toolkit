@@ -43,7 +43,14 @@ export type {
   OverlayItemRegistration,
   CompositionTheme,
 } from './types';
-export { overlayRegistry, resolveOverlayRenderer, overlayConfig, resolveVideoRenderer, videoConfig } from './brand-theme';
+export {
+  overlayRegistry,
+  resolveOverlayRenderer,
+  overlayConfig,
+  resolveVideoRenderer,
+  videoConfig,
+  transitionConfig,
+} from './brand-theme';
 export type {
   AnyPresentation,
   TransitionNode,
