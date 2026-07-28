@@ -227,12 +227,23 @@ const declaredBimodal = new Set(goldens.bimodalCells ?? []);
 const bimodalCells = new Set(declaredBimodal);
 
 // ---------------------------------------------------------------- render ----
-rmSync(OUT, { recursive: true, force: true });
-mkdirSync(OUT, { recursive: true });
-if (WANT_SHEETS) {
-  rmSync(SHEETS, { recursive: true, force: true });
-  mkdirSync(SHEETS, { recursive: true });
+// Clearing the scratch directory must never be able to fail the RUN. Back to
+// back invocations raced here: a previous run's Chrome was still writing into
+// out/matrix, and `rmSync` threw `EACCES, Directory not empty` before a single
+// still had been rendered — a housekeeping error masquerading as a red gate.
+// Retry, then shrug: every still is written with `overwrite: true`, so a
+// leftover file is harmless.
+function clearDir(dir) {
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  } catch (err) {
+    notes.push(`could not clear ${path.relative(ROOT, dir)} (${err.code ?? err.message}); stills are overwritten in place`);
+  }
+  mkdirSync(dir, { recursive: true });
 }
+
+clearDir(OUT);
+if (WANT_SHEETS) clearDir(SHEETS);
 
 console.log('bundling…');
 // Mirrors remotion.config.ts. The CLI reads that file; the programmatic
