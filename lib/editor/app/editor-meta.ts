@@ -18,11 +18,14 @@ import { overlayRegistry } from '../../theming/brand-theme';
 import { RESERVED_EFFECT_TYPES } from '../../theming/effects';
 import type { ParamField } from '../../theming/registry';
 
-/** One declared, editable field inside an opaque bag (`props`, effect params).
- *  Defined in `lib/theming/registry.ts` — a registration declares it, so that
- *  is where it lives; the editor consumes it. Re-exported here because this
- *  module is the editor's public vocabulary surface. */
-export type { ParamField };
+/** One declared, editable parameter inside an opaque bag (`props`, effect
+ *  params) — and, since Phase 4 Task 1.1, the SAME descriptor the transition
+ *  axis uses (`SubOption` is now a deprecated alias of it). Re-exported here
+ *  because this module is the editor's public vocabulary surface; it is defined
+ *  in `lib/reel-config-base/param-field.ts` and surfaced through
+ *  `lib/theming/registry.ts` — see the note there for why it sits that low. */
+export type { ParamField, ParamType, ParamChoice, ParamOption } from '../../theming/registry';
+export { paramChoices } from '../../theming/registry';
 
 /** One offerable clip effect. `defaults` (merged with `{ type }`) is what gets
  *  written onto the item when the effect is added; `params` declares its
