@@ -30,12 +30,18 @@ Files:
 cd examples/layered-minimal
 
 npm run pixel-gate              # the gate: 300 stills, ~45s, exit 0 = green
+npm run pixel-gate:strict       # …with NEAR fatal — REQUIRED for any parity claim
 npm run pixel-gate:self-test    # ~0.1s, no rendering — proves the checks go red
 npm run pixel-gate:update       # re-baseline: 600 stills, ~90s (see below)
 
 node scripts/render-transition-matrix.mjs wipe iris   # only these kinds
 node scripts/render-transition-matrix.mjs --sheets    # also write contact sheets (ImageMagick)
 ```
+
+**If you are claiming a change left rendering unchanged, run `--strict`.** The default
+is lenient so a rasteriser wobble does not redden day-to-day iteration; `--strict` makes
+a `NEAR` result fatal. See "the iris flake" for exactly what the lenient mode forgives
+and why that matters for a compositing rewrite.
 
 Measured on this machine, 2026-07-27: **300 stills in 44s** (46s wall including the
 one-off webpack bundle) for a full gate run. Per kind that is ~2.2s, so
@@ -50,8 +56,11 @@ safety model:** a re-baseline is a committed edit a reviewer sees, not a silent
 overwrite. It refuses to reduce the number of covered kinds unless you also pass
 `--allow-shrink`.
 
-It renders every still **twice** and requires the two to agree (third render breaks a
-tie, and the key is reported). That is not paranoia — see "the iris flake" below.
+It renders every still **twice** and requires the two to agree (a third render breaks a
+tie, and the key is reported; three mutually different renders fail as `UNSTABLE` rather
+than inventing a majority). That is not paranoia — see "the iris flake" below. It also
+refuses to write the file at all if the run recorded any failure, so `--update-goldens`
+cannot be used to launder a red run.
 
 ## The axis called `mode` is not "direction"
 
@@ -96,9 +105,18 @@ are left unclassified, which is what lets "shows neither clip" be told apart fro
 "shows a mix".
 
 **Coverage guards.** The gate fails if the number of covered kinds is lower than the
-goldens recorded, if a golden exists for a kind that no longer does, if a covered kind
-has no golden, or if the probe's geometry / progress list / mode list has changed out
-from under the goldens.
+goldens recorded, if a golden exists for a kind that no longer does, if any catalog kind
+has a matrix cell with no golden, if `semanticXfail` and `knownDefective` drift apart,
+or if the probe's geometry / progress list / mode list has changed out from under the
+goldens.
+
+All of these are computed from the catalog and the golden file, **not** from what a
+given run happened to render — so `node scripts/render-transition-matrix.mjs fade` still
+reports that some *other* kind was added without goldens. That last one is why the check
+is a cross-product of `kinds × modes × progress` against the golden keys rather than an
+observation made while rendering: an earlier version only noticed a missing golden for a
+kind the run had rendered, which meant a newly added kind slipped through a filtered run
+in silence.
 
 ## The four known-defective kinds
 
@@ -145,15 +163,36 @@ general non-determinism. Roughly **one still in 500**. Three consequences are bu
 2. If the two renders inside one run disagree with each other, a `NON-DETERMINISTIC
    render` note names the still.
 3. If a mismatch *survives* the retry but the 8×8 picture still agrees within
-   `FP_TOLERANCE` (2 per channel), it is reported as `NEAR` and counted rather than
-   failed. **A run with a non-zero NEAR count cannot be used to claim byte-identical
-   rendering** — the summary line reports both numbers precisely so Task 1.3 can require
-   `300 byte-identical, 0 same-picture-different-bytes`.
+   `FP_TOLERANCE` (2 per channel), it is reported as `NEAR` and counted. By default that
+   is **not** fatal; under `--strict` it **is**.
 
-The trade this makes, stated plainly: a *real* rendering change confined to a handful of
-pixels would be downgraded from a failure to a printed, counted warning. That is the
-price of a gate that is green when nothing changed. The full-sweep reference run
-(2026-07-27) was **300 byte-identical, 0 near, 0 drifted, 1 retried** in 44s.
+### What lenient mode forgives — and why `--strict` is not optional for a parity claim
+
+The tolerance is wide, and it is worth knowing exactly how wide before trusting a green
+run. At 540×960 an 8×8 grid gives ~8,100 pixels per cell, so `delta ≤ 2` absorbs a
+per-cell channel-sum change of ~16,200. Two real regression classes fit inside that:
+
+- **localised**: roughly 4,000–5,400 pixels — about 1% of the frame — can change
+  *completely* and still report as a warning. A badge, a numeral, a chevron, a one-pixel
+  offset on an iris arc.
+- **global**: a uniform ±1–2/255 shift across the entire frame is `NEAR`. That is exactly
+  the artefact a two-input compositing rewrite produces — restacked layers, premultiplied
+  vs straight alpha, one extra `AbsoluteFill`. **The single most likely real regression
+  from the rewrite this harness exists to police is the one the tolerance is shaped to
+  swallow.**
+
+That is not hypothetical calibration. The deliberate `zoom-blur` perturbation used to
+prove the harness bites produced `zoom-blur__exit__p1` at **max cell delta 3** — a real
+change landing one unit outside tolerance. The drift/near boundary sits *inside* the
+range real changes occupy, not comfortably above it.
+
+`FP_TOLERANCE` is deliberately **not** lowered: nobody has measured the actual delta the
+flake produces, so retuning it would be guesswork trading one failure mode for another.
+`--strict` is the answer instead — it costs nothing when nothing changed, and it is a
+flag rather than a convention, so it is enforced by the runner and not by whoever
+remembers to read the summary line. The full-sweep reference run (2026-07-27) was
+**300 byte-identical, 0 near, 0 drifted, 1 retried** in 44s, so `--strict` is expected to
+pass on an unchanged tree; if it does not, re-run before concluding anything.
 
 The harness sets **no** Chromium OpenGL renderer, and neither does
 `examples/layered-minimal/remotion.config.ts`. Do not add one: the one configuration in
