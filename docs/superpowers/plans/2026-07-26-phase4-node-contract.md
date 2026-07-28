@@ -615,9 +615,20 @@ for f in 0 30 45 90 120; do npx remotion still src/index.ts MinimalReel "out/f$f
 shasum -a 256 out/f*.png
 ```
 
-Frame 45 is `7c1512ed39018f728a93b648d6ebbb18fda8d73eb8f12d8dc2a5bb74d70169ee` **until Task
-2.1 re-baselines it** (`MinimalReel` uses the defective `wipe` at its first cut). Every
-re-baseline is a reviewed edit with a still and a written grade.
+`MinimalReel` uses `wipe` at its first cut, but that cut is at 3000 ms — frames 80-100
+of the boundary window — so of the five sampled frames only **frame 90** sits inside it.
+Task 2.1 re-baselined frame 90 and **nothing else**; frame 45 is mid-clip and did not
+move. Current values (measured 2026-07-28, each reproduced in three fresh processes):
+
+| frame | sha256 |
+|---|---|
+| 0 | `1c7563d8f71cd8011c57bdca451ec4a4e3a7808608140bc989bf52142303c3d2` |
+| 30 | `85a4d6a051394b7034eeec60f2d15a6a8a71fc5140e33f5064bfed2735d50b3c` |
+| 45 | `7c1512ed39018f728a93b648d6ebbb18fda8d73eb8f12d8dc2a5bb74d70169ee` |
+| 90 | `8909970fb4802bf9f7e24e2a6e4862735bffa7c64f5cd983a7ce4d58aaf9253d` (was `8904999e…`) |
+| 120 | `a6b7a9175ebe3c0dbf97c002b1f74517bd669062a1926177037be909de624778` |
+
+Every re-baseline is a reviewed edit with a still and a written grade.
 
 **End-to-end:** render the conformance example and eyeball it; run the pixel harness and
 confirm every kind × direction matches its golden.

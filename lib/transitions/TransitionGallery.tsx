@@ -27,8 +27,16 @@ import { glitch } from './presentations/glitch';
 import { rgbSplit } from './presentations/rgb-split';
 import { zoomBlur } from './presentations/zoom-blur';
 import { lightLeak } from './presentations/light-leak';
-import { pixelate } from './presentations/pixelate';
-import { checkerboard } from './presentations/checkerboard';
+// NO `pixelate` / `checkerboard` (nor `scanlineGlitch`, nor the toolkit's own
+// `wipe`) here. Since Phase 4 Task 2.1 those four are NATIVE TWO-INPUT nodes:
+// one component that composites BOTH clips itself, invoked once per boundary
+// with `(from, to, progress)`. `TransitionSeries` can only drive the one-sided
+// `TransitionPresentation` contract — it hands a presentation ONE clip at a
+// time — so it structurally cannot show them, and no adapter can invent the
+// missing input. They are demonstrated instead by the pixel harness in
+// `examples/layered-minimal` (3 reel scenarios x 5 progress points per kind,
+// `npm run pixel-gate`), which renders them the way a reel actually does.
+// The `wipe()` entry below is @remotion/transitions' OWN wipe, unrelated.
 
 // Scene colors for visual variety
 const SCENE_A_COLOR = '#1a1a2e';
@@ -43,12 +51,6 @@ const TRANSITION_NOTES: Record<string, string> = {
   'rgbSplit()': 'Chromatic aberration effect',
   'zoomBlur()': 'Radial motion blur',
   'lightLeak()': 'Cinematic lens flare',
-  'pixelate()': 'Mosaic dissolution',
-  'checkerboard()': 'Grid squares reveal',
-  'checkerboard(diagonal)': 'Diagonal wave pattern',
-  'checkerboard(alternating)': 'True checkerboard pattern',
-  'checkerboard(spiral)': 'Spiral from center',
-  'checkerboard(center-out)': 'Radial grid reveal',
   'slide()': 'Push from direction',
   'fade()': 'Simple crossfade',
   'wipe()': 'Edge reveal',
@@ -346,15 +348,6 @@ const TRANSITIONS: TransitionEntry[] = [
   makeTransitionEntry('rgbSplit()', rgbSplit({ direction: 'horizontal' }), 45),
   makeTransitionEntry('zoomBlur()', zoomBlur({ direction: 'in' }), 45),
   makeTransitionEntry('lightLeak()', lightLeak({ temperature: 'warm' }), 60),
-  makeTransitionEntry('pixelate()', pixelate({ maxBlockSize: 50 }), 45),
-  makeTransitionEntry('checkerboard(diagonal)', checkerboard({ pattern: 'diagonal', gridSize: 8 }), 50),
-  makeTransitionEntry('checkerboard(alternating)', checkerboard({ pattern: 'alternating', gridSize: 8 }), 50),
-  makeTransitionEntry('checkerboard(spiral)', checkerboard({ pattern: 'spiral', gridSize: 10 }), 55),
-  makeTransitionEntry(
-    'checkerboard(center-out)',
-    checkerboard({ pattern: 'center-out', gridSize: 8, squareAnimation: 'scale' }),
-    50,
-  ),
   makeTransitionEntry('slide()', slide(), 40),
   makeTransitionEntry('fade()', fade(), 45),
   makeTransitionEntry('wipe()', wipe(), 40),
@@ -445,8 +438,6 @@ export const transitionMap = {
   rgbSplit: makeNamedTransitionEntry(rgbSplit({ direction: 'horizontal' }), 45),
   zoomBlur: makeNamedTransitionEntry(zoomBlur({ direction: 'in' }), 45),
   lightLeak: makeNamedTransitionEntry(lightLeak({ temperature: 'warm' }), 60),
-  pixelate: makeNamedTransitionEntry(pixelate({ maxBlockSize: 50 }), 45),
-  checkerboard: makeNamedTransitionEntry(checkerboard({ pattern: 'diagonal', gridSize: 8 }), 50),
   slide: makeNamedTransitionEntry(slide(), 40),
   fade: makeNamedTransitionEntry(fade(), 45),
   wipe: makeNamedTransitionEntry(wipe(), 40),

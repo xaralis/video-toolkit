@@ -23,6 +23,7 @@ import type {
   AnyPresentation, ResolvedTransition, TransitionNode, TransitionNodeProps,
   TransitionRegistry, TransitionRenderer,
 } from '../theming/transitions';
+import { warnOnce } from './warn-once';
 import { CUT_KIND } from '../reel-config-base/transition-schema';
 import type { CoreTransition, TransitionKind } from '../reel-config-base/transition-schema';
 
@@ -75,7 +76,12 @@ type Dims = {
 // `Record<string, …>` — which demands no entries at all and would retire the
 // exhaustiveness check silently. Brand kinds are not core's to render; they
 // resolve through the brand's own registry.
-type Renderer<K extends TransitionKind> = (t: Extract<CoreTransition, { kind: K }>, dims: Dims) => AnyPresentation | null;
+//
+// The return type is `ResolvedTransition | null`, not `AnyPresentation | null`:
+// since Task 2.1 four of core's own kinds (`wipe`, `checkerboard`, `pixelate`,
+// `scanline-glitch`) are NATIVE two-input nodes rather than one-sided
+// presentations core lifts.
+type Renderer<K extends TransitionKind> = (t: Extract<CoreTransition, { kind: K }>, dims: Dims) => ResolvedTransition | null;
 
 const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   // `cut` is the absence of a transition; the gate in ./transition-record
@@ -102,14 +108,14 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   'wipe': (t, dims) => customWipe({
     color: resolveAccentColor(dims.palette ?? [], t.color ?? null) ?? undefined,
     direction: t.direction,
-  }) as AnyPresentation,
+  }),
   'gradient-wipe': (t) => gradientWipe({ direction: t.direction, softness: t.softness }) as AnyPresentation,
   // Every param below is optional on both sides: the schema member makes it
   // optional, and the presentation destructures it with its own default — so
   // passing an explicit `undefined` through is exactly "use your default", the
   // same contract `burn` and `gradient-wipe` above already rely on.
   'rgb-split': (t) => rgbSplit({ direction: t.direction, displacement: t.displacement }) as AnyPresentation,
-  'scanline-glitch': (t) => scanlineGlitch({ rgbShiftPx: t.rgbShiftPx }) as AnyPresentation,
+  'scanline-glitch': (t) => scanlineGlitch({ rgbShiftPx: t.rgbShiftPx }),
   'light-leak': (t) => lightLeak({
     temperature: t.temperature, direction: t.direction, intensity: t.intensity, flareArtifacts: t.flareArtifacts,
   }) as AnyPresentation,
@@ -119,12 +125,12 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   'pixelate': (t) => pixelate({
     maxBlockSize: t.maxBlockSize, gridSize: t.gridSize,
     scanlines: t.scanlines, glitchArtifacts: t.glitchArtifacts, randomness: t.randomness,
-  }) as AnyPresentation,
+  }),
   // `easing` is not forwarded — it has no schema field (a function can't live
   // in a config), so the presentation's own Easing.out(Easing.cubic) applies.
   'checkerboard': (t) => checkerboard({
     gridSize: t.gridSize, pattern: t.pattern, stagger: t.stagger, squareAnimation: t.squareAnimation,
-  }) as AnyPresentation,
+  }),
 };
 
 /** Core's own presentations, adapted to the shared axis signature — ONE prop
@@ -216,10 +222,36 @@ export const TransitionLayer: React.FC<{
  *
  *  Kept as a named export because it is the accessor brands and the editor's
  *  wiring suite have used since the engine was extracted. The RENDER path does
- *  not go through it any more — see `transitionNodeFor`. */
+ *  not go through it any more — see `transitionNodeFor`.
+ *
+ *  WHY THE WARNING. Every caller of this function feeds the result to
+ *  `TransitionSeries.Transition`, and every one of them treats `null` as "no
+ *  transition" — a HARD CUT. That was harmless while `null` only ever meant
+ *  `cut` or an unrecognised kind. Since Task 2.1 it also means "this kind is a
+ *  two-input node", which is a real, authored transition silently degrading to
+ *  nothing, with no type error to catch it (the signature never changed and
+ *  `null` was always legal).
+ *
+ *  There is deliberately NO compatibility shim faking a one-sided form for a
+ *  two-input node: a wrong picture rendered silently is worse than a visible
+ *  degradation. The caller has to move to `transitionNodeFor` /
+ *  `AtCutTransition` (or `buildVideoNodes`), and this says so out loud, once
+ *  per kind, in dev. */
 export function presentationFor(t: TransitionRecord | undefined, dims: Dims): AnyPresentation | null {
   const resolved = resolveTransition(t, dims);
-  if (!resolved || isTransitionNode(resolved)) return null;
+  if (!resolved) return null;
+  if (isTransitionNode(resolved)) {
+    const kind = t!.kind;
+    warnOnce(
+      `presentationFor:two-input:${kind}`,
+      () =>
+        `[video-toolkit] transition kind "${kind}" is a TWO-INPUT node and has no one-sided ` +
+        'presentation, so presentationFor() returns null and this boundary will render as a ' +
+        'HARD CUT. Drive it through transitionNodeFor() + AtCutTransition (or buildVideoNodes) ' +
+        'instead of TransitionSeries. See docs/superpowers/phase4-migrations.md.',
+    );
+    return null;
+  }
   return resolved;
 }
 

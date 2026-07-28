@@ -534,3 +534,201 @@ unaffected — it is typed by the brand's registration, as it always was. A futu
 CORE kind wanting an accent field must add its field name to `ACCENT_FIELDS`;
 the completeness test in `lib/editor/src/accent-field-mark.test.ts` fails loudly
 if the list and the catalog disagree.
+
+---
+
+## Task 2.1 — the four defective kinds became native two-input nodes
+
+`wipe`, `checkerboard`, `pixelate` and `scanline-glitch` are no longer one-sided
+`TransitionPresentation`s that core lifts with `fromRemotionPresentation`. Each
+is now a `TransitionNode` — one component invoked ONCE per boundary with
+`(from, to, progress)` — because all four defects were the same shape: a
+two-input operation asked to draw itself one side at a time.
+
+**Nothing to do in either brand repo.** Verified by grep over both, read-only:
+
+```bash
+# in each brand repo, exclusions ANCHORED (^toolkit/) — an unanchored
+# `grep -vE 'toolkit/'` eats every path in a repo NAMED video-toolkit
+grep -rn --include='*.ts' --include='*.tsx' -E "kind: *'(wipe|checkerboard|pixelate|scanline-glitch)'" . \
+  | grep -v '/node_modules/' | grep -vE '^(\./)?toolkit/'
+```
+
+- **PP:** exactly **one** hit, `projects/pp-05-zastupitelsky-klub/src/config/types.ts:18`
+  — a **type-union member**, not an authored transition. Same class as the `glitch`
+  finding in 1.3-d. No reel authors any of the four.
+- **roost:** **zero** hits.
+
+So every grade below is a change to what these kinds WOULD render. The only reel
+in this repo or either brand repo whose pixels actually move is core's own
+`examples/layered-minimal`.
+
+### 2.1-a `wipe` plays its two beats in SEQUENCE
+
+**Grade: DELIBERATE LOOK CHANGE.**
+
+`wipe` is a two-beat design — a coloured sheet sweeps IN over the outgoing clip,
+then sweeps OUT to reveal the incoming one — and the beats are consecutive. The
+one-sided model ran both over the SAME window with the entering half drawn on
+top, so its sheet already sat at `translateX(0%)` at progress 0: the frame
+flashed to the accent colour on the transition's first frame and the outgoing
+clip's own half of the sweep was never seen.
+
+What you see now, checkable against a still: at progress 0 the outgoing clip,
+sheet entirely off-frame; the sheet sweeps across to full cover at the midpoint
+(where the two clips swap, invisibly, behind it); then it continues off the
+other side revealing the incoming clip. `direction: 'left'` means the sheet
+travels leftwards throughout — in from the right, out to the left.
+
+Measured on `examples/layered-minimal`'s `MinimalReel` (cut at 3000 ms, window
+frames 80-100): frame 85 shows the outgoing dawn photo with the amber sheet over
+the right half; frame 95 shows the sheet retreating over the left half with the
+incoming dusk photo revealed. Golden cells changed: 12 of `wipe`'s 15
+(`p1` in every mode is unchanged — the end state was always the incoming clip).
+
+### 2.1-b `checkerboard` is ONE implementation — and is PIXEL-IDENTICAL
+
+**Grade: parity-preserving.** This is the entry to read if you expected
+otherwise: the brief for this task predicted a look change and the measurement
+says there is none.
+
+`checkerboard` used to branch on `presentationDirection` into two
+implementations. The entering one clipped the incoming clip into each grid cell;
+the exiting one drew the SAME cells **empty** — no content, no background — over
+an untouched base layer. So a `checkerboard` used as a `transitionOut` had no
+visible effect at all, and at a cut the grid was laid out twice.
+
+There is one implementation now: the incoming clip clipped into cells, over an
+intact outgoing clip. A cell exists only to carry the incoming clip, so at a
+reel's trailing edge no cells are drawn rather than a grid of empty boxes.
+
+**All 15 of its golden cells came through byte-identical** (`0 drifted`), because
+everything removed was already invisible: the empty exiting cells painted
+nothing, and the entering layer's `progress < 0.01` fill was already
+`opacity: 0`. It leaves `knownDefective` because it is no longer defective, not
+because its pixels moved.
+
+### 2.1-c `pixelate` no longer paints an opaque black root
+
+**Grade: DELIBERATE LOOK CHANGE.**
+
+The root `AbsoluteFill` was painted opaque black unconditionally, at every
+progress. At a cut that made the transition's FIRST frame full black: the
+outgoing clip vanished instantly instead of dissolving, and the incoming one
+then emerged from black. With two inputs the opaque root has no meaning at all —
+the outgoing clip is an input, drawn beneath the incoming one, so there is
+nothing to stand in for.
+
+The mosaic, grid lines, glitch slices, RGB split, scanlines, vignette and noise
+are untouched; the two crossfade curves are the same two the one-sided form
+used, now applied to the two clips instead of to one clip twice. What you see:
+progress 0 is the clean outgoing clip, and the pixelation builds over it rather
+than over black. Golden cells changed: 12 of 15.
+
+### 2.1-d `scanline-glitch` blends, and its RGB copies are finally visible
+
+**Grade: DELIBERATE LOOK CHANGE.**
+
+This kind never touched opacity and never even destructured
+`presentationDirection`. Two consequences, both real:
+
+1. At a cut it was not a dissolve — the incoming clip was painted opaquely from
+   the transition's first frame, so the cut effectively landed half a window
+   early.
+2. Its two RGB-shifted, screen-blended copies were **invisible**: a third, fully
+   opaque copy of the children sat on top of them. Only the scanline gradient
+   ever showed.
+
+Now the incoming clip crossfades in over the outgoing one, and the two jittered
+RGB copies are ramped by the transition's own peak — visible mid-cut, absent at
+both ends (which is also what keeps progress 0 showing a clean outgoing clip
+rather than a hue-rotated wash of it). Golden cells changed: 12 of 15.
+
+**A second, smaller cause in the same diff.** `xJitter` reads
+`useCurrentFrame()`, which since Task 1.3 is BOUNDARY-relative. That clock was
+irrelevant while the jitter was buried under the opaque layer; it is not now, so
+part of the golden movement is the same frame-origin rebase `glitch` had in
+1.3-d. **Unverified** — 1.3-d's proof (re-render the old hashes with a `+40`
+frame offset) cannot be repeated here, because the compositing changed in the
+same commit and there are no old pixels to reproduce.
+
+### 2.1-e ⚠ `presentationFor` returns `null` for these four — and now SAYS SO
+
+**Grade: DELIBERATE. Latent in both brand repos today; it will bite the first
+WPI project that authors one of the four.**
+
+This is the hazard 1.3-b flagged, now live. `presentationFor` has no one-sided
+form to hand back for a two-input node, so it returns `null` — and every caller
+feeds `null` to `TransitionSeries.Transition`, where it means "no transition":
+a **hard cut**. There is no type error; the signature never changed and `null`
+was always legal.
+
+**What core did about it:** `presentationFor` now emits a dev `warnOnce`
+(`lib/render/warn-once.ts`) naming the kind and saying the boundary will render
+as a hard cut. There is deliberately **no compatibility shim** faking a one-sided
+form for a two-input node — a wrong picture rendered silently is worse than a
+visible degradation.
+
+**The verified call-site list.** Re-measured for this task; the count is 6 in PP
+and **0 in roost** (roost's two `presentationFor` mentions are *comments* in
+`projects/roost-reel-01/src/LayeredRoostReel.tsx`, plus a stale worktree copy of
+the same file — not calls):
+
+| # | file |
+|---|---|
+| 1 | `projects/pp-program-bydleni/src/WebProgramIntro.tsx` |
+| 2 | `projects/pp-program-klima/src/WebProgramIntro.tsx` |
+| 3 | `projects/pp-program-mobilita/src/WebProgramIntro.tsx` |
+| 4 | `projects/pp-program-obvody/src/WebProgramIntro.tsx` |
+| 5 | `projects/pp-program-verejny-prostor/src/WebProgramIntro.tsx` |
+| 6 | **`templates/web-program-intro/src/WebProgramIntro.tsx`** — the template, so every future project inherits it |
+
+**And the part nobody had measured: none of those six authors a transition at
+all.** `grep -rn 'transitionOut:'` over each project's and the template's `src/`
+returns **0** in all six — every WPI boundary is already a hard cut today. So
+**no brand pixel changes**, and the degradation is latent rather than active.
+
+```bash
+# reproduce, per directory
+grep -rn "transitionOut:" --include='*.ts' --include='*.tsx' <dir>/src | grep -v node_modules | wc -l
+```
+
+**What a WPI project should do about it — a Phase 4.5 decision, recorded here,
+not applied.** `web-program-intro` does not use the layered schema at all, so it
+cannot be fixed by migrating its config; migrating it is explicitly out of Phase
+4's scope. The options, in the order they should be considered:
+
+1. **Do nothing yet.** Correct today: nothing is affected, and the warning will
+   fire the moment it stops being true. This is the recommendation.
+2. **Move the WPI render path off `TransitionSeries`** onto core's
+   `buildVideoNodes` / `AtCutTransition`, which drive two-input nodes natively.
+   This is the real fix and it subsumes the whole layered migration question —
+   it should be scoped with that migration, not before it.
+3. **Keep `TransitionSeries` and restrict WPI's kind vocabulary** to the 16 kinds
+   that still have a one-sided form, enforced in the project's own schema so the
+   restriction is a compile/parse error rather than a silent hard cut.
+
+What is NOT an option: a shim that hands `TransitionSeries` a fabricated
+one-sided form. `TransitionSeries` gives a presentation one clip at a time; the
+missing input cannot be invented, and any shim would render a confidently wrong
+picture.
+
+### 2.1-f `TransitionGallery` dropped its `pixelate` and `checkerboard` entries
+
+**Grade: DELIBERATE; core-internal, no brand action.**
+
+`lib/transitions/TransitionGallery.tsx` is a `TransitionSeries` showcase, so it
+can only drive the one-sided contract and structurally cannot show a two-input
+node. Its `pixelate()` and `checkerboard(...)` entries were removed rather than
+faked. (`wipe()` is still there — that entry is
+`@remotion/transitions`' own wipe, unrelated to the toolkit's.) These four kinds
+are demonstrated instead by the pixel harness in `examples/layered-minimal`,
+which renders them the way a reel actually does: 3 reel scenarios × 5 progress
+points each, `npm run pixel-gate`.
+
+A brand that imported `pixelate`, `checkerboard`, `wipe` or `scanlineGlitch`
+from `@video-toolkit/lib/transitions` and fed the result to a `TransitionSeries`
+of its own will now get a **type error** (the factories return `TransitionNode`,
+not `TransitionPresentation`) — a compile-time failure, not a silent one.
+Verified: **neither brand repo imports any of the four** outside its `toolkit/`
+submodule.

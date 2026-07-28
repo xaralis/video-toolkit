@@ -1,17 +1,26 @@
 /**
  * Checkerboard Transition
  *
- * Reveals the scene through a grid of squares with various patterns.
+ * Reveals the incoming clip through a grid of squares, over the outgoing one.
  * Classic video editing effect with modern flexibility.
  *
  * Best for: Playful reveals, retro aesthetics, creative transitions
+ *
+ * A NATIVE TWO-INPUT NODE since Phase 4 Task 2.1. It used to branch on
+ * `presentationDirection` and have TWO implementations: the entering one
+ * clipped the incoming clip into each cell, while the exiting one drew the same
+ * cells EMPTY (no content, no background) over an untouched base layer — so a
+ * `checkerboard` used as a `transitionOut` had no visible effect whatsoever,
+ * and at a cut the two layers together laid out the grid twice.
+ *
+ * There is ONE implementation now: B clipped into cells, over an intact A.
+ * The direction branch is gone, and with it the empty cells — a cell exists
+ * only to carry the incoming clip, so when there is no incoming clip (a reel's
+ * trailing edge) no cells are drawn at all.
  */
-import type {
-  TransitionPresentation,
-  TransitionPresentationComponentProps,
-} from '@remotion/transitions';
 import React, { useMemo } from 'react';
 import { AbsoluteFill, interpolate, Easing } from 'remotion';
+import type { TransitionNode, TransitionNodeProps } from '../../theming/transitions';
 
 export type CheckerboardPattern =
   | 'sequential'    // Left-to-right, top-to-bottom
@@ -109,150 +118,131 @@ const generateOrder = (
   }
 };
 
-const CheckerboardPresentation: React.FC<
-  TransitionPresentationComponentProps<CheckerboardProps>
-> = ({ children, presentationDirection, presentationProgress, passedProps }) => {
+// Stable seed for the `random` pattern — the reveal order must not change
+// between frames of one transition.
+const SEED = 12345;
+
+export const checkerboard = (props: CheckerboardProps = {}): TransitionNode => {
   const {
     gridSize = 8,
     pattern = 'diagonal',
     stagger = 0.6,
     squareAnimation = 'fade',
     easing = Easing.out(Easing.cubic),
-  } = passedProps;
+  } = props;
 
-  const isEntering = presentationDirection === 'entering';
-  const progress = isEntering ? presentationProgress : 1 - presentationProgress;
+  const composite: React.FC<TransitionNodeProps> = ({ from, to, progress }) => {
+    // Generate grid cells
+    const cells = useMemo(() => {
+      const result: Array<{
+        row: number;
+        col: number;
+        order: number;
+      }> = [];
 
-  // Use a stable seed for random pattern
-  const seed = 12345;
-
-  // Generate grid cells
-  const cells = useMemo(() => {
-    const result: Array<{
-      row: number;
-      col: number;
-      order: number;
-    }> = [];
-
-    for (let row = 0; row < gridSize; row++) {
-      for (let col = 0; col < gridSize; col++) {
-        result.push({
-          row,
-          col,
-          order: generateOrder(row, col, gridSize, pattern, seed),
-        });
+      for (let row = 0; row < gridSize; row++) {
+        for (let col = 0; col < gridSize; col++) {
+          result.push({
+            row,
+            col,
+            order: generateOrder(row, col, gridSize, pattern, SEED),
+          });
+        }
       }
-    }
 
-    return result;
-  }, [gridSize, pattern, seed]);
+      return result;
+    }, [gridSize, pattern]);
 
-  // Calculate cell size as percentage
-  const cellSize = 100 / gridSize;
+    // Calculate cell size as percentage
+    const cellSize = 100 / gridSize;
 
-  return (
-    <AbsoluteFill>
-      {/* Base layer - for exiting scene or background */}
-      {!isEntering && (
-        <AbsoluteFill>
-          {children}
-        </AbsoluteFill>
-      )}
+    return (
+      <AbsoluteFill>
+        {/* The OUTGOING clip, drawn once and whole, beneath the grid. */}
+        <AbsoluteFill>{from}</AbsoluteFill>
 
-      {/* Grid mask layer */}
-      <AbsoluteFill style={{ overflow: 'hidden' }}>
-        {cells.map(({ row, col, order }) => {
-          // Calculate when this cell should animate
-          // With stagger, cells animate in sequence
-          // stagger=0 means all at once, stagger=1 means fully sequential
-          const cellStart = order * stagger;
-          const cellEnd = cellStart + (1 - stagger);
+        {/* Grid layer — each cell carries the INCOMING clip, clipped to itself.
+            A cell has no meaning without an incoming clip, so at a reel's
+            trailing edge there is no grid rather than a grid of empty boxes. */}
+        {to === null ? null : (
+          <AbsoluteFill style={{ overflow: 'hidden' }}>
+            {cells.map(({ row, col, order }) => {
+              // Calculate when this cell should animate
+              // With stagger, cells animate in sequence
+              // stagger=0 means all at once, stagger=1 means fully sequential
+              const cellStart = order * stagger;
+              const cellEnd = cellStart + (1 - stagger);
 
-          // Individual cell progress
-          const cellProgress = interpolate(
-            progress,
-            [cellStart, cellEnd],
-            [0, 1],
-            {
-              extrapolateLeft: 'clamp',
-              extrapolateRight: 'clamp',
-            }
-          );
+              // Individual cell progress
+              const cellProgress = interpolate(
+                progress,
+                [cellStart, cellEnd],
+                [0, 1],
+                {
+                  extrapolateLeft: 'clamp',
+                  extrapolateRight: 'clamp',
+                }
+              );
 
-          const easedProgress = easing(cellProgress);
+              const easedProgress = easing(cellProgress);
 
-          // Calculate animation values based on type
-          let opacity = 1;
-          let scale = 1;
-          let rotateY = 0;
+              // Calculate animation values based on type
+              let opacity = 1;
+              let scale = 1;
+              let rotateY = 0;
 
-          switch (squareAnimation) {
-            case 'fade':
-              opacity = easedProgress;
-              break;
-            case 'scale':
-              scale = easedProgress;
-              opacity = easedProgress > 0 ? 1 : 0;
-              break;
-            case 'flip':
-              rotateY = interpolate(easedProgress, [0, 1], [90, 0]);
-              opacity = easedProgress > 0.1 ? 1 : 0;
-              break;
-          }
+              switch (squareAnimation) {
+                case 'fade':
+                  opacity = easedProgress;
+                  break;
+                case 'scale':
+                  scale = easedProgress;
+                  opacity = easedProgress > 0 ? 1 : 0;
+                  break;
+                case 'flip':
+                  rotateY = interpolate(easedProgress, [0, 1], [90, 0]);
+                  opacity = easedProgress > 0.1 ? 1 : 0;
+                  break;
+              }
 
-          // For exiting, we show the cell and hide it (inverse)
-          if (!isEntering) {
-            opacity = 1 - opacity;
-            scale = scale === 0 ? 1 : 2 - scale;
-            rotateY = -rotateY;
-          }
-
-          return (
-            <div
-              key={`${row}-${col}`}
-              style={{
-                position: 'absolute',
-                left: `${col * cellSize}%`,
-                top: `${row * cellSize}%`,
-                width: `${cellSize}%`,
-                height: `${cellSize}%`,
-                overflow: 'hidden',
-                opacity,
-                transform: `scale(${scale}) perspective(500px) rotateY(${rotateY}deg)`,
-                transformOrigin: 'center center',
-              }}
-            >
-              {/* Clip the entering scene to this cell */}
-              {isEntering && (
+              // No direction branch. The old `!isEntering` inverse — which flipped
+              // opacity, scale and rotation on a cell that carried no content — is
+              // gone with the second implementation it belonged to.
+              return (
                 <div
+                  key={`${row}-${col}`}
                   style={{
                     position: 'absolute',
-                    left: `${-col * 100}%`,
-                    top: `${-row * 100}%`,
-                    width: `${gridSize * 100}%`,
-                    height: `${gridSize * 100}%`,
+                    left: `${col * cellSize}%`,
+                    top: `${row * cellSize}%`,
+                    width: `${cellSize}%`,
+                    height: `${cellSize}%`,
+                    overflow: 'hidden',
+                    opacity,
+                    transform: `scale(${scale}) perspective(500px) rotateY(${rotateY}deg)`,
+                    transformOrigin: 'center center',
                   }}
                 >
-                  {children}
+                  {/* Clip the incoming clip to this cell */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: `${-col * 100}%`,
+                      top: `${-row * 100}%`,
+                      width: `${gridSize * 100}%`,
+                      height: `${gridSize * 100}%`,
+                    }}
+                  >
+                    {to}
+                  </div>
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
+          </AbsoluteFill>
+        )}
       </AbsoluteFill>
+    );
+  };
 
-      {/* For entering, show full scene underneath with inverse mask */}
-      {isEntering && progress < 0.01 && (
-        <AbsoluteFill style={{ opacity: 0 }}>
-          {children}
-        </AbsoluteFill>
-      )}
-    </AbsoluteFill>
-  );
-};
-
-export const checkerboard = (
-  props: CheckerboardProps = {}
-): TransitionPresentation<CheckerboardProps> => {
-  return { component: CheckerboardPresentation, props };
+  return { composite };
 };

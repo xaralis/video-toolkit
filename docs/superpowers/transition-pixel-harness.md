@@ -144,8 +144,22 @@ nothing when exiting (`fade`, `dissolve`, `fade-coal`, `burn`, `clock-wipe`, `ir
 `gradient-wipe`). No pixel test can separate those, so `checkerboard` is pinned by its
 golden hashes alone. Claiming otherwise would be a gate that covers less than it says.
 
-`examples/layered-minimal`'s own `MinimalReel` uses `wipe` at its first cut, so the
-repo's frame-45 render-parity hash is expected to be re-baselined by the same work.
+`examples/layered-minimal`'s own `MinimalReel` uses `wipe` at its first cut, so one of
+its five render-parity frames was expected to be re-baselined by the same work.
+
+**Both of those paragraphs were settled by Task 2.1, and both predictions were partly
+wrong — the measurements replace them:**
+
+- `checkerboard`'s goldens did **not** move. Making it one two-input implementation is
+  structurally real (no direction branch, no empty cells) but **pixel-identical** in all
+  15 of its cells: the empty exiting cells drew nothing and the entering layer's
+  `progress < 0.01` fill was already transparent, so removing them changed no pixel. It
+  is graded parity-preserving, and it is off `knownDefective` because it is no longer
+  defective, not because its pixels moved.
+- The frame that moved is **90**, not 45. The cut sits at 3000 ms, so its boundary window
+  is frames 80-100; frame 45 is mid-clip and hashes exactly what it always did.
+- `knownDefective` and `semanticXfail` are now **both empty**, and a full
+  `pixel-gate:strict` run reports **zero** expected semantic failures.
 
 ## The renderer flake — characterised, not guessed at
 

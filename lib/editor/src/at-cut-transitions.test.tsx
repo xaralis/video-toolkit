@@ -51,6 +51,7 @@ import {
 } from '@video-toolkit/lib/reel-config-base/transition-schema';
 import {
   presentationFor,
+  resolveTransition,
   transitionNodeFor,
   fromRemotionPresentation,
   isTransitionNode,
@@ -63,6 +64,7 @@ import {
   type TransitionNodeProps,
   type TransitionRecord,
 } from '@video-toolkit/lib/render/at-cut-transitions';
+import { resetWarnOnce } from '@video-toolkit/lib/render/warn-once';
 import type { AccentSlot } from '@video-toolkit/lib/theming/palette';
 import { paramChoices, type ParamOption } from '@video-toolkit/lib/reel-config-base/param-field';
 
@@ -189,23 +191,118 @@ describe('the catalog is fully mapped', () => {
   });
 });
 
-describe.each(KINDS)('transition kind %s', (kind) => {
-  it('resolves to a presentation (or null, for cut, which is the absence of one)', () => {
-    const { transition } = probeTransitionFor(kind);
-    const p = presentationFor(transition as never, DIMS);
-    if (kind === 'cut') {
-      expect(p).toBeNull();
-      return;
-    }
-    expect(p).not.toBeNull();
-    expect(typeof p!.component).not.toBe('undefined');
-    expect(p!.props).toBeTypeOf('object');
+/** The kinds that resolve to a NATIVE two-input node instead of a one-sided
+ *  presentation core lifts. DERIVED from what the renderer actually returns,
+ *  never listed by hand — and PINNED below, because a kind joining this set
+ *  silently opts out of the generic param test. */
+const NODE_KINDS = KINDS.filter((k) => {
+  const r = resolveTransition(probeTransitionFor(k).transition as never, DIMS);
+  return r !== null && isTransitionNode(r);
+});
+
+describe('one-sided presentations vs native two-input nodes', () => {
+  it('exactly four core kinds are native two-input nodes', () => {
+    expect([...NODE_KINDS].sort()).toEqual(['checkerboard', 'pixelate', 'scanline-glitch', 'wipe']);
   });
 
-  it('mounts in both directions across the progress range without throwing', () => {
+  // THE LIVE TRAP. Six files in the PP brand repo call `presentationFor` and
+  // feed the result to `TransitionSeries.Transition`, where `null` means "no
+  // transition" — a hard cut. For these four kinds `null` is now the only
+  // honest answer (there IS no one-sided form), so the degradation has to be
+  // AUDIBLE. No shim fakes a one-sided form: a wrong picture rendered silently
+  // is worse than a visible degradation.
+  it('presentationFor WARNS once per two-input kind instead of degrading silently', () => {
+    resetWarnOnce();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      for (const kind of NODE_KINDS) {
+        const { transition } = probeTransitionFor(kind);
+        // Called twice: the warning must be de-duplicated, not per-frame.
+        expect(presentationFor(transition as never, DIMS)).toBeNull();
+        expect(presentationFor(transition as never, DIMS)).toBeNull();
+      }
+      expect(warn.mock.calls).toHaveLength(NODE_KINDS.length);
+      for (const kind of NODE_KINDS) {
+        expect(warn.mock.calls.filter(([m]) => String(m).includes(`"${kind}"`))).toHaveLength(1);
+      }
+      expect(String(warn.mock.calls[0][0])).toContain('HARD CUT');
+    } finally {
+      warn.mockRestore();
+      resetWarnOnce();
+    }
+  });
+
+  it('does not warn for a kind that legitimately has no transition at all', () => {
+    resetWarnOnce();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      expect(presentationFor(undefined, DIMS)).toBeNull();
+      expect(presentationFor({ kind: 'nope', frames: 15 } as unknown as TransitionRecord, DIMS)).toBeNull();
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+      resetWarnOnce();
+    }
+  });
+});
+
+describe.each(KINDS)('transition kind %s', (kind) => {
+  const isNode = NODE_KINDS.includes(kind);
+
+  it('resolves to something the boundary can drive', () => {
     const { transition } = probeTransitionFor(kind);
+    const node = transitionNodeFor(transition as never, DIMS);
+    if (kind === 'cut') {
+      expect(node).toBeNull();
+      expect(presentationFor(transition as never, DIMS)).toBeNull();
+      return;
+    }
+    expect(node).not.toBeNull();
+    expect(typeof node!.composite).toBe('function');
+    // A native node has NO one-sided form to hand back; every other kind still
+    // does, and brands' `presentationFor` call sites still get it.
     const p = presentationFor(transition as never, DIMS);
-    if (!p) return; // cut
+    expect({ kind, oneSided: p !== null }).toEqual({ kind, oneSided: !isNode });
+    if (p) {
+      expect(typeof p.component).not.toBe('undefined');
+      expect(p.props).toBeTypeOf('object');
+    }
+  });
+
+  it('mounts across the progress range, and against a null neighbour, without throwing', () => {
+    const { transition } = probeTransitionFor(kind);
+    const node = transitionNodeFor(transition as never, DIMS);
+    if (!node) return; // cut
+    const Composite = node.composite;
+    const inputs: Array<[React.ReactNode | null, React.ReactNode | null]> = [
+      [<div key="a" />, <div key="b" />],
+      // The reel's leading and trailing edges — a node must survive a missing
+      // neighbour rather than special-casing it upstream.
+      [null, <div key="b" />],
+      [<div key="a" />, null],
+    ];
+    for (const progress of [0, 0.5, 1]) {
+      for (const [from, to] of inputs) {
+        expect(() =>
+          render(
+            <Composite
+              from={from}
+              to={to}
+              progress={progress}
+              durationInFrames={15}
+              width={1080}
+              height={1920}
+              fps={30}
+              palette={[]}
+            />,
+          ).unmount(),
+        ).not.toThrow();
+      }
+    }
+    // One-sided kinds are additionally driven through the layer core lifts them
+    // with, in both directions — the coverage this suite has always had.
+    const p = presentationFor(transition as never, DIMS);
+    if (!p) return;
     for (const direction of ['entering', 'exiting'] as const) {
       for (const progress of [0, 0.5, 1]) {
         expect(() =>
@@ -219,7 +316,13 @@ describe.each(KINDS)('transition kind %s', (kind) => {
     }
   });
 
-  it('carries its authored params through to the presentation', () => {
+  // A NODE closes over its params — there is no props bag to inspect, so this
+  // generic check does not apply to one. Their params are pinned by DOM
+  // assertions in "the four two-input nodes render what their name promises"
+  // instead, which is the stronger claim: the param reaches the PICTURE, not
+  // just an object. `NODE_KINDS` is pinned above so a fifth kind cannot take
+  // this exit quietly.
+  it.skipIf(isNode)('carries its authored params through to the presentation', () => {
     const { transition, probes } = probeTransitionFor(kind);
     const p = presentationFor(transition as never, DIMS);
     if (!p) return; // cut
@@ -238,23 +341,34 @@ describe('composition-size-dependent kinds', () => {
   });
 });
 
+// `wipe` is a native two-input node now, so there is no `props.color` to read.
+// These assert the colour where it actually matters — on the sweeping sheet the
+// node paints — which is a stronger pin than the props bag ever was.
 describe('accent-slot resolution', () => {
+  const sheetColorFor = (t: TransitionRecord, dims: Parameters<typeof transitionNodeFor>[1]) => {
+    const Composite = transitionNodeFor(t, dims)!.composite;
+    const { container, unmount } = render(
+      <Composite from={null} to={null} progress={0.5} durationInFrames={15} width={1080} height={1920} fps={30} palette={[]} />,
+    );
+    const sheet = [...container.querySelectorAll('div')].find((d) => d.style.backgroundColor !== '');
+    const color = sheet?.style.backgroundColor;
+    unmount();
+    return color;
+  };
+
   it("resolves a wipe's accent KEY through the brand palette, not a core default", () => {
     const t = { kind: 'wipe', frames: 15, color: 'secondary', direction: 'left' } as TransitionRecord;
-    const p = presentationFor(t, { ...DIMS, palette: PALETTE })!;
-    expect(p.props.color).toBe('#abcdef');
+    expect(sheetColorFor(t, { ...DIMS, palette: PALETTE })).toBe('rgb(171, 205, 239)'); // #abcdef
   });
 
   it('falls back to the presentation’s own neutral when the key is not in the palette', () => {
     const t = { kind: 'wipe', frames: 15, color: 'no-such-slot', direction: 'left' } as TransitionRecord;
-    const p = presentationFor(t, { ...DIMS, palette: PALETTE })!;
-    expect(p.props.color).toBeUndefined();
+    expect(sheetColorFor(t, { ...DIMS, palette: PALETTE })).toBe('rgb(0, 0, 0)'); // the node's own #000
   });
 
   it('falls back when the renderer has no palette in scope at all', () => {
     const t = { kind: 'wipe', frames: 15, color: 'secondary', direction: 'left' } as TransitionRecord;
-    const p = presentationFor(t, DIMS)!;
-    expect(p.props.color).toBeUndefined();
+    expect(sheetColorFor(t, DIMS)).toBe('rgb(0, 0, 0)');
   });
 });
 
@@ -266,169 +380,180 @@ describe('burn’s string params (no sub-option control, so nothing else pins th
   });
 });
 
-// The two kinds docs/superpowers/HANDOFF.md names as specific suspects. These
-// assert STRUCTURE, not appearance.
-describe('direction-branching suspects', () => {
-  const mount = (p: AnyPresentation, direction: 'entering' | 'exiting', progress: number) =>
-    render(
-      <TransitionLayer presentation={p} direction={direction} progress={progress} durationInFrames={15}>
-        <div data-testid="content" />
-      </TransitionLayer>,
+// ---------------------------------------------------------------------------
+// THE FOUR NATIVE TWO-INPUT NODES (Phase 4 Task 2.1).
+//
+// `checkerboard`, `pixelate`, `scanline-glitch` and `wipe` are no longer
+// one-sided presentations that core lifts: each is a `TransitionNode` that
+// composites BOTH inputs itself. Their four defects were all the same shape —
+// a two-input operation asked to draw itself one side at a time — so they
+// dissolve into the model rather than being patched one by one.
+//
+// These four `it`s are the ADDED capability: each kind now renders what its
+// name promises. They are deliberately written against OBSERVABLE structure
+// (which input is on screen, what the sheet's offset is, what a layer's opacity
+// is), not against a props bag — a node closes over its params, so "the param
+// arrived" and "the param is used" are the same assertion here.
+// ---------------------------------------------------------------------------
+describe('the four two-input nodes render what their name promises', () => {
+  const A = <div data-testid="a" />;
+  const B = <div data-testid="b" />;
+
+  const nodeFor = (t: Partial<TransitionRecord> & { kind: string }, palette?: readonly AccentSlot[]) =>
+    transitionNodeFor(t as TransitionRecord, palette ? { ...DIMS, palette } : DIMS)!;
+
+  const mountNode = (
+    node: TransitionNode,
+    progress: number,
+    inputs: { from?: React.ReactNode | null; to?: React.ReactNode | null } = {},
+  ) => {
+    const Composite = node.composite;
+    return render(
+      <Composite
+        from={inputs.from === undefined ? A : inputs.from}
+        to={inputs.to === undefined ? B : inputs.to}
+        progress={progress}
+        durationInFrames={15}
+        width={1080}
+        height={1920}
+        fps={30}
+        palette={[]}
+      />,
     );
+  };
+
+  const count = (container: HTMLElement, id: 'a' | 'b') =>
+    container.querySelectorAll(`[data-testid="${id}"]`).length;
 
   const cellsOf = (container: HTMLElement) =>
     [...container.querySelectorAll('div')].filter((d) => d.style.transformOrigin === 'center center');
 
-  it('checkerboard lays out its full cell grid in both directions', () => {
-    const p = presentationFor({ kind: 'checkerboard', frames: 15, gridSize: 4 } as TransitionRecord, DIMS)!;
-    for (const direction of ['entering', 'exiting'] as const) {
-      const { container, unmount } = mount(p, direction, 0.5);
-      expect({ direction, cells: cellsOf(container).length }).toEqual({ direction, cells: 16 });
+  // ---- wipe ---------------------------------------------------------------
+  // WAS: both beats ran over the SAME window, entering drawn on top, so its
+  // sheet already sat at translateX(0%) at progress 0 and the whole frame
+  // flashed to the accent colour on the transition's first frame.
+  // IS: two SEQUENTIAL beats over one window — sheet in over A across the first
+  // half, sheet out off B across the second.
+  it('wipe sweeps its sheet IN over the outgoing clip, then OUT to reveal the incoming one', () => {
+    const node = nodeFor({ kind: 'wipe', frames: 15, color: 'secondary', direction: 'left' }, PALETTE);
+    const sample = (progress: number) => {
+      const { container, unmount } = mountNode(node, progress);
+      const sheet = [...container.querySelectorAll('div')].find((d) => d.style.backgroundColor !== '');
+      const out = {
+        progress,
+        shows: count(container, 'a') ? 'outgoing' : count(container, 'b') ? 'incoming' : 'neither',
+        sheet: sheet?.style.transform,
+      };
       unmount();
-    }
+      return out;
+    };
+    expect([0, 0.25, 0.5, 0.75, 1].map(sample)).toEqual([
+      // The whole first beat still shows the clip we are LEAVING — the defect
+      // this pin exists for. At progress 0 the sheet is entirely off-frame.
+      { progress: 0, shows: 'outgoing', sheet: 'translateX(100%)' },
+      { progress: 0.25, shows: 'outgoing', sheet: 'translateX(50%)' },
+      // Midpoint: the sheet covers, and the swap happens behind it.
+      { progress: 0.5, shows: 'incoming', sheet: 'translateX(0%)' },
+      { progress: 0.75, shows: 'incoming', sheet: 'translateX(-50%)' },
+      { progress: 1, shows: 'incoming', sheet: 'translateX(-100%)' },
+    ]);
   });
 
-  it('checkerboard clips the incoming content into its cells when ENTERING', () => {
-    const p = presentationFor({ kind: 'checkerboard', frames: 15, gridSize: 3 } as TransitionRecord, DIMS)!;
-    const { container, unmount } = mount(p, 'entering', 0.5);
-    expect(container.querySelectorAll('[data-testid="content"]')).toHaveLength(9);
+  it('wipe sweeps the other way round when direction is right', () => {
+    const node = nodeFor({ kind: 'wipe', frames: 15, direction: 'right' });
+    const at = (progress: number) => {
+      const { container, unmount } = mountNode(node, progress);
+      const t = [...container.querySelectorAll('div')].find((d) => d.style.backgroundColor !== '')!.style.transform;
+      unmount();
+      return t;
+    };
+    expect([at(0), at(0.5), at(1)]).toEqual(['translateX(-100%)', 'translateX(0%)', 'translateX(100%)']);
+  });
+
+  // ---- checkerboard -------------------------------------------------------
+  // WAS: two branches. Entering clipped the incoming clip into the cells;
+  // exiting drew the cells EMPTY over an untouched base layer, so a
+  // `checkerboard` transitionOut had no visible effect at all.
+  // IS: ONE implementation — B clipped into cells, over an intact A.
+  it('checkerboard clips the INCOMING clip into every cell over an intact outgoing clip', () => {
+    const node = nodeFor({ kind: 'checkerboard', frames: 15, gridSize: 3 });
+    const { container, unmount } = mountNode(node, 0.5);
+    expect({ cells: cellsOf(container).length, b: count(container, 'b'), a: count(container, 'a') }).toEqual({
+      cells: 9,
+      // B is re-drawn once per cell, clipped to it…
+      b: 9,
+      // …and A is drawn ONCE, whole, beneath the grid.
+      a: 1,
+    });
     unmount();
   });
 
-  // ------------------------------------------------------------------
-  // KNOWN DEFECTS. `it.fails` records the behaviour we believe is CORRECT
-  // together with the fact that the code does not do it. There are FOUR of
-  // them below. These are NOT fixed here: what a transition renders is a look
-  // decision, and the shape of a correct fix is the user's call, not this
-  // test's. All four defects HAVE since been confirmed by a real render —
-  // Phase 3 probed all 20 catalog kinds in both directions and across a real
-  // cut; see docs/superpowers/at-cut-transition-findings.md for the contact
-  // sheets. So these pins record measured behaviour, not suspicion.
-  // Each one flips to a normal `it` the moment it is
-  // addressed — the runner fails loudly if a `.fails` test starts passing.
-  // See docs/superpowers/HANDOFF.md.
-  // ------------------------------------------------------------------
+  it('checkerboard draws no cells at all when there is no incoming clip — no empty-cell artefact', () => {
+    const node = nodeFor({ kind: 'checkerboard', frames: 15, gridSize: 3 });
+    const { container, unmount } = mountNode(node, 0.5, { to: null });
+    expect({ cells: cellsOf(container).length, a: count(container, 'a') }).toEqual({ cells: 0, a: 1 });
+    unmount();
+  });
 
-  // DEFECT: in the EXITING direction the grid cells are rendered empty — the
-  // children are drawn once, whole, in the base layer beneath them, and the
-  // cells carry no content and no background. So a `checkerboard` used as a
-  // transitionOut has no visible effect at all: the clip simply plays and
-  // cuts. Only the entering direction reveals cell by cell.
-  // This assertion assumes a specific fix shape: content re-drawn into all 9
-  // cells on exit, mirroring the entering direction. A legitimate fix that
-  // instead keeps the single base-layer copy and gives the cells an
-  // occluding background (rather than duplicating content into each cell)
-  // would leave this test red even though the defect is fixed — that's the
-  // safe direction (no false green), just don't be surprised by it.
-  it.fails(
-    'KNOWN DEFECT: checkerboard does NOT clip the outgoing content into its cells when EXITING — see docs/superpowers/HANDOFF.md',
-    () => {
-      const p = presentationFor({ kind: 'checkerboard', frames: 15, gridSize: 3 } as TransitionRecord, DIMS)!;
-      const { container, unmount } = mount(p, 'exiting', 0.5);
-      expect(container.querySelectorAll('[data-testid="content"]')).toHaveLength(9);
+  // ---- pixelate -----------------------------------------------------------
+  // WAS: the root `AbsoluteFill` was painted opaque black unconditionally, so
+  // at a cut the transition's first frame was FULL BLACK and the outgoing clip
+  // vanished rather than dissolving.
+  // IS: no opaque root at all — A is an input, drawn beneath B.
+  it('pixelate paints no opaque root and holds the outgoing clip visible beneath the incoming one', () => {
+    const node = nodeFor({ kind: 'pixelate', frames: 15 });
+    const sample = (progress: number) => {
+      const { container, unmount } = mountNode(node, progress);
+      const opaqueBlack = [...container.querySelectorAll('div')].filter(
+        (d) => d.style.backgroundColor === 'rgb(0, 0, 0)',
+      ).length;
+      const layerOpacity = (id: 'a' | 'b') =>
+        (container.querySelector(`[data-testid="${id}"]`)?.parentElement as HTMLElement | null)?.style.opacity;
+      const out = { progress, opaqueBlack, from: layerOpacity('a'), to: layerOpacity('b') };
       unmount();
-    },
-  );
+      return out;
+    };
+    expect([0, 0.5].map(sample)).toEqual([
+      // Progress 0: the outgoing clip, fully opaque, with nothing painted over
+      // it — the frame a cut must still show as the window opens.
+      { progress: 0, opaqueBlack: 0, from: '1', to: '0' },
+      { progress: 0.5, opaqueBlack: 0, from: '1', to: '1' },
+    ]);
+  });
 
-  // DEFECT: pixelate's root AbsoluteFill is painted opaque black unconditionally,
-  // including at progress 0, and only in the ENTERING direction. At a cut the
-  // neighbouring clip sits beneath it in a sibling Sequence, so the first frame
-  // of the transition is FULL BLACK and the outgoing clip vanishes rather than
-  // dissolving; the incoming clip then emerges from black through the pixel
-  // grid.
-  //
-  // CONFIRMED BY RENDER (Task 10, examples/layered-minimal Probe-pixelate-cut):
-  // frame 49 = the outgoing clip, clean; frame 50 = pure black; frames 51-55 =
-  // the incoming clip emerging from black. See
-  // docs/superpowers/at-cut-transition-findings.md.
-  //
-  // The extent this comment used to claim ("hides the neighbour for the entire
-  // clip") is REFUTED by that render: AtCutTransition clamps progress to 1
-  // after the window, and at progress 1 pixelate paints nothing, so the
-  // blackout is bounded to the transition window after all. The defect is the
-  // opaque root at progress 0, not its duration.
-  it.fails(
-    'KNOWN DEFECT: pixelate does NOT leave its root transparent before the transition has begun — see docs/superpowers/HANDOFF.md',
-    () => {
-      const p = presentationFor({ kind: 'pixelate', frames: 15 } as TransitionRecord, DIMS)!;
-      for (const progress of [0, 0.25, 0.5]) {
-        const { container, unmount } = mount(p, 'entering', progress);
-        // Select the pixelate root by the opaque-black style that identifies
-        // it (not by position: `firstElementChild` would silently start
-        // pointing at an unrelated wrapper if pixelate.tsx ever grows one).
-        const root = [...container.querySelectorAll('div')].find(
-          (d) => d.style.backgroundColor === 'rgb(0, 0, 0)',
-        );
-        expect({ progress, backgroundColor: root?.style.backgroundColor }).toEqual({
-          progress,
-          backgroundColor: undefined,
-        });
-        unmount();
-      }
-    },
-  );
-
-  // ------------------------------------------------------------------
-  // FOUND BY RENDER, Task 10. These two are the same FAMILY of defect as
-  // pixelate above and were found the same way it was predicted: at a cut the
-  // ENTERING presentation is mounted over the outgoing clip (a sibling
-  // Sequence beneath it) for the whole transition window, so anything it
-  // paints opaquely at progress 0 does not "start the transition" — it
-  // REPLACES the outgoing clip instantly, at the moment the handle-borrowed
-  // window opens, which is `floor(frames/2)` frames BEFORE the authored cut.
-  //
-  // The discriminator is one still per kind: `Probe-<kind>-cut` at progress 0
-  // must show the OUTGOING clip. 17 of the 20 catalog kinds do. These two and
-  // pixelate do not. See docs/superpowers/at-cut-transition-findings.md for
-  // the full matrix and the stills that show it.
-  //
-  // NOT FIXED HERE, deliberately: what a transition renders is a look
-  // decision, and each of these has more than one legitimate fix (ramp the
-  // root's opacity; hold the entering layer transparent for the first half;
-  // re-time the two halves). Both assertions below therefore assume ONE fix
-  // shape — an opacity ramp on the entering root — exactly like the
-  // checkerboard pin above. A different but legitimate fix would leave these
-  // red; that is the safe direction (no false green), just don't be surprised.
-  // ------------------------------------------------------------------
-
-  /** The outermost element a presentation renders — what sits between the
-   *  incoming clip and the outgoing one beneath it at a cut. */
-  const rootOf = (container: HTMLElement) => container.firstElementChild as HTMLElement | null;
-
-  // DEFECT: scanline-glitch never touches opacity in EITHER direction — its
-  // base `<AbsoluteFill>{children}</AbsoluteFill>` is fully opaque at every
-  // progress, and the presentation does not branch on presentationDirection at
-  // all. So at a cut it is not a dissolve: the incoming clip is simply there
-  // from the transition's first frame, with a scanline shimmer over it, and
-  // the cut effectively lands `floor(frames/2)` frames early.
-  it.fails(
-    'KNOWN DEFECT: scanline-glitch does NOT hide its own children when ENTERING at progress 0 — see docs/superpowers/at-cut-transition-findings.md',
-    () => {
-      const p = presentationFor({ kind: 'scanline-glitch', frames: 15 } as TransitionRecord, DIMS)!;
-      const { container, unmount } = mount(p, 'entering', 0);
-      expect(rootOf(container)?.style.opacity).toBe('0');
+  // ---- scanline-glitch ----------------------------------------------------
+  // WAS: never touched opacity and never read `presentationDirection`, so at a
+  // cut the incoming clip was simply THERE from the transition's first frame
+  // and the cut effectively landed half a window early. Its jittered RGB copies
+  // were invisible too, buried under an opaque third `AbsoluteFill`.
+  // IS: an explicit blend — B fades in over A — with the RGB-split copies
+  // ramped by the transition's own peak, so they are visible mid-cut and gone
+  // at both ends.
+  it('scanline-glitch blends the incoming clip in over the outgoing one and ramps its glitch layers', () => {
+    const node = nodeFor({ kind: 'scanline-glitch', frames: 15 });
+    const sample = (progress: number) => {
+      const { container, unmount } = mountNode(node, progress);
+      const out = {
+        progress,
+        incoming: [...container.querySelectorAll('[data-testid="b"]')].map(
+          (el) => (el.parentElement as HTMLElement).style.opacity,
+        ),
+        glitch: [...container.querySelectorAll('div')]
+          .filter((d) => d.style.mixBlendMode === 'screen')
+          .map((d) => d.style.opacity),
+        outgoing: count(container, 'a'),
+      };
       unmount();
-    },
-  );
-
-  // DEFECT: wipe is a TWO-BEAT design — the exiting half slides a coloured
-  // sheet IN over the outgoing clip, the entering half slides it back OUT to
-  // reveal the incoming one — but both halves run SIMULTANEOUSLY over the same
-  // window (at a cut and under TransitionSeries alike), and the entering half
-  // is drawn on top. At progress 0 its sheet sits at translateX(0%), fully
-  // covering, so the whole frame flashes to the accent colour on the
-  // transition's first frame and the exiting half's sweep is never seen at
-  // all.
-  it.fails(
-    'KNOWN DEFECT: wipe’s ENTERING sheet already covers the frame at progress 0, hiding the outgoing clip — see docs/superpowers/at-cut-transition-findings.md',
-    () => {
-      const t = { kind: 'wipe', frames: 15, color: 'secondary', direction: 'left' } as TransitionRecord;
-      const p = presentationFor(t, { ...DIMS, palette: PALETTE })!;
-      const { container, unmount } = mount(p, 'entering', 0);
-      expect(rootOf(container)?.style.opacity).toBe('0');
-      unmount();
-    },
-  );
+      return out;
+    };
+    expect([0, 0.5, 1].map(sample)).toEqual([
+      // Progress 0 is the outgoing clip, clean: B fully transparent, both RGB
+      // copies invisible.
+      { progress: 0, incoming: ['0', '0', '0'], glitch: ['0', '0'], outgoing: 3 },
+      { progress: 0.5, incoming: ['0.5', '0.5', '0.5'], glitch: ['1', '1'], outgoing: 3 },
+      { progress: 1, incoming: ['1', '1', '1'], glitch: ['0', '0'], outgoing: 3 },
+    ]);
+  });
 });
 
 describe('AtCutTransition drives ONE node off the boundary-local frame', () => {

@@ -78,14 +78,23 @@ directly confirm or refute.
 | `rgbSplit()` | `rgb-split` | Series | Chromatic aberration with color fringing | Modern tech, energetic transitions |
 | `zoomBlur()` | `zoom-blur` | Series | Radial motion blur with scale | CTAs, reveals, high-energy moments |
 | `lightLeak()` | `light-leak` | Series | Cinematic lens flare and overexposure | Emotional moments, celebrations, film aesthetic |
-| `pixelate()` | `pixelate` | Series | Digital mosaic dissolution | Retro/gaming, digital transformations |
-| `checkerboard()` | `checkerboard` | Series | Grid-based reveal with multiple patterns | Playful reveals, structured transitions |
-| `scanlineGlitch()` | `scanline-glitch` | — | Compressed CRT scanlines + RGB shift | Retro-futurism, modern edgy reels |
+| `pixelate()` | `pixelate` | **Two-input node** | Digital mosaic dissolution | Retro/gaming, digital transformations |
+| `checkerboard()` | `checkerboard` | **Two-input node** | Grid-based reveal with multiple patterns | Playful reveals, structured transitions |
+| `scanlineGlitch()` | `scanline-glitch` | **Two-input node** | Compressed CRT scanlines + RGB shift | Retro-futurism, modern edgy reels |
 | `whipPan()` | `whip-pan` | — | Directional motion blur — fast camera move | Energetic cuts, fast-paced reels |
 | `zoomThrough()` | `zoom-through` | — | Zoom out of outgoing, zoom into incoming | Product reveals, fast-cut edits |
-| `wipe()` | `wipe` | — | Directional sweep in a brand colour | Brand-consistent directional reveals |
+| `wipe()` | `wipe` | **Two-input node** | Directional sweep in a brand colour | Brand-consistent directional reveals |
 | `gradientWipe()` | `gradient-wipe` | — | Feathered diagonal blend band | Soft corner-to-corner reveals |
 | `burn()` | `burn` | At-cut | Cloud-masked burn-through with a hot edge | Organic reveals, warm brand moments |
+
+**Four kinds are NATIVE TWO-INPUT NODES** (`wipe`, `checkerboard`, `pixelate`,
+`scanline-glitch`), marked above. Their factories return a `TransitionNode` —
+`{ composite }`, one component invoked ONCE per boundary with `(from, to, progress)` —
+not a `TransitionPresentation`. They cannot be used with `TransitionSeries`, which hands a
+presentation one clip at a time; drive them through `transitionNodeFor()` +
+`AtCutTransition` (or `buildVideoNodes`), which is what a layered reel already does.
+`presentationFor()` returns `null` for them and warns. Every other kind is still one-sided
+and core lifts it. See `docs/superpowers/phase4-migrations.md` § Task 2.1.
 
 A kind's tunable params are exactly its schema fields minus `kind`/`frames`; the editor derives
 its sub-option controls from that shape, so the two can't disagree. Every param of the six
