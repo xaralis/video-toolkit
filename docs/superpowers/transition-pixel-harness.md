@@ -195,10 +195,23 @@ guards keep that list honest:
   accepted pair.
 
 This replaced an earlier kind-level `flakyUnderStrict` exemption, which was wrong three
-ways: it blinded 30 cells to cover 10 (every `exit`-mode cell is *structurally* incapable
-of the flake — both presentations apply their clip path only when
-`presentationDirection !== 'exiting'`), it keyed on the wrong predictor, and it was
-incomplete, so `--strict` could still go red on an unchanged tree roughly 1 run in 125.
+ways: it blinded 30 cells to cover 10, it keyed on the wrong predictor, and it was
+incomplete, so `--strict` could still go red on an unchanged tree.
+
+**Why the scope is a CELL and not a kind, a mode, or a "curved edge".** Every structural
+generalisation tried here turned out to be false somewhere:
+
+- *"curved edges flake"* — `clock-wipe`'s flaking boundary is a straight radial ray, and
+  `light-leak` has no clip path at all.
+- *"only `enter`/`cut` cells can flake, because both presentations apply their clip path
+  only when `presentationDirection !== 'exiting'`"* — true of `iris` and `clock-wipe`, and
+  false in general: three of `light-leak`'s affected cells are `exit__p025`, `exit__p05`
+  and `exit__p075`. `light-leak` has no clip path for the exiting branch to skip.
+- *"it is a property of the kind"* — `iris` flakes at progress 0.5 and 0.75 and not at 0,
+  0.25 or 1.
+
+A per-cell list needs no theory of *why* a cell flakes, and cannot be wrong about a cell
+it has actually sampled. Goldens are keyed per cell already, so the scoping is free.
 
 Three further behaviours, all visible in output, never silent:
 
