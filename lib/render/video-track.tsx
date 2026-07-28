@@ -164,9 +164,20 @@ export function buildVideoNodes(
   // windows is claimed by two boundaries at once, so it is composited TWICE on
   // the frames they share. The one-sided model had its own pathology here (both
   // wrappers mid-progress over one Sequence); this one shows up as a double
-  // image, which is a mystery unless something says so. Task 1.4 owns the real
-  // fix — it re-times the windows for `alignment` anyway — so this is a
-  // DIAGNOSTIC, not a guard: it never changes what renders.
+  // image, which is a mystery unless something says so. This is a DIAGNOSTIC,
+  // not a guard: it never changes what renders.
+  //
+  // TASK 1.4 LOOKED AT IT AND LEFT IT A DIAGNOSTIC, deliberately. 1.3 expected
+  // alignment to fix it in passing; it does not. Alignment moves a window
+  // relative to the cut, but a window is still `frames` long whatever its
+  // alignment, so "the transitions are longer than the clip" survives every
+  // alignment (and `center` reaches it just as easily as `start` does — see the
+  // alignment-aware case pinned in transition-alignment-render.test.tsx). The
+  // only real fix is to SHORTEN a transition to fit its clip, which changes the
+  // progress curve of every affected boundary — a render-changing policy
+  // decision (shrink both? favour the earlier? refuse the config?) that belongs
+  // with its own parity assessment and brand-migration note, not smuggled in
+  // under a field whose acceptance criterion is byte-identical output.
   //
   // warnOnce because buildVideoNodes runs on every frame of every render (see
   // warn-once.ts), and the message is a thunk for the same reason.

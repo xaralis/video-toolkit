@@ -43,6 +43,7 @@ vi.mock('remotion', async () => {
 });
 
 import { buildVideoNodes } from '@video-toolkit/lib/render/video-track';
+import { resetWarnOnce } from '@video-toolkit/lib/render/warn-once';
 import type { TransitionNodeProps, TransitionRegistry } from '@video-toolkit/lib/theming/transitions';
 import type { VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
@@ -125,5 +126,35 @@ describe('`end` plays the whole transition before the cut', () => {
 
   it('is over by the frame AFTER the cut', () => {
     expect(progressAt(reel('end'), CUT + 1)).toBeNull();
+  });
+});
+
+// Task 1.3 left the overlapping-boundary defect (a clip shorter than its own
+// in+out transition windows is composited twice) as a dev-only diagnostic, on
+// the expectation that alignment would fix it in passing. It does not: a window
+// is `frames` long whatever its alignment, so alignment only MOVES the overlap
+// around. What alignment must not do is silence the diagnostic — the windows it
+// is computed from are exactly the ones alignment re-times. See the note at the
+// warning in lib/render/video-track.tsx for why the real fix is not this task's.
+describe('the overlap diagnostic survives re-timed windows', () => {
+  beforeEach(() => resetWarnOnce());
+
+  const aligned = (alignment: string) => [
+    clip('a', 0, 1000, { transitionOut: { kind: 'spy', frames: 10, alignment } }),
+    // 300ms = 9 frames, shorter than either transition around it.
+    clip('tiny', 1000, 1300, { transitionOut: { kind: 'spy', frames: 10, alignment } }),
+    clip('c', 1300, 2300),
+  ];
+
+  it.each(['center', 'start', 'end'])('still names the short clip under %s alignment', (alignment) => {
+    const warned: string[] = [];
+    const spy = vi.spyOn(console, 'warn').mockImplementation((m: string) => void warned.push(m));
+    try {
+      progressAt(aligned(alignment) as VideoItem[], 30);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(warned).toHaveLength(1);
+    expect(warned[0]).toContain('"tiny"');
   });
 });

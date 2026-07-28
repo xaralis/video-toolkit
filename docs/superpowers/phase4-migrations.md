@@ -209,3 +209,75 @@ and the last filter silently ate every hit — the repo path itself is
 nothing and was read as "no brand uses glitch". Any exclusion pattern applied to
 a full path must be anchored (`--exclude-dir=node_modules`, or `grep -v
 '/node_modules/'`), never a bare substring that can match the repo name.
+
+---
+
+## Task 1.4 — Transition alignment (Center / Start / End at Cut)
+
+### 1.4-a Nothing to do — the field is additive and defaults to today's cut
+
+**Grade: parity-preserving. No action.**
+
+`alignment?: 'center' | 'start' | 'end'` is now carried by every transition,
+core-catalog and brand-authored alike. Every baked literal in both brand repos
+omits it, and omitting it is `center`, which reproduces the previous
+`floor(frames/2)` / `ceil(frames/2)` split exactly — including which side of an
+odd frame count gets the extra frame. Verified byte-for-byte by the transition
+pixel harness (`examples/layered-minimal`, `npm run pixel-gate:strict`):
+`300 accepted, 0 same-picture-different-bytes, 0 drifted, 0 missing`.
+
+Grep over both repos' `templates/` and `projects/`: **zero** mentions of
+`TransitionSchema` or `alignment`. The one brand-side `Transition` type
+(`projects/pp-05-zastupitelsky-klub/src/config/types.ts`) is a project-local
+hand-written union that imports nothing from core, so it is untouched.
+
+### 1.4-b What a brand writes to USE it
+
+One field, next to `frames`, on either edge of a cut:
+
+```ts
+// hold the outgoing clip to its last frame, then dissolve entirely inside the
+// incoming one
+{ ...clip, transitionOut: { kind: 'dissolve', frames: 12, alignment: 'start' } }
+
+// finish the dissolve before the cut, so the incoming clip starts clean
+{ ...clip, transitionOut: { kind: 'burn', frames: 20, alignment: 'end' } }
+```
+
+It works identically for a brand-registered kind
+(`{ kind: 'my-brand-swipe', frames: 12, alignment: 'end' }`) — the field is
+intersected onto the whole union, not added to core's catalog members, so both
+schema branches carry it and both VALIDATE it (a nonsense value fails to parse
+on a brand kind too, which `.passthrough()` alone would not have caught).
+
+There is **no editor control** for it yet: `subOptionsFor` derives controls from
+a kind's own member shape, and alignment deliberately is not there (it is a
+sibling of `frames`, not a look parameter). A brand sets it in `defaultProps`.
+
+### 1.4-c Alignment at a reel edge CLAMPS
+
+**Grade: parity-preserving** (the clamp is the pre-existing edge behaviour).
+
+The first item's own `transitionIn` and the last item's own `transitionOut` have
+no neighbour to borrow from, so the handle is zero and the transition plays over
+the item's own frames. `alignment` does not change that: `end` at the leading
+edge does not reach before frame 0, and `start` at the trailing edge does not
+reach past the reel. A reel edge is not a cut, so there is nothing to sit before
+or after.
+
+### 1.4-d The overlapping-boundary defect is STILL a diagnostic
+
+**Grade: unchanged — Task 1.3's dev-only warning stands.**
+
+Task 1.3 deferred the real fix to 1.4 on the expectation that re-timing the
+windows for alignment would close it. It does not. A boundary window is `frames`
+long whatever its alignment, so "the clip is shorter than its own in+out
+transitions" survives every alignment — `center` reaches it as easily as `start`
+does. The only real fix is to SHORTEN a transition to fit its clip, which
+changes the progress curve of every affected boundary: a render-changing policy
+decision that needs its own parity assessment, not a side effect of a field
+whose acceptance criterion is byte-identical output.
+
+What 1.4 did do is verify the diagnostic survives the re-timing — it is computed
+from exactly the windows alignment moves — and pin that at all three alignments
+(`lib/editor/src/transition-alignment-render.test.tsx`).
