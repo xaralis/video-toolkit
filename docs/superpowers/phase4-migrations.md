@@ -101,3 +101,66 @@ changes. Verified: `npm run pixel-gate:strict` in `examples/layered-minimal`.
 with no caller. `ken-burns` is deliberately NOT migrated onto it (Task 3.2
 depends on `kenBurnsStyle` keeping its exact signature). Keyframe editing UI is
 out of scope for Phase 4; the editor exposes constants only.
+
+---
+
+## Task 1.3 — Two-input transition rendering
+
+### 1.3-a Brand transition registrations keep working, unchanged
+
+**Grade: parity-preserving. No action.**
+
+`TransitionRenderer`'s return type WIDENED from `AnyPresentation | null` to
+`ResolvedTransition | null` (`= AnyPresentation | TransitionNode | null`). That
+direction is backwards-compatible: a registration written against Task 1.2 —
+returning `{component, props}` — is still assignable, and core lifts it into the
+two-input form with `fromRemotionPresentation`. Neither brand repo registers a
+transition today; when one does, the 1.2 shape remains valid.
+
+### 1.3-b `presentationFor` is unchanged, and `WebProgramIntro` is safe
+
+**Grade: parity-preserving. No action.**
+
+`projects/pp-program-*/src/WebProgramIntro.tsx` (PP repo, 2 projects) calls
+`presentationFor(t, {width, height, palette})` and feeds the result to
+`TransitionSeries.Transition`. That accessor keeps its name, its signature and
+its `{component, props}` return for every core kind, so those projects are
+untouched. It returns `null` for a kind that resolves to a natively two-input
+node — no core kind does yet; Task 2.1 will make four of them do so, and that is
+where this call site needs revisiting.
+
+### 1.3-c `AtCutTransition`'s props CHANGED — breaking, but unused by any brand
+
+**Grade: deliberate; no brand action needed.**
+
+`AtCutTransition` went from
+`{inPresentation, inFrames, outPresentation, outFrames, seqDurationF, children}`
+to `{node, from, to, frames, dims}`. Verified by grep: neither the PP repo nor
+the roost repo mounts it directly — both go through `buildVideoNodes`, whose
+signature is unchanged. A brand that had copied the old at-cut loop would have
+to adopt `buildVideoNodes` rather than patch the props.
+
+### 1.3-d `glitch` changes look at a cut and at a trailing edge
+
+**Grade: DELIBERATE LOOK CHANGE — the only one in this task, and it is
+unavoidable under the two-input model.**
+
+`glitch` is the one core presentation that reads `useCurrentFrame()` for its own
+purposes (`lib/transitions/presentations/glitch.tsx:45` → `flickerFrame`, which
+seeds the `feTurbulence` tear pattern and the neon block layout). Under the old
+one-sided model it was mounted inside the CLIP's `Sequence`, so its seed came
+from how far into that clip the transition sat; the two halves of one cut
+therefore ran on two different clocks and disagreed. Under the two-input model
+there is ONE mount inside the BOUNDARY's `Sequence`, so the seed is
+boundary-relative — the same authored transition now glitches identically
+wherever it sits on the timeline.
+
+Preserving both old clocks is impossible: one node call has one clock, and the
+old model had two. Measured extent: 7 of 300 harness cells
+(`glitch__cut__p025/p05/p075`, `glitch__exit__p025/p05/p075/p1`), re-baselined
+at `--repeat=8`. The crossfade underneath is progress-driven and unchanged; only
+the noise pattern moved. `glitch__enter__*` did not move, because at a leading
+edge the boundary and the clip start on the same frame.
+
+Neither brand repo authors a `glitch` transition today (`grep -r "'glitch'"`
+over both `projects/` trees), so no baked cut changes.

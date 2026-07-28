@@ -184,6 +184,31 @@ export function resolveTransition(t: TransitionRecord | undefined, dims: Dims): 
   });
 }
 
+// Invokes ONE SIDE of a one-sided presentation directly (not via
+// TransitionSeries) with the exact prop shape it expects. Since Task 1.3 this
+// is no longer a render-path component in its own right: it is the layer
+// `fromRemotionPresentation` builds a two-input node out of, called twice — once
+// per input — inside a SINGLE node invocation.
+export const TransitionLayer: React.FC<{
+  presentation: AnyPresentation;
+  direction: 'entering' | 'exiting';
+  progress: number;
+  durationInFrames: number;
+  children: React.ReactNode;
+}> = ({ presentation, direction, progress, durationInFrames, children }) => {
+  const Component = presentation.component;
+  return (
+    <Component
+      passedProps={presentation.props}
+      presentationDirection={direction}
+      presentationProgress={progress}
+      presentationDurationInFrames={durationInFrames}
+    >
+      {children}
+    </Component>
+  );
+};
+
 /** The ONE-SIDED view of a resolved kind: the `{component, props}` presentation,
  *  or null when the kind resolves to nothing OR to a natively two-input node
  *  (which has no one-sided form to hand back).
@@ -210,28 +235,17 @@ export function presentationFor(t: TransitionRecord | undefined, dims: Dims): An
  *  leading and trailing edges reproduce their pre-1.3 pixels, where the missing
  *  neighbour simply had no `Sequence` on screen. */
 export function fromRemotionPresentation(p: AnyPresentation): TransitionNode {
-  const Component = p.component;
   const composite: React.FC<TransitionNodeProps> = ({ from, to, progress, durationInFrames }) => (
     <>
       {from === null ? null : (
-        <Component
-          passedProps={p.props}
-          presentationDirection="exiting"
-          presentationProgress={progress}
-          presentationDurationInFrames={durationInFrames}
-        >
+        <TransitionLayer presentation={p} direction="exiting" progress={progress} durationInFrames={durationInFrames}>
           {from}
-        </Component>
+        </TransitionLayer>
       )}
       {to === null ? null : (
-        <Component
-          passedProps={p.props}
-          presentationDirection="entering"
-          presentationProgress={progress}
-          presentationDurationInFrames={durationInFrames}
-        >
+        <TransitionLayer presentation={p} direction="entering" progress={progress} durationInFrames={durationInFrames}>
           {to}
-        </Component>
+        </TransitionLayer>
       )}
     </>
   );
@@ -246,28 +260,6 @@ export function transitionNodeFor(t: TransitionRecord | undefined, dims: Dims): 
   if (!resolved) return null;
   return isTransitionNode(resolved) ? resolved : fromRemotionPresentation(resolved);
 }
-
-// Invokes one presentation's component directly (not via TransitionSeries —
-// see AtCutTransition below) with the exact prop shape it expects.
-export const TransitionLayer: React.FC<{
-  presentation: AnyPresentation;
-  direction: 'entering' | 'exiting';
-  progress: number;
-  durationInFrames: number;
-  children: React.ReactNode;
-}> = ({ presentation, direction, progress, durationInFrames, children }) => {
-  const Component = presentation.component;
-  return (
-    <Component
-      passedProps={presentation.props}
-      presentationDirection={direction}
-      presentationProgress={progress}
-      presentationDurationInFrames={durationInFrames}
-    >
-      {children}
-    </Component>
-  );
-};
 
 // THE BOUNDARY COMPOSITOR. Mounted inside the boundary's OWN `Sequence` (see
 // video-track.tsx), so `useCurrentFrame()` is already boundary-relative: frame 0
