@@ -27,19 +27,29 @@ export function gradeWbMatrixValues(g: Grade): string {
   return `${r} 0 0 0 0  0 ${gg} 0 0 0  0 0 ${b} 0 0  0 0 0 1 0`;
 }
 
-// The CSS `filter` string. brightness/contrast/saturation are native CSS
-// filter functions; white balance chains an SVG feColorMatrix referenced by
-// `wbFilterId` (render <GradeDefs> with the same id). Returns undefined when
-// nothing to apply.
+// The CSS `filter` string. brightness/contrast/saturation/sepia/hue-rotate are
+// native CSS filter functions; white balance chains an SVG feColorMatrix
+// referenced by `wbFilterId` (render <GradeDefs> with the same id). Returns
+// undefined when nothing to apply.
+//
+// ORDER IS PART OF THE CONTRACT. `url(#wb)` stays LAST (pinned by
+// segment-media-merge-baseline.test.tsx), and sepia/hue-rotate slot after
+// saturate — appended at the end of the native run, so no grade authored before
+// they existed emits a different string. Both are neutral at 0, which is also
+// the CSS no-op, so an omitted field costs nothing and moves no pixel.
 export function gradeFilter(g: Grade | undefined, wbFilterId: string): string | undefined {
   if (!g) return undefined;
   const parts: string[] = [];
   const b = g.brightness ?? 1;
   const c = g.contrast ?? 1;
   const s = g.saturation ?? 1;
+  const sep = g.sepia ?? 0;
+  const hue = g.hueRotateDeg ?? 0;
   if (b !== 1) parts.push(`brightness(${b})`);
   if (c !== 1) parts.push(`contrast(${c})`);
   if (s !== 1) parts.push(`saturate(${s})`);
+  if (sep !== 0) parts.push(`sepia(${sep})`);
+  if (hue !== 0) parts.push(`hue-rotate(${hue}deg)`);
   if (gradeNeedsWb(g)) parts.push(`url(#${wbFilterId})`);
   return parts.length ? parts.join(' ') : undefined;
 }

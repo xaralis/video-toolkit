@@ -430,6 +430,14 @@ export function TransitionFields({
   );
 }
 
+/** Grade fields whose NEUTRAL value is 0, not 1. The inspector drops neutral
+ *  fields so `grade` stays minimal; getting this set wrong is silent DATA LOSS
+ *  — before Phase 4 Task 2.7 the rule was inlined as `k === 'temperature' || k
+ *  === 'tint'`, so adding `sepia`/`hueRotateDeg` to Grade would have made an
+ *  authored `sepia: 1` (fully sepia) vanish the moment any grade control was
+ *  touched. One named set, so a future Grade field is a one-line decision. */
+const GRADE_NEUTRAL_ZERO: ReadonlySet<string> = new Set(['temperature', 'tint', 'sepia', 'hueRotateDeg']);
+
 const BLEND_DIRECTIONS = ['tl-br', 'tr-bl', 'bl-tr', 'br-tl'];
 // The position dropdown offers exactly the canonical placement vocabulary —
 // deriving it (instead of a hand-copied list) is what keeps the dropdown, the
@@ -619,16 +627,20 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
             </Row>
           </>
         )}
-        {/* Per-clip colour grade (brightness/contrast/saturation are native CSS
-            filters; temperature/tint drive an SVG white-balance matrix). Applies
-            to the SegmentMedia-rendered footage kinds. Neutral = 1 (b/c/s) / 0
-            (temp/tint); neutral values are dropped so `grade` stays minimal. */}
+        {/* Per-clip colour grade (brightness/contrast/saturation/sepia/hue
+            rotation are native CSS filters; temperature/tint drive an SVG
+            white-balance matrix). Applies to the SegmentMedia-rendered footage
+            kinds. Neutral = 1 for the multipliers, 0 for GRADE_NEUTRAL_ZERO;
+            neutral values are dropped so `grade` stays minimal. */}
         {(v.kind === 'clip' || v.kind === 'broll' || v.kind === 'photo') && (() => {
-          const g = (v.grade ?? {}) as { brightness?: number; contrast?: number; saturation?: number; temperature?: number; tint?: number };
+          const g = (v.grade ?? {}) as {
+            brightness?: number; contrast?: number; saturation?: number;
+            temperature?: number; tint?: number; sepia?: number; hueRotateDeg?: number;
+          };
           const patchGrade = (patch: Record<string, number>) => {
             const merged = { ...g, ...patch } as Record<string, number>;
             const cleaned = Object.fromEntries(
-              Object.entries(merged).filter(([k, val]) => typeof val === 'number' && val !== (k === 'temperature' || k === 'tint' ? 0 : 1)),
+              Object.entries(merged).filter(([k, val]) => typeof val === 'number' && val !== (GRADE_NEUTRAL_ZERO.has(k) ? 0 : 1)),
             );
             patchItem('video', id, { grade: Object.keys(cleaned).length ? cleaned : undefined });
           };
@@ -643,7 +655,11 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                 <NumberField lbl="Saturation" step={0.05} value={g.saturation ?? 1} onCommit={(n) => patchGrade({ saturation: n })} />
                 <NumberField lbl="Temperature" step={0.05} value={g.temperature ?? 0} onCommit={(n) => patchGrade({ temperature: n })} />
               </Row>
-              <NumberField lbl="Tint" step={0.05} value={g.tint ?? 0} onCommit={(n) => patchGrade({ tint: n })} />
+              <Row>
+                <NumberField lbl="Tint" step={0.05} value={g.tint ?? 0} onCommit={(n) => patchGrade({ tint: n })} />
+                <NumberField lbl="Sepia" step={0.05} value={g.sepia ?? 0} onCommit={(n) => patchGrade({ sepia: n })} />
+              </Row>
+              <NumberField lbl="Hue rotate (deg)" step={1} value={g.hueRotateDeg ?? 0} onCommit={(n) => patchGrade({ hueRotateDeg: n })} />
             </>
           );
         })()}

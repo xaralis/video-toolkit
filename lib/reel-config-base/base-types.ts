@@ -20,12 +20,17 @@ import type { Crop } from './segment-base-schemas';
 // rule #32). For matching exposure / white balance across shots — not for the
 // brand look. brightness/contrast/saturation are multipliers (1 = unchanged);
 // temperature/tint are −1..1 (temperature + = warmer, tint + = magenta).
+// sepia (0..1) and hueRotateDeg (−180..180) are neutral at 0 — added in Phase 4
+// Task 2.7 so a vintage/VHS-style look is expressible in core's own vocabulary
+// rather than requiring a brand renderer with a hardcoded filter string.
 export interface Grade {
   brightness?: number;
   contrast?: number;
   saturation?: number;
   temperature?: number;
   tint?: number;
+  sepia?: number;
+  hueRotateDeg?: number;
 }
 
 export interface ClipSegmentBase {

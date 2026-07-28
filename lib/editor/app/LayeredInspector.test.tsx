@@ -309,3 +309,45 @@ describe('LayeredInspector effect catalog', () => {
     expect(mode.value).toBe('film');
   });
 });
+
+// Phase 4 Task 2.7 added `sepia` and `hueRotateDeg` to Grade. The inspector
+// drops NEUTRAL grade fields so the bag stays minimal, and its neutral test
+// used to be inlined as `k === 'temperature' || k === 'tint' ? 0 : 1` — i.e.
+// "1 is neutral for everything else". Under that rule an authored `sepia: 1`
+// (fully sepia) is silently DESTROYED the moment any other grade control is
+// touched, the same data-loss class as Task 1.2b's coerce-to-cut. These pin the
+// GRADE_NEUTRAL_ZERO set that replaced it, from both sides.
+describe('LayeredInspector grade neutral handling', () => {
+  const withGrade = (grade: Record<string, number>): LayeredReel => ({
+    ...base,
+    tracks: { ...base.tracks, video: [{ ...base.tracks.video[0], grade } as never] },
+  });
+
+  const commitBrightness = (reel: LayeredReel) => {
+    const onChange = vi.fn();
+    render(<LayeredInspector reel={reel} selectedId="video:v1" onChange={onChange} onSeek={() => {}} fps={30} />);
+    fireEvent.change(screen.getByLabelText('Brightness'), { target: { value: '1.2' } });
+    return (onChange.mock.calls.at(-1)![0] as LayeredReel).tracks.video[0].grade as Record<string, number>;
+  };
+
+  it('KEEPS a non-neutral sepia/hueRotateDeg of 1 when another control is touched', () => {
+    expect(commitBrightness(withGrade({ sepia: 1, hueRotateDeg: 1 }))).toEqual({
+      brightness: 1.2,
+      sepia: 1,
+      hueRotateDeg: 1,
+    });
+  });
+
+  it('DROPS sepia/hueRotateDeg at their neutral 0, so the bag stays minimal', () => {
+    expect(commitBrightness(withGrade({ sepia: 0, hueRotateDeg: 0, saturation: 0.8 }))).toEqual({
+      brightness: 1.2,
+      saturation: 0.8,
+    });
+  });
+
+  it('offers a control for each, seeded at the neutral 0', () => {
+    render(<LayeredInspector reel={base} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect((screen.getByLabelText('Sepia') as HTMLInputElement).value).toBe('0');
+    expect((screen.getByLabelText('Hue rotate (deg)') as HTMLInputElement).value).toBe('0');
+  });
+});

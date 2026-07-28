@@ -88,8 +88,22 @@ export const GradeSchema = z
       .step(0.01)
       .optional()
       .describe('White balance tint — 0 = neutral, + magenta, − green. Fixes green casts (e.g. GoPro evening).'),
+    sepia: z
+      .number()
+      .min(0)
+      .max(1)
+      .step(0.01)
+      .optional()
+      .describe('Sepia amount — 0 = unchanged (default), 1 = fully sepia. For aged/vintage looks.'),
+    hueRotateDeg: z
+      .number()
+      .min(-180)
+      .max(180)
+      .step(1)
+      .optional()
+      .describe('Hue rotation in degrees — 0 = unchanged (default). For VHS-style colour shifts.'),
   })
-  .describe('Per-clip colour correction (brightness / contrast / saturation / white balance), applied before the brand LUT (rule #32). For matching shots, not for the look.');
+  .describe('Per-clip colour correction (brightness / contrast / saturation / white balance / sepia / hue rotation), applied before the brand LUT (rule #32). For matching shots, not for the look.');
 
 export const ClipSegmentBaseSchema = z.object({
   id: z.string().describe('Stable segment ID, e.g. "seg-001".'),

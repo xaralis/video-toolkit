@@ -79,15 +79,30 @@ export const GrainEffect: React.FC<EffectRenderProps> = ({ effect, index, item, 
 
 // ------------------------------------------------------------ scanlines
 
+// `lineWidthPx` and `lineColor` were hardcoded before Phase 4 Task 2.7 — a 50%
+// duty cycle in opaque black. Neither was a design choice; they were core's own
+// ceiling, and the reason a 1-in-4 duty cycle at a non-black line (the VHS
+// look a brand ships) could not be expressed as a core `scanlines`. Naming the
+// brand is deliberately avoided: the brand-leak gate is a COUNT over lib/ and
+// this file is inside it. Defaults reproduce the
+// pre-2.7 string EXACTLY: `spacing / 2` and `rgba(0,0,0,1)`.
+//
+// The transparent stop stays literal `rgba(0,0,0,0)` rather than following
+// `lineColor` — the two stops sit at the SAME position, so it is a hard stop
+// with no interpolated region, and keeping it literal keeps every pre-2.7
+// string byte-identical.
 export function scanlinesLayerStyle(effect: Record<string, unknown>): React.CSSProperties {
   const spacing = Math.max(1, num(effect.spacingPx, 1));
   const blend = typeof effect.blend === 'string' ? effect.blend : undefined;
-  const half = spacing / 2;
+  // Clamped into [0, spacing]: a line wider than the period would emit
+  // out-of-order gradient stops, which browsers silently repair differently.
+  const lineWidth = Math.min(spacing, Math.max(0, num(effect.lineWidthPx, spacing / 2)));
+  const lineColor = typeof effect.lineColor === 'string' ? effect.lineColor : 'rgba(0,0,0,1)';
   return {
     ...OVERLAY_BASE,
     opacity: num(effect.opacity, 0),
     ...(blend ? { mixBlendMode: blend as React.CSSProperties['mixBlendMode'] } : {}),
-    backgroundImage: `repeating-linear-gradient(to bottom, rgba(0,0,0,1) 0px, rgba(0,0,0,1) ${half}px, rgba(0,0,0,0) ${half}px, rgba(0,0,0,0) ${spacing}px)`,
+    backgroundImage: `repeating-linear-gradient(to bottom, ${lineColor} 0px, ${lineColor} ${lineWidth}px, rgba(0,0,0,0) ${lineWidth}px, rgba(0,0,0,0) ${spacing}px)`,
   };
 }
 
