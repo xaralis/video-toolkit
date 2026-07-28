@@ -52,17 +52,24 @@
  * (`iris__cut__p05`, `iris__cut__p075`, `clock-wipe__cut__p1` were each caught
  * once), while eight consecutive renders of the same still in isolation agree.
  * Three things follow, all of them visible in the output, never silent:
- *   - a mismatch is re-rendered once, on a FRESH browser (the one mismatch that
- *     survived a retry repeated the same bytes in the same browser instance, so
- *     a same-instance retry is not an independent sample);
+ *   - a mismatch is re-rendered once before it is called drift (on the SAME
+ *     browser: replacing the browser mid-run was tried and crashes the run with
+ *     an unhandled EPIPE — see the browser-lifecycle note below);
  *   - a surviving mismatch whose 8×8 picture still agrees is reported as `NEAR`
- *     and counted, not failed — but a run with a non-zero NEAR count cannot be
- *     used to claim byte-identical rendering;
+ *     and counted. By DEFAULT that is not fatal, so day-to-day runs are not red
+ *     for a rasteriser wobble. **Pass `--strict` to make NEAR fatal**, and use
+ *     `--strict` for any claim that rendering came through unchanged: the
+ *     tolerance is wide enough (~8100 px per cell at 540×960) that a localised
+ *     real change, or a uniform ±1-2/255 shift across the whole frame, would sit
+ *     inside it — and a uniform shift is exactly what restacking compositing
+ *     layers produces. A parity claim made without `--strict` is not a parity
+ *     claim;
  *   - `--update-goldens` renders everything TWICE and requires agreement, so a
  *     flake is never baked into the baseline.
  *
  * USAGE
  *   node scripts/render-transition-matrix.mjs                # the gate
+ *   node scripts/render-transition-matrix.mjs --strict       # …with NEAR fatal — REQUIRED for a parity claim
  *   node scripts/render-transition-matrix.mjs fade wipe      # only these kinds
  *   node scripts/render-transition-matrix.mjs --self-test    # no rendering; proves the checks have teeth
  *   node scripts/render-transition-matrix.mjs --sheets       # also write contact sheets (needs ImageMagick)
@@ -123,6 +130,7 @@ const flag = (name) => argv.includes(name);
 const UPDATE = flag('--update-goldens');
 const ALLOW_SHRINK = flag('--allow-shrink');
 const SELF_TEST = flag('--self-test');
+const STRICT = flag('--strict');
 const WANT_SHEETS = flag('--sheets');
 const only = argv.filter((a) => !a.startsWith('--'));
 
@@ -316,10 +324,16 @@ for (const kind of kinds) {
           const third = await shoot(entry, frameFor(mode, p), `${key}.tiebreak.png`);
           n++;
           const confirmsAgree = encodeGolden(third) === encodeGolden(confirm);
-          notes.push(`FLAKY UNDER RE-BASELINE: ${key} rendered two different images; took the value that came up twice`);
           if (confirmsAgree) {
+            notes.push(`FLAKY UNDER RE-BASELINE: ${key} rendered two different images; took the value that came up twice`);
             newFrames[key] = encodeGolden(third);
             frame = third;
+          } else {
+            // Three renders, three different images. There is no majority to
+            // take, so say so instead of claiming one — the first render is kept
+            // only because something has to be, and this key is not a trustworthy
+            // baseline.
+            fail(`UNSTABLE UNDER RE-BASELINE: ${key} rendered THREE different images; no value came up twice, so it cannot be baselined`);
           }
         }
       } else {
@@ -347,11 +361,14 @@ for (const kind of kinds) {
           results.drift++;
           fail(`PIXEL DRIFT: ${key} — the picture changed (max cell delta ${v.delta})\n    expected ${v.expected}\n    actual   ${v.actual}`);
         } else if (v.status === 'near') {
-          // Bytes moved, the picture did not. Non-fatal BUT counted and named:
-          // a run with a non-zero `near` count cannot be used to claim
-          // byte-identical rendering, which is exactly what Task 1.3 needs.
+          // Bytes moved, the picture did not — within a tolerance that is wide
+          // by necessity, not by preference. Counted and named either way; under
+          // `--strict` it is also FATAL, because a claim that rendering came
+          // through unchanged cannot be made on a lenient run.
           results.near++;
-          console.log(`  NEAR ${key} — bytes differ, picture identical within tolerance (max cell delta ${v.delta})`);
+          const line = `NEAR ${key} — bytes differ, picture identical within tolerance (max cell delta ${v.delta})`;
+          if (STRICT) fail(`${line} — fatal under --strict`);
+          else console.log(`  ${line}`);
         } else if (v.status === 'missing-golden') {
           results.missing++;
           fail(`NO GOLDEN for ${key} — a kind is covered by the matrix but not baselined; run --update-goldens and review the diff`);
@@ -397,6 +414,27 @@ await browser.close({ silent: true });
     const kind = key.split('__')[0];
     if (!allKinds.includes(kind)) fail(`STALE GOLDEN: "${key}" is baselined but kind "${kind}" no longer exists`);
   }
+  // …and the converse, cross-producted rather than observed. The per-still
+  // `missing-golden` check below only ever fires for kinds this run RENDERED, so
+  // on a filtered run a newly added catalog kind with no goldens at all used to
+  // slip through silently — and `kindCount` only guards against SHRINKING, so it
+  // did not catch it either. That is precisely the failure this harness exists to
+  // prevent, so the check is done here, off the catalog, with no renders involved.
+  if (!UPDATE) {
+    const unbaselined = [];
+    for (const kind of allKinds) {
+      for (const mode of MODES) {
+        for (const p of PROGRESS) if (!(keyOf(kind, mode, p) in oldFrames)) unbaselined.push(keyOf(kind, mode, p));
+      }
+    }
+    if (unbaselined.length) {
+      const kindsAffected = [...new Set(unbaselined.map((k) => k.split('__')[0]))];
+      fail(
+        `UNBASELINED COVERAGE: ${unbaselined.length} of ${allKinds.length * MODES.length * PROGRESS.length} matrix cells have no golden, ` +
+          `across ${kindsAffected.length} kind(s): ${kindsAffected.join(', ')}. Run --update-goldens and review the diff.`,
+      );
+    }
+  }
   for (const k of knownDefective) {
     if (!allKinds.includes(k)) fail(`knownDefective lists "${k}", which is not a transition kind any more`);
   }
@@ -436,6 +474,11 @@ if (UPDATE) {
   const nextCount = only.length === 0 ? allKinds.length : Math.max(goldens.kindCount ?? 0, allKinds.length);
   if (nextCount < (goldens.kindCount ?? 0) && !ALLOW_SHRINK) {
     fail(`refusing to re-baseline: kind coverage would drop from ${goldens.kindCount} to ${nextCount}. Pass --allow-shrink if a kind was genuinely removed.`);
+  } else if (problems.length) {
+    // The run already recorded failures — a semantic defect in a kind that is not
+    // pinned, an unstable still, a broken coverage guard. Writing goldens anyway
+    // would let `--update-goldens` launder exactly the thing the gate is for.
+    console.log(`\nNOT writing goldens: this run recorded ${problems.length} failure(s). Fix them, then re-baseline.`);
   } else {
     const next = {
       $comment: goldens.$comment ?? DEFAULT_COMMENT,
