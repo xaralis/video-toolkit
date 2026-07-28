@@ -1066,3 +1066,86 @@ Neither brand repo authors any of the six new fields (there is nothing to
 migrate — the fields did not exist to author). A brand wanting one of the six
 now can set it directly; that is the whole point of the task, and needs no
 migration note of its own.
+
+## Task 2.5 — one name per concept, one `wipe`
+
+### 2.5-a `zoom-through.from` → `direction` — PARITY-PRESERVING, MEASURED
+
+**Grade: parity-preserving.** `zoom-through` spelled the in/out axis `from`
+while `zoom-blur` (and `rgb-split`, `light-leak`) spelled the same concept
+`direction`. `direction` is now canonical on `zoom-through` too, bounded and
+described exactly as `zoom-blur`'s is.
+
+**`from` still works and still renders identically.** It is a DEPRECATED ALIAS,
+not a removal: `lib/render/at-cut-transitions.tsx` reads
+`t.direction ?? t.from`, so a baked literal keeps its authored value, and
+`warnOnce` names it once per process in dev. Reinterpreting or dropping an
+authored value silently is the one thing this workstream must never do — the
+same rule that kept `fade` meaning crossfade in Task 2.3.
+
+**Authored `from:` literals on `zoom-through`, both repos, read-only.** Exact
+command, run in each repo, with the vendored submodule excluded ANCHORED (a bare
+`toolkit/` pattern eats every path in a repo named `video-toolkit`):
+
+```bash
+grep -rn --include='*.ts' --include='*.tsx' --include='*.json' "zoom-through" . \
+  | grep -v '/node_modules/' | grep -vE '^(\./)?toolkit/'
+```
+
+| repo | hits | what they are |
+|---|---|---|
+| PP | **1** | `projects/pp-05-zastupitelsky-klub/src/config/types.ts:17` — a **type-union member** in that project's own local types file (`{ kind: 'zoom-through'; frames: number; from: 'in' \| 'out' }`), not an authored transition. Same class as the `glitch` echo in 2.4. |
+| roost | **0** | — |
+
+So **zero reels are affected** and there is nothing to apply. A brand touching
+that `types.ts` may widen it to `direction?: 'in' | 'out'; from?: 'in' | 'out'`
+at leisure; leaving it is also correct, because `from` keeps working.
+
+**Two consequences worth recording, neither a pixel change.**
+
+1. **`direction` is OPTIONAL, where `from` was required.** A member cannot
+   require the field its own deprecated alias stands in for. Unset means the
+   presentation's own `'in'` — which is exactly what the old seed said out loud —
+   and `defaultTransition('zoom-through')` is now `{kind, frames}` with neither
+   field, matching `zoom-blur`. Pixels unchanged: 315 goldens accepted, 0
+   drifted (`zoom-through`'s 15 cells among them).
+2. **`zoom-through` joined `FramesOnlyTransition`** as a consequence of (1), so
+   `deriveMontage`'s `outro.transition` will now accept it. That is a type-level
+   widening, not a behaviour change, and it is the status `zoom-blur` has always
+   had. The comment at `lib/reel-config-base/derive-montage.ts` was corrected
+   rather than left stale.
+
+The deprecated alias gets **no editor control** (`DEPRECATED_FIELDS` in
+`lib/reel-config-base/transition-schema.ts`, consulted by `subOptionsFor` and
+`defaultTransition`). Two controls for one concept would re-open the fork in the
+UI, which is the thing being closed.
+
+### 2.5-b One `wipe` — GALLERY-FACING ONLY, NO REEL PIXELS MOVE
+
+**Grade: not a reel-facing change at all.** `lib/render/at-cut-transitions.tsx`
+mapped `wipe` to the toolkit's own presentation (a two-input node since Task
+2.1) while `lib/transitions/TransitionGallery.tsx` imported
+`@remotion/transitions/wipe` and showed THAT under the same label. Only the
+gallery changed: the render path is byte-identical, the 315-cell pixel harness
+is unchanged, and the `MinimalReel` 5-frame hashes are unchanged (including
+frame 90, which sits inside its `wipe` boundary).
+
+**Core's `wipe` survived**, per the brief's default and confirmed against Task
+2.1's report: 2.1 rewrote it as a native two-input node with sequential beats and
+pinned it by mutation. Remotion's official wipe was **removed rather than
+renamed** — it is not a catalog kind, so a gallery entry for it would demonstrate
+a component no reel can author.
+
+**What it took.** `TransitionSeries` hands a presentation one clip at a time and
+structurally cannot drive a two-input node, so an import swap was not enough. The
+gallery gained a second demo shape, `NodeTransitionDemo`, which drives the
+boundary the way `lib/render/video-track.tsx` does (`AtCutTransition` inside its
+own `Sequence`), and `galleryTransitionNode(kind)` resolves through the reel's
+own `transitionNodeFor` + the kind's catalog defaults. The gallery's total
+length per entry is unchanged, so `transitionGalleryConfig.durationInFrames` is
+unchanged.
+
+**No brand action.** Neither repo imports `TransitionGallery`, `transitionMap`
+or `@remotion/transitions/wipe` outside its vendored `toolkit/` submodule
+(verified with the anchored grep above, pattern
+`TransitionGallery|transitionMap|transitions/wipe`: **0 hits in both**).

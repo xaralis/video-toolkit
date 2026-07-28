@@ -91,7 +91,12 @@ describe('core kinds are still judged by their own member', () => {
     const shapeValidButCoreInvalid = [
       { kind: 'slide', frames: 15 }, // missing `direction`
       { kind: 'slide', frames: 15, direction: 'sideways' }, // bad enum
-      { kind: 'zoom-through', frames: 15 }, // missing `from`
+      // Task 2.5 made `direction` (and its deprecated alias `from`) optional on
+      // `zoom-through`, so "missing" is no longer a failure there — `slide`
+      // above still covers the missing-required-field case. A BAD ENUM is what
+      // must still be caught, in both the canonical spelling and the alias.
+      { kind: 'zoom-through', frames: 15, direction: 'sideways' },
+      { kind: 'zoom-through', frames: 15, from: 'sideways' },
       { kind: 'wipe', frames: 15, color: 42, direction: 'left' }, // wrong type
       { kind: 'fade', frames: 0 }, // out of range
     ];

@@ -297,11 +297,13 @@ describe('subOptionsFor', () => {
     expect(byProp.blurAmount.max).toBe(100);
   });
 
-  it('returns a from enum with in/out, plus zoomAmount, for zoom-through', () => {
+  // `direction`, not `from` (Task 2.5): one name per concept, and the
+  // deprecated alias is deliberately NOT offered as a second control.
+  it('returns a direction enum with in/out, plus zoomAmount, for zoom-through', () => {
     const opts = subOptionsFor('zoom-through');
     const byProp = Object.fromEntries(opts.map((o) => [o.prop, o]));
-    expect(Object.keys(byProp).sort()).toEqual(['from', 'zoomAmount']);
-    expect(optValues(byProp.from.options)!.sort()).toEqual(['in', 'out']);
+    expect(Object.keys(byProp).sort()).toEqual(['direction', 'zoomAmount']);
+    expect(optValues(byProp.direction.options)!.sort()).toEqual(['in', 'out']);
     expect(byProp.zoomAmount.type).toBe('number');
     expect(byProp.zoomAmount.min).toBe(1);
     expect(byProp.zoomAmount.max).toBe(3);
@@ -608,11 +610,16 @@ describe('defaultTransition', () => {
     });
   });
 
-  it('defaults zoom-through to 15 frames and from in', () => {
+  // Nothing but `frames` (Task 2.5). `direction` became OPTIONAL when it
+  // replaced the required `from` — a baked `{from:'in'}` literal has to keep
+  // parsing, and a member cannot require the field it is aliasing. That matches
+  // `zoom-blur`, whose `direction` has always been optional and unseeded, and
+  // it is honest: unset means the presentation's own `'in'`, which is exactly
+  // what the old seed said out loud. The DEPRECATED `from` is never seeded.
+  it('defaults zoom-through to 15 frames, with neither direction nor the deprecated from', () => {
     expect(defaultTransition('zoom-through')).toEqual({
       kind: 'zoom-through',
       frames: 15,
-      from: 'in',
     });
   });
 

@@ -21,22 +21,38 @@ import type { TransitionPresentation } from '@remotion/transitions';
 
 import { slide } from '@remotion/transitions/slide';
 import { fade } from '@remotion/transitions/fade';
-import { wipe } from '@remotion/transitions/wipe';
 import { flip } from '@remotion/transitions/flip';
 import { glitch } from './presentations/glitch';
 import { rgbSplit } from './presentations/rgb-split';
 import { zoomBlur } from './presentations/zoom-blur';
 import { lightLeak } from './presentations/light-leak';
-// NO `pixelate` / `checkerboard` (nor `scanlineGlitch`, nor the toolkit's own
-// `wipe`) here. Since Phase 4 Task 2.1 those four are NATIVE TWO-INPUT nodes:
-// one component that composites BOTH clips itself, invoked once per boundary
-// with `(from, to, progress)`. `TransitionSeries` can only drive the one-sided
+// THE RENDER PATH, imported deliberately. A gallery whose whole job is to show
+// what a reel looks like must resolve a kind the way a reel resolves it — see
+// `galleryTransitionNode` below.
+import { AtCutTransition, transitionNodeFor } from '../render/at-cut-transitions';
+import type { TransitionNode, TransitionRecord } from '../render/at-cut-transitions';
+import { defaultTransition } from '../reel-config-base/transition-schema';
+import type { TransitionKind } from '../reel-config-base/transition-schema';
+// NO `@remotion/transitions/wipe` HERE ANY MORE (Phase 4 Task 2.5). It used to
+// be imported and shown under the label `wipe()` — while a reel's `wipe`
+// rendered the TOOLKIT's own two-beat sweep. Two components, one name: which
+// is exactly why the gallery could never have caught the `wipe` defect Task 2.1
+// fixed, since it was never showing the broken component. The official wipe is
+// not a catalog kind, so it is gone rather than renamed; `wipe()` below is now
+// core's, resolved through the reel's own resolver.
+//
+// NO `pixelate` / `checkerboard` / `scanlineGlitch` either — but for a
+// different reason, and one Task 2.5 did NOT have to accept for `wipe`. Since
+// Phase 4 Task 2.1 those (and `wipe`) are NATIVE TWO-INPUT nodes: one component
+// that composites BOTH clips itself, invoked once per boundary with
+// `(from, to, progress)`. `TransitionSeries` can only drive the one-sided
 // `TransitionPresentation` contract — it hands a presentation ONE clip at a
-// time — so it structurally cannot show them, and no adapter can invent the
-// missing input. They are demonstrated instead by the pixel harness in
+// time — so `TransitionDemo` structurally cannot show them. `NodeTransitionDemo`
+// below can, and `wipe` uses it; the other three stay out of scope here (their
+// entries are Task 2.6's to restore, together with the gallery's three parallel
+// tables). They remain covered by the pixel harness in
 // `examples/layered-minimal` (3 reel scenarios x 5 progress points per kind,
 // `npm run pixel-gate`), which renders them the way a reel actually does.
-// The `wipe()` entry below is @remotion/transitions' OWN wipe, unrelated.
 
 // Scene colors for visual variety
 const SCENE_A_COLOR = '#1a1a2e';
@@ -53,7 +69,8 @@ const TRANSITION_NOTES: Record<string, string> = {
   'lightLeak()': 'Cinematic lens flare',
   'slide()': 'Push from direction',
   'fade()': 'Simple crossfade',
-  'wipe()': 'Edge reveal',
+  // The toolkit's own two-beat sweep since Task 2.5, not @remotion's edge reveal.
+  'wipe()': 'Coloured sheet sweeps across, then off',
   'flip()': '3D card flip',
 };
 
@@ -257,6 +274,70 @@ function TransitionDemo<Props extends Record<string, unknown>>({
   );
 }
 
+/** The gallery's own composition size, as `transitionGalleryConfig` declares it
+ *  further down. A size-dependent kind (`clock-wipe`, `iris`) resolves against
+ *  these, so the demo shows the same geometry the config renders. */
+export const GALLERY_DIMS = { width: 1920, height: 1080, fps: 30 };
+
+/** RESOLVES A CATALOG KIND THE WAY A REEL DOES — the single line that ends the
+ *  `wipe` fork (Phase 4 Task 2.5).
+ *
+ *  The gallery used to hand-pick a presentation per entry, which is how it came
+ *  to demonstrate `@remotion/transitions/wipe` under the same name a reel used
+ *  for the toolkit's own. Going through `transitionNodeFor` + the kind's own
+ *  catalog defaults means the question "which component is this?" has exactly
+ *  one answer, and it is production's. It also makes two-input nodes showable
+ *  at all: `transitionNodeFor` lifts a one-sided presentation and returns a
+ *  native node untouched, so both contracts arrive here in one shape.
+ *
+ *  Pinned behaviourally by `lib/editor/src/transition-gallery.test.tsx`. */
+export function galleryTransitionNode(kind: TransitionKind): TransitionNode {
+  const node = transitionNodeFor(defaultTransition(kind) as TransitionRecord, GALLERY_DIMS);
+  if (!node) throw new Error(`TransitionGallery: no renderer for catalog kind "${kind}"`);
+  return node;
+}
+
+/** The two-input counterpart of `TransitionDemo`.
+ *
+ *  `TransitionSeries` hands a presentation one clip at a time, so it cannot
+ *  drive a node. This drives the boundary the way `lib/render/video-track.tsx`
+ *  does instead: scene A alone, then a boundary Sequence of `transitionDuration`
+ *  frames in which `AtCutTransition` composites BOTH scenes, then scene B alone.
+ *  Total length is `sceneA + sceneB - transitionDuration` — identical to the
+ *  `TransitionSeries` demo's, so `getSegmentDuration` covers both kinds of entry.
+ *
+ *  The scenes' own clocks restart at the boundary (each Sequence is its own
+ *  timeline), which is cosmetic here: `GalleryScene`'s only animation is a
+ *  10-frame label fade-in. */
+function NodeTransitionDemo({
+  name,
+  node,
+  transitionDuration = 45,
+  sceneADuration = DEFAULT_SCENE_DURATION,
+  sceneBDuration = DEFAULT_SCENE_DURATION,
+}: {
+  name: string;
+  node: TransitionNode;
+  transitionDuration?: number;
+  sceneADuration?: number;
+  sceneBDuration?: number;
+}) {
+  const a = <GalleryScene color={SCENE_A_COLOR} label={name} />;
+  const b = <GalleryScene color={SCENE_B_COLOR} label={name} isAfter />;
+  const cutAt = sceneADuration - transitionDuration;
+  return (
+    <AbsoluteFill>
+      <Sequence durationInFrames={cutAt}>{a}</Sequence>
+      <Sequence from={cutAt} durationInFrames={transitionDuration}>
+        <AtCutTransition node={node} from={a} to={b} frames={transitionDuration} dims={GALLERY_DIMS} />
+      </Sequence>
+      <Sequence from={sceneADuration} durationInFrames={sceneBDuration - transitionDuration}>
+        {b}
+      </Sequence>
+    </AbsoluteFill>
+  );
+}
+
 // Intro slide
 const IntroSlide: React.FC = () => {
   const frame = useCurrentFrame();
@@ -313,6 +394,15 @@ type TransitionEntry = {
   duration: number;
   sceneA: number;
   sceneB: number;
+  /** The catalog kind this entry demonstrates, when it demonstrates one. Set
+   *  only by `makeNodeEntry`, which resolves through the reel's own resolver —
+   *  so "this entry claims to be kind K" and "this entry renders what a reel
+   *  renders for K" are the same statement, and testable as one. */
+  kind?: TransitionKind;
+  /** The resolved two-input node this entry renders — the same object the demo
+   *  is handed, exposed so the fork can be pinned without rendering a whole
+   *  Remotion timeline. */
+  node?: TransitionNode;
   render: (transitionDuration: number) => React.ReactElement;
 };
 
@@ -341,6 +431,37 @@ function makeTransitionEntry<Props extends Record<string, unknown>>(
   };
 }
 
+/** A gallery entry for a CATALOG kind, driven by the reel's own resolver. */
+function makeNodeEntry(
+  name: string,
+  kind: TransitionKind,
+  duration: number,
+  scenes: { sceneA?: number; sceneB?: number } = {},
+): TransitionEntry {
+  const sceneA = scenes.sceneA ?? DEFAULT_SCENE_DURATION;
+  const sceneB = scenes.sceneB ?? DEFAULT_SCENE_DURATION;
+  // Resolved ONCE, and both the exposed `node` and the rendered demo read that
+  // same value — so a test asserting on `node` is asserting on what is shown.
+  const node = galleryTransitionNode(kind);
+  return {
+    name,
+    kind,
+    node,
+    duration,
+    sceneA,
+    sceneB,
+    render: (transitionDuration) => (
+      <NodeTransitionDemo
+        name={name}
+        node={node}
+        transitionDuration={transitionDuration}
+        sceneADuration={sceneA}
+        sceneBDuration={sceneB}
+      />
+    ),
+  };
+}
+
 // Define all transitions to showcase.
 // Transition durations: 45 frames = 1.5s for most, longer for complex effects.
 const TRANSITIONS: TransitionEntry[] = [
@@ -350,7 +471,8 @@ const TRANSITIONS: TransitionEntry[] = [
   makeTransitionEntry('lightLeak()', lightLeak({ temperature: 'warm' }), 60),
   makeTransitionEntry('slide()', slide(), 40),
   makeTransitionEntry('fade()', fade(), 45),
-  makeTransitionEntry('wipe()', wipe(), 40),
+  // The toolkit's own two-beat sweep — what a reel's `{kind:'wipe'}` renders.
+  makeNodeEntry('wipe()', 'wipe', 40),
   makeTransitionEntry('flip()', flip(), 45),
 ];
 
@@ -418,6 +540,9 @@ export const SingleTransitionPreview: React.FC<{
 // are what SingleTransitionPreview passes through as the demo's label.
 type NamedTransitionEntry = {
   duration: number;
+  /** See `TransitionEntry.kind` / `.node` — same meaning, same guarantee. */
+  kind?: TransitionKind;
+  node?: TransitionNode;
   render: (name: string, transitionDuration: number) => React.ReactElement;
 };
 
@@ -433,6 +558,18 @@ function makeNamedTransitionEntry<Props extends Record<string, unknown>>(
   };
 }
 
+function makeNamedNodeEntry(kind: TransitionKind, duration: number): NamedTransitionEntry {
+  const node = galleryTransitionNode(kind);
+  return {
+    duration,
+    kind,
+    node,
+    render: (name, transitionDuration) => (
+      <NodeTransitionDemo name={name} node={node} transitionDuration={transitionDuration} />
+    ),
+  };
+}
+
 export const transitionMap = {
   glitch: makeNamedTransitionEntry(glitch({ intensity: 0.9 }), 45),
   rgbSplit: makeNamedTransitionEntry(rgbSplit({ direction: 'horizontal' }), 45),
@@ -440,7 +577,7 @@ export const transitionMap = {
   lightLeak: makeNamedTransitionEntry(lightLeak({ temperature: 'warm' }), 60),
   slide: makeNamedTransitionEntry(slide(), 40),
   fade: makeNamedTransitionEntry(fade(), 45),
-  wipe: makeNamedTransitionEntry(wipe(), 40),
+  wipe: makeNamedNodeEntry('wipe', 40),
   flip: makeNamedTransitionEntry(flip(), 45),
 } as const;
 

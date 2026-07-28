@@ -99,8 +99,16 @@ presentation one clip at a time; drive them through `transitionNodeFor()` +
 `presentationFor()` returns `null` for them and warns. Every other kind is still one-sided
 and core lifts it. See `docs/superpowers/phase4-migrations.md` § Task 2.1.
 
-A kind's tunable params are exactly its schema fields minus `kind`/`frames`; the editor derives
-its sub-option controls from that shape, so the two can't disagree. Every param of the six
+**One name per concept** (Task 2.5). Every kind spells the in/out or 4-way axis `direction` —
+`zoom-through` used to call it `from`, and that field survives only as a deprecated alias so
+baked literals keep rendering (it warns once and has no editor control). The gallery
+(`TransitionGallery.tsx`) resolves each kind it demonstrates through the **reel's own**
+`transitionNodeFor`, so it cannot drift into showing a different component under a catalog
+kind's name again.
+
+A kind's tunable params are exactly its schema fields minus `kind`/`frames` (and any
+deprecated alias); the editor derives its sub-option controls from that shape, so the two
+can't disagree. Every param of the six
 kinds wired in most recently (`rgb-split`, `scanline-glitch`, `light-leak`, `zoom-blur`,
 `pixelate`, `checkerboard`) is optional — `{ kind, frames }` alone renders the presentation's
 own defaults.
@@ -111,8 +119,12 @@ own defaults.
 |------------|-------------|
 | `slide()` | Scene slides in from a direction |
 | `fade()` | Simple crossfade |
-| `wipe()` | Edge wipe reveal |
 | `flip()` | 3D card flip |
+
+`@remotion/transitions/wipe` is deliberately **not** listed and is no longer used anywhere in
+core (Phase 4 Task 2.5). The toolkit's `wipe` kind is the two-input node in the table above;
+having the official one under the same name meant the gallery demonstrated a different
+component than reels rendered. One name, one component.
 
 ## Transition Options
 

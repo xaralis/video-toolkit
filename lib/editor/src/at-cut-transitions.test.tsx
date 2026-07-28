@@ -145,13 +145,14 @@ function probeTransitionFor(kind: TransitionKind): { transition: Transition; pro
   return { transition: t as unknown as Transition, probes };
 }
 
-/** Where a kind forwards a schema field under a DIFFERENT prop name, and where
- *  it transforms the value on the way. Everything not listed here is expected
- *  to pass straight through under its own name — which is the norm, and the
- *  thing worth pinning. */
-const RENAMED: Partial<Record<TransitionKind, Record<string, string>>> = {
-  'zoom-through': { from: 'direction' },
-};
+/** Where a kind TRANSFORMS a schema value on the way to the presentation.
+ *
+ *  There used to be a `RENAMED` table beside this one, mapping
+ *  `zoom-through.from → direction`. It existed only because production
+ *  disagreed with itself about what the in/out concept is called; Task 2.5
+ *  unified the schema on `direction` and the table was deleted rather than left
+ *  as scaffolding. EVERY field now passes straight through under its own name,
+ *  and that — not a translation layer — is the thing worth pinning. */
 const VALUE_MAP: Partial<Record<TransitionKind, Record<string, (v: unknown) => unknown>>> = {
   slide: { direction: (v) => DIRECTION_4WAY[v as string] },
   flip: { direction: (v) => DIRECTION_4WAY[v as string] },
@@ -328,9 +329,8 @@ describe.each(KINDS)('transition kind %s', (kind) => {
     const p = presentationFor(transition as never, DIMS);
     if (!p) return; // cut
     for (const [prop, value] of Object.entries(probes)) {
-      const key = RENAMED[kind]?.[prop] ?? prop;
       const expected = VALUE_MAP[kind]?.[prop] ? VALUE_MAP[kind]![prop](value) : value;
-      expect({ prop, got: (p.props as Record<string, unknown>)[key] }).toEqual({ prop, got: expected });
+      expect({ prop, got: (p.props as Record<string, unknown>)[prop] }).toEqual({ prop, got: expected });
     }
   });
 });
@@ -650,7 +650,8 @@ describe('the four two-input nodes render what their name promises', () => {
 describe('Task 2.4 — the orphan knobs reach the presentation', () => {
   const glitchBase = { kind: 'glitch', frames: 15 };
   const whipPanBase = { kind: 'whip-pan', frames: 15, direction: 'left' };
-  const zoomThroughBase = { kind: 'zoom-through', frames: 15, from: 'in' };
+  // `direction`, not the deprecated `from` — Task 2.5 unified the spelling.
+  const zoomThroughBase = { kind: 'zoom-through', frames: 15, direction: 'in' };
 
   // DELIVERY half — an authored, non-default value must reach the
   // presentation's props bag under its own name.
@@ -1270,6 +1271,81 @@ describe('a fade’s colour is a parameter (fade-to-color)', () => {
       for (const kind of ['fade', 'dissolve', 'fade-to-color'] as const) {
         expect(transitionNodeFor({ kind, frames: 15 } as TransitionRecord, DIMS)).not.toBeNull();
       }
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+      resetWarnOnce();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ONE NAME PER CONCEPT — `zoom-through.direction` (Phase 4 Task 2.5)
+//
+// `zoom-through` said `from: 'in'|'out'` while `zoom-blur` said
+// `direction: 'in'|'out'` for the IDENTICAL concept, and the disagreement was
+// papered over by a RENAMED translation table in this very file. Two answers
+// to one question, which `lib/transitions/index.ts` records as deliberately
+// eliminated for `clock-wipe`.
+//
+// `direction` is canonical. `from` survives as a DEPRECATED ALIAS, because
+// silently reinterpreting or dropping a baked literal is the one thing this
+// workstream must never do (the same rule that made Task 2.3 keep `fade`
+// meaning crossfade).
+// ---------------------------------------------------------------------------
+describe('zoom-through says `direction`, like every other kind', () => {
+  const directionOf = (t: Record<string, unknown>) =>
+    (presentationFor(t as unknown as TransitionRecord, DIMS)!.props as Record<string, unknown>).direction;
+
+  it('parses and forwards `direction`', () => {
+    const t = { kind: 'zoom-through', frames: 15, direction: 'out' };
+    expect(CoreTransitionSchema.safeParse(t).success).toBe(true);
+    expect(directionOf(t)).toBe('out');
+  });
+
+  it('offers `direction` — and NOT the deprecated `from` — as the editor control', () => {
+    const props = subOptionsFor('zoom-through').map((o) => o.prop);
+    expect({ direction: props.includes('direction'), from: props.includes('from') }).toEqual({
+      direction: true,
+      from: false,
+    });
+  });
+
+  // THE ALIAS, pinned separately from the canonical spelling: one test covering
+  // both would assert too little about either.
+  it('still renders a baked `from` literal exactly as it always did', () => {
+    const t = { kind: 'zoom-through', frames: 15, from: 'out' };
+    expect(CoreTransitionSchema.safeParse(t).success).toBe(true);
+    expect(directionOf(t)).toBe('out');
+  });
+
+  it('lets `direction` win when a literal somehow carries both', () => {
+    expect(directionOf({ kind: 'zoom-through', frames: 15, direction: 'out', from: 'in' })).toBe('out');
+  });
+
+  it('warns once about the deprecated `from`, without refusing to render it', () => {
+    resetWarnOnce();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const t = { kind: 'zoom-through', frames: 15, from: 'out' } as unknown as TransitionRecord;
+      expect(presentationFor(t, DIMS)).not.toBeNull();
+      expect(presentationFor(t, DIMS)).not.toBeNull();
+      expect(warn.mock.calls).toHaveLength(1);
+      const message = String(warn.mock.calls[0][0]);
+      expect(message).toContain('zoom-through');
+      expect(message).toContain('direction');
+    } finally {
+      warn.mockRestore();
+      resetWarnOnce();
+    }
+  });
+
+  it('says nothing when the canonical spelling is used', () => {
+    resetWarnOnce();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const t = { kind: 'zoom-through', frames: 15, direction: 'out' } as unknown as TransitionRecord;
+      expect(presentationFor(t, DIMS)).not.toBeNull();
       expect(warn).not.toHaveBeenCalled();
     } finally {
       warn.mockRestore();

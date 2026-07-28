@@ -136,7 +136,25 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   // Task 2.4: `blurAmount` was read by `whip-pan.tsx` but never reachable.
   'whip-pan': (t) => whipPan({ direction: t.direction, blurAmount: t.blurAmount }) as AnyPresentation,
   // Task 2.4: `zoomAmount` was read by `zoom-through.tsx` but never reachable.
-  'zoom-through': (t) => zoomThrough({ direction: t.from, zoomAmount: t.zoomAmount }) as AnyPresentation,
+  //
+  // Task 2.5: the schema field is `direction` now — the same spelling
+  // `zoom-blur` has always used for the same in/out concept. `from` is a
+  // DEPRECATED ALIAS and is still honoured, because a baked literal must keep
+  // rendering what it rendered; `direction` wins when both are present, and
+  // absent-both is the presentation's own `'in'` default, exactly as before.
+  'zoom-through': (t) => {
+    if (t.direction === undefined && t.from !== undefined) {
+      warnOnce(
+        'transition:deprecated:zoom-through.from',
+        () =>
+          '[video-toolkit] transition "zoom-through" field `from` is DEPRECATED: it is a second ' +
+          'name for what every other kind (zoom-blur, rgb-split, light-leak) calls `direction`. ' +
+          'Rename it to `direction` — same values, same rendering. Rendering unchanged. ' +
+          'See docs/superpowers/phase4-migrations.md.',
+      );
+    }
+    return zoomThrough({ direction: t.direction ?? t.from, zoomAmount: t.zoomAmount }) as AnyPresentation;
+  },
   'clock-wipe': (_t, dims) => clockWipe({ width: dims.width, height: dims.height }) as AnyPresentation,
   'iris': (_t, dims) => iris({ width: dims.width, height: dims.height }) as AnyPresentation,
   // `t.color` is a brand accent-slot KEY, not a colour: resolve it here, where

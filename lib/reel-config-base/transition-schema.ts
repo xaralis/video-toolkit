@@ -394,7 +394,25 @@ const CATALOG = catalog(
     schema: z.object({
       kind: z.literal('zoom-through'),
       frames: TransitionFrames,
-      from: z.enum(['in', 'out']),
+      // ONE NAME PER CONCEPT (Task 2.5). This field was `from`, while
+      // `zoom-blur` below spelled the IDENTICAL concept `direction` — two
+      // answers to one question, papered over by a rename table in the editor's
+      // own test suite. `direction` is canonical here now, spelled and bounded
+      // exactly as `zoom-blur`'s is.
+      direction: z
+        .enum(['in', 'out'])
+        .optional()
+        .describe('`in` zooms toward the viewer, `out` away. Default in.'),
+      // DEPRECATED ALIAS, kept so a BAKED LITERAL keeps parsing and keeps
+      // rendering what it always rendered. Reinterpreting or dropping an
+      // authored value silently is the one thing this workstream must never do.
+      // It has no editor control (see DEPRECATED_FIELDS) — offering two
+      // controls for one concept would re-open the fork in the UI — and
+      // `lib/render/at-cut-transitions.tsx` warns once when it is used.
+      from: z
+        .enum(['in', 'out'])
+        .optional()
+        .describe('DEPRECATED alias of `direction`. Kept for baked literals; use `direction`.'),
       zoomAmount: z.number().min(1).max(3).optional().describe('Peak scale multiplier. Default 1.8.'),
     }),
     label: 'Zoom',
@@ -692,6 +710,26 @@ const PROP_LABELS: Record<string, string> = {
   rgbShiftPx: 'RGB shift (px)',
 };
 
+// Fields a member keeps ONLY so an already-baked literal keeps parsing and
+// keeps rendering what it rendered before the field was renamed. They are real
+// schema fields — the renderer reads them — but they get NO editor control and
+// no seed, because a deprecated spelling shown next to its replacement is the
+// same "two answers to one question" fork the rename was closing.
+//
+// A NAME LIST, for the same reason `ACCENT_FIELDS` is one: nothing in a zod
+// shape can carry the mark through a `.optional()` / `.describe()` clone.
+// Keep it as short as it is; every entry is a debt.
+const DEPRECATED_FIELDS: Record<string, readonly string[]> = {
+  // Phase 4 Task 2.5 — `direction` is canonical, matching `zoom-blur`.
+  'zoom-through': ['from'],
+};
+
+/** True when `prop` is a deprecated alias on `kind`'s member: parsed and
+ *  rendered, but never offered as a control or seeded into a fresh object. */
+export function isDeprecatedTransitionField(kind: string, prop: string): boolean {
+  return (DEPRECATED_FIELDS[kind] ?? []).includes(prop);
+}
+
 // Field NAMES whose string value is a BRAND ACCENT-SLOT KEY rather than free
 // text — `wipe.color` names a slot in the brand's palette (see `AccentKey`),
 // which `resolveAccentColor` turns into a hex at render time. The editor gives
@@ -852,6 +890,7 @@ export function subOptionsFor(kind: string): ParamField[] {
   const out: ParamField[] = [];
   for (const [prop, field] of Object.entries(e.schema.shape)) {
     if (prop === 'kind' || prop === 'frames') continue;
+    if (isDeprecatedTransitionField(kind, prop)) continue;
     const opt = subOptionForField(prop, field as z.ZodTypeAny);
     if (opt) out.push(opt);
   }
@@ -944,6 +983,9 @@ export function defaultTransition(
 
   for (const [prop, field] of Object.entries(e.schema.shape)) {
     if (prop === 'kind' || prop === 'frames') continue;
+    // A deprecated alias is never seeded into a FRESH object — it exists only
+    // for literals that already carry it.
+    if (isDeprecatedTransitionField(kind, prop)) continue;
     if (e.defaults && prop in e.defaults) {
       t[prop] = e.defaults[prop];
       continue;

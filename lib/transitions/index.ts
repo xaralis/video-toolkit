@@ -55,6 +55,13 @@ export type { LightLeakProps } from './presentations/light-leak';
 // this package's own richer implementation (startAngle/segments/counter-
 // clockwise) was never reachable from the schema, the editor or the renderer,
 // so it was deleted rather than kept as a second answer to the same kind.
+//
+// The same principle, applied again in Phase 4 Task 2.5: `TransitionGallery.tsx`
+// used to import `@remotion/transitions/wipe` and show it under the label a reel
+// uses for the `wipe` BELOW. Two components, one name. The official wipe is gone
+// from core entirely, and the gallery now resolves through the reel's own
+// `transitionNodeFor` — so the answer to "which component is `wipe`?" is
+// production's, and there is only one.
 
 export { pixelate } from './presentations/pixelate';
 export type { PixelateProps } from './presentations/pixelate';
