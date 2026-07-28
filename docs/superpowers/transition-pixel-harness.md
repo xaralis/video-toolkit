@@ -40,8 +40,9 @@ node scripts/render-transition-matrix.mjs --sheets    # also write contact sheet
 
 **If you are claiming a change left rendering unchanged, run `--strict`.** The default
 is lenient so a rasteriser wobble does not redden day-to-day iteration; `--strict` makes
-a `NEAR` result fatal. See "the iris flake" for exactly what the lenient mode forgives
-and why that matters for a compositing rewrite.
+a `NEAR` result fatal everywhere except the two measured-flaky kinds listed as
+`flakyUnderStrict` in the golden file. See "the iris flake" for exactly what lenient mode
+forgives, why that matters for a compositing rewrite, and what the exemption costs.
 
 Measured on this machine, 2026-07-27: **300 stills in 44s** (46s wall including the
 one-off webpack bundle) for a full gate run. Per kind that is ~2.2s, so
@@ -151,11 +152,16 @@ Renders here are **almost** byte-deterministic. `iris` in `cut` mode is the exce
   re-renders of the same still then produced a different hash, six times out of six.
 - The next re-baseline (double-rendering everything) caught the same bimodality on
   `iris__cut__p075` instead.
-- `clock-wipe__cut__p1` and `clock-wipe__enter__p075` and `iris__enter__p075` each did
-  it once across roughly 2500 stills rendered while building this.
+- Then it was measured properly: **four consecutive `--strict` runs over the full matrix
+  on an unchanged tree gave 5, 2, 1 and 2** same-picture-different-bytes results. That is
+  **1–2% of stills**, not the one-in-500 the early sample suggested. Every one was on
+  `clock-wipe` or `iris`; every one at max cell delta 0.
 
-So it is a low-rate, cell-local flake on curved-edge frames — not a regression, and not
-general non-determinism. Roughly **one still in 500**. Three consequences are built in:
+So it is a cell-local flake confined to curved-edge presentations — not a regression, and
+not general non-determinism, but common enough that a gate must plan for it. It is
+run-scoped rather than per-render random: eight consecutive renders of an affected still
+in isolation agree 8/8, and a within-run retry usually reproduces the same deviant bytes.
+Four consequences are built in:
 
 1. On a verify run, a mismatch triggers **one re-render** before it is called drift, and
    the retry is printed (`RETRY …`) — never silent. If the second render matches, a
@@ -164,7 +170,17 @@ general non-determinism. Roughly **one still in 500**. Three consequences are bu
    render` note names the still.
 3. If a mismatch *survives* the retry but the 8×8 picture still agrees within
    `FP_TOLERANCE` (2 per channel), it is reported as `NEAR` and counted. By default that
-   is **not** fatal; under `--strict` it **is**.
+   is **not** fatal.
+4. `--strict` makes `NEAR` fatal — **except** on the kinds listed as `flakyUnderStrict`
+   in the golden file, today `clock-wipe` and `iris`. Without that exemption `--strict`
+   could never pass on an unchanged tree (measured: it failed 4 runs out of 4) and would
+   be decoration. With it, a `NEAR` on any *other* kind fails, which is what a parity
+   claim actually needs. The summary line reports the split
+   (`N same-picture-different-bytes (M on flakyUnderStrict kinds)`).
+
+   The cost, stated plainly: a real *sub-tolerance* regression inside `clock-wipe` or
+   `iris` would be a warning rather than a strict failure. Those two are still pinned by
+   their exact goldens on a normal run, where such a change appears as drift.
 
 ### What lenient mode forgives — and why `--strict` is not optional for a parity claim
 
@@ -188,11 +204,11 @@ range real changes occupy, not comfortably above it.
 
 `FP_TOLERANCE` is deliberately **not** lowered: nobody has measured the actual delta the
 flake produces, so retuning it would be guesswork trading one failure mode for another.
-`--strict` is the answer instead — it costs nothing when nothing changed, and it is a
-flag rather than a convention, so it is enforced by the runner and not by whoever
-remembers to read the summary line. The full-sweep reference run (2026-07-27) was
-**300 byte-identical, 0 near, 0 drifted, 1 retried** in 44s, so `--strict` is expected to
-pass on an unchanged tree; if it does not, re-run before concluding anything.
+`--strict` is the answer instead — it is a flag rather than a convention, so it is
+enforced by the runner and not by whoever remembers to read the summary line. Reference
+runs on an unchanged tree (2026-07-28): `--strict` passes, with the flake showing up as
+0–5 exempted `NEAR` lines on `clock-wipe` / `iris`. A `NEAR` on any other kind is a
+finding — re-run once before concluding anything, then treat it as real.
 
 The harness sets **no** Chromium OpenGL renderer, and neither does
 `examples/layered-minimal/remotion.config.ts`. Do not add one: the one configuration in

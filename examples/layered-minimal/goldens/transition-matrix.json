@@ -1,5 +1,5 @@
 {
-  "$comment": "Golden pixel hashes for the at-cut transition matrix. One entry per <kind>__<mode>__<progress>, hashed over the DECODED RGBA buffer (not the PNG file). Regenerate with `node scripts/render-transition-matrix.mjs --update-goldens` and REVIEW THE DIFF — a re-baseline asserts the new pixels are correct. `knownDefective` records kinds whose goldens are WRONG-BUT-CURRENT (see docs/superpowers/at-cut-transition-findings.md): a change to those goldens is expected, not a regression. `semanticXfail` is the subset the semantic checks actually catch today; the harness fails if one of those starts passing without being removed from the list in the same commit.",
+  "$comment": "Golden pixel hashes for the at-cut transition matrix. One entry per <kind>__<mode>__<progress>, hashed over the DECODED RGBA buffer (not the PNG file). Regenerate with `node scripts/render-transition-matrix.mjs --update-goldens` and REVIEW THE DIFF \u2014 a re-baseline asserts the new pixels are correct. `knownDefective` records kinds whose goldens are WRONG-BUT-CURRENT (see docs/superpowers/at-cut-transition-findings.md): a change to those goldens is expected, not a regression. `semanticXfail` is the subset the semantic checks actually catch today; the harness fails if one of those starts passing without being removed from the list in the same commit. `flakyUnderStrict` records kinds MEASURED to render bimodally on this machine (four consecutive --strict runs on an unchanged tree gave 5/2/1/2 same-picture-different-bytes results, every one on clock-wipe or iris, every one at max cell delta 0); a NEAR on those kinds is reported but not fatal under --strict, while a NEAR on any other kind is.",
   "generatedBy": "examples/layered-minimal/scripts/render-transition-matrix.mjs --update-goldens",
   "probe": {
     "width": 540,
@@ -32,6 +32,10 @@
     "pixelate",
     "scanline-glitch",
     "wipe"
+  ],
+  "flakyUnderStrict": [
+    "clock-wipe",
+    "iris"
   ],
   "frames": {
     "burn__cut__p0": "e3d4bc4998e7ff8adcbb6b055facd5671989054f8976ded3887845346e998f26 4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4YAq5ZFF4Hof4Hof4Hof4Hof4Hof44g28cSb88yq4Hof4Hof4Hof4Hof4Hof4Hof6J1a88yq4Hof4Hof4Hof4Hof4Hof4Hof4oEr5Io74Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof4Hof",
