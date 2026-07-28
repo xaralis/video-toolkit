@@ -457,16 +457,25 @@ describe('subOptionForField', () => {
   // The NLE metadata on the merged descriptor is populated from the schema
   // itself, so a bounded param arrives at the editor bounded. Emitted
   // independently: a `.min()` with no `.max()` must not invent a max.
-  it('carries the schema\u2019s own bounds and default onto the descriptor', () => {
+  it('carries the schema\u2019s own bounds, step and default onto the descriptor', () => {
+    // A bounded field gets a `step` DERIVED from its range. min/max alone was
+    // worse than neither: `<input type=number>` defaults step to 1, so a 0\u20131
+    // field could only spin 0 \u2194 1 and a typed `0.5` was a step mismatch.
     expect(subOptionForField('intensity', z.number().min(0).max(1))).toEqual({
       prop: 'intensity',
       label: 'Intensity',
       type: 'number',
       min: 0,
       max: 1,
+      step: 0.01,
     });
+    // A range needs BOTH ends to be reasoned from, and `.int()` says the
+    // schema wants whole numbers whatever the range.
     expect(subOptionForField('cells', z.number().min(2))).toEqual({ prop: 'cells', label: 'Cells', type: 'number', min: 2 });
     expect(subOptionForField('free', z.number())).toEqual({ prop: 'free', label: 'Free', type: 'number' });
+    expect(subOptionForField('count', z.number().int().min(0).max(1))).toMatchObject({ step: 1 });
+    // The clamp at the wide end: a 0\u20131000 span would give 10 without it.
+    expect(subOptionForField('px', z.number().min(0).max(1000))).toMatchObject({ step: 1 });
     expect(subOptionForField('softness', z.number().default(12))?.default).toBe(12);
     expect(subOptionForField('softness', z.number().default(12).optional())?.default).toBe(12);
     expect(subOptionForField('softness', z.number())?.default).toBeUndefined();
