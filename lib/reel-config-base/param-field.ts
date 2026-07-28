@@ -66,10 +66,23 @@ export type ParamOption = string | ParamChoice;
 /** One editable parameter a registration (or a schema field) declares, so a
  *  brand kind is editable without any core UI knowing the kind.
  *
- *  How the editor picks a control, in order:
- *    1. `options` present → a dropdown over exactly those values;
- *    2. else `type` if declared;
- *    3. else the field is typed by the value it currently holds.
+ *  How the editor picks a control, in order (`renderParamControl` in
+ *  `lib/editor/app/LayeredInspector.tsx` — this list is the contract, keep the
+ *  two in step):
+ *    1. `type: 'accent'` → a dropdown over the BRAND's accent slots. It wins
+ *       over `options`, and any `options` declared beside it are IGNORED. That
+ *       is deliberate: `accent` is not a control choice, it is a value DOMAIN —
+ *       the value stored is an accent-slot KEY, and only the brand's palette
+ *       knows which keys exist. A core declaration cannot narrow that list, so
+ *       a field wanting a fixed set of literal values must not call itself
+ *       `accent`. (With no palette supplied, an `accent` field renders NOTHING
+ *       rather than falling through to a text box — there is no valid value it
+ *       could offer.)
+ *    2. else `options` present (or `type: 'enum'`) → a dropdown over exactly
+ *       those values;
+ *    3. else `type` if declared (`number`/`percent`/`angle`, `boolean`,
+ *       `color`, `string`);
+ *    4. else the field is typed by the value it currently holds.
  *
  *  Declare `type` for any field whose value the item may not carry yet: with
  *  neither `options` nor `type`, an absent key has no value to be typed from,

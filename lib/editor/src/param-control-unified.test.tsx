@@ -154,6 +154,23 @@ describe('accent — a transition-path control, now available to declared params
     expect(screen.queryByLabelText('Tint')).toBeNull();
     expect(screen.getByText('No editable params.')).toBeInTheDocument();
   });
+
+  // PRECEDENCE, as documented in lib/reel-config-base/param-field.ts: `accent`
+  // is tested BEFORE `options`, so a field declaring both gets the brand
+  // palette and its own options are ignored. `accent` is a value DOMAIN (the
+  // stored value is a slot KEY only the brand's palette can enumerate), not a
+  // control preference, so a core declaration cannot narrow it. The doc said
+  // the opposite until this test existed to settle which one is the contract.
+  it('renders the brand palette, NOT the declared options, when a field declares both', () => {
+    const both: EditorMeta = {
+      videoProps: { outro: [{ prop: 'tint', type: 'accent', options: ['not-a-slot'] }] },
+    };
+    render(
+      <LayeredInspector reel={outroReel} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} meta={both} accentSlots={SLOTS} />,
+    );
+    expect((screen.getByRole('option', { name: 'Gold' }) as HTMLOptionElement).value).toBe('gold');
+    expect(screen.queryByRole('option', { name: 'not-a-slot' })).toBeNull();
+  });
 });
 
 describe('enum choice LABELS — a transition-path affordance, on both paths', () => {
