@@ -1005,8 +1005,12 @@ describe('a reel edge resolves the missing input to the theme background', () =>
   // track showing, which is the pre-2.2 pixel.
   it('paints nothing when the caller supplies no background', () => {
     const { container } = mount('fade', { to: null }, 0.5, 'transparent');
-    expect(platesOf(container, BG_RGB)).toHaveLength(0);
-    expect(platesOf(container, OTHER_RGB)).toHaveLength(0);
+    // The plate is still THERE (the branch runs) — it is just invisible. The
+    // assertion is on the colour, so hardcoding one in `EdgePlate` fails here
+    // as loudly as it fails the differential test above.
+    expect(platesOf(container, 'transparent')).toHaveLength(1);
+    expect([...platesOf(container, BG_RGB), ...platesOf(container, OTHER_RGB), ...platesOf(container, 'rgb(0, 0, 0)')])
+      .toHaveLength(0);
   });
 
   // The first link of the thread. `reel-edge-background.test.tsx` pins the rest
