@@ -62,6 +62,13 @@ describe('sites 4 + the layout — a cut lends no handle frames', () => {
   });
 });
 
+// TRANSPARENCY, same as the compiler-tie note on sites 1+5 below: this block
+// CANNOT be killed by mutating `isCut`, and it duplicates
+// `app/transitions.test.ts`'s own kindNeedsFrames coverage. Site 2's `cut`
+// clause was DEAD CODE — `kindNeedsFrames` looks the kind up in the catalog
+// first and only falls through to the literal for an UNKNOWN kind, and `cut` is
+// a catalog kind. It is kept as documentation of that finding, not as a pin.
+// The live half of the assertion (every OTHER kind takes frames) is real.
 describe('site 2 — kindNeedsFrames', () => {
   it('is the ONLY kind that takes no `frames`', () => {
     expect(kindNeedsFrames(CUT_KIND)).toBe(false);

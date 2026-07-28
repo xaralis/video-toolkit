@@ -36,31 +36,38 @@ describe('transitionConfig', () => {
 
 // `videoConfig` was the ONE accessor of four that restated the lookup inline
 // instead of calling `registrationConfig`. Routing it through the shared helper
-// is a de-duplication, so the pin is that all four now answer identically for
-// the same registration shapes — including the two edges an inline
-// `theme.x?.[k]?.config` and the helper could have disagreed about.
+// is a BEHAVIOURALLY UNOBSERVABLE refactor — both forms are
+// `registry?.[kind]?.config` — so no test can pin "it goes through the helper",
+// and this file does not claim to. What it pins is weaker and honest: all four
+// accessors answer identically for the same three registration shapes, so a
+// FUTURE divergence on any one of them is caught.
+//
+// ONE `it` PER ACCESSOR, deliberately. Grouping all four into one assertion
+// block would make a helper-level mutation red regardless of which accessor
+// actually calls the helper — the failure would say nothing about which axis
+// broke. Split, a regression is localised to its own axis.
 describe('all four axes’ config accessors answer alike', () => {
   const CONFIG = { k: 1 };
+  const bare: BrandTheme = { accentSlots: [] };
 
-  it('returns the registered config on every axis', () => {
-    expect(overlayConfig({ accentSlots: [], overlays: { text: { config: CONFIG } } }, 'text')).toEqual(CONFIG);
-    expect(videoConfig({ accentSlots: [], video: { clip: { config: CONFIG } } }, 'clip')).toEqual(CONFIG);
-    expect(effectConfig({ accentSlots: [], effects: { grain: { config: CONFIG } } }, 'grain')).toEqual(CONFIG);
-    expect(transitionConfig({ accentSlots: [], transitions: { swirl: { config: CONFIG } } }, 'swirl')).toEqual(CONFIG);
+  describe('returns the registered config', () => {
+    it('overlay', () => expect(overlayConfig({ accentSlots: [], overlays: { text: { config: CONFIG } } }, 'text')).toEqual(CONFIG));
+    it('video', () => expect(videoConfig({ accentSlots: [], video: { clip: { config: CONFIG } } }, 'clip')).toEqual(CONFIG));
+    it('effect', () => expect(effectConfig({ accentSlots: [], effects: { grain: { config: CONFIG } } }, 'grain')).toEqual(CONFIG));
+    it('transition', () => expect(transitionConfig({ accentSlots: [], transitions: { swirl: { config: CONFIG } } }, 'swirl')).toEqual(CONFIG));
   });
 
-  it('returns undefined for a registration that carries no config', () => {
-    expect(overlayConfig({ accentSlots: [], overlays: { text: {} } }, 'text')).toBeUndefined();
-    expect(videoConfig({ accentSlots: [], video: { clip: {} } }, 'clip')).toBeUndefined();
-    expect(effectConfig({ accentSlots: [], effects: { grain: {} } }, 'grain')).toBeUndefined();
-    expect(transitionConfig({ accentSlots: [], transitions: { swirl: {} } }, 'swirl')).toBeUndefined();
+  describe('returns undefined for a registration that carries no config', () => {
+    it('overlay', () => expect(overlayConfig({ accentSlots: [], overlays: { text: {} } }, 'text')).toBeUndefined());
+    it('video', () => expect(videoConfig({ accentSlots: [], video: { clip: {} } }, 'clip')).toBeUndefined());
+    it('effect', () => expect(effectConfig({ accentSlots: [], effects: { grain: {} } }, 'grain')).toBeUndefined());
+    it('transition', () => expect(transitionConfig({ accentSlots: [], transitions: { swirl: {} } }, 'swirl')).toBeUndefined());
   });
 
-  it('returns undefined when the axis has no registry at all', () => {
-    const bare: BrandTheme = { accentSlots: [] };
-    expect(overlayConfig(bare, 'text')).toBeUndefined();
-    expect(videoConfig(bare, 'clip')).toBeUndefined();
-    expect(effectConfig(bare, 'grain')).toBeUndefined();
-    expect(transitionConfig(bare, 'swirl')).toBeUndefined();
+  describe('returns undefined when the axis has no registry at all', () => {
+    it('overlay', () => expect(overlayConfig(bare, 'text')).toBeUndefined());
+    it('video', () => expect(videoConfig(bare, 'clip')).toBeUndefined());
+    it('effect', () => expect(effectConfig(bare, 'grain')).toBeUndefined());
+    it('transition', () => expect(transitionConfig(bare, 'swirl')).toBeUndefined());
   });
 });

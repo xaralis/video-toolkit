@@ -104,6 +104,12 @@ export function applyEffects(
   for (const [index, effect] of effects.entries()) {
     // Reserved types are applied elsewhere in the pipeline. Skipped BEFORE
     // resolution, so a brand registration cannot re-open the double-apply.
+    //
+    // NOTE FOR `enabled`: this `continue` runs BEFORE the enable test below, so
+    // a reserved type never reaches it. Each reserved path therefore has to
+    // carry its OWN enable test — `findKenBurns` (./ken-burns.ts) does. If a
+    // second reserved type is ever added, it needs one too, or `enabled: false`
+    // will parse and be silently ignored on exactly that type.
     if (RESERVED_EFFECT_TYPES.has(effect.type)) continue;
     // A DISABLED effect is skipped ENTIRELY — no wrapper is allocated, so the
     // node is referentially what it would be if the entry were deleted, while
