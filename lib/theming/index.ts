@@ -46,11 +46,15 @@ export type {
 export { overlayRegistry, resolveOverlayRenderer, overlayConfig, resolveVideoRenderer, videoConfig } from './brand-theme';
 export type {
   AnyPresentation,
+  TransitionNode,
+  TransitionNodeProps,
+  ResolvedTransition,
   TransitionRenderProps,
   TransitionRenderer,
   TransitionRegistration,
   TransitionRegistry,
 } from './transitions';
+export { isTransitionNode } from './transitions';
 export {
   resolveEffectRenderer,
   effectConfig,

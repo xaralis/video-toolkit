@@ -18,15 +18,23 @@ import { useCurrentFrame } from 'remotion';
 import { getTransitionRecord, type TransitionRecord } from './transition-record';
 import { resolveAccentColor, type AccentSlot } from '../theming/palette';
 import { resolveRegistered, registrationConfig } from '../theming/registry';
-import type { AnyPresentation, TransitionRegistry, TransitionRenderer } from '../theming/transitions';
+import { isTransitionNode } from '../theming/transitions';
+import type {
+  AnyPresentation, ResolvedTransition, TransitionNode, TransitionNodeProps,
+  TransitionRegistry, TransitionRenderer,
+} from '../theming/transitions';
 import type { CoreTransition, TransitionKind } from '../reel-config-base/transition-schema';
 
 export { getTransitionRecord, type TransitionRecord };
+export { isTransitionNode };
 
 // Re-exported: the type is DEFINED in lib/theming (BrandTheme has to name it,
 // and lib/theming may not import lib/render), but this has been its import path
 // since before the transition axis had a theme surface.
-export type { AnyPresentation, TransitionRegistry, TransitionRenderer, TransitionRenderProps } from '../theming/transitions';
+export type {
+  AnyPresentation, TransitionNode, TransitionNodeProps, ResolvedTransition,
+  TransitionRegistry, TransitionRenderer, TransitionRenderProps,
+} from '../theming/transitions';
 
 export const DIRECTION_4WAY: Record<string, 'from-left' | 'from-right' | 'from-top' | 'from-bottom'> = {
   left: 'from-left', right: 'from-right', up: 'from-top', down: 'from-bottom',
@@ -147,7 +155,7 @@ const CORE_TRANSITIONS: Record<string, TransitionRenderer> = Object.fromEntries(
 // sits beneath it, and a registration carrying only `config` falls through to
 // the generic rather than masking it — the same rule every other extension
 // axis uses, not a bespoke lookup of its own.
-export function presentationFor(t: TransitionRecord | undefined, dims: Dims): AnyPresentation | null {
+export function resolveTransition(t: TransitionRecord | undefined, dims: Dims): ResolvedTransition | null {
   if (!t) return null;
   // The index is deliberately widened to `string` before the lookup: `t.kind` is
   // `string` for a brand transition, and a missing key must be a runtime `undefined`
@@ -176,6 +184,69 @@ export function presentationFor(t: TransitionRecord | undefined, dims: Dims): An
   });
 }
 
+/** The ONE-SIDED view of a resolved kind: the `{component, props}` presentation,
+ *  or null when the kind resolves to nothing OR to a natively two-input node
+ *  (which has no one-sided form to hand back).
+ *
+ *  Kept as a named export because it is the accessor brands and the editor's
+ *  wiring suite have used since the engine was extracted. The RENDER path does
+ *  not go through it any more — see `transitionNodeFor`. */
+export function presentationFor(t: TransitionRecord | undefined, dims: Dims): AnyPresentation | null {
+  const resolved = resolveTransition(t, dims);
+  if (!resolved || isTransitionNode(resolved)) return null;
+  return resolved;
+}
+
+/** LIFTS a one-sided Remotion presentation into the two-input model: render
+ *  `from` through the presentation's EXITING branch, `to` through its ENTERING
+ *  branch, and stack entering over exiting — which is `TransitionSeries`' own
+ *  compositing order, and (before Task 1.3) exactly what two sibling
+ *  `AtCutTransition` wrappers produced across a cut.
+ *
+ *  This is the compatibility route, not a compromise: the five official
+ *  `@remotion/transitions` presentations are one-sided by design and keep
+ *  working unchanged, as does every brand registration written against Task
+ *  1.2's contract. A null input renders NOTHING on that side — which is how the
+ *  leading and trailing edges reproduce their pre-1.3 pixels, where the missing
+ *  neighbour simply had no `Sequence` on screen. */
+export function fromRemotionPresentation(p: AnyPresentation): TransitionNode {
+  const Component = p.component;
+  const composite: React.FC<TransitionNodeProps> = ({ from, to, progress, durationInFrames }) => (
+    <>
+      {from === null ? null : (
+        <Component
+          passedProps={p.props}
+          presentationDirection="exiting"
+          presentationProgress={progress}
+          presentationDurationInFrames={durationInFrames}
+        >
+          {from}
+        </Component>
+      )}
+      {to === null ? null : (
+        <Component
+          passedProps={p.props}
+          presentationDirection="entering"
+          presentationProgress={progress}
+          presentationDurationInFrames={durationInFrames}
+        >
+          {to}
+        </Component>
+      )}
+    </>
+  );
+  return { composite };
+}
+
+/** THE RENDER PATH. Resolves a kind to the two-input node the boundary drives,
+ *  lifting a one-sided presentation on the way when that is what it resolved
+ *  to. */
+export function transitionNodeFor(t: TransitionRecord | undefined, dims: Dims): TransitionNode | null {
+  const resolved = resolveTransition(t, dims);
+  if (!resolved) return null;
+  return isTransitionNode(resolved) ? resolved : fromRemotionPresentation(resolved);
+}
+
 // Invokes one presentation's component directly (not via TransitionSeries —
 // see AtCutTransition below) with the exact prop shape it expects.
 export const TransitionLayer: React.FC<{
@@ -198,46 +269,56 @@ export const TransitionLayer: React.FC<{
   );
 };
 
-// Drives a boundary's presentation(s) directly off useCurrentFrame() — no
-// TransitionSeries, whose crossfade SHRINKS adjacent sequences' visible
-// duration by the transition length. This reel instead renders "at the cut":
-// each item's own (possibly handle-extended — see the videoNodes map below)
-// Sequence is wrapped in its OWN incoming/outgoing presentation(s), mirroring
-// TransitionSeries' own compositing order — the exiting presentation (this
-// item fading OUT to its successor) wraps the entering one (this item fading
-// IN from its predecessor) wraps the actual content.
+// THE BOUNDARY COMPOSITOR. Mounted inside the boundary's OWN `Sequence` (see
+// video-track.tsx), so `useCurrentFrame()` is already boundary-relative: frame 0
+// is the first frame of the transition and frame `frames` is its last.
 //
-// Progress is clamped to [0,1] HERE, deliberately not left to each
-// presentation's own interpolate() calls — several of the custom ones
-// (whipPan, zoomThrough) don't set extrapolateLeft/Right and would run away
-// outside the transition window otherwise.
+// It resolves ONE node and calls it ONCE with (from, to, progress). It is NOT
+// called twice with a `direction` — that was `TransitionSeries`' shape, and
+// asking a two-input operation to draw itself one side at a time is what
+// produced core's whole defect family (seven kinds that no-op when exiting,
+// `checkerboard`'s empty cells, `wipe`'s two beats running simultaneously, a
+// trailing edge that draws nothing). A one-sided presentation still works: it
+// is LIFTED by `fromRemotionPresentation` at resolution time, not re-invoked
+// here.
+//
+// PROGRESS IS CLAMPED HERE, deliberately not left to each presentation's own
+// interpolate() calls — several of the custom ones (whipPan, zoomThrough) don't
+// set extrapolateLeft/Right and would run away outside the window otherwise.
+// The boundary Sequence normally bounds the frame anyway; the clamp is what
+// makes that a guarantee of the CONTRACT rather than a property of one caller,
+// so a node may be driven from anywhere and still never see progress outside
+// [0,1].
 export const AtCutTransition: React.FC<{
-  inPresentation: AnyPresentation | null;
-  inFrames: number;
-  outPresentation: AnyPresentation | null;
-  outFrames: number;
-  seqDurationF: number;
-  children: React.ReactNode;
-}> = ({ inPresentation, inFrames, outPresentation, outFrames, seqDurationF, children }) => {
+  /** The resolved node, or null for a hard cut (both inputs drawn plainly). */
+  node: TransitionNode | null;
+  /** The outgoing clip — null at the reel's leading edge. */
+  from: React.ReactNode | null;
+  /** The incoming clip — null at the reel's trailing edge. */
+  to: React.ReactNode | null;
+  /** The boundary's length in frames. */
+  frames: number;
+  dims: { width: number; height: number; fps: number; palette?: readonly AccentSlot[] };
+}> = ({ node, from, to, frames, dims }) => {
   const frame = useCurrentFrame();
-  let node: React.ReactNode = children;
-  if (inPresentation && inFrames > 0) {
-    const progress = Math.max(0, Math.min(1, frame / inFrames));
-    node = (
-      <TransitionLayer presentation={inPresentation} direction="entering" progress={progress} durationInFrames={inFrames}>
-        {node}
-      </TransitionLayer>
-    );
+  const progress = frames > 0 ? Math.max(0, Math.min(1, frame / frames)) : 1;
+  if (!node) {
+    // No node: a hard cut. Draw both inputs in their natural order rather than
+    // dropping one — the caller decided this window belongs to the boundary.
+    // eslint-disable-next-line react/jsx-no-useless-fragment
+    return <>{from}{to}</>;
   }
-  if (outPresentation && outFrames > 0) {
-    const windowStart = seqDurationF - outFrames;
-    const progress = Math.max(0, Math.min(1, (frame - windowStart) / outFrames));
-    node = (
-      <TransitionLayer presentation={outPresentation} direction="exiting" progress={progress} durationInFrames={outFrames}>
-        {node}
-      </TransitionLayer>
-    );
-  }
-  // eslint-disable-next-line react/jsx-no-useless-fragment
-  return <>{node}</>;
+  const Composite = node.composite;
+  return (
+    <Composite
+      from={from}
+      to={to}
+      progress={progress}
+      durationInFrames={frames}
+      width={dims.width}
+      height={dims.height}
+      fps={dims.fps}
+      palette={dims.palette ?? []}
+    />
+  );
 };

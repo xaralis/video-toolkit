@@ -13,11 +13,26 @@
 // that silence from being invisible.
 //
 // WHY THE RENDERER IS NOT A REACT COMPONENT. A transition does not draw; it
-// hands back the presentation `AtCutTransition` should wrap the item's own
-// Sequence in, in both directions, driven off useCurrentFrame(). That return
-// value (`AnyPresentation`) is a plain object, not a ReactNode, so it cannot be
-// an `React.FC`. That is exactly why `Registration` takes the renderer type as
-// a parameter — see the note there.
+// hands back the NODE `AtCutTransition` should drive at the boundary. That
+// return value is a plain object, not a ReactNode, so it cannot be an
+// `React.FC`. That is exactly why `Registration` takes the renderer type as a
+// parameter — see the note there.
+//
+// TWO INPUTS, ONE PROGRESS (Phase 4 Task 1.3). A transition is one node with
+// TWO inputs (outgoing A, incoming B) and ONE progress value across the
+// boundary — the arity every mature plugin API (OFX, AVX, FxPlug) uses to tell
+// a transition from an effect. It is invoked ONCE per boundary with
+// `(from, to, progress)` and returns one frame. It is NOT invoked twice with a
+// `direction`, which is `TransitionSeries`' shape and was the root of core's
+// defect list: a two-input operation asked to draw itself one side at a time.
+//
+// A renderer may still return the ONE-SIDED `AnyPresentation` shape — the five
+// official `@remotion/transitions` presentations are one-sided, and so is every
+// brand registration written against the Task 1.2 contract. Core LIFTS those
+// into the two-input form with `fromRemotionPresentation`
+// (lib/render/at-cut-transitions.tsx), so nothing that already worked has to
+// change. `TransitionNode` is the shape a natively two-input presentation
+// returns instead.
 import type React from 'react';
 import type { Registration, Registry } from './registry';
 import type { AccentSlot } from './palette';
@@ -51,10 +66,58 @@ export interface TransitionRenderProps {
   config?: unknown;
 }
 
+/** The prop bag a TWO-INPUT transition node is invoked with — ONE call per
+ *  boundary, per frame.
+ *
+ *  `from`/`to` being NULLABLE is what makes the reel's leading and trailing
+ *  edges fall out of the model instead of needing special cases: a trailing-edge
+ *  transition is one with `to === null`, a leading-edge one has `from === null`,
+ *  and a dissolve against `null` is a dissolve to the composition background.
+ *  Core passes the null; what a node does with it is the node's decision. */
+export interface TransitionNodeProps {
+  /** The OUTGOING clip (A), already carrying its own time base. Null at the
+   *  reel's leading edge — there is no predecessor. */
+  from: React.ReactNode | null;
+  /** The INCOMING clip (B). Null at the reel's trailing edge. */
+  to: React.ReactNode | null;
+  /** 0..1 across the boundary. CLAMPED BY CORE — a node must never clamp, and
+   *  several of core's own presentations (`whipPan`, `zoomThrough`) rely on that
+   *  because they set no `extrapolateLeft`/`Right`. */
+  progress: number;
+  /** The boundary's length in frames (what the transition's `frames` authored). */
+  durationInFrames: number;
+  /** Composition pixel size and rate — `clock-wipe`/`iris` size their mask off it. */
+  width: number;
+  height: number;
+  fps: number;
+  /** The brand's accent palette. Empty (never undefined) when there is none. */
+  palette: readonly AccentSlot[];
+}
+
+/** A natively TWO-INPUT transition: one component that composites both inputs
+ *  itself. Structurally distinguishable from `AnyPresentation` by its
+ *  `composite` field, which is what lets one registry hold both shapes. */
+export type TransitionNode = { composite: React.ComponentType<TransitionNodeProps> };
+
+/** What a renderer may hand back: a two-input node, or a one-sided Remotion
+ *  presentation that core lifts into one. */
+export type ResolvedTransition = AnyPresentation | TransitionNode;
+
+/** True for the two-input shape. A structural test, not a tag, so a brand can
+ *  build a node as a plain object literal without importing a constructor. */
+export function isTransitionNode(r: ResolvedTransition): r is TransitionNode {
+  return typeof (r as TransitionNode).composite === 'function';
+}
+
 /** What a registered transition kind resolves to. Returning `null` means "no
- *  presentation" — the boundary is a hard cut, which is how core's own `cut`
- *  entry behaves. */
-export type TransitionRenderer = (props: TransitionRenderProps) => AnyPresentation | null;
+ *  transition" — the boundary is a hard cut, which is how core's own `cut`
+ *  entry behaves.
+ *
+ *  The return type WIDENED in Task 1.3 (`AnyPresentation` → `ResolvedTransition`).
+ *  That direction is backwards-compatible: a brand renderer that still returns
+ *  `AnyPresentation | null` is assignable here unchanged, and core lifts its
+ *  result. No brand registration needs to be migrated. */
+export type TransitionRenderer = (props: TransitionRenderProps) => ResolvedTransition | null;
 
 /** One transition kind's registration. Built on the shared `Registration`
  *  primitive, so this axis resolves through `resolveRegistered` like the other

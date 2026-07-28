@@ -1,4 +1,4 @@
-// The shared at-the-cut VIDEO TRACK assembly — lifted verbatim (see
+// The shared at-the-cut VIDEO TRACK assembly — originally lifted verbatim (see
 // lib/render/README.md) from campaign-reels' LayeredCampaignReel.tsx
 // `videoNodes` map so every brand consumes one copy of the handle-borrow
 // math that makes real cross-transitions render. The pure layout math lives in
@@ -6,9 +6,28 @@
 // core — same split as ./transition-record / ./at-cut-transitions); this
 // module adds the JSX assembly (buildVideoNodes) and re-exports the pure
 // function so consumers can import everything from one path.
+//
+// PHASE 4 TASK 1.3 — THE BOUNDARY IS NOW A THING, not two half-things.
+// Before: one `<Sequence>` per item, wrapped in its own entering AND exiting
+// presentation, and a cut was the accident of two sibling Sequences overlapping
+// by the borrowed handles. A transition never saw the clip on the other side of
+// it.
+// Now: a boundary is its own `<Sequence>` spanning exactly the transition
+// window, holding ONE node that receives BOTH clips and composites them itself.
+// Each item's own Sequence still carries its content and its handles, but goes
+// BLANK for the frames a boundary has taken over — otherwise the clip would be
+// drawn twice, once plainly underneath and once inside the transition, and
+// anything the transition draws with partial alpha would blend against the wrong
+// thing.
+//
+// The two inputs are handed to the node RE-BASED: each is wrapped in a
+// `layout="none"` Sequence carrying that item's own global range, so a clip
+// inside a transition sees exactly the frame numbers it would have seen in its
+// own Sequence — and a clip whose range has ENDED renders nothing, which is how
+// the last frame of a cut still shows only the incoming clip.
 import React from 'react';
-import { Sequence } from 'remotion';
-import { AtCutTransition, presentationFor } from './at-cut-transitions';
+import { Sequence, useCurrentFrame } from 'remotion';
+import { AtCutTransition, transitionNodeFor } from './at-cut-transitions';
 import { computeVideoLayout, type VideoLayoutEntry } from './video-track-layout';
 import type { AccentSlot } from '../theming/palette';
 import type { TransitionRegistry } from '../theming/transitions';
@@ -16,10 +35,49 @@ import type { VideoItem } from '../reel-config-base/layered-schema';
 
 export { computeVideoLayout, type VideoLayoutEntry };
 
-// The JSX assembly — one <Sequence> per video-track item, each wrapped in its
-// own AtCutTransition per computeVideoLayout's handle math. Skips items whose
-// seqDuration <= 0 (returns null for them), matching LayeredCampaignReel.tsx's
-// `if (normalDuration <= 0) return null` guard.
+/** A frame range, INCLUSIVE at both ends, in the coordinates of whatever
+ *  Sequence the consumer is mounted in. Inclusive because a boundary owns its
+ *  progress-1 frame too (see BOUNDARY_TAIL below). */
+type Range = readonly [number, number];
+
+/** Renders `children` except on the frames a boundary has taken over. The
+ *  frames are item-relative, so this must be mounted INSIDE the item's own
+ *  Sequence. */
+const ItemBody: React.FC<{ blank: readonly Range[]; children: React.ReactNode }> = ({ blank, children }) => {
+  const frame = useCurrentFrame();
+  if (blank.some(([a, b]) => frame >= a && frame <= b)) return null;
+  // eslint-disable-next-line react/jsx-no-useless-fragment
+  return <>{children}</>;
+};
+
+/** The boundary Sequence is `frames + 1` long, not `frames`.
+ *
+ *  The transition's progress runs 0..1 INCLUSIVE, and progress 1 is a real
+ *  frame that something has to draw. Before Task 1.3 that frame was drawn by
+ *  the entering wrapper with its progress clamped to 1; keeping it inside the
+ *  boundary is what reproduces those pixels. It costs nothing at the other end
+ *  of a cut, because the outgoing clip's own range has expired by then and its
+ *  re-based Sequence renders nothing — exactly as its real Sequence did. */
+const BOUNDARY_TAIL = 1;
+
+/** One boundary between two clips (or between a clip and the edge of the reel). */
+interface Boundary {
+  key: string;
+  /** The item whose Sequence this boundary is emitted next to. */
+  owner: number;
+  /** First frame of the transition, in composition coordinates. */
+  start: number;
+  frames: number;
+  /** Index of the outgoing item, or null at the reel's leading edge. */
+  fromIndex: number | null;
+  /** Index of the incoming item, or null at the reel's trailing edge. */
+  toIndex: number | null;
+  record: NonNullable<VideoLayoutEntry['inRecord']>;
+}
+
+// The JSX assembly — one <Sequence> per video-track item plus one per boundary.
+// Skips items whose seqDuration <= 0 (they contribute nothing), matching
+// LayeredCampaignReel.tsx's `if (normalDuration <= 0) return null` guard.
 export function buildVideoNodes(
   items: VideoItem[],
   opts: {
@@ -44,26 +102,109 @@ export function buildVideoNodes(
   const brandKinds = opts.transitions ? new Set(Object.keys(opts.transitions)) : undefined;
   const layout = computeVideoLayout(items, opts.fps, { brandKinds });
   const dims = { width: opts.width, height: opts.height, palette: opts.palette, transitions: opts.transitions };
+  const nodeDims = { width: opts.width, height: opts.height, fps: opts.fps, palette: opts.palette };
 
-  return items.map((item, i) => {
-    const entry = layout[i];
-    if (entry.seqDuration <= 0) return null;
+  const drawn = (i: number) => i >= 0 && i < items.length && layout[i].seqDuration > 0;
+  const content = (i: number) =>
+    opts.renderItem(items[i], { inHalf: layout[i].inHalf, outHalf: layout[i].outHalf });
 
-    const inPresentation = presentationFor(entry.inRecord, dims);
-    const outPresentation = presentationFor(entry.outRecord, dims);
-
-    return (
-      <Sequence key={item.id} from={entry.seqFrom} durationInFrames={entry.seqDuration} name={item.id}>
-        <AtCutTransition
-          inPresentation={inPresentation}
-          inFrames={entry.inFrames}
-          outPresentation={outPresentation}
-          outFrames={entry.outFrames}
-          seqDurationF={entry.seqDuration}
-        >
-          {opts.renderItem(item, { inHalf: entry.inHalf, outHalf: entry.outHalf })}
-        </AtCutTransition>
-      </Sequence>
-    );
+  // ---- which boundaries exist, and who is on each side of them --------------
+  //
+  // A boundary is owned by the item ENTERING it, which is the ownership
+  // `computeVideoLayout` already encodes: the first item's `inRecord` is its own
+  // `transitionIn`, every other item's is its PREDECESSOR's `transitionOut`. So
+  // one authored transition produces exactly one boundary, never two halves.
+  // The one case the entering item cannot own is the reel's TRAILING edge —
+  // there is no successor to own it — so the last drawn item owns that itself,
+  // with `to === null`.
+  const boundaries: Boundary[] = [];
+  layout.forEach((entry, i) => {
+    if (!drawn(i)) return;
+    if (entry.inRecord && entry.inFrames > 0) {
+      boundaries.push({
+        key: `${items[i].id}--in`,
+        owner: i,
+        start: entry.seqFrom,
+        frames: entry.inFrames,
+        fromIndex: drawn(i - 1) ? i - 1 : null,
+        toIndex: i,
+        record: entry.inRecord,
+      });
+    }
+    if (entry.outRecord && entry.outFrames > 0 && !drawn(i + 1)) {
+      boundaries.push({
+        key: `${items[i].id}--out`,
+        owner: i,
+        start: entry.seqFrom + entry.seqDuration - entry.outFrames,
+        frames: entry.outFrames,
+        fromIndex: i,
+        toIndex: null,
+        record: entry.outRecord,
+      });
+    }
   });
+
+  // Every frame a boundary draws an item on is a frame that item's own Sequence
+  // must NOT draw itself on.
+  const blanked = new Map<number, Range[]>();
+  const blank = (i: number | null, b: Boundary) => {
+    if (i === null) return;
+    const rel = b.start - layout[i].seqFrom;
+    const list = blanked.get(i) ?? [];
+    list.push([rel, rel + b.frames] as const);
+    blanked.set(i, list);
+  };
+  for (const b of boundaries) {
+    blank(b.fromIndex, b);
+    blank(b.toIndex, b);
+  }
+
+  /** An item's content re-based into the boundary's coordinates. `layout="none"`
+   *  because this Sequence exists only to carry a time origin and a range — it
+   *  is not a layer, and adding one would change what a transition composites
+   *  against. */
+  const rebased = (i: number, boundaryStart: number) => (
+    <Sequence
+      from={layout[i].seqFrom - boundaryStart}
+      durationInFrames={layout[i].seqDuration}
+      layout="none"
+    >
+      {content(i)}
+    </Sequence>
+  );
+
+  const nodes: React.ReactNode[] = [];
+  items.forEach((item, i) => {
+    if (drawn(i)) {
+      const entry = layout[i];
+      nodes.push(
+        <Sequence key={item.id} from={entry.seqFrom} durationInFrames={entry.seqDuration} name={item.id}>
+          <ItemBody blank={blanked.get(i) ?? []}>{content(i)}</ItemBody>
+        </Sequence>,
+      );
+    }
+    // A boundary is emitted right after the item that owns it, so the painting
+    // order across a cut is unchanged: the incoming clip's boundary sits above
+    // the outgoing clip's own Sequence, as its Sequence used to.
+    for (const b of boundaries.filter((x) => x.owner === i)) {
+      nodes.push(
+        <Sequence
+          key={b.key}
+          from={b.start}
+          durationInFrames={b.frames + BOUNDARY_TAIL}
+          name={`${item.id} ⟡ ${b.record.kind}`}
+        >
+          <AtCutTransition
+            node={transitionNodeFor(b.record, dims)}
+            from={b.fromIndex === null ? null : rebased(b.fromIndex, b.start)}
+            to={b.toIndex === null ? null : rebased(b.toIndex, b.start)}
+            frames={b.frames}
+            dims={nodeDims}
+          />
+        </Sequence>,
+      );
+    }
+  });
+
+  return nodes;
 }

@@ -51,11 +51,16 @@ import {
 } from '@video-toolkit/lib/reel-config-base/transition-schema';
 import {
   presentationFor,
+  transitionNodeFor,
+  fromRemotionPresentation,
+  isTransitionNode,
   TransitionLayer,
   AtCutTransition,
   DIRECTION_4WAY,
   getTransitionRecord,
   type AnyPresentation,
+  type TransitionNode,
+  type TransitionNodeProps,
   type TransitionRecord,
 } from '@video-toolkit/lib/render/at-cut-transitions';
 import type { AccentSlot } from '@video-toolkit/lib/theming/palette';
@@ -426,85 +431,169 @@ describe('direction-branching suspects', () => {
   );
 });
 
-describe('AtCutTransition drives progress off the current frame', () => {
+describe('AtCutTransition drives ONE node off the boundary-local frame', () => {
+  const NODE_DIMS = { width: 1080, height: 1920, fps: 30 };
+
   beforeEach(() => {
     clock.frame = 0;
   });
 
-  it('ramps the entering presentation 0→1 over its own window and clamps after', () => {
-    const seen: Record<string, unknown>[] = [];
-    const spy: AnyPresentation = {
-      component: (props: Record<string, unknown>) => {
-        seen.push(props);
-        return <>{props.children as React.ReactNode}</>;
-      },
-      props: {},
-    };
-    for (const [frame, expected] of [[0, 0], [5, 0.5], [10, 1], [40, 1]] as const) {
+  const spyNode = (seen: TransitionNodeProps[]): TransitionNode => ({
+    composite: (props: TransitionNodeProps) => {
+      seen.push(props);
+      return (
+        <>
+          {props.from}
+          {props.to}
+        </>
+      );
+    },
+  });
+
+  it('ramps progress 0→1 across the boundary', () => {
+    const seen: TransitionNodeProps[] = [];
+    for (const [frame, expected] of [[0, 0], [5, 0.5], [10, 1]] as const) {
       clock.frame = frame;
       const { unmount } = render(
-        <AtCutTransition inPresentation={spy} inFrames={10} outPresentation={null} outFrames={0} seqDurationF={90}>
-          <div />
-        </AtCutTransition>,
+        <AtCutTransition node={spyNode(seen)} from={<div />} to={<div />} frames={10} dims={NODE_DIMS} />,
       );
-      expect({ frame, progress: seen.at(-1)!.presentationProgress }).toEqual({ frame, progress: expected });
-      expect(seen.at(-1)!.presentationDirection).toBe('entering');
+      expect({ frame, progress: seen.at(-1)!.progress }).toEqual({ frame, progress: expected });
       unmount();
     }
   });
 
-  it('ramps the exiting presentation over the window at the END of the sequence', () => {
-    const seen: Record<string, unknown>[] = [];
-    const spy: AnyPresentation = {
-      component: (props: Record<string, unknown>) => {
-        seen.push(props);
-        return <>{props.children as React.ReactNode}</>;
-      },
-      props: {},
-    };
-    for (const [frame, expected] of [[0, 0], [80, 0], [85, 0.5], [90, 1]] as const) {
+  // CORE CLAMPS, PRESENTATIONS NEVER DO. `whipPan` and `zoomThrough` set no
+  // extrapolateLeft/Right and would run away outside the window; the boundary's
+  // own Sequence normally bounds the frame, but the clamp is what makes [0,1] a
+  // property of the CONTRACT rather than of one caller.
+  it('clamps progress to [0,1] for a frame outside the window', () => {
+    const seen: TransitionNodeProps[] = [];
+    for (const [frame, expected] of [[-4, 0], [40, 1]] as const) {
       clock.frame = frame;
       const { unmount } = render(
-        <AtCutTransition inPresentation={null} inFrames={0} outPresentation={spy} outFrames={10} seqDurationF={90}>
-          <div />
-        </AtCutTransition>,
+        <AtCutTransition node={spyNode(seen)} from={null} to={<div />} frames={10} dims={NODE_DIMS} />,
       );
-      expect({ frame, progress: seen.at(-1)!.presentationProgress }).toEqual({ frame, progress: expected });
-      expect(seen.at(-1)!.presentationDirection).toBe('exiting');
+      expect({ frame, progress: seen.at(-1)!.progress }).toEqual({ frame, progress: expected });
       unmount();
     }
   });
 
-  it('wraps the exiting presentation OUTSIDE the entering one, mirroring TransitionSeries', () => {
-    const order: string[] = [];
-    const mk = (name: string): AnyPresentation => ({
-      component: (props: Record<string, unknown>) => {
-        order.push(name);
-        return <>{props.children as React.ReactNode}</>;
-      },
-      props: {},
-    });
+  it('forwards both inputs, the boundary length, the dimensions and the palette', () => {
+    const seen: TransitionNodeProps[] = [];
     clock.frame = 5;
     render(
       <AtCutTransition
-        inPresentation={mk('in')}
-        inFrames={10}
-        outPresentation={mk('out')}
-        outFrames={10}
-        seqDurationF={90}
-      >
-        <div />
-      </AtCutTransition>,
+        node={spyNode(seen)}
+        from={<div data-testid="a" />}
+        to={<div data-testid="b" />}
+        frames={10}
+        dims={{ ...NODE_DIMS, palette: PALETTE }}
+      />,
     );
-    expect(order).toEqual(['out', 'in']);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].durationInFrames).toBe(10);
+    expect({ w: seen[0].width, h: seen[0].height, fps: seen[0].fps }).toEqual({ w: 1080, h: 1920, fps: 30 });
+    expect(seen[0].palette).toBe(PALETTE);
+    expect(seen[0].from).not.toBeNull();
+    expect(seen[0].to).not.toBeNull();
   });
 
-  it('renders bare children when neither edge has a transition', () => {
+  it('draws both inputs plainly when the kind resolved to nothing (a hard cut)', () => {
     const { container } = render(
-      <AtCutTransition inPresentation={null} inFrames={0} outPresentation={null} outFrames={0} seqDurationF={90}>
-        <div data-testid="content" />
-      </AtCutTransition>,
+      <AtCutTransition node={null} from={<div data-testid="content" />} to={<div data-testid="content" />} frames={10} dims={NODE_DIMS} />,
     );
-    expect(container.querySelectorAll('[data-testid="content"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-testid="content"]')).toHaveLength(2);
+  });
+});
+
+// The compatibility route: the five official presentations are one-sided by
+// design, and so is every brand registration written against Task 1.2. Core
+// LIFTS them rather than asking brands to migrate.
+describe('fromRemotionPresentation lifts a one-sided presentation', () => {
+  const trace = (order: string[]): AnyPresentation => ({
+    component: (props: Record<string, unknown>) => {
+      order.push(props.presentationDirection as string);
+      return <>{props.children as React.ReactNode}</>;
+    },
+    props: { marker: 1 },
+  });
+
+  it('renders `from` through EXITING and `to` through ENTERING, entering on top', () => {
+    const order: string[] = [];
+    const node = fromRemotionPresentation(trace(order));
+    const Composite = node.composite;
+    const { container } = render(
+      <Composite
+        from={<div data-testid="a" />}
+        to={<div data-testid="b" />}
+        progress={0.5}
+        durationInFrames={10}
+        width={1080}
+        height={1920}
+        fps={30}
+        palette={[]}
+      />,
+    );
+    expect(order).toEqual(['exiting', 'entering']);
+    expect(container.querySelectorAll('[data-testid="a"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-testid="b"]')).toHaveLength(1);
+  });
+
+  it('renders NOTHING on a null side — which is how a reel edge keeps its pixels', () => {
+    const order: string[] = [];
+    const node = fromRemotionPresentation(trace(order));
+    const Composite = node.composite;
+    render(
+      <Composite
+        from={null}
+        to={<div data-testid="b" />}
+        progress={0.5}
+        durationInFrames={10}
+        width={1080}
+        height={1920}
+        fps={30}
+        palette={[]}
+      />,
+    );
+    expect(order).toEqual(['entering']);
+  });
+
+  it('forwards the presentation’s own props as passedProps', () => {
+    const seen: Record<string, unknown>[] = [];
+    const node = fromRemotionPresentation({
+      component: (props: Record<string, unknown>) => {
+        seen.push(props);
+        return null;
+      },
+      props: { marker: 42 },
+    });
+    const Composite = node.composite;
+    render(
+      <Composite from={null} to={<div />} progress={0.25} durationInFrames={12} width={1} height={2} fps={30} palette={[]} />,
+    );
+    expect(seen[0].passedProps).toEqual({ marker: 42 });
+    expect(seen[0].presentationProgress).toBe(0.25);
+    expect(seen[0].presentationDurationInFrames).toBe(12);
+  });
+});
+
+describe('transitionNodeFor is the render path', () => {
+  it('lifts a core kind into a two-input node', () => {
+    const node = transitionNodeFor({ kind: 'fade', frames: 15 } as TransitionRecord, DIMS);
+    expect(node).not.toBeNull();
+    expect(isTransitionNode(node!)).toBe(true);
+  });
+
+  it('returns null for a kind nobody knows', () => {
+    expect(transitionNodeFor({ kind: 'nope', frames: 15 } as unknown as TransitionRecord, DIMS)).toBeNull();
+  });
+
+  it('passes a natively two-input registration through unlifted', () => {
+    const composite = () => null;
+    const node = transitionNodeFor({ kind: 'brand-x', frames: 15 } as unknown as TransitionRecord, {
+      ...DIMS,
+      transitions: { 'brand-x': { renderer: () => ({ composite }) } },
+    });
+    expect(node!.composite).toBe(composite);
   });
 });
