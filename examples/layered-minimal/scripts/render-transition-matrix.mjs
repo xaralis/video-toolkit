@@ -129,7 +129,14 @@ const DEFAULT_COMMENT =
   'columns of the frame, strictly bimodal and globally stable, so both attractors are recorded and ' +
   'either is accepted; every other cell is still enforced byte-exactly. A cell may only carry a ' +
   'second hash if it is listed here, and `--audit-bimodal` re-samples the list so a cell that has ' +
-  'stopped flaking must be de-listed.';
+  'stopped flaking must be de-listed. A re-seed (`--update-goldens --repeat=24`) never shrinks this ' +
+  'list on the strength of ABSENCE: the flake\'s rate is not stationary between processes even ' +
+  'though its two attractor values are, so a recorded attractor that simply did not come up is ' +
+  'KEPT, and de-listing on absence is a decision a human asks for via `--audit-bimodal`. (A cell ' +
+  'IS de-listed when it stops rendering the recorded picture at all — that is a real change, not ' +
+  'an absent flake.) There is no `flakyUnderStrict` any more — the ' +
+  'kind-level NEAR exemption it named was retired and replaced by this per-cell mechanism; under ' +
+  '`--strict` a NEAR is fatal for EVERY kind, with no exemptions.';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'out', 'matrix');
