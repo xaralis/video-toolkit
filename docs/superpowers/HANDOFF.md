@@ -1,13 +1,15 @@
 # Handoff — core architecture rework
 
-**Last updated:** 2026-07-28, on `refactor/phase4-node-contract` — **Phase 4, Workstream 1
-complete, Workstreams 2–5 not started.** Phase 3 (close the extension contract) preceded it,
+**Last updated:** 2026-07-28, on `refactor/phase4-node-contract` — **Phase 4, Workstreams 1
+and 2 complete; Workstreams 3 (bar 3.1), 4, 5 and 6.2–6.4 not started.** Phase 3 (close the
+extension contract) preceded it,
 Phase 2.5 (the brand migration, and the first end-to-end validation that Phases 1–2 work)
 before that; Phase 2 completed on `refactor/phase2-core-shell` (2026-07-25) and
 `fix/core-has-remotion` corrected it the same week.
 
-**Start with "Phase 4 outcome" below** — it is the live state, and it says exactly which half
-of Phase 4 is done. Then `docs/superpowers/plans/2026-07-26-phase4-node-contract.md` for the
+**Start with "Phase 4 outcome" below, then "Workstream 2 outcome" immediately after it** —
+together they are the live state, and they say exactly which half of Phase 4 is done. Where
+the two disagree on a number, Workstream 2's is the later measurement. Then `docs/superpowers/plans/2026-07-26-phase4-node-contract.md` for the
 workstreams still open, `docs/superpowers/phase4-migrations.md` for what a brand pin bump will
 need, and the working conventions at the end of this file. Phase 3.5 (`phase3-migrations.md`)
 is **still pending** and was not touched by Phase 4.
@@ -42,7 +44,7 @@ The full audit and phase plan live at
 | 2.5 | Apply the brand migrations — the validation of 1–2 | ✅ both brand repos green, 2026-07-26 |
 | 3 | Close the extension contract (registries, effects, generators, captions) | ✅ core-side, `refactor/phase3-extension-contract` |
 | 3.5 | Apply the Phase 3 brand migrations — the validation of 3 | ⬜ still pending, `docs/superpowers/phase3-migrations.md` |
-| 4 | One node contract for effects and transitions (the model tightening) | 🟡 **in progress**, `refactor/phase4-node-contract` — Workstream 1 ✅ complete, 6.1 ✅; Workstreams 2, 3 (bar 3.1), 4, 5 and 6.2–6.4 **not started** |
+| 4 | One node contract for effects and transitions (the model tightening) | 🟡 **in progress**, `refactor/phase4-node-contract` — Workstreams 1 ✅ and 2 ✅ complete, 3.1 ✅, 6.1 ✅; Workstreams 3 (bar 3.1), 4, 5 and 6.2–6.4 **not started** |
 | 5 | NLE alignment (effect stack, music track, transition entities, media pool) | ⬜ |
 | 6 | `brand.json` becomes the theming contract | ⬜ |
 
@@ -507,19 +509,20 @@ especially, against the branch you are actually on before applying it.**
 
 ---
 
-## 🟡 Phase 4 outcome — Workstream 1 is complete; four workstreams are untouched
+## 🟡 Phase 4 outcome — Workstreams 1 and 2 are complete; three workstreams are untouched
 
 **Branch:** `refactor/phase4-node-contract`, merge base `9202e79`. **Not merged.**
 
 **Status, plainly: this is a deliberate hand-off at a clean seam, not an abandoned branch.**
-Workstream 1 — the node contract itself — is **complete and reviewed**. At the point where
-Workstream 2 would have started, the user chose to close Workstream 1 and hand off rather than
-leave several workstreams half-done. Everything below the line "Carried out of Phase 4" is
-therefore *not started*, not *in flight*.
+Workstream 1 — the node contract itself — is **complete and reviewed**, and **Workstream 2 —
+every kind behaves as its name promises — is complete and reviewed on top of it** (see
+"Workstream 2 outcome" below, which carries its own gate numbers and findings; the numbers in
+*this* section are Workstream 1's and are superseded where the two disagree). Everything below
+the line "Carried out of Phase 4" is *not started*, not *in flight*.
 
 **Tasks landed:** 1.0, 1.1, 1.2, **1.2b** (added mid-phase, not in the plan, user-approved),
-1.3, 1.4, 1.5, 1.6, 3.1, 6.1.
-**Tasks not started:** 2.1–2.7, 3.2–3.4, 4.1–4.3, all of Workstream 5, and 6.2–6.4.
+1.3, 1.4, 1.5, 1.6, **2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7**, 3.1, 6.1.
+**Tasks not started:** 3.2–3.4, 4.1–4.3, all of Workstream 5, and 6.2–6.4.
 
 Re-derived from `git log` / `git diff --stat` against the merge base, never carried forward from
 a running total: **44 commits**, **55 files, +7926 / −553**. Excluding the 676-line plan document
@@ -731,12 +734,126 @@ Say which half is done, not that it is done:
   ran** — the branch was handed off first. Both were mutation-verified by their implementers, but
   neither has an independent review.
 
+## Workstream 2 outcome — every kind behaves as its name promises
+
+**Tasks 2.1–2.7, all complete and independently reviewed.** Re-derived from `git log` /
+`git diff --stat` over `6dbd60e..dbfc16b` — the range from Workstream 1's close to Workstream
+2's, never carried forward from a running total: **16 commits, 43 files, +4129 / −1002**.
+Re-derive rather than trust this after any further commit; a commit cannot state its own
+diffstat.
+
+### Gates at Workstream 2's close (2026-07-28), each run by the controller, not taken on report
+
+| Gate | Value |
+|---|---|
+| Editor tests | **91 files / 1263** (1259 passed, **4 skipped**), ~44 s |
+| Editor types | **3** errors, **exit 2** — the same three, read separately from the count |
+| Render/transition types | **0**, coverage guard at or above every recorded floor |
+| Pixel harness | **PASS** — `315 accepted (13 on a bimodal cell's second hash), 0 same-picture-different-bytes, 0 drifted, 0 missing`, ~47 s |
+| Brand leak | exactly **2**, both comments (`lib/theming/effects/ken-burns.ts`, `lib/transitions/presentations/burn.tsx`) |
+| Python — `sync_template` | **36 passed** |
+
+**Three baselines moved, all deliberately and all declared:**
+
+- **The four `it.fails` known-defect pins are GONE.** `grep -n 'it.fails'
+  lib/editor/src/at-cut-transitions.test.tsx` now returns **nothing**, and a new one appearing
+  is a new known defect. The **4 skipped** in the run are a different thing
+  (`it.skipIf(isNode)`); their params are pinned by the differential param test at
+  `at-cut-transitions.test.tsx:357`.
+- **The harness is 300 → 315 cells** (21 kinds × 3 modes × 5 progress points; Task 2.3 added
+  `fade-to-color`).
+- **`bimodalCells` is 19 → 24**, every change addition-only under the union rule. One
+  intermediate state looked like a violation and was not: Task 2.2 took it to 15 because six
+  `light-leak` edge cells had their goldens **fully replaced**, so they left through the
+  `!stillTheSameCell` branch rather than being de-listed on absence — verified per cell by a
+  reviewer. It was then re-seeded at `--repeat=12` and confirmed at 24 samples.
+
+### `MinimalReel`'s reference hashes — and the prediction that was wrong
+
+| frame | sha256 |
+|---|---|
+| 0 | `1c7563d8f71cd8011c57bdca451ec4a4e3a7808608140bc989bf52142303c3d2` |
+| 30 | `85a4d6a051394b7034eeec60f2d15a6a8a71fc5140e33f5064bfed2735d50b3c` |
+| 45 | `7c1512ed39018f728a93b648d6ebbb18fda8d73eb8f12d8dc2a5bb74d70169ee` |
+| 90 | `8909970fb4802bf9f7e24e2a6e4862735bffa7c64f5cd983a7ce4d58aaf9253d` |
+| 120 | `a6b7a9175ebe3c0dbf97c002b1f74517bd669062a1926177037be909de624778` |
+
+**Only frame 90 moved, and only in Task 2.1.** The plan and every earlier draft of the
+constraints predicted **frame 45**; that was wrong. `MinimalReel`'s `wipe` cut is at 3000 ms,
+so its boundary window is frames **80–100** — frame 90 is the only sampled frame inside it and
+frame 45 is mid-clip. Tasks 2.2–2.7 each held all five byte-identical.
+
+### The findings that must survive
+
+**1. The `presentationFor` trap was LATENT, not active — and it never widened.** The blast
+radius is confirmed at **6 files** in PP (five `projects/*/src/WebProgramIntro.tsx` plus
+`templates/web-program-intro/`), roost **0**. But **none of the six authors any transition at
+all** (`transitionOut:` = 0 in all six) and there are **zero authored uses** of the four
+converted kinds in either repo, so no brand pixel changed. A `warnOnce` warning was added
+rather than a compatibility shim — a wrong picture silently is worse than a visible
+degradation. Task 2.2's conversions did **not** widen the set.
+
+**2. Neither brand registers a single effect or transition.** This refutes the plan's
+promotion table at its root and was re-derived independently by a reviewer under its own
+anchored greps. `vintage` and `blend` are `defaultProps` entries read by brand **video
+renderers**, not registry entries; PP's only registry keys are `overlays.text` and `video`,
+roost's likewise. Every transition either brand authors is already core — **10 distinct kinds
+against a 21-kind catalog, so 11 of core's kinds are authored by neither.** `vintage(vhs)` has
+**zero** authored uses; `vintage(film)` has zero in a real reel (all six are in roost's
+template demo, none in `roost-reel-01`). And `sepia(0.22)` needed **no** non-diagonal WB
+matrix — just a CSS filter core had not added.
+
+**3. A brief's premise is not evidence, and three briefs were wrong on measurement.** Each was
+caught only because the task re-derived rather than conformed: the exiting-no-op family is
+**eight**, not seven (`checkerboard` joined it in 2.1); the gallery covered **8 by name + 1 by
+catalog kind**, not "10 of 20", against a **21**-kind catalog; and Task 2.3's brief specified
+`fade-coal`'s colour default as **black** while also requiring existing literals to keep their
+pixels exactly — on measurement those conflict, because today's `fade-coal` is literally
+`() => fade()` and never dips. All 15 `fade-coal__*` goldens are hash-identical to `fade__*`.
+The default shipped as **no colour**; the goal governed over the mechanism. The black variant
+is one line away and correctly graded a deliberate look change.
+
+**4. The gallery had been demonstrating a component reels never rendered.** Task 2.5 deleted
+Remotion's official `wipe` from core; core's native two-input `wipe` is the only one. Because
+`TransitionSeries` **structurally cannot drive a two-input node**, the gallery needed a real
+new path (`NodeTransitionDemo`, an `AtCutTransition` in its own `Sequence`), not an import
+swap. Task 2.6 then drove the whole gallery off `TRANSITION_CATALOG`, taking coverage to 20
+demonstrable kinds and deleting `noteFor`.
+
+**5. `CLAUDE.md`'s type-check-coverage row was stale.** It claimed `TransitionGallery.tsx` was
+reached only by `examples/layered-minimal`; `npx tsc --noEmit --listFiles` gives 16 of 16
+`lib/transitions/` files including the gallery, because Task 2.5's test file began importing
+it. Corrected. **Nothing in any gate RENDERS the gallery** — it is type-checked by both `tsc`
+gates and by nothing else, and that is stated plainly rather than papered over.
+
+**6. The `it.fails`-guard grep has bitten twice more.** Prose *describing* the old pins matches
+an unescaped `grep -n 'it.fails'`. Both false positives were reworded; use the escaped form.
+
+**7. Two near-misses worth remembering as method, not as blame.** Task 2.5's first fix used a
+stray cast that took editor `tsc` **3 → 4** (`TS2352`), caught **only** because the error count
+is read separately from the exit code. Task 2.7's first draft broke the brand-leak gate
+**2 → 3** with a comment saying "roost's VHS look" inside `lib/` — a document that classifies
+brand kinds by name belongs in `docs/`, outside the grep's scope.
+
+### Known gaps carried out of Workstream 2
+
+- **`wipe`/`pixelate`/`scanline-glitch` still handle a null edge input their own way** — the
+  edge rule is not uniform across the catalog.
+- **A trailing-edge transition never renders progress 1** by construction (`outHalf` is zeroed
+  for the last item), so a fade-out ends at ~95 %. Pre-existing layout, now merely visible.
+- **`TRANSITION_NOTES` is still hand-maintained per kind** — the last such table in the gallery.
+- **Core's five generic effects declare no `params`**, so there is no effect-axis equivalent of
+  the transition differential pin, and Task 2.7's four new fields have no editor control on the
+  effect-registry path. Pre-existing; it applies to all nine existing params too. Workstream 4.
+- **`blend` and `ken-burns` have CONDITIONAL promotion verdicts** in
+  `docs/superpowers/phase4-extension-contract.md`, each naming the exact contract
+  (`EffectRenderProps`) and symbol (`RESERVED_EFFECT_TYPES`) that Workstream 3 must change.
+  **Whoever writes the Task 3.2 brief must carry those conditions into it.**
+
 ### Carried out of Phase 4
 
 **Not started — read the plan, `docs/superpowers/plans/2026-07-26-phase4-node-contract.md`:**
 
-- **Workstream 2** (2.1–2.7) — every kind behaves as its name promises. Start with the
-  `presentationFor` trap above.
 - **Workstream 3** (3.2–3.4) — effects: one contract, no exceptions. **3.1 is done** and is the
   merge baseline 3.2 must not break; carry its four deferred minors into the 3.2 brief, notably
   that the video/`OffthreadVideo` branch is pinned on `filter` **only** (the matrix reads
