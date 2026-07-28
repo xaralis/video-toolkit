@@ -47,38 +47,51 @@
  * OpenGL renderer, and the one configuration measured to be non-deterministic in
  * this programme (a brand reel) is the one that sets `angle`. Do not add either.
  *
- * Even so, these renders are NOT byte-deterministic, and the rate is higher than
- * it first looked. Four consecutive `--strict` runs over the full matrix on an
- * UNCHANGED tree produced 5, 2, 1 and 2 same-picture-different-bytes results —
- * so roughly 1-2% of stills, not the one-in-500 an early sample suggested. Every
- * single one was on `clock-wipe` or `iris`, both curved-edge presentations, and
- * every single one at max cell delta 0. Eight consecutive renders of one such
- * still in isolation agree 8/8, so it is run-scoped, not per-render random.
- * Four things follow, all visible in the output, never silent:
+ * Even so, these renders are NOT byte-deterministic — and after ~2,070 renders
+ * of investigation the flake is characterised precisely rather than tolerated
+ * vaguely (full write-up in docs/superpowers/transition-pixel-harness.md):
+ *
+ *   - every differing pixel sits in the RIGHTMOST 8 COLUMNS of the 540px frame,
+ *     16-28 pixels out of 518,400, alpha never changing;
+ *   - it is strictly BIMODAL — exactly two globally stable hashes per affected
+ *     cell, the same two across independent runs, both orderings and 16 fresh
+ *     processes, never a third;
+ *   - it is a PER-RENDER coin flip at 9-50% per cell, not run-scoped (an earlier
+ *     version of this comment claimed eight isolated renders agree 8/8; that was
+ *     wrong — measured, one browser: A A B A A B B B);
+ *   - the worst 8×8 cell mean shift it produces is 0.0183/255, two orders of
+ *     magnitude below FP_TOLERANCE, so it always reports delta 0.
+ *
+ * Because it is bimodal and stable, it is RECORDED, not exempted: a golden may
+ * carry two accepted hashes (`<a>|<b>`) for a cell listed in `bimodalCells`, and
+ * either matches as `ok`. Byte-exact enforcement therefore still applies to all
+ * 300 cells — there is no exempted kind and no blind spot. Consequences, all
+ * visible in the output, never silent:
  *   - a mismatch is re-rendered once before it is called drift (on the SAME
  *     browser: replacing the browser mid-run was tried and crashes the run with
  *     an unhandled EPIPE — see the browser-lifecycle note below);
- *   - a surviving mismatch whose 8×8 picture still agrees is reported as `NEAR`
- *     and counted. By DEFAULT it is not fatal, so day-to-day runs are not red
- *     for a rasteriser wobble;
- *   - `--strict` makes NEAR fatal, EXCEPT on the kinds listed as
- *     `flakyUnderStrict` in the golden file (`clock-wipe`, `iris`). Without that
- *     exemption `--strict` could never pass at all and would be decoration; with
- *     it, a NEAR on any OTHER kind fails. Use `--strict` for any claim that
- *     rendering came through unchanged — the tolerance is wide enough (~8100 px
- *     per cell at 540×960) that a localised real change, or a uniform ±1-2/255
- *     shift across the whole frame, would sit inside it, and a uniform shift is
- *     exactly what restacking compositing layers produces;
- *   - `--update-goldens` renders everything TWICE and requires agreement, so a
- *     flake is never baked into the baseline.
+ *   - a mismatch against every accepted hash whose 8×8 picture still agrees is
+ *     `NEAR`: reported and counted by default, FATAL under `--strict`. Use
+ *     `--strict` for any claim that rendering came through unchanged — the
+ *     tolerance is wide enough (~8100 px per cell) that a localised real change,
+ *     or a uniform ±1-2/255 shift across the whole frame, would sit inside it,
+ *     and a uniform shift is exactly what restacking compositing layers
+ *     produces;
+ *   - `--update-goldens` renders each still `--repeat=N` times (default 2), so a
+ *     flake is never baked into a baseline; at `--repeat=8` or more it also
+ *     RECORDS a two-hash cell instead of majority-voting one away;
+ *   - `--audit-bimodal` re-samples the recorded cells, so a cell that stopped
+ *     flaking must be de-listed rather than lingering as dead tolerance.
  *
  * USAGE
  *   node scripts/render-transition-matrix.mjs                # the gate
- *   node scripts/render-transition-matrix.mjs --strict       # …NEAR fatal outside flakyUnderStrict — REQUIRED for a parity claim
+ *   node scripts/render-transition-matrix.mjs --strict       # …NEAR fatal — REQUIRED for a parity claim
  *   node scripts/render-transition-matrix.mjs fade wipe      # only these kinds
  *   node scripts/render-transition-matrix.mjs --self-test    # no rendering; proves the checks have teeth
  *   node scripts/render-transition-matrix.mjs --sheets       # also write contact sheets (needs ImageMagick)
- *   node scripts/render-transition-matrix.mjs --update-goldens   # re-baseline (REVIEW THE DIFF)
+ *   node scripts/render-transition-matrix.mjs --update-goldens              # re-baseline (REVIEW THE DIFF)
+ *   node scripts/render-transition-matrix.mjs --update-goldens --repeat=12  # …and re-seed bimodal cells
+ *   node scripts/render-transition-matrix.mjs --audit-bimodal[=12]          # re-sample the recorded bimodal cells
  *
  * RE-BASELINING is always a reviewed edit: `--update-goldens` rewrites a
  * committed JSON file and prints every added / removed / changed key, and it
@@ -92,7 +105,15 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decodePng } from './lib/png.mjs';
-import { encodeGolden, hashFrame, modalColor, semanticChecks, toHex, verifyFrame } from './lib/pixel-metrics.mjs';
+import {
+  encodeGolden,
+  hashFrame,
+  isBimodalGolden,
+  modalColor,
+  semanticChecks,
+  toHex,
+  verifyFrame,
+} from './lib/pixel-metrics.mjs';
 import { runSelfTest } from './lib/harness-self-test.mjs';
 
 const DEFAULT_COMMENT =
@@ -103,7 +124,12 @@ const DEFAULT_COMMENT =
   'WRONG-BUT-CURRENT (see docs/superpowers/at-cut-transition-findings.md): a change to those ' +
   'goldens is expected, not a regression. `semanticXfail` is the subset the semantic checks ' +
   'actually catch today; the harness fails if one of those starts passing without being removed ' +
-  'from the list in the same commit.';
+  'from the list in the same commit. `bimodalCells` lists the individual cells whose entry carries ' +
+  'TWO accepted hashes separated by "|" — this renderer is nondeterministic in the rightmost 8 ' +
+  'columns of the frame, strictly bimodal and globally stable, so both attractors are recorded and ' +
+  'either is accepted; every other cell is still enforced byte-exactly. A cell may only carry a ' +
+  'second hash if it is listed here, and `--audit-bimodal` re-samples the list so a cell that has ' +
+  'stopped flaking must be de-listed.';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'out', 'matrix');
@@ -137,6 +163,16 @@ const ALLOW_SHRINK = flag('--allow-shrink');
 const SELF_TEST = flag('--self-test');
 const STRICT = flag('--strict');
 const WANT_SHEETS = flag('--sheets');
+// How many times each still is rendered while re-baselining. 2 is enough to
+// reject a one-off; >= BIMODAL_MIN_SAMPLES is what it takes to RECORD a cell as
+// bimodal rather than guess a majority — the flake runs at 9-50% per render, so
+// twelve samples miss a bimodal cell with probability < 1%.
+const BIMODAL_MIN_SAMPLES = 8;
+const repeatArg = argv.find((a) => a.startsWith('--repeat='));
+const REPEAT = repeatArg ? Math.max(1, Number(repeatArg.split('=')[1])) : 2;
+const auditArg = argv.find((a) => a.startsWith('--audit-bimodal'));
+const AUDIT = Boolean(auditArg);
+const AUDIT_N = auditArg?.includes('=') ? Math.max(2, Number(auditArg.split('=')[1])) : 12;
 const only = argv.filter((a) => !a.startsWith('--'));
 
 if (SELF_TEST) {
@@ -171,18 +207,18 @@ const oldFrames = { ...(goldens.frames ?? {}) };
 const knownDefective = new Set(goldens.knownDefective ?? []);
 const semanticXfail = new Set(goldens.semanticXfail ?? []);
 
-// Kinds whose stills are MEASURED to render bimodally here. Four consecutive
-// `--strict` runs on an unchanged tree produced 5, 2, 1 and 2 same-picture-
-// different-bytes results — every single one on `clock-wipe` or `iris`, both
-// curved-edge presentations, every one at max cell delta 0. So `--strict` could
-// never pass at all, which would have made it decoration. NEAR on a listed kind
-// is reported and NOT fatal even under --strict; NEAR anywhere else is fatal.
+// CELLS — not kinds — measured to render bimodally. Each listed cell's golden
+// carries two accepted hashes; either matches as `ok`, anything else is
+// near/drift as normal, so byte-exact enforcement is retained everywhere.
 //
-// The cost, stated plainly: a real sub-tolerance regression inside `clock-wipe`
-// or `iris` would be reported as a warning rather than failing a strict run.
-// Those two kinds are pinned by their exact goldens on a NORMAL run, which is
-// where such a change would show up as drift.
-const flakyUnderStrict = new Set(goldens.flakyUnderStrict ?? []);
+// This replaced a kind-level `flakyUnderStrict` exemption, which was wrong three
+// ways: it blinded 30 cells to cover 10 (all `exit`-mode cells are structurally
+// incapable of the flake — both presentations apply their clip path only when
+// `presentationDirection !== 'exiting'`), it was scoped by the wrong predictor
+// ("curved edge" — `clock-wipe`'s flaking boundary is a straight radial ray and
+// `light-leak` has no clip path at all), and it was incomplete, so `--strict`
+// could still go red on an unchanged tree.
+const bimodalCells = new Set(goldens.bimodalCells ?? []);
 
 // ---------------------------------------------------------------- render ----
 rmSync(OUT, { recursive: true, force: true });
@@ -306,7 +342,7 @@ console.log(`${kinds.length} kinds × ${MODES.length} modes × ${PROGRESS.length
 
 const started = Date.now();
 const newFrames = {};
-const results = { ok: 0, near: 0, nearExpected: 0, drift: 0, missing: 0, retried: 0, nondeterministic: 0 };
+const results = { ok: 0, minority: 0, near: 0, drift: 0, missing: 0, retried: 0, nondeterministic: 0 };
 const semanticFailures = [];
 const xfail = [];
 const xpass = [];
@@ -328,30 +364,74 @@ for (const kind of kinds) {
       newFrames[key] = encodeGolden(frame);
 
       if (UPDATE) {
-        // MEASURED, not assumed: a curved-edge `cut` frame renders bimodally
-        // here about once in 500 stills (`iris__cut__p05` seeded one value, then
-        // gave a different one six times out of six; the next re-baseline caught
-        // `iris__cut__p075` the same way). A re-baseline that captures the rare
-        // value bakes a flake into the gate. So every still is rendered TWICE
-        // while re-baselining, a disagreement is broken by a third render, and
-        // the key is reported. Doubling the cost is acceptable: re-baselining is
-        // rare and the gate run itself stays single-render.
-        const confirm = await shoot(entry, frameFor(mode, p), `${key}.confirm.png`);
-        n++;
-        if (encodeGolden(confirm) !== newFrames[key]) {
-          const third = await shoot(entry, frameFor(mode, p), `${key}.tiebreak.png`);
+        // Every still is rendered `--repeat=N` times (default 2) while
+        // re-baselining, so a one-off is never baked into the baseline.
+        //
+        // With N >= BIMODAL_MIN_SAMPLES the pass is also the SEEDING pass: two
+        // distinct hashes are then not a flake to be majority-voted away but a
+        // measured property of the cell, and BOTH are recorded as accepted. The
+        // renderer's nondeterminism is a per-render coin flip at 9-50% per
+        // affected cell, so two samples cannot tell "bimodal" from "unlucky" —
+        // which is exactly why the old majority vote produced a baseline that
+        // could not be verified.
+        const samples = [frame];
+        for (let r = 1; r < REPEAT; r++) {
+          samples.push(await shoot(entry, frameFor(mode, p), `${key}.r${r}.png`));
           n++;
-          const confirmsAgree = encodeGolden(third) === encodeGolden(confirm);
-          if (confirmsAgree) {
-            notes.push(`FLAKY UNDER RE-BASELINE: ${key} rendered two different images; took the value that came up twice`);
-            newFrames[key] = encodeGolden(third);
-            frame = third;
+        }
+        const distinct = [...new Set(samples.map(hashFrame))];
+        const wasAccepted = (oldFrames[key] ?? '').split(' ')[0].split('|');
+        if (distinct.length === 1) {
+          newFrames[key] = encodeGolden(frame);
+          if (bimodalCells.has(key)) {
+            // Guard C: a cell listed as bimodal that no longer flakes has to be
+            // de-listed, exactly as `semanticXfail` demands of a fixed defect.
+            // Only meaningful with enough samples to be evidence — below that,
+            // the cell's existing second hash is CARRIED FORWARD rather than
+            // dropped, so an ordinary `--repeat=2` re-baseline cannot silently
+            // un-record a bimodal cell.
+            if (REPEAT >= BIMODAL_MIN_SAMPLES) {
+              fail(`BIMODAL XPASS: "${key}" is listed in bimodalCells but produced ONE hash in ${REPEAT} renders. Remove it from bimodalCells in the same commit.`);
+            } else if (wasAccepted.includes(distinct[0])) {
+              newFrames[key] = `${[...new Set(wasAccepted)].sort().join('|')} ${newFrames[key].split(' ')[1]}`;
+              notes.push(`${key} is listed bimodal and showed one hash in ${REPEAT} renders — too few samples to conclude, so its recorded pair is kept. Re-run with --repeat=${BIMODAL_MIN_SAMPLES} or more to settle it.`);
+            }
+          }
+        } else if (distinct.length === 2 && REPEAT >= BIMODAL_MIN_SAMPLES) {
+          const minority = Math.min(...distinct.map((h) => samples.filter((s) => hashFrame(s) === h).length));
+          newFrames[key] = encodeGolden(samples);
+          bimodalCells.add(key);
+          notes.push(`BIMODAL: ${key} produced two stable hashes in ${REPEAT} renders (minority ${minority}/${REPEAT}); both recorded as accepted`);
+        } else if (distinct.length === 2) {
+          const counts = distinct.map((h) => samples.filter((s) => hashFrame(s) === h).length);
+          const winner = samples.find((s) => hashFrame(s) === distinct[counts[0] >= counts[1] ? 0 : 1]);
+          notes.push(`FLAKY UNDER RE-BASELINE: ${key} rendered two different images in ${REPEAT}; took the majority. Re-run with --repeat=${BIMODAL_MIN_SAMPLES} to record it as bimodal instead.`);
+          newFrames[key] = encodeGolden(winner);
+          frame = winner;
+        } else {
+          // Three or more distinct images. The flake this renderer has is
+          // strictly bimodal (never a third value across ~2,070 renders), so a
+          // third value is not the known flake and cannot be baselined.
+          fail(`UNSTABLE UNDER RE-BASELINE: ${key} rendered ${distinct.length} different images in ${REPEAT}; the known flake is strictly bimodal, so this is something else and cannot be baselined`);
+        }
+      } else if (AUDIT) {
+        // Guard C, standalone: re-sample the cells recorded as bimodal.
+        if (bimodalCells.has(key)) {
+          const samples = [frame];
+          for (let r = 1; r < AUDIT_N; r++) {
+            samples.push(await shoot(entry, frameFor(mode, p), `${key}.a${r}.png`));
+            n++;
+          }
+          const seen = new Set(samples.map(hashFrame));
+          const accepted = new Set((oldFrames[key] ?? '').split(' ')[0].split('|'));
+          const unexpected = [...seen].filter((h) => !accepted.has(h));
+          if (unexpected.length) {
+            fail(`BIMODAL AUDIT: ${key} produced a hash outside its accepted set (${unexpected.map((h) => h.slice(0, 12)).join(', ')}) in ${AUDIT_N} renders`);
+          } else if (seen.size === 1) {
+            fail(`BIMODAL XPASS: "${key}" is listed in bimodalCells but produced ONE hash in ${AUDIT_N} renders. Remove it from bimodalCells (and drop the second hash) in the same commit.`);
           } else {
-            // Three renders, three different images. There is no majority to
-            // take, so say so instead of claiming one — the first render is kept
-            // only because something has to be, and this key is not a trustworthy
-            // baseline.
-            fail(`UNSTABLE UNDER RE-BASELINE: ${key} rendered THREE different images; no value came up twice, so it cannot be baselined`);
+            const minority = Math.min(...[...seen].map((h) => samples.filter((s) => hashFrame(s) === h).length));
+            console.log(`  AUDIT ${key} — both attractors seen (minority ${minority}/${AUDIT_N}) ok`);
           }
         }
       } else {
@@ -384,16 +464,19 @@ for (const kind of kinds) {
           // `--strict` it is also FATAL, because a claim that rendering came
           // through unchanged cannot be made on a lenient run.
           results.near++;
-          const expectedFlaky = flakyUnderStrict.has(kind);
           const line = `NEAR ${key} — bytes differ, picture identical within tolerance (max cell delta ${v.delta})`;
-          if (STRICT && !expectedFlaky) fail(`${line} — fatal under --strict`);
-          else console.log(`  ${line}${expectedFlaky ? ' [kind is listed flakyUnderStrict]' : ''}`);
-          if (expectedFlaky) results.nearExpected++;
+          if (STRICT) fail(`${line} — fatal under --strict`);
+          else console.log(`  ${line}`);
         } else if (v.status === 'missing-golden') {
           results.missing++;
           fail(`NO GOLDEN for ${key} — a kind is covered by the matrix but not baselined; run --update-goldens and review the diff`);
         } else {
           results.ok++;
+          // A cell with two accepted hashes matched one of them. Counted so the
+          // summary shows how often the recorded second attractor is actually
+          // being exercised — a bimodal cell whose second hash never comes up is
+          // what `--audit-bimodal` exists to catch.
+          if (v.accepted > 1) results.minority++;
         }
       }
 
@@ -461,8 +544,17 @@ await browser.close({ silent: true });
   for (const k of semanticXfail) {
     if (!knownDefective.has(k)) fail(`semanticXfail lists "${k}" but knownDefective does not — the two lists have drifted`);
   }
-  for (const k of flakyUnderStrict) {
-    if (!allKinds.includes(k)) fail(`flakyUnderStrict lists "${k}", which is not a transition kind any more`);
+  // A second accepted hash may NEVER appear without the cell being listed: a
+  // newly bimodal cell is information, not noise, and must reach a reviewer as a
+  // one-line addition to `bimodalCells` rather than hiding inside a hash column.
+  for (const [key, value] of Object.entries(oldFrames)) {
+    if (isBimodalGolden(value) && !bimodalCells.has(key))
+      fail(`UNDECLARED BIMODAL GOLDEN: "${key}" carries two accepted hashes but is not listed in bimodalCells`);
+  }
+  for (const key of bimodalCells) {
+    if (!(key in oldFrames)) fail(`bimodalCells lists "${key}", which has no golden at all`);
+    else if (!isBimodalGolden(oldFrames[key]))
+      fail(`bimodalCells lists "${key}" but its golden carries only one accepted hash — re-seed with --update-goldens --repeat=${BIMODAL_MIN_SAMPLES} or de-list it`);
   }
   const probe = goldens.probe ?? {};
   const now = { width: refEntry.comp.width, height: refEntry.comp.height, frames: FRAMES, clipFrames: CLIP_F, progress: PROGRESS, modes: MODES };
@@ -519,7 +611,7 @@ if (UPDATE) {
       kindCount: nextCount,
       knownDefective: [...knownDefective].sort(),
       semanticXfail: [...semanticXfail].sort(),
-      flakyUnderStrict: [...flakyUnderStrict].sort(),
+      bimodalCells: [...bimodalCells].sort(),
       frames: Object.fromEntries(Object.keys(frames).sort().map((k) => [k, frames[k]])),
     };
     mkdirSync(path.dirname(GOLDEN_FILE), { recursive: true });
@@ -534,8 +626,8 @@ if (UPDATE) {
 console.log(`\n${n} stills in ${elapsed.toFixed(0)}s → ${path.relative(ROOT, OUT)}`);
 if (!UPDATE)
   console.log(
-    `goldens: ${results.ok} byte-identical, ${results.near} same-picture-different-bytes ` +
-      `(${results.nearExpected} on flakyUnderStrict kinds), ${results.drift} drifted, ` +
+    `goldens: ${results.ok} accepted (${results.minority} on a bimodal cell's second hash), ` +
+      `${results.near} same-picture-different-bytes, ${results.drift} drifted, ` +
       `${results.missing} missing, ${results.retried} retried`,
   );
 for (const note of notes) console.log(`NOTE  ${note}`);

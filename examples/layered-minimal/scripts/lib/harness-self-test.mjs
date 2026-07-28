@@ -18,6 +18,7 @@ import { decodePng } from './png.mjs';
 import {
   FP_TOLERANCE,
   encodeGolden,
+  isBimodalGolden,
   fingerprint,
   fingerprintDelta,
   modalColor,
@@ -133,6 +134,36 @@ export function runSelfTest() {
     fingerprintDelta(fingerprint(frame), fingerprint(split(0.25))) > FP_TOLERANCE,
   );
   check('verifyFrame: an unbaselined key is missing-golden', verifyFrame('nope', frame, goldens).status === 'missing-golden');
+
+  // --- a bimodal cell accepts BOTH attractors and nothing else --------------
+  // This is what replaced the kind-level `flakyUnderStrict` exemption, so it is
+  // the branch that decides whether the gate still enforces byte-parity. It has
+  // to accept the second recorded hash, report WHICH one matched, and stay
+  // fatal for a third value.
+  const bimodal = { 'k__cut__p0': encodeGolden([frame, oneOff]) };
+  check('bimodal golden: is recognised as carrying two accepted hashes', isBimodalGolden(bimodal['k__cut__p0']));
+  const first = verifyFrame('k__cut__p0', frame, bimodal);
+  const second = verifyFrame('k__cut__p0', oneOff, bimodal);
+  check('bimodal golden: attractor A is ok', first.status === 'ok' && first.accepted === 2);
+  check('bimodal golden: attractor B is ok too', second.status === 'ok' && second.accepted === 2);
+  check(
+    'bimodal golden: the two attractors are distinguishable in the result',
+    first.matchedIndex !== second.matchedIndex,
+  );
+  const thirdValue = solid(A);
+  thirdValue.data[(5 * W + 5) * 4] ^= 3; // neither recorded attractor
+  check(
+    'bimodal golden: a THIRD value is still caught (never silently accepted)',
+    verifyFrame('k__cut__p0', thirdValue, bimodal).status !== 'ok',
+  );
+  check(
+    'bimodal golden: a different PICTURE is still drift, not tolerated',
+    verifyFrame('k__cut__p0', split(0.25), bimodal).status === 'drift',
+  );
+  check(
+    'single-hash golden: is not treated as bimodal',
+    !isBimodalGolden(goldens['k__cut__p0']) && verifyFrame('k__cut__p0', frame, goldens).accepted === 1,
+  );
 
   // --- the semantic checks have teeth ---------------------------------------
   check('semantic: a well-behaved kind passes', semanticChecks({ kind: 'good', frames: goodFrames(), a: A, b: B, isInstant: false }).length === 0);

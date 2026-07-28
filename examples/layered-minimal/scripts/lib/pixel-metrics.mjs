@@ -169,17 +169,41 @@ export function semanticChecks({ kind, frames, a, b, isInstant }) {
 //
 // An exact hash answers "byte-identical?", which is the question Task 1.3 has
 // to answer. It cannot answer "is this the same picture?", and that second
-// question turns out to be necessary: renders here are ALMOST byte-deterministic
-// but not quite — measured, roughly one still in 500 comes back with a different
-// hash on a curved-edge `cut` frame (`iris`, `clock-wipe`), while eight
-// consecutive renders of that same still in isolation agree.
+// question is necessary because this renderer is not deterministic.
 //
-// So each golden carries BOTH: the exact hash, and an 8×8 grid of mean RGB. A
-// mismatching hash whose grid agrees within FP_TOLERANCE is a rare rasteriser
-// wobble and is reported as a non-fatal WARNING; a mismatching hash whose grid
-// moves is a real rendering change and fails. The grid is stored as raw means
-// rather than a quantised digest on purpose — a digest would flip whenever a
-// cell sat on a quantisation boundary, which is the same flakiness one level up.
+// WHAT THE NON-DETERMINISM ACTUALLY IS — measured over ~2,070 renders, not
+// inferred:
+//   - it is a PER-RENDER coin flip, 9-50% per affected cell (one process, one
+//     browser, `clock-wipe:cut:0.5` → A A B A A B B B). An earlier comment here
+//     claimed eight consecutive isolated renders agree 8/8; that was wrong and
+//     is withdrawn.
+//   - it is strictly BIMODAL: exactly two globally stable hashes per affected
+//     cell, the same two across independent runs, both orderings and 16 fresh
+//     processes. Never a third (max n=27 per cell).
+//   - every differing pixel sits in the RIGHTMOST 8 COLUMNS of the 540px frame,
+//     16-28 pixels out of 518,400; alpha never changes.
+//   - the worst 8×8 cell mean shift it can produce is 0.0183/255, so it always
+//     reports fingerprint delta 0 — two orders of magnitude below FP_TOLERANCE.
+//   - it reproduces in a fresh process with a single render, so it is renderer
+//     nondeterminism and not harness state.
+//   - antialiasing is the SITE, not the explanation: on `iris__cut__p05` the
+//     antialiased boundary spans 1,522 pixels across the full width, and 96% of
+//     it is perfectly deterministic.
+//
+// Because it is bimodal and globally stable, it is recorded rather than
+// tolerated: a golden may carry a SECOND accepted hash for a known-bimodal
+// cell, and a frame matching either accepted hash is `ok`. That keeps exact
+// byte-parity enforcement on every cell — there is no exempted kind and no
+// blind spot.
+//
+// The fingerprint stays for the case a hash does NOT match any accepted value:
+// a mismatch whose 8×8 grid agrees within FP_TOLERANCE is `near`, a mismatch
+// whose grid moves is `drift`. FP_TOLERANCE is deliberately NOT lowered to
+// exclude the flake — the flake is already at delta 0, so lowering it could
+// only convert real drift into a different failure mode. The grid is stored as
+// raw means rather than a quantised digest on purpose: a digest would flip
+// whenever a cell sat on a quantisation boundary, which is the same flakiness
+// one level up.
 
 export const FP_GRID = 8;
 /** Max per-channel deviation, in 0-255 units, between two cell means that still
@@ -222,37 +246,60 @@ export function fingerprintDelta(a, b) {
   return max;
 }
 
-/** One golden entry, stored as a single space-separated line so the committed
- *  file stays one reviewable row per still. */
-export function encodeGolden(frame) {
-  return `${hashFrame(frame)} ${fingerprint(frame)}`;
+/**
+ * One golden entry, stored as a single space-separated line so the committed
+ * file stays one reviewable row per still:
+ *
+ *   "<hash> <fingerprint>"            a deterministic cell
+ *   "<hashA>|<hashB> <fingerprint>"   a known-BIMODAL cell; either is accepted
+ *
+ * The `|` form is the whole mechanism that replaced a kind-level exemption
+ * list. Accepting both attractors keeps byte-exact enforcement on the cell (a
+ * third value still fails) instead of switching the cell to a tolerance.
+ */
+export function encodeGolden(frameOrFrames) {
+  const frames = Array.isArray(frameOrFrames) ? frameOrFrames : [frameOrFrames];
+  const hashes = [...new Set(frames.map(hashFrame))].sort();
+  return `${hashes.join('|')} ${fingerprint(frames[0])}`;
 }
 
 export function decodeGolden(value) {
   if (typeof value !== 'string') return null;
-  const [hash, fp] = value.split(' ');
-  return { hash, fp };
+  const [hashes, fp] = value.split(' ');
+  return { hashes: hashes.split('|'), fp };
+}
+
+/** True when a golden entry records two accepted hashes. */
+export function isBimodalGolden(value) {
+  const g = decodeGolden(value);
+  return Boolean(g && g.hashes.length > 1);
 }
 
 /**
  * THE GOLDEN COMPARISON — the line that turns a changed pixel into a red run.
  *
- *   ok      byte-identical to the golden
- *   near    different bytes, same picture within FP_TOLERANCE (warning)
- *   drift   different picture (failure)
+ *   ok      byte-identical to one of the golden's ACCEPTED hashes
+ *   near    different bytes, same picture within FP_TOLERANCE
+ *   drift   different picture (always fatal)
+ *
+ * `matchedIndex` reports WHICH accepted hash matched, so the harness can tell a
+ * bimodal cell's minority attractor from its majority one and report the split.
  */
 export function verifyFrame(key, frame, goldens) {
   const actual = hashFrame(frame);
   const actualFp = fingerprint(frame);
   const golden = decodeGolden(goldens[key]);
   if (!golden) return { key, actual, actualFp, status: 'missing-golden' };
-  if (golden.hash === actual) return { key, actual, actualFp, status: 'ok' };
+  const matchedIndex = golden.hashes.indexOf(actual);
+  if (matchedIndex >= 0) {
+    return { key, actual, actualFp, status: 'ok', matchedIndex, accepted: golden.hashes.length };
+  }
   const delta = fingerprintDelta(golden.fp, actualFp);
   return {
     key,
     actual,
     actualFp,
-    expected: golden.hash,
+    expected: golden.hashes.join('|'),
     delta,
     status: delta <= FP_TOLERANCE ? 'near' : 'drift',
   };
