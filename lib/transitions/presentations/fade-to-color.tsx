@@ -43,8 +43,11 @@ export type FadeToColorProps = {
  *  - second half — the colour holds at full, and the incoming clip resolves out
  *    of it (0 → 1).
  *
- *  Exported for the test that pins the curve; the node is the only caller. */
-export function fadeToColorOpacities(progress: number): { color: number; incoming: number } {
+ *  Module-local: the curve is pinned through the DOM, on the opacities the node
+ *  actually renders, rather than by calling this directly — "the number is
+ *  right" and "the number reaches the picture" are the same assertion for a node
+ *  that closes over its params. */
+function fadeToColorOpacities(progress: number): { color: number; incoming: number } {
   return {
     color: Math.min(1, progress * 2),
     // Held at 0 until the colour has fully covered, so the midpoint IS the
