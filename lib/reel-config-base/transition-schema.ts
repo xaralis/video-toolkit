@@ -8,7 +8,9 @@
 // PLACEMENTS: ONE ordered catalog, from which everything else is derived —
 //
 //   CoreTransitionSchema = the zod discriminated union, built from the catalog
-//   TransitionSchema     = CoreTransitionSchema ∪ BrandTransitionSchema (below)
+//   TransitionSchema     = (CoreTransitionSchema ∪ BrandTransitionSchema)
+//                          ∩ TransitionTimingSchema (the kind-independent
+//                          fields: `alignment`)
 //   Transition           = z.infer of that union (see ./base-types)
 //   TransitionKind       = the CORE kinds only — see the note on the type
 //   TRANSITION_KINDS     = catalog kinds + labels (lib/editor/app/transitions)
@@ -49,6 +51,45 @@ export const TransitionFrames = z
   .min(1)
   .max(60)
   .describe('Transition length in FRAMES (30fps reel → 30 frames = 1 sec). Rendered at the cut using handle frames from both sides.');
+
+/** Where a transition sits RELATIVE TO THE CUT — every NLE's third transition
+ *  property, after kind and length (Premiere spells them "Center at Cut",
+ *  "Start at Cut", "End at Cut").
+ *
+ *  - `center` — half the transition before the cut, half after. The default,
+ *    and what core could express before Phase 4 Task 1.4.
+ *  - `start`  — the whole transition AFTER the cut; the incoming clip carries
+ *    it, and the outgoing clip is held to its last frame.
+ *  - `end`    — the whole transition BEFORE the cut; the outgoing clip carries
+ *    it, and the incoming clip is pulled in early.
+ *
+ *  Honoured in `lib/render/video-track-layout.ts` (`handleBefore`/`handleAfter`),
+ *  which is where the frames each side lends are decided. */
+export const TRANSITION_ALIGNMENTS = ['center', 'start', 'end'] as const;
+
+export const TransitionAlignmentSchema = z
+  .enum(TRANSITION_ALIGNMENTS)
+  .describe('Where the transition sits relative to the cut. Default center (half each side).');
+
+/** @see TRANSITION_ALIGNMENTS */
+export type TransitionAlignment = (typeof TRANSITION_ALIGNMENTS)[number];
+
+/**
+ * The TIMING fields every transition carries, whatever its kind — core-catalog
+ * or brand-authored. Kept OUT of the catalog members on purpose:
+ *
+ * - a brand transition is no less entitled to alignment than a core one, and
+ *   `BrandTransitionSchema` cannot enumerate core's members to inherit from;
+ * - `subOptionsFor` reads a kind's LOOK parameters structurally off its member
+ *   shape, and alignment is not a look parameter — it is a sibling of `frames`,
+ *   which that function already excludes by name.
+ *
+ * Intersected onto the whole union in `TransitionSchema` below, so both
+ * branches carry it from one declaration.
+ */
+export const TransitionTimingSchema = z.object({
+  alignment: TransitionAlignmentSchema.optional(),
+});
 
 const Direction4 = z.enum(['left', 'right', 'up', 'down']);
 
@@ -414,9 +455,20 @@ export const BrandTransitionSchema = z
   .passthrough();
 
 /** What a `transitionIn`/`transitionOut` field accepts: a fully-validated core
- *  transition, OR a shape-checked brand one. Core is tried first, so a core kind
- *  never reaches the permissive branch. */
-export const TransitionSchema = z.union([CoreTransitionSchema, BrandTransitionSchema]);
+ *  transition, OR a shape-checked brand one — either of them carrying the shared
+ *  TIMING fields (`alignment`). Core is tried first, so a core kind never
+ *  reaches the permissive branch.
+ *
+ *  The intersection is how ONE declaration of `alignment` reaches BOTH branches.
+ *  It survives the strip: the core branch is a plain (non-passthrough) object,
+ *  so it drops `alignment` from its own result, and zod's intersection then
+ *  merges that result with `{ alignment }` from the timing side. A transition
+ *  with no `alignment` merges with `{}` and comes back byte-for-byte what it
+ *  was before this field existed. */
+export const TransitionSchema = z.intersection(
+  z.union([CoreTransitionSchema, BrandTransitionSchema]),
+  TransitionTimingSchema,
+);
 
 /** A core transition, exactly as the catalog defines it. */
 export type CoreTransition = z.infer<typeof CoreTransitionSchema>;
@@ -426,10 +478,19 @@ export type CoreTransition = z.infer<typeof CoreTransitionSchema>;
  *  though the inferred type cannot name them). */
 export type BrandTransition = z.infer<typeof BrandTransitionSchema>;
 
+/** The shared timing fields, as a type. @see TransitionTimingSchema */
+export type TransitionTiming = z.infer<typeof TransitionTimingSchema>;
+
 /** A transition, exactly as the schema defines it. Widened in Phase 4 to include
  *  brand kinds — so anything that must NARROW to a core member should say
- *  `CoreTransition`, not `Transition`. */
-export type Transition = CoreTransition | BrandTransition;
+ *  `CoreTransition`, not `Transition`.
+ *
+ *  The timing fields are distributed over the union DELIBERATELY rather than
+ *  written `(CoreTransition | BrandTransition) & TransitionTiming`: an
+ *  intersection whose left side is a union narrows unreliably, and every brand
+ *  that writes `t.kind === 'burn' ? t.mask : …` depends on that narrowing. */
+type WithTiming<T> = T extends unknown ? T & TransitionTiming : never;
+export type Transition = WithTiming<CoreTransition | BrandTransition>;
 
 /** Every transition kind CORE declares — derived, so a `Record<TransitionKind, …>`
  *  elsewhere becomes a compiler-enforced "handle every kind" obligation.

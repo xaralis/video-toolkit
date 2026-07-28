@@ -10,6 +10,35 @@
 // and a Remotion-importing module tests fine under `vi.mock('remotion')` —
 // see lib/editor/src/at-cut-transitions.test.tsx.
 import { getTransitionRecord, type TransitionRecord, type TransitionRecordOptions } from './transition-record';
+import type { TransitionAlignment } from '../reel-config-base/transition-schema';
+
+/** The alignment a record asks for, defaulted. Read defensively rather than off
+ *  the parsed type: a project's Root.tsx is hand-edited and never re-parsed at
+ *  render time (see `getTransitionRecord`), so an unknown string here must mean
+ *  "the default", not "undefined behaviour". */
+function alignmentOf(record: TransitionRecord | undefined): TransitionAlignment {
+  const a = (record as { alignment?: unknown } | undefined)?.alignment;
+  return a === 'start' || a === 'end' ? a : 'center';
+}
+
+/** Frames the INCOMING clip lends BACKWARDS, before the cut.
+ *
+ *  `center`'s `Math.floor` is load-bearing and paired with `handleAfter`'s
+ *  `Math.ceil`: on an odd frame count the extra frame goes to the OUTGOING
+ *  side, and every baked reel in every brand repo is cut that way. Do not
+ *  "tidy" the pair into one rounding helper. */
+function handleBefore(frames: number, alignment: TransitionAlignment): number {
+  if (alignment === 'start') return 0;
+  if (alignment === 'end') return frames;
+  return Math.floor(frames / 2);
+}
+
+/** Frames the OUTGOING clip lends FORWARDS, past the cut. @see handleBefore */
+function handleAfter(frames: number, alignment: TransitionAlignment): number {
+  if (alignment === 'start') return frames;
+  if (alignment === 'end') return 0;
+  return Math.ceil(frames / 2);
+}
 
 export interface VideoLayoutEntry {
   index: number;
@@ -29,9 +58,10 @@ export interface VideoLayoutEntry {
 //   the item entering it).
 // - outRecord: every item reads its OWN transitionOut (including the last —
 //   that's the reel's trailing edge fade).
-// - inHalf/outHalf: center-at-cut split (floor on the "before" side, ceil on
-//   the "after" side), but only between two REAL items — isFirst/isLast
-//   suppress the handle since there's no neighbouring footage to borrow.
+// - inHalf/outHalf: the frames each side lends, per the transition's own
+//   `alignment` (default `center` — floor on the "before" side, ceil on the
+//   "after" side), but only between two REAL items — isFirst/isLast suppress
+//   the handle since there's no neighbouring footage to borrow.
 export function computeVideoLayout(
   items: Array<{ startMs: number; endMs: number; transitionIn?: unknown; transitionOut?: unknown }>,
   fps: number,
@@ -61,8 +91,19 @@ export function computeVideoLayout(
     const inFrames = inRecord ? Number(inRecord.frames) || 0 : 0;
     const outFrames = outRecord ? Number(outRecord.frames) || 0 : 0;
 
-    const inHalf = !isFirst && inRecord ? Math.floor(inFrames / 2) : 0;
-    const outHalf = !isLast && outRecord ? Math.ceil(outFrames / 2) : 0;
+    // The two sides of ONE cut read the SAME record (item i's `transitionOut`
+    // is item i+1's `inRecord`), so they always agree on the alignment — the
+    // window can never be claimed asymmetrically.
+    //
+    // EDGE CLAMPING: `!isFirst`/`!isLast` still zero the handle at the reel's
+    // leading and trailing edges, and that now doubles as the answer to "what
+    // does `end` do when there is nothing before the first clip?". It CLAMPS:
+    // the transition plays inside the only clip there is, over the same frames
+    // `center` would have used, rather than reaching for frames that do not
+    // exist. Alignment describes how a cut is straddled; at a reel edge there
+    // is no cut to straddle.
+    const inHalf = !isFirst && inRecord ? handleBefore(inFrames, alignmentOf(inRecord)) : 0;
+    const outHalf = !isLast && outRecord ? handleAfter(outFrames, alignmentOf(outRecord)) : 0;
 
     const seqFrom = itemStartF - inHalf;
     const seqDuration = normalDuration + inHalf + outHalf;
