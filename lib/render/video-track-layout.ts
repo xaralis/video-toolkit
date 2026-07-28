@@ -10,7 +10,7 @@
 // and a Remotion-importing module tests fine under `vi.mock('remotion')` —
 // see lib/editor/src/at-cut-transitions.test.tsx.
 import { getTransitionRecord, type TransitionRecord, type TransitionRecordOptions } from './transition-record';
-import type { TransitionAlignment } from '../reel-config-base/transition-schema';
+import { isTransitionAlignment, type TransitionAlignment } from '../reel-config-base/transition-schema';
 
 /** The alignment a record asks for, defaulted. Read defensively rather than off
  *  the parsed type: a project's Root.tsx is hand-edited and never re-parsed at
@@ -18,7 +18,7 @@ import type { TransitionAlignment } from '../reel-config-base/transition-schema'
  *  "the default", not "undefined behaviour". */
 function alignmentOf(record: TransitionRecord | undefined): TransitionAlignment {
   const a = (record as { alignment?: unknown } | undefined)?.alignment;
-  return a === 'start' || a === 'end' ? a : 'center';
+  return isTransitionAlignment(a) ? a : 'center';
 }
 
 /** Frames the INCOMING clip lends BACKWARDS, before the cut.

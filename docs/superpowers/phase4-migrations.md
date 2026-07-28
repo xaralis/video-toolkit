@@ -281,3 +281,40 @@ whose acceptance criterion is byte-identical output.
 What 1.4 did do is verify the diagnostic survives the re-timing — it is computed
 from exactly the windows alignment moves — and pin that at all three alignments
 (`lib/editor/src/transition-alignment-render.test.tsx`).
+
+### 1.4-e Alignment survives the editor's Kind switch
+
+**Grade: parity-preserving (bug fix inside Phase 4; no brand action).**
+
+`defaultTransition(kind, {frames})` builds a FRESH transition and the inspector
+writes it over the old one wholesale, so anything not explicitly threaded is
+lost. `frames` was threaded; `alignment` was not, so flipping the Kind dropdown
+silently dropped it — no control, no warning. Fixed in `defaultTransition`
+(which now takes `{frames, alignment}` and carries a RECOGNISED alignment
+through, dropping a stale value rather than propagating it) and at the one call
+site in `LayeredInspector.tsx`. A kind's own LOOK params are still discarded on
+a kind switch — they belonged to the old kind.
+
+No brand is affected (none uses the field yet), but any brand that adopts
+alignment before this commit lands would have lost it on the first editor
+touch.
+
+### 1.4-f CHECK DURING THE MIGRATION PASS: Remotion's zod sidebar
+
+**Not a regression, but it needs one screenshot to confirm.**
+
+`ClipSegmentBaseSchema` carries `TransitionSchema.optional()`, and live PP
+projects hand that tree to `<Composition schema={…}>`. Remotion's zod-driven
+Studio sidebar renders `z.discriminatedUnion` but not `z.union`, and does not
+render `z.intersection` either — so Task 1.4 changed
+`ZodUnion` → `ZodIntersection` on a schema that was ALREADY past what the
+sidebar renders (Task 1.0 moved it from `z.discriminatedUnion` to `z.union`).
+The fallback therefore predates this task and the transition sub-editor in
+Studio's sidebar is expected to be unchanged.
+
+**Action for whoever runs the brand-migration pass:** open one PP project in
+Studio, look at the props sidebar for a clip segment, and record what the
+transition field renders as. If it degrades the whole segment editor rather
+than just that field, that is worth knowing before more schemas move to
+non-discriminated shapes. Core's own reel editor is unaffected — it does not use
+Remotion's sidebar.

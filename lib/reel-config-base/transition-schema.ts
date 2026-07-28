@@ -74,6 +74,16 @@ export const TransitionAlignmentSchema = z
 /** @see TRANSITION_ALIGNMENTS */
 export type TransitionAlignment = (typeof TRANSITION_ALIGNMENTS)[number];
 
+/** True when `v` is one of the three alignments. THE one place that decides it:
+ *  both the renderer's defaulting (`alignmentOf` in
+ *  `lib/render/video-track-layout.ts`) and the editor's kind-switch threading
+ *  (`defaultTransition` below) read a value that was never re-parsed — a
+ *  hand-edited `Root.tsx`, a config persisted by an older editor — so both need
+ *  to ask, and neither should carry its own copy of the literal list. */
+export function isTransitionAlignment(v: unknown): v is TransitionAlignment {
+  return (TRANSITION_ALIGNMENTS as readonly unknown[]).includes(v);
+}
+
 /**
  * The TIMING fields every transition carries, whatever its kind — core-catalog
  * or brand-authored. Kept OUT of the catalog members on purpose:
@@ -730,13 +740,30 @@ export function defaultValueForField(field: z.ZodTypeAny): unknown {
  * `scanlines`, light-leak's `flareArtifacts`) MUST be seeded `true`, or the
  * inspector shows "off" for something that is plainly on in the frame.
  */
-export function defaultTransition(kind: string, opts?: { frames?: number }): DraftTransition {
+export function defaultTransition(
+  kind: string,
+  opts?: { frames?: number; alignment?: unknown },
+): DraftTransition {
   const e = entryFor(kind);
   const frames = opts?.frames ?? DEFAULT_TRANSITION_FRAMES;
-  if (!e) return { kind, frames };
+  // TIMING SURVIVES A KIND SWITCH. `frames` always did — the picker threads the
+  // current length through so switching Dissolve→Fade doesn't silently snap
+  // back to 15. `alignment` is a sibling of `frames`, not a per-kind look
+  // parameter, so it must survive the same way: a boundary authored as
+  // `{kind:'dissolve', frames:12, alignment:'end'}` used to lose its alignment
+  // the instant anyone touched the Kind dropdown, with no control and no
+  // warning to show where it went. Only a RECOGNISED value is carried, so a
+  // stale or hand-typo'd one is dropped here rather than propagated into a
+  // fresh object.
+  const timing = (t: DraftTransition): DraftTransition => {
+    if (isTransitionAlignment(opts?.alignment)) t.alignment = opts.alignment;
+    return t;
+  };
+  if (!e) return timing({ kind, frames });
 
   const t: DraftTransition = { kind };
   if ('frames' in e.schema.shape) t.frames = frames;
+  timing(t);
 
   for (const [prop, field] of Object.entries(e.schema.shape)) {
     if (prop === 'kind' || prop === 'frames') continue;

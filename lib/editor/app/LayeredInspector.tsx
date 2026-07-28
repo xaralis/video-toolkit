@@ -356,7 +356,11 @@ const TRANSITION_LABEL: Record<string, string> = Object.fromEntries(TRANSITION_K
 // sub-option's dropdown — core's schema names the field but not its values
 // (see AccentKey in transition-schema.ts), so the choices can only come from
 // here.
-function TransitionFields({
+// Exported for test: the kind switch has to throw away a kind's LOOK params
+// (they belong to the old kind) while keeping its TIMING (which does not), and
+// nothing else in the inspector is asked to tell those two apart. Mounting it
+// directly is the only way to pin that without driving the whole inspector.
+export function TransitionFields({
   t,
   onChange,
   accentSlots,
@@ -373,7 +377,12 @@ function TransitionFields({
         value={kind}
         options={TRANSITION_KINDS.map((k) => k.kind)}
         optionLabel={(k) => TRANSITION_LABEL[k] ?? k}
-        onChange={(nextKind) => onChange(defaultTransition(nextKind, { frames: t.frames }))}
+        // `frames` AND `alignment` are threaded through: both are kind-independent
+        // timing, and `defaultTransition` builds a fresh object that the caller
+        // then writes over the old one wholesale, so anything not named here is
+        // silently lost. The kind's own look params SHOULD be lost — they
+        // belonged to the old kind — which is exactly why this list is explicit.
+        onChange={(nextKind) => onChange(defaultTransition(nextKind, { frames: t.frames, alignment: t.alignment }))}
       />
       {/* One control per declared parameter, through the SAME dispatch the
           opaque-bag editor uses (`renderParamControl`). Until Task 1.1 this was
