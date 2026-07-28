@@ -1,5 +1,23 @@
 # At-cut transition findings — all 20 catalog kinds, both directions
 
+> ## ⚠ PARTLY HISTORICAL SINCE PHASE 4 TASK 2.1
+>
+> **Four of the defects recorded below are FIXED.** `wipe`, `checkerboard`,
+> `pixelate` and `scanline-glitch` are now native TWO-INPUT nodes — one component
+> composited once per boundary from `(from, to, progress)` — and all four `it.fails`
+> pins that recorded them are gone. Their goldens were re-baselined (12 of 15 cells
+> each for `wipe`/`pixelate`/`scanline-glitch`; `checkerboard` came through
+> byte-identical), and the pixel harness now reports **zero** semantic xfails with
+> `knownDefective` and `semanticXfail` both empty. Graded, with the before/after
+> in words, in `docs/superpowers/phase4-migrations.md` § Task 2.1.
+>
+> Everything else here still stands, including the **seven kinds that no-op when
+> exiting** and the **trailing edge** — those are Task 2.2's, not 2.1's.
+>
+> Read the paragraph below with that in mind: the one-sided "entering presentation
+> drawn over the exiting one" composite it describes is still how the SIXTEEN
+> one-sided kinds render, but no longer how these four do.
+
 **Status:** closes the Phase 3 programme's last open risk. Before this, only
 `burn` had ever had its **at-cut appearance** confirmed; the other 19 kinds had
 wiring coverage only (`lib/editor/src/at-cut-transitions.test.tsx`), which runs
