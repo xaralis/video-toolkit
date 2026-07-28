@@ -1032,3 +1032,37 @@ own palette. That control comes from `ACCENT_FIELDS` — the field is named
 `color`, exactly like `wipe.color`, and Task 1.6's mark is by NAME. `fade-coal`
 deliberately gets no colour control of its own: it is the alias, and a knob there
 would invite configuring a kind one should be migrating off.
+
+## Task 2.4 — the orphan knobs (glitch, whip-pan, zoom-through)
+
+### 2.4-a Six schema fields added — PARITY-PRESERVING, MEASURED
+
+**Grade: parity-preserving.** `glitch.{intensity,slices,rgbShift,scanLines}`,
+`whip-pan.blurAmount` and `zoom-through.zoomAmount` all existed only as their
+presentation's own destructured defaults; no schema field could set them. All
+six are new, OPTIONAL fields — no rename, no removal, no default changed. An
+authored literal that omits them (every one found in both brand repos) forwards
+`undefined` at the render map and the presentation's own default applies
+unchanged; pinned by the pixel harness (315 accepted, 0 drifted) and by the
+`MinimalReel` 5-frame hash table (unchanged).
+
+**Verified per kind, both repos read-only** (PP at the pin used throughout this
+document, roost likewise), anchored exclusion of the vendored `toolkit/`
+submodule:
+
+| kind | PP | roost |
+|---|---|---|
+| `glitch` | **1 authored** — `pp-mov-koalice/src/Root.tsx:77` (`{kind:'glitch', frames:18}` — no new field set); +1 type-union echo `pp-05-zastupitelsky-klub/src/config/types.ts:15` (not an authored value) | **0** |
+| `whip-pan` | 0 (only the type-union echo above) | **0** |
+| `zoom-through` | 0 (only the type-union echo above) | **0** |
+
+**No action needed for `pp-mov-koalice`'s `glitch` literal.** It sets only
+`kind`/`frames`, so it renders through the exact same code path as before —
+verify by reading it (above), not by inference.
+
+### 2.4-b No brand action required
+
+Neither brand repo authors any of the six new fields (there is nothing to
+migrate — the fields did not exist to author). A brand wanting one of the six
+now can set it directly; that is the whole point of the task, and needs no
+migration note of its own.

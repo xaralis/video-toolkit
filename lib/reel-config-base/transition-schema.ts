@@ -275,7 +275,24 @@ const CATALOG = catalog(
     }),
     label: 'Fade to colour',
   },
-  { schema: z.object({ kind: z.literal('glitch'), frames: TransitionFrames }), label: 'Glitch' },
+  {
+    // Task 2.4: four presentation props existed only as `glitch.tsx`'s own
+    // destructured defaults, unreachable from any config. Optional, straight
+    // pass-through, no renaming.
+    schema: z.object({
+      kind: z.literal('glitch'),
+      frames: TransitionFrames,
+      intensity: z.number().min(0).max(1).optional().describe('Overall strength of the tearing, RGB split and scan lines. Default 0.8.'),
+      slices: z.number().min(2).max(32).optional().describe('Roughly how many horizontal tear-bands (drives vertical noise frequency). Default 8.'),
+      rgbShift: z.boolean().optional().describe('Include RGB channel separation. Default on.'),
+      scanLines: z.boolean().optional().describe('Include a scan-lines overlay. Default on.'),
+    }),
+    label: 'Glitch',
+    // Both booleans default ON in the presentation; a checkbox has no "unset"
+    // state (see defaultTransition's note), so they must be seeded true or
+    // the inspector would show "off" for something plainly on in the frame.
+    defaults: { rgbShift: true, scanLines: true },
+  },
   {
     // Chromatic aberration: two hue-rotated ghosts of the frame pull apart and
     // snap back. Both params are optional — `presentations/rgb-split.tsx`
@@ -358,9 +375,28 @@ const CATALOG = catalog(
   },
   { schema: z.object({ kind: z.literal('slide'), frames: TransitionFrames, direction: Direction4 }), label: 'Slide' },
   { schema: z.object({ kind: z.literal('flip'), frames: TransitionFrames, direction: Direction4 }), label: 'Flip' },
-  { schema: z.object({ kind: z.literal('whip-pan'), frames: TransitionFrames, direction: Direction4 }), label: 'Whip pan' },
   {
-    schema: z.object({ kind: z.literal('zoom-through'), frames: TransitionFrames, from: z.enum(['in', 'out']) }),
+    // Task 2.4: `blurAmount` existed only as `whip-pan.tsx`'s own destructured
+    // default (px of peak motion blur), unreachable from any config.
+    schema: z.object({
+      kind: z.literal('whip-pan'),
+      frames: TransitionFrames,
+      direction: Direction4,
+      blurAmount: z.number().min(0).max(100).optional().describe('Peak motion-blur radius in px. Default 20.'),
+    }),
+    label: 'Whip pan',
+  },
+  {
+    // Task 2.4: `zoomAmount` existed only as `zoom-through.tsx`'s own
+    // destructured default (a raw scale multiplier, not a percent — same
+    // convention as `zoom-blur.scaleAmount` below, whose 1-3 range this
+    // mirrors), unreachable from any config.
+    schema: z.object({
+      kind: z.literal('zoom-through'),
+      frames: TransitionFrames,
+      from: z.enum(['in', 'out']),
+      zoomAmount: z.number().min(1).max(3).optional().describe('Peak scale multiplier. Default 1.8.'),
+    }),
     label: 'Zoom',
   },
   {

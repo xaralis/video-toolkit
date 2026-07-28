@@ -871,7 +871,12 @@
       "path": "lib/transitions/presentations/glitch.tsx",
       "kind": "glitch",
       "description": "Digital distortion with RGB shift and scan lines",
-      "options": [],
+      "options": [
+        "intensity",
+        "slices",
+        "rgbShift",
+        "scanLines"
+      ],
       "bestFor": "Tech demos, edgy reveals, cyberpunk aesthetic",
       "status": "stable"
     },
@@ -968,7 +973,8 @@
       "kind": "whip-pan",
       "description": "Directional motion blur — fast camera move feel",
       "options": [
-        "direction"
+        "direction",
+        "blurAmount"
       ],
       "bestFor": "Energetic cuts, camera movement, fast-paced reels",
       "status": "beta",
@@ -979,7 +985,8 @@
       "kind": "zoom-through",
       "description": "Zoom out of outgoing, zoom into incoming — high energy",
       "options": [
-        "from"
+        "from",
+        "zoomAmount"
       ],
       "bestFor": "Dynamic transitions, product reveals, fast-cut edits",
       "status": "beta",

@@ -307,7 +307,7 @@ Docker images, cuts releases, and syncs the Remotion skill from upstream).
 
 | Gate | Command | Covers | Baseline (measured 2026-07-28) |
 |---|---|---|---|
-| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **88 files / 1177 tests** — 1173 passed, **4 skipped**, ~42 s |
+| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **88 files / 1191 tests** — 1187 passed, **4 skipped**, ~42 s |
 | Editor types | `cd lib/editor && npx tsc --noEmit` | Same surface as above, plus all of `lib/render` (declared directly in `lib/editor/tsconfig.json`'s `include`, or reached transitively) and 15 of `lib/transitions`' 16 files — `index.ts`, `edge-plate.tsx` and all 13 presentations, but **not** `TransitionGallery.tsx`, which only `examples/layered-minimal` reaches (verify with `npx tsc --noEmit --listFiles`; the counts grow as presentations are added — re-derive, do not trust) | **3** pre-existing errors, **exit code 2** |
 | Render/transitions types | `cd examples/layered-minimal && npm run typecheck` | `lib/render` and `lib/transitions` (including their `.tsx` components), via the example that actually imports them — see `docs/superpowers/core-typecheck-gate.md` | **0**, plus a coverage guard |
 | Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` | Every at-cut transition kind × mode × progress — 315 stills, hash-compared against committed goldens | **PASS**, ~48 s: `315 accepted, 0 same-picture-different-bytes, 0 drifted, 0 missing`, **zero** semantic xfails, `knownDefective` and `semanticXfail` both **empty** |

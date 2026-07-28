@@ -639,6 +639,73 @@ describe('the four two-input nodes render what their name promises', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Task 2.4 — six presentation props existed only as the PRESENTATION's own
+// destructured defaults, with no schema field a config could set:
+// glitch.{intensity,slices,rgbShift,scanLines}, whip-pan.blurAmount,
+// zoom-through.zoomAmount. "Six props, six pins" — one assertion per prop, so
+// a wiring break in any single one is caught by NAME rather than swallowed by
+// the other five still forwarding correctly.
+// ---------------------------------------------------------------------------
+describe('Task 2.4 — the orphan knobs reach the presentation', () => {
+  const glitchBase = { kind: 'glitch', frames: 15 };
+  const whipPanBase = { kind: 'whip-pan', frames: 15, direction: 'left' };
+  const zoomThroughBase = { kind: 'zoom-through', frames: 15, from: 'in' };
+
+  // DELIVERY half — an authored, non-default value must reach the
+  // presentation's props bag under its own name.
+  it('glitch.intensity reaches the presentation', () => {
+    const p = presentationFor({ ...glitchBase, intensity: 0.35 } as never, DIMS)!;
+    expect((p.props as Record<string, unknown>).intensity).toBe(0.35);
+  });
+
+  it('glitch.slices reaches the presentation', () => {
+    const p = presentationFor({ ...glitchBase, slices: 20 } as never, DIMS)!;
+    expect((p.props as Record<string, unknown>).slices).toBe(20);
+  });
+
+  it('glitch.rgbShift reaches the presentation', () => {
+    const p = presentationFor({ ...glitchBase, rgbShift: false } as never, DIMS)!;
+    expect((p.props as Record<string, unknown>).rgbShift).toBe(false);
+  });
+
+  it('glitch.scanLines reaches the presentation', () => {
+    const p = presentationFor({ ...glitchBase, scanLines: false } as never, DIMS)!;
+    expect((p.props as Record<string, unknown>).scanLines).toBe(false);
+  });
+
+  it('whip-pan.blurAmount reaches the presentation', () => {
+    const p = presentationFor({ ...whipPanBase, blurAmount: 65 } as never, DIMS)!;
+    expect((p.props as Record<string, unknown>).blurAmount).toBe(65);
+  });
+
+  it('zoom-through.zoomAmount reaches the presentation', () => {
+    const p = presentationFor({ ...zoomThroughBase, zoomAmount: 2.4 } as never, DIMS)!;
+    expect((p.props as Record<string, unknown>).zoomAmount).toBe(2.4);
+  });
+
+  // PARITY half — an authored literal that OMITS the field (every glitch,
+  // whip-pan and zoom-through literal in both brand repos, today) must forward
+  // `undefined` at this boundary, not a value hardcoded in the render map —
+  // that is what lets the PRESENTATION's own destructured default apply and
+  // keeps the rendered pixels byte-identical. Defaults, read off the
+  // presentation source:
+  //   glitch.tsx:39-42       intensity 0.8, slices 8, rgbShift true, scanLines true
+  //   whip-pan.tsx:28        blurAmount 20
+  //   zoom-through.tsx:29    zoomAmount 1.8
+  it.each([
+    ['glitch', glitchBase, 'intensity'],
+    ['glitch', glitchBase, 'slices'],
+    ['glitch', glitchBase, 'rgbShift'],
+    ['glitch', glitchBase, 'scanLines'],
+    ['whip-pan', whipPanBase, 'blurAmount'],
+    ['zoom-through', zoomThroughBase, 'zoomAmount'],
+  ] as const)('%s: an omitted %s forwards undefined (parity)', (_kind, base, prop) => {
+    const p = presentationFor(base as never, DIMS)!;
+    expect((p.props as Record<string, unknown>)[prop]).toBeUndefined();
+  });
+});
+
 describe('AtCutTransition drives ONE node off the boundary-local frame', () => {
   const NODE_DIMS = { width: 1080, height: 1920, fps: 30 };
 

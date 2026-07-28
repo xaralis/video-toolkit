@@ -123,12 +123,20 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
     );
     return PRESENTATIONS['fade-to-color']({ ...t, kind: 'fade-to-color' }, dims);
   },
-  'glitch': () => glitch() as AnyPresentation,
+  // Task 2.4: forward the four params `glitch.tsx` always read but no schema
+  // field could set. Every field is optional on both sides, so an explicit
+  // `undefined` for an omitted one is exactly "use the presentation's own
+  // default" — same contract `burn`/`gradient-wipe` already rely on.
+  'glitch': (t) => glitch({
+    intensity: t.intensity, slices: t.slices, rgbShift: t.rgbShift, scanLines: t.scanLines,
+  }) as AnyPresentation,
   'burn': (t) => burn({ mask: t.mask, glowColor: t.glowColor, edgeContrast: t.edgeContrast, glowBand: t.glowBand }) as AnyPresentation,
   'slide': (t) => slide({ direction: DIRECTION_4WAY[t.direction] ?? 'from-left' }) as AnyPresentation,
   'flip': (t) => flip({ direction: DIRECTION_4WAY[t.direction] ?? 'from-left' }) as AnyPresentation,
-  'whip-pan': (t) => whipPan({ direction: t.direction }) as AnyPresentation,
-  'zoom-through': (t) => zoomThrough({ direction: t.from }) as AnyPresentation,
+  // Task 2.4: `blurAmount` was read by `whip-pan.tsx` but never reachable.
+  'whip-pan': (t) => whipPan({ direction: t.direction, blurAmount: t.blurAmount }) as AnyPresentation,
+  // Task 2.4: `zoomAmount` was read by `zoom-through.tsx` but never reachable.
+  'zoom-through': (t) => zoomThrough({ direction: t.from, zoomAmount: t.zoomAmount }) as AnyPresentation,
   'clock-wipe': (_t, dims) => clockWipe({ width: dims.width, height: dims.height }) as AnyPresentation,
   'iris': (_t, dims) => iris({ width: dims.width, height: dims.height }) as AnyPresentation,
   // `t.color` is a brand accent-slot KEY, not a colour: resolve it here, where

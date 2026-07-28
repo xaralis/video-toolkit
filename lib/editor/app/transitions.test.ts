@@ -260,30 +260,51 @@ describe('presetForFrames', () => {
 });
 
 describe('subOptionsFor', () => {
-  it('returns no sub-options for cut, dissolve, fade-coal, and glitch', () => {
+  it('returns no sub-options for cut, dissolve, and fade-coal', () => {
     // `fade-coal` deliberately keeps NO colour control of its own: it is the
     // deprecated alias, and a control there would invite authors to configure
     // a kind they should be migrating off. `fade-to-color` carries the knob.
     expect(subOptionsFor('cut')).toEqual([]);
     expect(subOptionsFor('dissolve')).toEqual([]);
     expect(subOptionsFor('fade-coal')).toEqual([]);
-    expect(subOptionsFor('glitch')).toEqual([]);
   });
 
-  it('returns a direction enum with 4 options for whip-pan', () => {
+  // Task 2.4: four presentation props that existed only as glitch.tsx's own
+  // destructured defaults, unreachable from any config until this task.
+  it('returns four knobs for glitch: intensity, slices, and two toggles', () => {
+    const opts = subOptionsFor('glitch');
+    const byProp = Object.fromEntries(opts.map((o) => [o.prop, o]));
+    expect(Object.keys(byProp).sort()).toEqual(['intensity', 'rgbShift', 'scanLines', 'slices']);
+    expect(byProp.intensity.type).toBe('number');
+    expect(byProp.intensity.min).toBe(0);
+    expect(byProp.intensity.max).toBe(1);
+    expect(byProp.slices.type).toBe('number');
+    expect(byProp.slices.min).toBe(2);
+    expect(byProp.slices.max).toBe(32);
+    expect(byProp.rgbShift.type).toBe('boolean');
+    expect(byProp.scanLines.type).toBe('boolean');
+  });
+
+  it('returns a direction enum with 4 options, plus blurAmount, for whip-pan', () => {
     const opts = subOptionsFor('whip-pan');
-    expect(opts).toHaveLength(1);
-    expect(opts[0].prop).toBe('direction');
-    expect(opts[0].type).toBe('enum');
-    expect(opts[0].options).toHaveLength(4);
-    expect(optValues(opts[0].options)!.sort()).toEqual(['down', 'left', 'right', 'up']);
+    const byProp = Object.fromEntries(opts.map((o) => [o.prop, o]));
+    expect(Object.keys(byProp).sort()).toEqual(['blurAmount', 'direction']);
+    expect(byProp.direction.type).toBe('enum');
+    expect(byProp.direction.options).toHaveLength(4);
+    expect(optValues(byProp.direction.options)!.sort()).toEqual(['down', 'left', 'right', 'up']);
+    expect(byProp.blurAmount.type).toBe('number');
+    expect(byProp.blurAmount.min).toBe(0);
+    expect(byProp.blurAmount.max).toBe(100);
   });
 
-  it('returns a from enum with in/out for zoom-through', () => {
+  it('returns a from enum with in/out, plus zoomAmount, for zoom-through', () => {
     const opts = subOptionsFor('zoom-through');
-    expect(opts).toHaveLength(1);
-    expect(opts[0].prop).toBe('from');
-    expect(optValues(opts[0].options)!.sort()).toEqual(['in', 'out']);
+    const byProp = Object.fromEntries(opts.map((o) => [o.prop, o]));
+    expect(Object.keys(byProp).sort()).toEqual(['from', 'zoomAmount']);
+    expect(optValues(byProp.from.options)!.sort()).toEqual(['in', 'out']);
+    expect(byProp.zoomAmount.type).toBe('number');
+    expect(byProp.zoomAmount.min).toBe(1);
+    expect(byProp.zoomAmount.max).toBe(3);
   });
 
   // wipe's colour is a BRAND accent-slot key, not a fixed palette: core no
@@ -562,10 +583,21 @@ describe('defaultTransition', () => {
     expect(defaultTransition('cut')).toEqual({ kind: 'cut' });
   });
 
-  it('defaults dissolve/fade-coal/glitch to 15 frames', () => {
+  it('defaults dissolve/fade-coal to 15 frames', () => {
     expect(defaultTransition('dissolve')).toEqual({ kind: 'dissolve', frames: 15 });
     expect(defaultTransition('fade-coal')).toEqual({ kind: 'fade-coal', frames: 15 });
-    expect(defaultTransition('glitch')).toEqual({ kind: 'glitch', frames: 15 });
+  });
+
+  // Task 2.4: glitch's two toggles are seeded true (the presentation's own
+  // default) — a checkbox has no honest "unset" state, unlike the numeric
+  // knobs below, which stay absent so the presentation's own default applies.
+  it('defaults glitch to 15 frames, rgbShift true, scanLines true, no intensity/slices', () => {
+    expect(defaultTransition('glitch')).toEqual({
+      kind: 'glitch',
+      frames: 15,
+      rgbShift: true,
+      scanLines: true,
+    });
   });
 
   it('defaults whip-pan to 15 frames and direction left', () => {
