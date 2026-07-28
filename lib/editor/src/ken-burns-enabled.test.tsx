@@ -41,6 +41,7 @@ vi.mock('remotion', async () => {
 
 import { SegmentMedia } from '@video-toolkit/lib/theming/segment/SegmentMedia';
 import { findKenBurns } from '@video-toolkit/lib/theming/effects/ken-burns';
+import { RESERVED_EFFECT_TYPES } from '@video-toolkit/lib/theming/effects';
 import type { VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
 const photo = (effects: VideoItem['effects']): VideoItem => ({
@@ -97,4 +98,35 @@ describe('findKenBurns', () => {
     // The entry is still THERE — this is a switch, not a delete.
     expect(effects[0]).toMatchObject({ direction: 'in', enabled: false });
   });
+});
+
+// ---------------------------------------------------------------------------
+// THE BYPASS ITSELF, not just its one instance.
+//
+// `applyEffects` (lib/theming/effects/index.ts) skips RESERVED_EFFECT_TYPES
+// BEFORE its `isNodeEnabled` test, so every reserved type needs its OWN enable
+// test on its own render path. A comment says so; nothing failed if a second
+// reserved type arrived without one. This is that failure.
+//
+// The set has exactly one member today, so this is cheap insurance rather than
+// coverage: adding a reserved type without registering a probe here makes the
+// completeness assertion red, which is the point.
+// ---------------------------------------------------------------------------
+describe('every RESERVED_EFFECT_TYPE honours `enabled: false` on its own path', () => {
+  /** type → a probe that returns TRUE when a disabled entry of that type is
+   *  correctly ignored by the path that renders it. */
+  const PROBES: Record<string, () => boolean> = {
+    'ken-burns': () => findKenBurns([{ type: 'ken-burns', direction: 'in', enabled: false }]) === undefined,
+  };
+
+  it('has a probe for every reserved type — add one when you add a type', () => {
+    expect([...RESERVED_EFFECT_TYPES].sort()).toEqual(Object.keys(PROBES).sort());
+  });
+
+  for (const type of RESERVED_EFFECT_TYPES) {
+    it(`'${type}' ignores a disabled entry`, () => {
+      expect(PROBES[type], `no enable probe registered for reserved type '${type}'`).toBeDefined();
+      expect(PROBES[type]()).toBe(true);
+    });
+  }
 });
