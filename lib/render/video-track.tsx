@@ -192,7 +192,7 @@ export function buildVideoNodes(
           key={b.key}
           from={b.start}
           durationInFrames={b.frames + BOUNDARY_TAIL}
-          name={`${item.id} ⟡ ${b.record.kind}`}
+          name={`${b.record.kind} @ ${item.id}`}
         >
           <AtCutTransition
             node={transitionNodeFor(b.record, dims)}
