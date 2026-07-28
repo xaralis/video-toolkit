@@ -334,6 +334,72 @@ describe.each(KINDS)('transition kind %s', (kind) => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// PARAM DELIVERY FOR THE FOUR NODES — the complement of the `skipIf` above.
+//
+// The generic check reads a PROPS BAG, and a node has none: it closes over its
+// params. Skipping it left a real hole, demonstrated rather than imagined —
+// deleting `scanlines: t.scanlines` from the PRESENTATIONS table in
+// lib/render/at-cut-transitions.tsx passed EVERY gate, because the editor suite
+// skipped the kind and the pixel harness only ever renders catalog defaults.
+//
+// This closes it DIFFERENTIALLY and generically: for each sub-option a node kind
+// declares, render the kind twice — catalog default vs an in-bounds probe value
+// for that ONE param — and require the rendered output to differ. No per-param
+// knowledge is encoded, so a param added later is covered the day it is added,
+// and it fails whether the value is dropped at the forwarding table or ignored
+// inside the node itself.
+//
+// Three progress points, because a param need only bite at one of them:
+// `pixelate.randomness` is provably inert at 0.5 (every cell's reveal clamps to
+// 1 once pixelIntensity peaks) and only shows on the ramp.
+// ---------------------------------------------------------------------------
+describe.each(NODE_KINDS)('two-input node %s delivers every authored param', (kind) => {
+  const PROBE_PROGRESS = [0.2, 0.5, 0.8];
+
+  const renderedFor = (t: Record<string, unknown>) =>
+    PROBE_PROGRESS.map((progress) => {
+      const Composite = transitionNodeFor(t as TransitionRecord, { ...DIMS, palette: PALETTE })!.composite;
+      const { container, unmount } = render(
+        <Composite
+          from={<div data-testid="a" />}
+          to={<div data-testid="b" />}
+          progress={progress}
+          durationInFrames={15}
+          width={1080}
+          height={1920}
+          fps={30}
+          palette={PALETTE}
+        />,
+      );
+      const html = container.innerHTML;
+      unmount();
+      return html;
+    }).join('\n');
+
+  // `accent` is pinned by the palette tests below; `string`/`color` are
+  // brand-supplied assets with no in-bounds probe value to invent (burn only).
+  const tunable = subOptionsFor(kind).filter(
+    (o) => o.type !== 'accent' && o.type !== 'string' && o.type !== 'color',
+  );
+
+  it('declares at least one tunable param for this check to bite on', () => {
+    expect({ kind, tunable: tunable.length > 0 }).toEqual({ kind, tunable: true });
+  });
+
+  it.each(tunable.map((o) => [o.prop, o.type, o.options] as const))(
+    '%s changes what the node renders',
+    (prop, type, options) => {
+      const base = defaultTransition(kind) as Record<string, unknown>;
+      const value = probeValueFor(kind, prop, type as 'enum' | 'number' | 'boolean', options);
+      // Guard the guard: a probe equal to the catalog default would make the
+      // comparison below vacuously green.
+      expect({ prop, sameAsDefault: value === base[prop] }).toEqual({ prop, sameAsDefault: false });
+      expect(renderedFor({ ...base, [prop]: value })).not.toBe(renderedFor(base));
+    },
+  );
+});
+
 describe('composition-size-dependent kinds', () => {
   it.each(['clock-wipe', 'iris'] as const)('%s receives the composition dimensions', (kind) => {
     const p = presentationFor(defaultTransition(kind) as never, DIMS)!;
