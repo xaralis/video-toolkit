@@ -560,6 +560,29 @@ twice within Phase 4 alone.
 > harness as a fourth gate, the tsc exit code, and an instruction to re-derive the `it.fails` count
 > rather than trust a written one.
 
+**The final whole-branch review verdict: mergeable as a partial Phase 4, no Critical findings.** It
+raised eight items (one cross-task Important, three must-fix-before-merge, four minor); all eight
+were closed by a single fix wave (`b3d4f31..d060eb1`, 9 commits) and re-verified, with two of the
+wave's mutation claims reproduced independently. Zero pixels moved.
+
+The cross-task finding is the one worth remembering, because **no per-task review could have seen
+it**: eight tasks each edited the transition path in sequence, and the editor's timeline lane was
+still drawing every transition block unconditionally centred while the renderer had learned to
+place windows by `alignment`. Two ways to ask "where does this transition sit", and one had become
+wrong. It was latent — no editor control writes `alignment` and no baked literal uses it — but it
+is exactly the class of drift that per-task scope cannot catch. Closed by extracting
+`transitionHandles` / `transitionAlignmentOf` into `lib/reel-config-base/transition-schema.ts` so
+renderer and lane read one decider; a repo-wide grep now finds exactly one `frames / 2` split, the
+one inside that helper.
+
+**One residual, deliberately left:** the lane has no edge clamp on the **closing** block (a last
+item's `transitionOut`). The renderer zeroes `outHalf` at the trailing edge, but the lane draws
+that block per `alignment`, so a last-item `alignment: 'start'` would be drawn past the reel's end.
+The opening block did get the edge-independent treatment; the closing one did not, and the new test
+only exercises a mid-reel cut. Impact today is zero (nothing writes `alignment`) and it is
+editor-cosmetic — but it will surface the moment `alignment` gets an editor control, which is
+itself pending work.
+
 ### What landed — Workstream 1, the node contract
 
 A brand can now add a transition kind in **~5 lines** of theme (`transitions: { 'sand-sweep':
