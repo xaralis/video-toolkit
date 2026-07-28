@@ -403,40 +403,49 @@ for (const kind of kinds) {
           samples.push(await shoot(entry, frameFor(mode, p), `${key}.r${r}.png`));
           n++;
         }
-        const distinct = [...new Set(samples.map(hashFrame))];
-        const wasAccepted = (oldFrames[key] ?? '').split(' ')[0].split('|');
-        if (distinct.length === 1) {
-          newFrames[key] = encodeGolden(frame);
-          if (bimodalCells.has(key)) {
-            // Guard C: a cell listed as bimodal that no longer flakes has to be
-            // de-listed, exactly as `semanticXfail` demands of a fixed defect.
-            // Only meaningful with enough samples to be evidence — below that,
-            // the cell's existing second hash is CARRIED FORWARD rather than
-            // dropped, so an ordinary `--repeat=2` re-baseline cannot silently
-            // un-record a bimodal cell.
-            if (REPEAT >= BIMODAL_DELIST_SAMPLES) {
-              fail(`BIMODAL XPASS: "${key}" is listed in bimodalCells but produced ONE hash in ${REPEAT} renders. Remove it from bimodalCells in the same commit.`);
-            } else if (wasAccepted.includes(distinct[0])) {
-              newFrames[key] = `${[...new Set(wasAccepted)].sort().join('|')} ${newFrames[key].split(' ')[1]}`;
-              notes.push(`${key} is listed bimodal and showed one hash in ${REPEAT} renders — too few samples to conclude, so its recorded pair is kept. Re-run with --repeat=${BIMODAL_DELIST_SAMPLES} or more to settle it.`);
-            }
-          }
+        const distinct = [...new Set(samples.map(hashFrame))].sort();
+        const fp = newFrames[key].split(' ')[1];
+        const wasAccepted = (oldFrames[key] ?? '').split(' ')[0].split('|').filter(Boolean);
+        // Does this cell still render what it rendered before? If NONE of the
+        // observed hashes is one the goldens accepted, the pixels genuinely
+        // changed and the old values must go. If ANY matches, the cell is the
+        // same picture and the two sets are UNIONED rather than replaced.
+        const stillTheSameCell = distinct.some((h) => wasAccepted.includes(h));
+        const carryForward = declaredBimodal.has(key) && stillTheSameCell;
+
+        // ABSENCE IS NOT EVIDENCE HERE — measured the hard way. `light-leak__exit__p075`
+        // was recorded at a 6/12 minority in one seeding pass and then produced ONE hash
+        // in 24 renders in the next. Under a stationary p=0.5 that has probability 6e-8,
+        // so the flake's RATE is not stationary between processes even though its two
+        // attractor VALUES are. (iris and clock-wipe reproduced identically across both
+        // passes; only light-leak's cells churned.) A seeding pass therefore never drops
+        // a recorded attractor just because it did not come up — that would silently
+        // un-record a real bimodal cell and hand back the false reds this whole mechanism
+        // exists to remove. De-listing is a decision a human asks for, via
+        // `--audit-bimodal`.
+        const accepted = carryForward ? [...new Set([...wasAccepted, ...distinct])].sort() : distinct;
+        newFrames[key] = `${accepted.join('|')} ${fp}`;
+
+        if (accepted.length > 2) {
+          // Union or single run, more than two accepted values means the "strictly
+          // bimodal" finding does not hold for this cell. That is important either way
+          // and must not be absorbed quietly.
+          fail(`NOT BIMODAL: "${key}" has ${accepted.length} accepted values (${distinct.length} observed in ${REPEAT} renders, ${wasAccepted.length} previously recorded). The known flake is strictly bimodal, so this is something else.`);
         } else if (distinct.length === 2 && REPEAT >= BIMODAL_RECORD_SAMPLES) {
-          const minority = Math.min(...distinct.map((h) => samples.filter((s) => hashFrame(s) === h).length));
-          newFrames[key] = encodeGolden(samples);
+          const minority = Math.min(...distinct.map((h) => samples.filter((sm) => hashFrame(sm) === h).length));
           bimodalCells.add(key);
           notes.push(`BIMODAL: ${key} produced two stable hashes in ${REPEAT} renders (minority ${minority}/${REPEAT}); both recorded as accepted`);
         } else if (distinct.length === 2) {
-          const counts = distinct.map((h) => samples.filter((s) => hashFrame(s) === h).length);
-          const winner = samples.find((s) => hashFrame(s) === distinct[counts[0] >= counts[1] ? 0 : 1]);
-          notes.push(`FLAKY UNDER RE-BASELINE: ${key} rendered two different images in ${REPEAT}; took the majority. Re-run with --repeat=${BIMODAL_RECORD_SAMPLES} to record it as bimodal instead.`);
-          newFrames[key] = encodeGolden(winner);
-          frame = winner;
-        } else {
-          // Three or more distinct images. The flake this renderer has is
-          // strictly bimodal (never a third value across ~2,070 renders), so a
-          // third value is not the known flake and cannot be baselined.
-          fail(`UNSTABLE UNDER RE-BASELINE: ${key} rendered ${distinct.length} different images in ${REPEAT}; the known flake is strictly bimodal, so this is something else and cannot be baselined`);
+          // Too few samples to call it bimodal, but both values are now accepted
+          // rather than one being voted away — accepting a value that the renderer
+          // demonstrably produces can only reduce false reds.
+          bimodalCells.add(key);
+          notes.push(`${key} rendered two different images in ${REPEAT}; both accepted, but re-run with --repeat=${BIMODAL_RECORD_SAMPLES} or more to confirm it is the known bimodal flake`);
+        } else if (accepted.length === 2) {
+          notes.push(`${key} is recorded bimodal but produced only ${distinct[0].slice(0, 12)} in ${REPEAT} renders; its recorded pair is KEPT (the flake's rate is not stationary — see the comment above). Run --audit-bimodal to decide about de-listing.`);
+        } else if (declaredBimodal.has(key) && !stillTheSameCell) {
+          bimodalCells.delete(key);
+          notes.push(`${key} was recorded bimodal but now renders something different entirely; its old accepted values are dropped and it is de-listed`);
         }
       } else if (AUDIT) {
         // Guard C, standalone: re-sample the cells recorded as bimodal.
