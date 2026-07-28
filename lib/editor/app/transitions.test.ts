@@ -335,9 +335,10 @@ describe('subOptionsFor', () => {
     expect(subOptionsFor('burn').map((o) => o.type)).toEqual(['string', 'color', 'number', 'number']);
   });
 
-  // `glowColor` is a colour and `mask` is a path, and the difference is carried
-  // by the SCHEMA (`ColorHex` vs a plain `z.string()`), never by the prop name.
-  it('distinguishes burn’s colour from its file path by schema identity, not by name', () => {
+  // `glowColor` is a colour and `mask` is a path. Both are `z.string()` to zod,
+  // so the difference is DECLARED — `COLOR_FIELDS` in transition-schema.ts,
+  // beside `PROP_LABELS` — rather than inferred from the shape.
+  it('distinguishes burn’s colour from its file path by declaration', () => {
     const byProp = Object.fromEntries(subOptionsFor('burn').map((o) => [o.prop, o]));
     expect(byProp.glowColor.type).toBe('color');
     expect(byProp.mask.type).toBe('string');
@@ -471,36 +472,40 @@ describe('subOptionForField', () => {
     expect(subOptionForField('softness', z.number())?.default).toBeUndefined();
   });
 
-  it('recognises a ColorHex field through .optional()/.describe() in either order', () => {
-    expect(subOptionForField('glow', ColorHex.optional())?.type).toBe('color');
-    expect(subOptionForField('glow', ColorHex.describe('x').optional())?.type).toBe('color');
-    expect(subOptionForField('glow', ColorHex.optional().describe('x'))?.type).toBe('color');
-    // A look-alike plain string is text, not a colour.
+  // CHANGED IN PHASE 4 (Task 1.6). A colour field is now declared by NAME —
+  // `COLOR_FIELDS` in transition-schema.ts, beside `PROP_LABELS` — not by
+  // deriving from the shared `ColorHex` instance. The instance survives as
+  // documentation of intent (and its validation is unchanged); what it no
+  // longer does is carry a WeakSet mark that `.min()`/`.nullable()`/
+  // `.transform()` could silently strip. Chain-independence is pinned in
+  // lib/editor/src/accent-field-mark.test.ts.
+  it('recognises a ColorHex field by its declared name, in any chain order', () => {
+    expect(subOptionForField('glowColor', ColorHex.optional())?.type).toBe('color');
+    expect(subOptionForField('glowColor', ColorHex.describe('x').optional())?.type).toBe('color');
+    expect(subOptionForField('glowColor', ColorHex.optional().describe('x'))?.type).toBe('color');
+    // An UNDECLARED name is text, not a colour — however it was written.
+    expect(subOptionForField('glow', ColorHex.optional())?.type).toBe('string');
     expect(subOptionForField('glow', z.string().optional())?.type).toBe('string');
   });
 
-  // AccentKey is a plain string to zod, so it is recognised by IDENTITY, not by
-  // shape — that is exactly what distinguishes "a brand accent-slot key" from
-  // burn's `mask` path, which is also a string and must stay uncontrolled.
-  it('maps an AccentKey field to an accent picker, options left to the brand', () => {
+  it('maps an accent field to an accent picker, options left to the brand', () => {
     expect(subOptionForField('color', AccentKey)).toEqual({
       prop: 'color',
       label: 'Color',
       type: 'accent',
     });
     expect(subOptionForField('color', AccentKey.optional())?.type).toBe('accent');
-    // A look-alike plain string is a plain TEXT field — it does NOT become an
-    // accent picker. Since Task 1.1 the distinction is "which control", not
-    // "control or nothing", which makes it worth restating.
-    expect(subOptionForField('color', z.string().optional())?.type).toBe('string');
+    // burn's `mask` is also a string and must stay a plain TEXT field — that is
+    // the distinction the declaration carries. Since Task 1.1 it is "which
+    // control", not "control or nothing", which makes it worth restating.
+    expect(subOptionForField('mask', z.string().optional())?.type).toBe('string');
   });
 
-  // Regression: zod's `.describe()` clones into a NEW instance
-  // (`new This({...this._def, description})`), so a naive `t === AccentKey`
-  // identity check only survives `.optional()` BEFORE `.describe()` — the
-  // order every existing catalog field happens to use. The equally natural
-  // reverse order (`.describe()` then `.optional()`) used to silently produce
-  // no control at all (not even an error). AccentKey must recognise both.
+  // Regression, kept: zod's `.describe()` clones into a NEW instance
+  // (`new This({...this._def, description})`), so the identity/WeakSet marks
+  // this replaced only survived `.optional()` BEFORE `.describe()` — the order
+  // every existing catalog field happens to use. The reverse order used to
+  // silently produce no control at all (not even an error).
   it('still maps to an accent picker when .describe() comes before .optional()', () => {
     const field = AccentKey.describe('A differently-worded description').optional();
     expect(subOptionForField('color', field)?.type).toBe('accent');

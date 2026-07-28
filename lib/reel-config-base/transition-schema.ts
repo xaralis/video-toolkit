@@ -139,42 +139,6 @@ export const TransitionTimingSchema = z.object({
 
 const Direction4 = z.enum(['left', 'right', 'up', 'down']);
 
-// Schemas recognised as "an accent-slot key" by `subOptionForField`, keyed by
-// membership rather than reference identity to `AccentKey` itself. Identity
-// alone is not enough: zod's `.describe()` clones into a NEW instance
-// (`new This({...this._def, description})` — see node_modules/zod/lib/types.js),
-// so `AccentKey.describe('x')` is no longer `=== AccentKey`. `.optional()`/
-// `.default()` do NOT reclone (they wrap the original as `innerType`), which is
-// why the identity check used to look like it worked — it only survived
-// because every existing catalog field happened to call `.optional()` before
-// `.describe()`, never after. `markAsAccentKey` closes that gap by patching
-// the marked instance's own `describe` so every clone it produces (in any
-// chain, any order, any depth) gets added to the set too.
-const ACCENT_SCHEMAS = new WeakSet<z.ZodTypeAny>();
-const COLOR_SCHEMAS = new WeakSet<z.ZodTypeAny>();
-
-/** Marks `schema` (and every clone `.describe()` makes of it, at any depth) as
- *  a member of `set`. Factored out of `markAsAccentKey` when `ColorHex` needed
- *  the same trick: two hand-written copies of a describe-patching recursion is
- *  exactly how the `.describe()`-then-`.optional()` bug got in the first time. */
-function marker(set: WeakSet<z.ZodTypeAny>): <T extends z.ZodTypeAny>(schema: T) => T {
-  const mark = <T extends z.ZodTypeAny>(schema: T): T => {
-    set.add(schema);
-    const originalDescribe = schema.describe.bind(schema);
-    // Cast through `unknown`: the patched method's real signature (returning
-    // whatever `originalDescribe` returns, marked) is narrower than the base
-    // `describe(description: string): this` zod declares, which is all the
-    // rest of this module ever calls it through.
-    (schema as z.ZodTypeAny).describe = ((description: string) =>
-      mark(originalDescribe(description))) as unknown as z.ZodTypeAny['describe'];
-    return schema;
-  };
-  return mark;
-}
-
-const markAsAccentKey = marker(ACCENT_SCHEMAS);
-const markAsColor = marker(COLOR_SCHEMAS);
-
 /**
  * A BRAND accent-slot key — the brand-neutral way for a core schema to name a
  * colour. To zod it is just a string, because the vocabulary belongs to the
@@ -184,28 +148,25 @@ const markAsColor = marker(COLOR_SCHEMAS);
  * one brand's palette, sitting in the shared schema), so it validates the
  * shape and leaves the values to the brand.
  *
- * This is a SINGLE SHARED INSTANCE on purpose: `subOptionForField` recognises
- * an accent field by SET MEMBERSHIP (see `ACCENT_SCHEMAS` above), since
- * nothing in a plain `z.string()` shape distinguishes "a palette key" from
- * burn's `mask` file path. Always derive a field from this constant —
- * `.optional()`, `.describe()`, and any chain/order of the two are all safe;
- * never re-declare an equivalent `z.string()`.
+ * It documents INTENT at the field; what gives the field its editor control is
+ * the field's NAME being listed in `ACCENT_FIELDS` (below, beside
+ * `PROP_LABELS`). Chain it however you like — the mark cannot be chained away.
  */
-export const AccentKey = markAsAccentKey(
-  z.string().describe('Brand accent-slot key (see the brand theme’s accentSlots); resolved to a hex at render time.'),
-);
+export const AccentKey = z
+  .string()
+  .describe('Brand accent-slot key (see the brand theme’s accentSlots); resolved to a hex at render time.');
 
 /**
  * A LITERAL colour (a hex string), as opposed to `AccentKey`'s indirection
- * through the brand palette. Recognised by set membership for exactly the same
- * reason: to zod both are `z.string()`, and so is burn's `mask` file path.
+ * through the brand palette. Same deal: to zod both are `z.string()`, and so is
+ * burn's `mask` file path, so the EDITOR's distinction comes from
+ * `COLOR_FIELDS`, not from this constant.
  *
  * Validation is deliberately unchanged from the plain `z.string()` it replaces
- * — this marks the field for the EDITOR (it gets a colour control instead of a
- * plain text box), it does not start rejecting values that used to parse.
- * Derive from this constant; never re-declare an equivalent `z.string()`.
+ * — this describes the field, it does not start rejecting values that used to
+ * parse.
  */
-export const ColorHex = markAsColor(z.string().describe('A literal colour (hex).'));
+export const ColorHex = z.string().describe('A literal colour (hex).');
 
 /** One entry in the catalog: the kind's zod member plus the presentation
  *  metadata the zod schema cannot express (a human label, and the seed values
@@ -290,7 +251,7 @@ const CATALOG = catalog(
       // Optional brand-supplied look: cloud mask image, hot-edge glow colour, and
       // burn-edge shaping. Absent mask → plain opacity reveal. All four are
       // editable as of Phase 4 Task 1.1: `mask` as text, `glowColor` as a colour
-      // (hence `ColorHex`, not a bare string — see subOptionForField), the two
+      // (its name is listed in `COLOR_FIELDS` — see subOptionForField), the two
       // numbers as numeric fields.
       mask: z.string().optional().describe('Cloud-texture mask image (staticFile path).'),
       glowColor: ColorHex.optional().describe('Hot burn-edge glow colour (hex).'),
@@ -626,6 +587,43 @@ const PROP_LABELS: Record<string, string> = {
   rgbShiftPx: 'RGB shift (px)',
 };
 
+// Field NAMES whose string value is a BRAND ACCENT-SLOT KEY rather than free
+// text — `wipe.color` names a slot in the brand's palette (see `AccentKey`),
+// which `resolveAccentColor` turns into a hex at render time. The editor gives
+// these a palette picker, filled from the brand's own accent slots.
+//
+// WHY A NAME LIST AND NOT THE SCHEMA. To zod an accent key, a hex literal and
+// burn's `mask` file path are all `z.string()` — nothing in the shape tells
+// them apart, so the mark has to live somewhere. It used to live in a
+// `WeakSet<z.ZodTypeAny>` fed by a patched `.describe()`, and that failed the
+// worst way available: `.min()`, `.nullable()`, `.readonly()`, `.catch()` and
+// `.transform()` all clone or wrap the schema without going through
+// `.describe()`, so any of them silently dropped the mark and the field got NO
+// control at all — no compile error, no test failure, no warning. A NAME cannot
+// be lost by a zod clone. See `lib/editor/src/accent-field-mark.test.ts`.
+//
+// SCOPE: consulted only by `subOptionForField`, which only ever sees fields of
+// core's own CATALOG members (`subOptionsFor` returns `[]` for a brand kind), so
+// this is core's closed field vocabulary — not a global rule about the word
+// "color". The completeness and non-string guards live in that same test file.
+export const ACCENT_FIELDS: ReadonlySet<string> = new Set(['color']);
+
+/** Field NAMES holding a LITERAL colour (a hex string) — sibling of
+ *  {@link ACCENT_FIELDS}, same mechanism, same reasons. @see ColorHex */
+export const COLOR_FIELDS: ReadonlySet<string> = new Set(['glowColor']);
+
+/** True when `prop` names a brand accent-slot key. THE one place that decides
+ *  it — same rule as {@link isTransitionAlignment} and {@link isCut}: one
+ *  exported decider, no site keeping its own copy of the list. */
+export function isAccentField(prop: string): boolean {
+  return ACCENT_FIELDS.has(prop);
+}
+
+/** True when `prop` names a literal-colour field. @see isAccentField */
+export function isColorField(prop: string): boolean {
+  return COLOR_FIELDS.has(prop);
+}
+
 // Enum VALUES whose humanized form would be unreadable. Keyed by the raw value;
 // the corner codes are unique across the vocabulary so a flat map is safe.
 const VALUE_LABELS: Record<string, string> = {
@@ -682,13 +680,14 @@ export function subOptionForField(prop: string, field: z.ZodTypeAny): ParamField
   const t = innerType(field);
   const label = PROP_LABELS[prop] ?? humanize(prop);
   const def = declaredDefault(field);
-  // Set membership, not shape: an accent key IS a string, and so is burn's
-  // `mask`, and so is its `glowColor`. Only a schema derived from the shared
-  // `AccentKey` / `ColorHex` instances (see `ACCENT_SCHEMAS` / `COLOR_SCHEMAS`
-  // above) means "a brand palette slot" / "a literal colour"; everything else
-  // that is a string is just a string.
-  if (ACCENT_SCHEMAS.has(t)) return { prop, label, type: 'accent', ...def };
-  if (COLOR_SCHEMAS.has(t)) return { prop, label, type: 'color', ...def };
+  // NAME, not shape: an accent key IS a string, and so is burn's `mask`, and so
+  // is its `glowColor` — the shape cannot tell them apart, so the declaration
+  // does (see `ACCENT_FIELDS` / `COLOR_FIELDS` above). Deliberately BEFORE the
+  // `instanceof` ladder and independent of `innerType`: `.transform()` produces
+  // a `ZodEffects` that `innerType` cannot see through at all, and the whole
+  // point of this task is that no chain can cost a field its control.
+  if (isAccentField(prop)) return { prop, label, type: 'accent', ...def };
+  if (isColorField(prop)) return { prop, label, type: 'color', ...def };
   if (t instanceof z.ZodEnum) {
     const values = (t as z.ZodEnum<[string, ...string[]]>).options;
     return {

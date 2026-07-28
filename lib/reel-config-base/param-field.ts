@@ -36,8 +36,10 @@
  *  editor fills the choices from the accent slots it was handed.
  *
  *  `color` is a colour literal (a hex string), distinct from `string` so the
- *  editor can offer a swatch. A field is `color` because its schema says so
- *  (see `ColorHex` in `transition-schema.ts`), never because of its name. */
+ *  editor can offer a swatch. A field is `color` because something DECLARES it
+ *  so — a registration's own `type`, or, for a core catalog field, the
+ *  `COLOR_FIELDS` list in `transition-schema.ts`. Never because zod says
+ *  `z.string()`: an accent key, a hex and a file path are the same shape. */
 export type ParamType =
   | 'number'
   | 'string'

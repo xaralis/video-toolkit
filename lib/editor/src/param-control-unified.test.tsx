@@ -81,8 +81,8 @@ describe('burn’s mask and glowColor — controls that did not exist before', (
     const swatch = screen.getByLabelText('Glow color swatch') as HTMLInputElement;
     expect(swatch.type).toBe('color');
     expect(swatch.value).toBe('#ff8800');
-    // `mask` is a path, not a colour — it gets NO swatch. The difference comes
-    // from the schema (ColorHex vs a plain z.string()), never from the name.
+    // `mask` is a path, not a colour — it gets NO swatch. Both are `z.string()`
+    // to zod; the difference is declared in `COLOR_FIELDS` (transition-schema.ts).
     expect(screen.queryByLabelText('Mask swatch')).toBeNull();
   });
 
