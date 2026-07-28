@@ -5,10 +5,10 @@ import { AccentEditor } from './AccentEditor';
 import { Collapsible } from './Collapsible';
 import {
   CUT_KIND,
-  TRANSITION_KINDS,
   defaultTransition,
   kindNeedsFrames,
   transitionKindChoices,
+  transitionKindLabel,
   transitionParamsFor,
   type DraftTransition,
 } from './transitions';
@@ -348,8 +348,6 @@ function ParamFields({
   return <>{nodes}</>;
 }
 
-const TRANSITION_LABEL: Record<string, string> = Object.fromEntries(TRANSITION_KINDS.map((k) => [k.kind, k.label]));
-
 // Shared transition editor — kind + whatever contextual params that kind needs
 // (`transitionParamsFor`: core's structural fields for a core kind, the
 // registration's declared `params` for a brand's own) + a length field gated by
@@ -384,10 +382,10 @@ export function TransitionFields({
 }) {
   const kind = t.kind ?? CUT_KIND;
   // Catalog ∪ the brand's registered kinds — see `transitionKindChoices`. The
-  // picker used to run off TRANSITION_KINDS alone, which is why a brand kind
+  // picker used to run off the catalog alone, which is why a brand kind
   // could render (Task 1.2) and still not be choosable.
   const choices = transitionKindChoices(meta?.transitionProps);
-  const labelFor = (k: string) => choices.find((c) => c.kind === k)?.label ?? TRANSITION_LABEL[k] ?? humanizeKey(k);
+  const labelFor = (k: string) => choices.find((c) => c.kind === k)?.label ?? humanizeKey(k);
   return (
     <>
       <SelectField
@@ -575,7 +573,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     return (
       <div style={panel}>
         <h3 style={heading}>
-          Transition {edge === 'in' ? 'in' : 'out'} · {TRANSITION_LABEL[kind] ?? humanizeKey(kind)}
+          Transition {edge === 'in' ? 'in' : 'out'} · {transitionKindLabel(kind, meta?.transitionProps)}
         </h3>
         <TransitionFields t={t} accentSlots={slots} meta={meta} onChange={(next) => patchItem('video', id, { [edgeField]: next })} />
       </div>

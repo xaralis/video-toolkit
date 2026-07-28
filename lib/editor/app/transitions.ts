@@ -68,6 +68,14 @@ export function transitionKindChoices(
   return out;
 }
 
+/** The label to show for one kind — the catalog's for a core kind, a humanized
+ *  form of the key for a brand's own (a registration has no label field). ONE
+ *  decider, so the picker's option text and the transitions-lane heading can
+ *  never disagree about what a kind is called. */
+export function transitionKindLabel(kind: string, declared?: Record<string, readonly ParamField[]>): string {
+  return transitionKindChoices(declared).find((k) => k.kind === kind)?.label ?? humanizeKey(kind);
+}
+
 /** The contextual controls one kind gets, from BOTH sources at once:
  *
  *  - core's, read structurally off the catalog entry's zod shape
