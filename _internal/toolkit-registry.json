@@ -985,7 +985,7 @@
       "kind": "zoom-through",
       "description": "Zoom out of outgoing, zoom into incoming — high energy",
       "options": [
-        "from",
+        "direction",
         "zoomAmount"
       ],
       "bestFor": "Dynamic transitions, product reveals, fast-cut edits",

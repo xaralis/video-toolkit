@@ -1216,3 +1216,74 @@ CONSTRAINTS.md. **The gallery is not a reel — this task moves zero reel pixels
 **0 hits in both brand repos** outside their vendored `toolkit/`. The renamed
 `transitionMap` keys (`lightLeak` → `light-leak`) and the changed
 `SingleTransitionPreview` prop type therefore break no brand consumer.
+
+## Task 2.7 — Grade and scanlines close two of core's own ceilings
+
+### 2.7-a `Grade` gains `sepia` and `hueRotateDeg` — PARITY-PRESERVING, MEASURED
+
+**Grade: parity-preserving.** `gradeFilter` (`lib/reel-config-base/grade.ts`)
+emitted only `brightness`/`contrast`/`saturate`/`url(#wb)`; `sepia` (0..1) and
+`hueRotateDeg` (−180..180) are new, OPTIONAL fields on `Grade`
+(`lib/reel-config-base/base-types.ts`, `GradeSchema` in
+`segment-base-schemas.ts`) — no rename, no removal, no default changed. Both
+are neutral at 0, which is also the CSS no-op, so any `grade` object that
+omits them (every one found in both brand repos) emits the exact pre-2.7
+filter string. Order is part of the contract: `sepia`/`hue-rotate` slot after
+`saturate` and before `url(#wb)`, which stays last. Pinned by the pixel
+harness (315 accepted, 0 drifted) and the `MinimalReel` 5-frame hash table
+(unchanged).
+
+The same `Grade` shape backs the `grade` **effect**
+(`lib/theming/effects/primitives.tsx`), so both surfaces gained the two
+fields in one implementation — a brand authoring `{kind:'grade', sepia:
+0.22}` on a segment's `item.grade` or as an effect registration gets the
+identical string either way.
+
+**Editor consequence (Studio sidebar, not a reel pixel):** `GradeSchema`'s
+zod shape drives the inspector's per-clip grade controls, so two new sliders
+(`Sepia`, `Hue rotate`) appear for every brand the next time it takes this
+commit. No existing control moved or was relabelled.
+
+**Verified per repo, read-only, anchored exclusion of the vendored
+`toolkit/` submodule**
+(`grep -rn --include='*.ts*' --include='*.json' -E 'sepia|hueRotateDeg' . | grep -v '/node_modules/' | grep -vE '^\./toolkit/'`):
+**0 hits in both PP and roost.** PP's `pp-mov-koalice/src/Root.tsx` authors
+several `grade:` literals (`brightness`/`contrast`/`saturation`/
+`temperature`/`tint` only — the five pre-existing fields); none sets either
+new field, so all of them render through the exact same code path as before.
+Roost authors no `grade:`/`kind:'grade'` literal at all — its vintage look
+(`templates/roost-reels/src/effects/VintageOverlay.tsx`) is a hand-rolled
+component with its own hardcoded CSS `filter` string
+(`FILM_FILTER = 'sepia(0.22) saturate(0.82) contrast(0.94) brightness(1.03)'`),
+entirely outside core's `Grade`/`gradeFilter`. That string is the exact case
+`docs/superpowers/phase4-extension-contract.md` discusses under the
+promotion pathway (§"`sepia(0.22)` was cited as needing…"): now that core's
+own `sepia` field exists, roost's grade *could* be re-expressed through it,
+but Task 2.7 does not do that migration — see the extension contract for the
+classification, not this document.
+
+### 2.7-b `scanlines` gains `lineWidthPx` / `lineColor` — PARITY-PRESERVING, MEASURED
+
+`scanlinesLayerStyle` (`lib/theming/effects/primitives.tsx`) hardcoded a 50%
+duty cycle in opaque black (`half = spacing / 2`, `rgba(0,0,0,1)`/
+`rgba(0,0,0,0)`). `lineWidthPx` and `lineColor` are new, optional keys on the
+effect's passthrough bag; their defaults (`spacing / 2`, `rgba(0,0,0,1)`)
+reproduce the pre-2.7 string byte-for-byte, and `lineWidthPx` is clamped into
+`[0, spacing]` so an authored value can't emit out-of-order gradient stops.
+The transparent stop stays the literal `rgba(0,0,0,0)` regardless of
+`lineColor` (the two stops sit at the same position, so it's a hard cut, not
+an interpolated region) — pinned by `lib/editor/src/effect-primitives.test.tsx`
+and unmoved in the pixel harness / `MinimalReel` hashes.
+
+**No brand action.** Same anchored-exclusion grep as above, for
+`lineWidthPx|lineColor`: **0 hits in both repos.** Roost's `VintageOverlay`
+scanlines band is, again, its own hardcoded `repeating-linear-gradient` —
+outside core's `scanlines` effect entirely, so this field pair changes
+nothing it reads.
+
+### 2.7-c Pointer: the promotion classification
+
+The only brand-facing consequence of Task 2.7 that is *not* "no action" —
+roost's `sepia(0.22)` now being expressible in core's own vocabulary, and
+what that does or doesn't do to its promotion eligibility — is analysed in
+`docs/superpowers/phase4-extension-contract.md`, not repeated here.

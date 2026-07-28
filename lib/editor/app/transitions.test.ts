@@ -174,17 +174,24 @@ describe('no transition in the registry is unreachable', () => {
   // transition; three of them named props their presentation never accepted
   // (scanlineGlitch's `scanlineHeight`/`glitchIntensity` among them). Pin them
   // to the schema, which is now derived from the presentations' real signatures.
-  it('lists exactly the tunable options each new kind’s schema declares', () => {
-    for (const [name, kind] of [
-      ['rgbSplit', 'rgb-split'],
-      ['zoomBlur', 'zoom-blur'],
-      ['lightLeak', 'light-leak'],
-      ['pixelate', 'pixelate'],
-      ['checkerboard', 'checkerboard'],
-      ['scanlineGlitch', 'scanline-glitch'],
-    ] as const) {
-      const entry = registry.transitions[name] as { options?: string[] };
-      expect(entry.options, name).toEqual(subOptionsFor(kind).map((o) => o.prop));
+  //
+  // Originally pinned six hardcoded kinds (2026-07 Task 2.4) — the ones that
+  // task itself touched. That left every OTHER registry entry unchecked, which
+  // is exactly how `zoomThrough.options` kept naming the deprecated `from`
+  // for a full task cycle after Task 2.5 renamed the field to `direction`:
+  // Task 2.4 edited the entry, Task 2.5 changed the fact, and no gate read
+  // both. Widened (Workstream 2 final-review fix wave) to iterate every
+  // registry entry that names a core catalog kind — i.e. the whole map, since
+  // `it('gives every registry transition a `kind` that the catalog offers')`
+  // above already guarantees that's all of them — so a future task that edits
+  // a schema without walking back to the registry goes red here instead of
+  // shipping a stale `options` list silently.
+  it('lists exactly the tunable options each registry kind’s schema declares', () => {
+    for (const [name, entry] of Object.entries(registry.transitions)) {
+      if (name.startsWith('_')) continue; // `_note` — prose for a human reader, not an entry
+      const { kind, options } = entry as { kind?: string; options?: string[] };
+      if (!kind || !options) continue;
+      expect(options, name).toEqual(subOptionsFor(kind).map((o) => o.prop));
     }
   });
 });

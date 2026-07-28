@@ -122,33 +122,43 @@ observation made while rendering: an earlier version only noticed a missing gold
 kind the run had rendered, which meant a newly added kind slipped through a filtered run
 in silence.
 
-## The four known-defective kinds
+## The four known-defective kinds (historical — fixed in Task 2.1)
 
-`checkerboard`, `pixelate`, `scanline-glitch` and `wipe` are defective **today** (see
-`at-cut-transition-findings.md`; they are also pinned `it.fails` in
-`lib/editor/src/at-cut-transitions.test.tsx`). Their goldens record what they render
-now, which is **wrong-but-current**. A change to those specific goldens in Workstream 2
-is expected and is not evidence of a regression. The harness prints this on every run.
+> **⚠ This section describes the PRE-Task-2.1 state.** `checkerboard`, `pixelate`,
+> `scanline-glitch` and `wipe` are no longer defective and are no longer pinned
+> `it.fails` — see the measurements at the end of this section, which supersede
+> the two paragraphs immediately below. Kept for the record because the golden-file
+> mechanics it describes (`knownDefective` / `semanticXfail`) are still how the
+> harness would record a *future* known defect, not because the defects themselves
+> are current.
+
+`checkerboard`, `pixelate`, `scanline-glitch` and `wipe` **were** defective as of
+Workstream 1 (see `at-cut-transition-findings.md`; they **were** also pinned
+`it.fails` in `lib/editor/src/at-cut-transitions.test.tsx`). Their goldens recorded
+what they rendered then, which was **wrong-but-current**. A change to those specific
+goldens in Workstream 2 was expected and was not evidence of a regression. The harness
+printed this on every run while the defects stood.
 
 Two lists in the golden file, kept separate on purpose:
 
-- **`knownDefective`** — all four. Documentation: "these goldens are expected to
-  change."
-- **`semanticXfail`** — `pixelate`, `scanline-glitch`, `wipe`. The subset the semantic
-  checks actually catch. If one of these starts passing, the harness **fails** with
-  `XPASS` so the list has to be updated in the same commit as the fix.
+- **`knownDefective`** — held all four while the defects stood. Documentation: "these
+  goldens are expected to change."
+- **`semanticXfail`** — held `pixelate`, `scanline-glitch`, `wipe`. The subset the
+  semantic checks actually caught. If one of these started passing, the harness
+  **failed** with `XPASS` so the list had to be updated in the same commit as the fix.
 
-`checkerboard` is deliberately *not* in `semanticXfail`. Its defect is that its exiting
-layer does nothing, which is pixel-identical to the seven kinds that legitimately do
-nothing when exiting (`fade`, `dissolve`, `fade-coal`, `burn`, `clock-wipe`, `iris`,
-`gradient-wipe`). No pixel test can separate those, so `checkerboard` is pinned by its
-golden hashes alone. Claiming otherwise would be a gate that covers less than it says.
+`checkerboard` was deliberately *not* in `semanticXfail`. Its defect was that its
+exiting layer did nothing, which was pixel-identical to the seven kinds that
+legitimately do nothing when exiting (`fade`, `dissolve`, `fade-coal`, `burn`,
+`clock-wipe`, `iris`, `gradient-wipe`). No pixel test could separate those, so
+`checkerboard` was pinned by its golden hashes alone. Claiming otherwise would have
+been a gate that covers less than it says.
 
 `examples/layered-minimal`'s own `MinimalReel` uses `wipe` at its first cut, so one of
 its five render-parity frames was expected to be re-baselined by the same work.
 
 **Both of those paragraphs were settled by Task 2.1, and both predictions were partly
-wrong — the measurements replace them:**
+wrong — the measurements below replace them:**
 
 - `checkerboard`'s goldens did **not** move. Making it one two-input implementation is
   structurally real (no direction branch, no empty cells) but **pixel-identical** in all
