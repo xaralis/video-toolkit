@@ -39,7 +39,7 @@ import {
   type TransitionNode,
   type TransitionRecord,
 } from '@video-toolkit/lib/render/at-cut-transitions';
-import { transitionMap } from '@video-toolkit/lib/transitions/TransitionGallery';
+import { TRANSITIONS, transitionMap } from '@video-toolkit/lib/transitions/TransitionGallery';
 
 /** The gallery's composition size. Stated here rather than imported, so this
  *  file's RED is an assertion about behaviour and not a missing export. */
@@ -75,26 +75,44 @@ const pictureOf = (node: TransitionNode): string =>
 const reelPictureFor = (kind: TransitionKind): string =>
   pictureOf(transitionNodeFor(defaultTransition(kind) as TransitionRecord, GALLERY_DIMS)!);
 
-/** Every gallery entry that claims a CATALOG kind, paired with the node it
- *  actually renders. Derived from the map rather than hardcoded, so a second
- *  kind added to the gallery is covered the day it is added. */
-const claimedEntries = Object.entries(transitionMap)
-  .map(([label, entry]) => ({ label, ...(entry as { kind?: TransitionKind; node?: TransitionNode }) }))
-  .filter((e) => e.kind !== undefined);
+type Claim = { label: string; kind?: TransitionKind; node?: TransitionNode };
 
-describe('the gallery shows what reels render', () => {
+// BOTH TABLES, EACH CHECKED SEPARATELY — and that separation is the point.
+//
+// `TRANSITIONS` is what the gallery COMPOSITION renders; `transitionMap` only
+// feeds `SingleTransitionPreview`. The first version of this file derived its
+// cases from `transitionMap` alone, and the original fork could still be
+// reconstructed in `TRANSITIONS` (`makeNodeEntry('wipe()','wipe',40)` →
+// `makeTransitionEntry('wipe()', fade(), 40)`) with every test green: the
+// surviving `transitionMap` entry kept satisfying a union-shaped check. A
+// per-table `it.each` is what makes each table answer for itself.
+const TABLES: ReadonlyArray<readonly [string, readonly Claim[]]> = [
+  ['TRANSITIONS (the gallery composition)', TRANSITIONS.map((e) => ({ label: e.name, kind: e.kind, node: e.node }))],
+  [
+    'transitionMap (SingleTransitionPreview)',
+    Object.entries(transitionMap).map(([label, e]) => ({ label, kind: e.kind, node: e.node })),
+  ],
+];
+
+describe.each(TABLES)('the gallery shows what reels render — %s', (_table, entries) => {
+  /** Entries claiming a catalog kind, derived rather than hardcoded, so a
+   *  second kind added to the gallery is covered the day it is added. */
+  const claimed = entries.filter((e) => e.kind !== undefined);
+
   it('demonstrates the catalog `wipe` at all', () => {
-    expect(claimedEntries.map((e) => e.kind)).toContain('wipe');
+    expect(claimed.map((e) => e.kind)).toContain('wipe');
   });
 
-  it.each(claimedEntries.map((e) => [e.label, e.kind!, e.node] as const))(
+  it.each(claimed.map((e) => [e.label, e.kind!, e.node] as const))(
     '%s renders exactly the node the reel path resolves for kind "%s"',
     (_label, kind, node) => {
       expect(node).toBeDefined();
       expect(pictureOf(node!)).toBe(reelPictureFor(kind));
     },
   );
+});
 
+describe('the gallery shows what reels render', () => {
   // THE FORK ITSELF, pinned. Before Task 2.5 the gallery's `wipe` was
   // @remotion/transitions' own — a clip-path reveal with no coloured sheet —
   // while a reel drew the toolkit's two-beat sweep. If this ever passes, the

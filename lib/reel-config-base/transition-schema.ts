@@ -710,24 +710,59 @@ const PROP_LABELS: Record<string, string> = {
   rgbShiftPx: 'RGB shift (px)',
 };
 
-// Fields a member keeps ONLY so an already-baked literal keeps parsing and
-// keeps rendering what it rendered before the field was renamed. They are real
-// schema fields — the renderer reads them — but they get NO editor control and
-// no seed, because a deprecated spelling shown next to its replacement is the
-// same "two answers to one question" fork the rename was closing.
+// RENAMED FIELDS, as canonical → the older spellings it absorbs. A member keeps
+// the old name ONLY so an already-baked literal keeps parsing and keeps
+// rendering what it rendered before the rename. The old name is a real schema
+// field — the renderer reads it — but it gets NO editor control and no seed,
+// because a deprecated spelling shown next to its replacement is the same "two
+// answers to one question" fork the rename was closing.
+//
+// ONE TABLE, deliberately. "Which fields are deprecated" and "which canonical
+// field absorbs them" are the same fact; storing them separately in a task
+// about single sources of truth would be indefensible.
 //
 // A NAME LIST, for the same reason `ACCENT_FIELDS` is one: nothing in a zod
 // shape can carry the mark through a `.optional()` / `.describe()` clone.
 // Keep it as short as it is; every entry is a debt.
-const DEPRECATED_FIELDS: Record<string, readonly string[]> = {
+const FIELD_ALIASES: Record<string, Record<string, readonly string[]>> = {
   // Phase 4 Task 2.5 — `direction` is canonical, matching `zoom-blur`.
-  'zoom-through': ['from'],
+  'zoom-through': { direction: ['from'] },
 };
+
+const aliasesOf = (kind: string, prop: string): readonly string[] => FIELD_ALIASES[kind]?.[prop] ?? [];
 
 /** True when `prop` is a deprecated alias on `kind`'s member: parsed and
  *  rendered, but never offered as a control or seeded into a fresh object. */
 export function isDeprecatedTransitionField(kind: string, prop: string): boolean {
-  return (DEPRECATED_FIELDS[kind] ?? []).includes(prop);
+  return Object.values(FIELD_ALIASES[kind] ?? {}).some((olds) => olds.includes(prop));
+}
+
+/** The value an editor should DISPLAY for `prop`: the canonical field when it
+ *  is set, else the first deprecated alias that is — which is exactly the
+ *  precedence the renderer applies (`t.direction ?? t.from`).
+ *
+ *  Without this, hiding the alias from `subOptionsFor` would make the inspector
+ *  show an EMPTY control for a literal that renders a real value: the editor
+ *  describing a reel that does not exist. Same class as the coerced brand kind
+ *  (Task 1.2b) and the dropped `alignment` (Task 1.4). */
+export function transitionFieldValue(t: DraftTransition, prop: string): unknown {
+  if (t[prop] !== undefined) return t[prop];
+  for (const old of aliasesOf(String(t.kind), prop)) {
+    if (t[old] !== undefined) return t[old];
+  }
+  return undefined;
+}
+
+/** Commits `value` to the CANONICAL field and DROPS the aliases it absorbs —
+ *  migrate-on-edit. The literal stops being ambiguous the moment anyone touches
+ *  that control, and a stale alias can never outlive a value that disagrees
+ *  with it. Untouched fields (including aliases of OTHER props) are preserved:
+ *  migration is a consequence of editing the aliased field, not a side effect
+ *  of opening the section. */
+export function withTransitionField(t: DraftTransition, prop: string, value: unknown): DraftTransition {
+  const next: DraftTransition = { ...t, [prop]: value };
+  for (const old of aliasesOf(String(t.kind), prop)) delete next[old];
+  return next;
 }
 
 // Field NAMES whose string value is a BRAND ACCENT-SLOT KEY rather than free

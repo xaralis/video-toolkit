@@ -10,6 +10,8 @@ import {
   transitionKindChoices,
   transitionKindLabel,
   transitionParamsFor,
+  transitionFieldValue,
+  withTransitionField,
   type DraftTransition,
 } from './transitions';
 import { parseActionId, type LaneId } from '../src/timeline/layered-adapter';
@@ -408,8 +410,12 @@ export function TransitionFields({
       {transitionParamsFor(kind, meta?.transitionProps).map((opt) =>
         renderParamControl({
           field: opt,
-          value: t[opt.prop],
-          onCommit: (v) => onChange({ ...t, [opt.prop]: v }),
+          // ALIAS-AWARE (Task 2.5). A renamed field's old spelling still parses
+          // and still renders, so the control must show what the reel actually
+          // draws — and committing writes the canonical name and drops the old
+          // one, rather than leaving two fields that can disagree.
+          value: transitionFieldValue(t, opt.prop),
+          onCommit: (v) => onChange(withTransitionField(t, opt.prop, v)),
           accentSlots,
         }),
       )}

@@ -1149,3 +1149,23 @@ unchanged.
 or `@remotion/transitions/wipe` outside its vendored `toolkit/` submodule
 (verified with the anchored grep above, pattern
 `TransitionGallery|transitionMap|transitions/wipe`: **0 hits in both**).
+
+### 2.5-c The editor shows the alias' value and migrates on edit — PARITY-PRESERVING
+
+Added in review round 1. Hiding `from` from `subOptionsFor` (2.5-a) would
+otherwise leave a baked `{from:'out'}` literal rendering `'out'` while the
+inspector's Direction control showed **unset** — the editor describing a reel
+that does not exist, the same class as Task 1.2b's coerced brand kind and Task
+1.4's dropped `alignment`.
+
+`transitionFieldValue` / `withTransitionField`
+(`lib/reel-config-base/transition-schema.ts`) give the inspector the renamed
+field's **effective** value (canonical, else alias — the same precedence the
+renderer applies) and, on commit, write the canonical name and **drop** the
+alias.
+
+**Nothing changes on disk until a user edits that control**, and when they do,
+the only difference is the field's spelling: the rendered value is whatever the
+control was showing. Nothing renders differently, and no brand config is
+rewritten by opening a section. Zero brand literals carry `from` today (2.5-a),
+so no brand file will move at all.

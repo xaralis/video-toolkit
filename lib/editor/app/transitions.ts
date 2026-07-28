@@ -28,6 +28,10 @@ export {
   kindNeedsFrames,
   subOptionsFor,
   defaultTransition,
+  // Alias-aware read/write for a RENAMED schema field (Task 2.5): the control
+  // shows what the reel renders, and an edit migrates to the canonical name.
+  transitionFieldValue,
+  withTransitionField,
   // `SubOption`/`SubOptionChoice` are now deprecated aliases of the ONE shared
   // descriptor (Phase 4 Task 1.1). Kept exported so existing importers resolve;
   // new code should say `ParamField` / `ParamChoice`.

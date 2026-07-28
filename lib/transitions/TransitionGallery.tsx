@@ -465,7 +465,12 @@ function makeNodeEntry(
 
 // Define all transitions to showcase.
 // Transition durations: 45 frames = 1.5s for most, longer for complex effects.
-const TRANSITIONS: TransitionEntry[] = [
+// EXPORTED so it can be pinned. This is the array the gallery COMPOSITION
+// renders; `transitionMap` further down only feeds `SingleTransitionPreview`.
+// Pinning one and not the other left the fork reconstructable in exactly the
+// place it originally lived — see lib/editor/src/transition-gallery.test.tsx,
+// which now runs the same check over BOTH tables, per table.
+export const TRANSITIONS: TransitionEntry[] = [
   makeTransitionEntry('glitch()', glitch({ intensity: 0.9 }), 45),
   makeTransitionEntry('rgbSplit()', rgbSplit({ direction: 'horizontal' }), 45),
   makeTransitionEntry('zoomBlur()', zoomBlur({ direction: 'in' }), 45),
