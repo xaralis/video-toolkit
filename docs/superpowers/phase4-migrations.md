@@ -363,3 +363,30 @@ config-less registration, and an absent registry. No brand is affected.
 Seven independently written `kind === 'cut'` checks collapsed onto one exported
 predicate. Brands author the string `'cut'` in their `defaultProps` exactly as
 before; the constant is core's, not a required import.
+
+### 1.6 Accent/colour field marking — PARITY-PRESERVING (no action)
+
+`AccentKey` and `ColorHex` no longer carry a `WeakSet` mark installed by a
+patched `.describe()`. Which fields get an accent picker / a colour swatch is now
+declared by NAME in `ACCENT_FIELDS` / `COLOR_FIELDS` (`transition-schema.ts`,
+beside `PROP_LABELS`), read through `isAccentField` / `isColorField`.
+
+Both constants stay exported and their **validation is byte-identical** (still a
+plain `z.string()` with a description), so no baked `defaultProps` literal in
+either brand repo changes meaning, and nothing re-parses differently. The
+marked-field set is unchanged: `wipe.color` → accent, `burn.glowColor` → colour.
+Pixel harness: `300 accepted … 0 drifted, 0 missing`.
+
+What a brand GETS: the mark can no longer be lost. Under the old mechanism any
+of `.min()`, `.nullable()`, `.readonly()`, `.catch()` or `.transform()` on such a
+field silently removed its editor control — no error, no warning. That was a
+latent trap for the next core kind to be authored, not a live defect in either
+brand (neither declares a transition kind through core's catalog).
+
+**One consequence worth knowing:** the vocabulary is a NAME list scoped to core's
+own catalog fields (`subOptionForField` is reached only from `subOptionsFor`,
+which returns `[]` for a brand kind), so a brand kind's own `color` parameter is
+unaffected — it is typed by the brand's registration, as it always was. A future
+CORE kind wanting an accent field must add its field name to `ACCENT_FIELDS`;
+the completeness test in `lib/editor/src/accent-field-mark.test.ts` fails loudly
+if the list and the catalog disagree.
