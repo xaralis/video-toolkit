@@ -555,9 +555,10 @@ The editor `tsc` baseline is still **3**, but two of the three moved line: they 
 `grep -n 'it.fails' lib/editor/src/at-cut-transitions.test.tsx`**, never hardcode; they shifted
 twice within Phase 4 alone.
 
-> `CLAUDE.md`'s Quality Gates table still records the Phase 3 baseline (70 files / 905 tests) and
-> does not know about the pixel harness. Phase 4 was scoped to leave it alone; updating it is a
-> one-line job for whoever picks this up.
+> `CLAUDE.md`'s Quality Gates table was updated by the final fix wave (2026-07-28): it now carries
+> **87 files / 1126 tests** — the numbers above plus that wave's own 13 new tests — the pixel
+> harness as a fourth gate, the tsc exit code, and an instruction to re-derive the `it.fails` count
+> rather than trust a written one.
 
 ### What landed — Workstream 1, the node contract
 

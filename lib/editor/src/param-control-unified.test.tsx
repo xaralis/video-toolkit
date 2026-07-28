@@ -278,7 +278,13 @@ describe('percent and angle', () => {
 function transitionReel(transitionOut: Record<string, unknown>): LayeredReel {
   return {
     ...burnReel,
-    tracks: { ...burnReel.tracks, video: [{ ...burnReel.tracks.video[0], transitionOut }] },
+    // The fixture is authored as a bag on purpose (these tests are about the
+    // CONTROL a kind's schema produces, not about the literal's type), so it
+    // goes in through the item type rather than being widened at the field.
+    tracks: {
+      ...burnReel.tracks,
+      video: [{ ...burnReel.tracks.video[0], transitionOut } as LayeredReel['tracks']['video'][number]],
+    },
   };
 }
 

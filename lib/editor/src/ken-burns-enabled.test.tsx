@@ -116,7 +116,13 @@ describe('every RESERVED_EFFECT_TYPE honours `enabled: false` on its own path', 
   /** type → a probe that returns TRUE when a disabled entry of that type is
    *  correctly ignored by the path that renders it. */
   const PROBES: Record<string, () => boolean> = {
-    'ken-burns': () => findKenBurns([{ type: 'ken-burns', direction: 'in', enabled: false }]) === undefined,
+    // `findKenBurns` is declared over the minimal `{ type: string }`, so the
+    // extra authored keys go through a widened local rather than an inline
+    // literal (excess-property check).
+    'ken-burns': () => {
+      const effects: Array<{ type: string }> = [{ type: 'ken-burns', direction: 'in', enabled: false } as { type: string }];
+      return findKenBurns(effects) === undefined;
+    },
   };
 
   it('has a probe for every reserved type — add one when you add a type', () => {

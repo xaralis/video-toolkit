@@ -305,16 +305,23 @@ Run these before considering `lib/` or `examples/` work done. All are manual —
 there is no CI in this repo that runs them (`.github/workflows/` only builds
 Docker images, cuts releases, and syncs the Remotion skill from upstream).
 
-| Gate | Command | Covers | Baseline (measured 2026-07-26) |
+| Gate | Command | Covers | Baseline (measured 2026-07-28) |
 |---|---|---|---|
-| Editor tests | `cd lib/editor && npx vitest run` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **70 files / 905 tests** |
-| Editor types | `cd lib/editor && npx tsc --noEmit` | Same surface as above, plus all of `lib/render` (declared directly in `lib/editor/tsconfig.json`'s `include`, or reached transitively) and 13 of `lib/transitions`' 14 files — `index.ts` plus all 12 presentations, but **not** `TransitionGallery.tsx`, which only `examples/layered-minimal` reaches (verify with `npx tsc --noEmit --listFiles`) | **3** pre-existing errors |
+| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **87 files / 1126 tests**, ~42 s |
+| Editor types | `cd lib/editor && npx tsc --noEmit` | Same surface as above, plus all of `lib/render` (declared directly in `lib/editor/tsconfig.json`'s `include`, or reached transitively) and 13 of `lib/transitions`' 14 files — `index.ts` plus all 12 presentations, but **not** `TransitionGallery.tsx`, which only `examples/layered-minimal` reaches (verify with `npx tsc --noEmit --listFiles`) | **3** pre-existing errors, **exit code 2** |
 | Render/transitions types | `cd examples/layered-minimal && npm run typecheck` | `lib/render` and `lib/transitions` (including their `.tsx` components), via the example that actually imports them — see `docs/superpowers/core-typecheck-gate.md` | **0**, plus a coverage guard |
+| Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` | Every at-cut transition kind × mode × progress — 300 stills, hash-compared against committed goldens | **PASS**, ~50 s: `300 accepted, 0 same-picture-different-bytes, 0 drifted, 0 missing` + 3 expected semantic xfails |
 
-**"All passed" is not full green.** Four of those tests are `it.fails` known-defect pins
-(`lib/editor/src/at-cut-transitions.test.tsx` — `checkerboard`, `pixelate`, `scanline-glitch`,
-`wipe`), and vitest counts an `it.fails` as a pass. The defects they record are real and
+**"All passed" is not full green.** Some of those tests are `it.fails` known-defect pins in
+`lib/editor/src/at-cut-transitions.test.tsx` (`checkerboard`, `pixelate`, `scanline-glitch`,
+`wipe`), and vitest counts an `it.fails` as a pass. **Re-derive the count** —
+`grep -c '^  it\.fails(' lib/editor/src/at-cut-transitions.test.tsx` — rather than trusting a
+number written down here; they have moved twice. The defects they record are real and
 deliberately unfixed; see `docs/superpowers/at-cut-transition-findings.md`.
+
+The pixel harness has 19 known-**bimodal** cells with two accepted hashes each, so the
+parenthesised "N matched a bimodal cell's SECOND recorded hash" varies legitimately between runs.
+`0 drifted, 0 missing` is the gate; that count is not.
 
 **Check `tsc`'s exit code, not just the error count** — `npx tsc --noEmit | grep -c 'error TS'`
 returns `0` when tsc *crashes*. This has bitten twice.
