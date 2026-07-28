@@ -94,6 +94,12 @@ export function transitionParamsFor(
 ): ParamField[] {
   const out: ParamField[] = subOptionsFor(kind);
   for (const f of declared?.[kind] ?? []) {
+    // Same exclusion `subOptionsFor` applies to core's structural fields, and
+    // for the same reason: the picker renders `kind` itself and the length
+    // field renders `frames`. Without this a registration declaring either as
+    // a param gets a SECOND control for it, sitting beside the real one and
+    // writing the same key.
+    if (f.prop === 'kind' || f.prop === 'frames') continue;
     const i = out.findIndex((c) => c.prop === f.prop);
     if (i >= 0) out[i] = f;
     else out.push(f);

@@ -24,6 +24,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, screen, within } from '@testing-library/react';
 import { LayeredInspector, TransitionFields } from '../app/LayeredInspector';
 import { editorMetaFromTheme } from '../app/editor-meta';
+import { transitionParamsFor } from '../app/transitions';
 import type { CompositionTheme } from '../../theming/types';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import type { DraftTransition } from '@video-toolkit/lib/reel-config-base/transition-schema';
@@ -178,5 +179,37 @@ describe('a brand transition kind is edited through its registration params', ()
     render(<TransitionFields t={{ kind: 'slide', frames: 12, direction: 'left' }} onChange={() => {}} meta={meta} />);
     expect((screen.getByLabelText('Direction') as HTMLSelectElement).value).toBe('left');
     expect(screen.queryByLabelText('Grain')).toBeNull();
+  });
+});
+
+// `kind` and `frames` already have controls of their own — the picker and the
+// length field. `subOptionsFor` excludes both by name on core's structural
+// side; the DECLARED side did not, so a registration naming either got a
+// SECOND control beside the real one, writing the same key.
+describe('a registration cannot double up the picker or the length field', () => {
+  const theme = {
+    ...brandTheme,
+    transitions: {
+      ...brandTheme.transitions,
+      'greedy-kind': {
+        render: () => null,
+        params: [
+          { prop: 'kind', label: 'Kind' },
+          { prop: 'frames', label: 'Length (frames)' },
+          { prop: 'grain', type: 'number' as const },
+        ],
+      },
+    },
+  } as unknown as CompositionTheme;
+
+  it('drops a declared `kind` / `frames` param, keeping the real controls only', () => {
+    const params = transitionParamsFor('greedy-kind', editorMetaFromTheme(theme).transitionProps);
+    expect(params.map((p) => p.prop)).toEqual(['grain']);
+  });
+
+  it('renders exactly one Kind control and one length control', () => {
+    render(<TransitionFields t={{ kind: 'greedy-kind', frames: 18 }} onChange={() => {}} meta={editorMetaFromTheme(theme)} />);
+    expect(screen.getAllByLabelText('Kind')).toHaveLength(1);
+    expect(screen.getAllByLabelText(/Length/)).toHaveLength(1);
   });
 });

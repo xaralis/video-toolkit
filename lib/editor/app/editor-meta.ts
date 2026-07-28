@@ -54,9 +54,12 @@ export interface EditorMeta {
    *  kinds the BRAND registers. Unlike the other two `*Props` records this one
    *  keeps a kind whose registration declares NO params: its key set is also
    *  what tells the picker which brand kinds exist, and a param-less brand kind
-   *  still has to be selectable. Core's own kinds are never listed — their
-   *  controls are read structurally off the catalog (`subOptionsFor`) and the
-   *  two sources are composed by `transitionParamsFor`. */
+   *  still has to be selectable. A core kind normally does NOT appear here —
+   *  its controls are read structurally off the catalog (`subOptionsFor`) — but
+   *  a brand OVERRIDING a core kind does put that key in the registry, so it
+   *  lands here too. Harmless: `transitionKindChoices` dedupes against the
+   *  catalog (the core entry keeps its position and label) and
+   *  `transitionParamsFor` composes the two sources per `prop`. */
   transitionProps?: Record<string, readonly ParamField[]>;
   /** Timeline block colour per timeline effectId (`overlay-<kind>`,
    *  `video-<kind>`, `audio`, `music`, `brand-<kind>`). Overrides the core
