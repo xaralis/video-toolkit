@@ -16,8 +16,11 @@
  */
 import {
   TRANSITION_CATALOG,
+  subOptionsFor,
   type Transition,
 } from '@video-toolkit/lib/reel-config-base/transition-schema';
+import type { ParamField } from '@video-toolkit/lib/reel-config-base/param-field';
+import { humanizeKey } from './editor-meta';
 
 export {
   CUT_KIND,
@@ -37,6 +40,58 @@ export {
 
 /** Every transition kind with a human-readable label, in catalog order. */
 export const TRANSITION_KINDS: ReadonlyArray<{ kind: string; label: string }> = TRANSITION_CATALOG;
+
+// ---- The brand's own kinds, in the picker ----------------------------------
+// Task 1.2 gave the transition axis a registry, so a kind a brand registers
+// RENDERS. The editor was still catalog-only: the brand's kind was not offered,
+// and (worse — see LayeredInspector) an authored one was coerced to `cut`. The
+// two deciders below are the whole of the editor's answer to "which kinds
+// exist" and "what does this kind let me edit", so no call site asks either
+// question a second way.
+//
+// Both take the DECLARED params keyed by kind — `EditorMeta.transitionProps`,
+// which `editorMetaFromTheme` derives from `theme.transitions`. Passing the
+// record rather than the theme keeps this module free of both React and the
+// theme types, as it has always been.
+
+/** Every kind the picker offers: core's catalog first, in catalog order, then
+ *  whatever kinds the brand declared that core has never heard of. A brand
+ *  registration for a kind core ALSO has is an override, not a new entry, so it
+ *  keeps the catalog's position and label. */
+export function transitionKindChoices(
+  declared?: Record<string, readonly ParamField[]>,
+): Array<{ kind: string; label: string }> {
+  const out: Array<{ kind: string; label: string }> = TRANSITION_CATALOG.map((k) => ({ kind: k.kind, label: k.label }));
+  for (const kind of Object.keys(declared ?? {})) {
+    if (!out.some((k) => k.kind === kind)) out.push({ kind, label: humanizeKey(kind) });
+  }
+  return out;
+}
+
+/** The contextual controls one kind gets, from BOTH sources at once:
+ *
+ *  - core's, read structurally off the catalog entry's zod shape
+ *    (`subOptionsFor`) — which returns `[]` for a kind core does not have, so a
+ *    brand kind simply contributes nothing here;
+ *  - the kind's registration `params`, which is the only description that
+ *    exists for a brand kind.
+ *
+ *  They ADD UP, with a declared field winning by `prop` IN PLACE — the same
+ *  rule the overlay bag editor applies. A brand that overrides a core kind may
+ *  therefore relabel or re-type one of its fields without losing the rest, and
+ *  a core kind with nothing declared gets exactly the controls it always had. */
+export function transitionParamsFor(
+  kind: string,
+  declared?: Record<string, readonly ParamField[]>,
+): ParamField[] {
+  const out: ParamField[] = subOptionsFor(kind);
+  for (const f of declared?.[kind] ?? []) {
+    const i = out.findIndex((c) => c.prop === f.prop);
+    if (i >= 0) out[i] = f;
+    else out.push(f);
+  }
+  return out;
+}
 
 /** Named duration presets offered by the UI, in frames @ 30fps. */
 export const DURATION_PRESETS: Array<{ key: 'short' | 'medium' | 'long'; label: string; frames: number }> = [

@@ -50,6 +50,14 @@ export interface EditorMeta {
    *  `content.kind`. A kind with declared fields is edited through them; a kind
    *  with none keeps the value-presence editor core has always shown. */
   overlayProps?: Record<string, readonly ParamField[]>;
+  /** Declared editable fields of a transition, per transition `kind`, for the
+   *  kinds the BRAND registers. Unlike the other two `*Props` records this one
+   *  keeps a kind whose registration declares NO params: its key set is also
+   *  what tells the picker which brand kinds exist, and a param-less brand kind
+   *  still has to be selectable. Core's own kinds are never listed — their
+   *  controls are read structurally off the catalog (`subOptionsFor`) and the
+   *  two sources are composed by `transitionParamsFor`. */
+  transitionProps?: Record<string, readonly ParamField[]>;
   /** Timeline block colour per timeline effectId (`overlay-<kind>`,
    *  `video-<kind>`, `audio`, `music`, `brand-<kind>`). Overrides the core
    *  defaults and the deterministic fallback. */
@@ -131,6 +139,20 @@ function paramsByKind(
   return out;
 }
 
+/** Like `paramsByKind`, but KEEPS a kind whose registration declares no params
+ *  (as an empty list). Used for the transition axis only, where the key set is
+ *  itself the answer to "which kinds does this brand have" — dropping a
+ *  param-less kind would make it unselectable in the picker, which is the whole
+ *  capability. There is no value-presence fallback on this axis for an empty
+ *  entry to suppress. */
+function kindsWithParams(
+  registry: Record<string, { params?: readonly ParamField[] } | undefined> | undefined,
+): Record<string, readonly ParamField[]> {
+  const out: Record<string, readonly ParamField[]> = {};
+  for (const [kind, reg] of Object.entries(registry ?? {})) out[kind] = reg?.params ?? [];
+  return out;
+}
+
 /** Derives the editor vocabulary from the theme's registrations, so a brand
  *  declares each kind ONCE. An explicit EditorMeta still wins per field —
  *  the host may override anything the theme implies. */
@@ -146,6 +168,7 @@ export function editorMetaFromTheme(theme: CompositionTheme, explicit?: EditorMe
     // the theme-derived outro while every OTHER kind stays theme-derived.
     videoProps: { ...videoProps, ...explicit?.videoProps },
     overlayProps: { ...overlayProps, ...explicit?.overlayProps },
+    transitionProps: { ...kindsWithParams(theme.transitions), ...explicit?.transitionProps },
     effects,
   };
 }

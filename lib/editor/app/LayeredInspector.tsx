@@ -3,7 +3,15 @@ import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-sc
 import { withTotalDuration } from '@video-toolkit/lib/reel-config-base/total-duration';
 import { AccentEditor } from './AccentEditor';
 import { Collapsible } from './Collapsible';
-import { CUT_KIND, TRANSITION_KINDS, defaultTransition, kindNeedsFrames, subOptionsFor, type DraftTransition } from './transitions';
+import {
+  CUT_KIND,
+  TRANSITION_KINDS,
+  defaultTransition,
+  kindNeedsFrames,
+  transitionKindChoices,
+  transitionParamsFor,
+  type DraftTransition,
+} from './transitions';
 import { parseActionId, type LaneId } from '../src/timeline/layered-adapter';
 import type { AccentSlot } from '../../theming/palette';
 import { PLACEMENTS } from '../../theming/placement';
@@ -342,8 +350,9 @@ function ParamFields({
 
 const TRANSITION_LABEL: Record<string, string> = Object.fromEntries(TRANSITION_KINDS.map((k) => [k.kind, k.label]));
 
-// Shared full-catalog transition editor — kind + whatever contextual
-// sub-options that kind needs (subOptionsFor) + a length field gated by
+// Shared transition editor — kind + whatever contextual params that kind needs
+// (`transitionParamsFor`: core's structural fields for a core kind, the
+// registration's declared `params` for a brand's own) + a length field gated by
 // kindNeedsFrames. Used both by the video-lane "Transition out" section and
 // the transitions-lane route (which targets transitionIn or transitionOut
 // depending on `edge`), so the two never diverge again.
@@ -364,19 +373,28 @@ export function TransitionFields({
   t,
   onChange,
   accentSlots,
+  meta,
 }: {
   t: DraftTransition;
   onChange: (next: DraftTransition) => void;
   accentSlots?: readonly AccentSlot[];
+  /** The brand's editor vocabulary. Only `transitionProps` is read here: it is
+   *  what makes a brand-registered kind selectable and gives it controls. */
+  meta?: EditorMeta;
 }) {
   const kind = t.kind ?? CUT_KIND;
+  // Catalog ∪ the brand's registered kinds — see `transitionKindChoices`. The
+  // picker used to run off TRANSITION_KINDS alone, which is why a brand kind
+  // could render (Task 1.2) and still not be choosable.
+  const choices = transitionKindChoices(meta?.transitionProps);
+  const labelFor = (k: string) => choices.find((c) => c.kind === k)?.label ?? TRANSITION_LABEL[k] ?? humanizeKey(k);
   return (
     <>
       <SelectField
         lbl="Kind"
         value={kind}
-        options={TRANSITION_KINDS.map((k) => k.kind)}
-        optionLabel={(k) => TRANSITION_LABEL[k] ?? k}
+        options={choices.map((k) => k.kind)}
+        optionLabel={labelFor}
         // `frames` AND `alignment` are threaded through: both are kind-independent
         // timing, and `defaultTransition` builds a fresh object that the caller
         // then writes over the old one wholesale, so anything not named here is
@@ -390,7 +408,7 @@ export function TransitionFields({
           opaque-bag editor uses (`renderParamControl`). Until Task 1.1 this was
           a second, hand-written switch over a second vocabulary — which is how
           burn's `mask`/`glowColor` ended up with no control on either path. */}
-      {subOptionsFor(kind).map((opt) =>
+      {transitionParamsFor(kind, meta?.transitionProps).map((opt) =>
         renderParamControl({
           field: opt,
           value: t[opt.prop],
@@ -557,9 +575,9 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     return (
       <div style={panel}>
         <h3 style={heading}>
-          Transition {edge === 'in' ? 'in' : 'out'} · {TRANSITION_LABEL[kind] ?? kind}
+          Transition {edge === 'in' ? 'in' : 'out'} · {TRANSITION_LABEL[kind] ?? humanizeKey(kind)}
         </h3>
-        <TransitionFields t={t} accentSlots={slots} onChange={(next) => patchItem('video', id, { [edgeField]: next })} />
+        <TransitionFields t={t} accentSlots={slots} meta={meta} onChange={(next) => patchItem('video', id, { [edgeField]: next })} />
       </div>
     );
   }
@@ -688,12 +706,20 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           </>
         )}
         {(() => {
+          // ANY authored kind is shown as ITSELF. This used to test the kind
+          // against TRANSITION_CATALOG and fall back to `{kind:'cut'}` — which,
+          // once a brand could register its own kinds (Task 1.2), meant a
+          // perfectly renderable brand transition was displayed as "Cut" and
+          // then WRITTEN BACK as one the moment any control in this section was
+          // touched. Same class as the dropped `alignment` (1.4) and `enabled`
+          // (1.5): whatever the editor has no control for must at least survive
+          // it untouched. Only a genuinely absent or kind-less value is a cut.
           const raw = v.transitionOut as { kind?: string } | undefined;
-          const t: DraftTransition = raw && TRANSITION_KINDS.some((k) => k.kind === raw.kind) ? (raw as DraftTransition) : { kind: CUT_KIND };
+          const t: DraftTransition = raw?.kind ? (raw as DraftTransition) : { kind: CUT_KIND };
           return (
             <>
               <div style={section}>Transition out</div>
-              <TransitionFields t={t} accentSlots={slots} onChange={(next) => patchItem('video', id, { transitionOut: next })} />
+              <TransitionFields t={t} accentSlots={slots} meta={meta} onChange={(next) => patchItem('video', id, { transitionOut: next })} />
             </>
           );
         })()}
