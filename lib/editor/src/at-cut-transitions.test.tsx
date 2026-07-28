@@ -348,8 +348,8 @@ describe.each(KINDS)('transition kind %s', (kind) => {
 // declares, render the kind twice — catalog default vs an in-bounds probe value
 // for that ONE param — and require the rendered output to differ. No per-param
 // knowledge is encoded, so a param added later is covered the day it is added,
-// and it fails whether the value is dropped at the forwarding table or ignored
-// inside the node itself.
+// and it goes red whether the value is dropped at the forwarding table or is
+// ignored inside the node itself.
 //
 // Three progress points, because a param need only bite at one of them:
 // `pixelate.randomness` is provably inert at 0.5 (every cell's reveal clamps to
@@ -1006,8 +1006,8 @@ describe('a reel edge resolves the missing input to the theme background', () =>
   it('paints nothing when the caller supplies no background', () => {
     const { container } = mount('fade', { to: null }, 0.5, 'transparent');
     // The plate is still THERE (the branch runs) — it is just invisible. The
-    // assertion is on the colour, so hardcoding one in `EdgePlate` fails here
-    // as loudly as it fails the differential test above.
+    // assertion is on the colour, so a hardcoded colour in `EdgePlate` breaks
+    // this case as loudly as it breaks the differential test above.
     expect(platesOf(container, 'transparent')).toHaveLength(1);
     expect([...platesOf(container, BG_RGB), ...platesOf(container, OTHER_RGB), ...platesOf(container, 'rgb(0, 0, 0)')])
       .toHaveLength(0);

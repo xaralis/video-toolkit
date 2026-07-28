@@ -794,14 +794,42 @@ handed rather than just moving it:
 
 `glitch`, `rgb-split`, `light-leak`, `whip-pan`, `zoom-through`, `zoom-blur`.
 
-`slide` and `flip` are lifted too and came through **byte-identical** — pure
-geometry over a uniform plate reveals the same uniform colour. `wipe`,
-`pixelate` and `scanline-glitch` are native nodes that were not touched.
+`flip` is lifted too and came through **byte-identical** — pure geometry over a
+uniform plate reveals the same uniform colour, so not one of its 15 cells was
+rewritten. **`slide` did NOT**: 4 of its cells (`slide__enter__p0`,
+`slide__exit__p025/p05/p075`) were rewritten with a **new hash but an identical
+8×8 fingerprint** — the harness's own `NEAR` / "same picture, different bytes"
+case, and `whip-pan__exit__p1` is a fifth. Their PICTURE is unchanged; their
+BYTES are not, so the goldens had to move and the record must say so. (An
+earlier draft of this entry claimed `slide` was byte-identical. It was derived
+from one `pixel-gate` console run, which reports `PIXEL DRIFT` and `NEAR` under
+separate labels; the committed golden diff is the authority.)
 
-**Measured on the 300-cell pixel harness: 68 cells moved, 55 in `exit` mode and
-13 in `enter` mode, and ZERO in `cut` mode.** No mid-reel boundary changes for
-any kind. That is the containment guarantee worth remembering: this task can
-only affect the first and last transition of a reel.
+`wipe`, `pixelate` and `scanline-glitch` are native nodes that were not touched.
+
+**Measured against the committed golden diff (the authority — a single console
+run under-reports, see above): 80 of the 300 cells were rewritten, none of them
+sharing a hash with its predecessor — 62 in `exit` mode, 18 in `enter` mode, and
+ZERO in `cut` mode.** Of the 80, **5** are same-picture-different-bytes (the four
+`slide` cells plus `whip-pan__exit__p1`) and **75** carry a changed picture. No
+mid-reel boundary changes for any kind. That is the containment guarantee worth
+remembering: this task can only affect the first and last transition of a reel.
+
+Re-derive rather than trust. The range is pinned to the commit that moved the
+pixels (`591f5c8` = Task 2.1's last, `5290bf1` = Task 2.2's fix), so a later
+re-seed of the bimodal list does not silently change the answer:
+
+```bash
+python3 - <<'EOF'
+import json, subprocess, collections
+load = lambda ref: json.loads(subprocess.check_output(
+    ['git', 'show', ref + ':examples/layered-minimal/goldens/transition-matrix.json']))['frames']
+old, new = load('591f5c8'), load('5290bf1')
+changed = [k for k in new if old.get(k) != new[k]]
+print(len(changed), dict(collections.Counter(k.split('__')[1] for k in changed)))
+# → 80 {'exit': 62, 'enter': 18}
+EOF
+```
 
 `examples/layered-minimal`'s five `MinimalReel` reference hashes are all
 **unchanged** (its only transition is mid-reel).

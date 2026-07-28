@@ -340,9 +340,9 @@ deleting `scanlines: t.scanlines` from that table previously passed every gate, 
 the editor suite skipped the kind and the pixel harness only ever renders catalog
 defaults.
 
-The pixel harness has **15** known-**bimodal** cells with two accepted hashes each (19 until
+The pixel harness has **18** known-**bimodal** cells with two accepted hashes each (19 until
 Task 2.2, which re-baselined six `light-leak` edge cells whose recorded pictures no longer
-exist and observed two new ones), so the
+exist and seeded five new ones at `--repeat=12`), so the
 parenthesised "N matched a bimodal cell's SECOND recorded hash" varies legitimately between runs.
 `0 drifted, 0 missing` is the gate; that count is not.
 
