@@ -274,9 +274,10 @@ function TransitionDemo<Props extends Record<string, unknown>>({
   );
 }
 
-/** The gallery's own composition size, as `transitionGalleryConfig` declares it
- *  further down. A size-dependent kind (`clock-wipe`, `iris`) resolves against
- *  these, so the demo shows the same geometry the config renders. */
+/** The gallery's composition size — the ONE source of it. `transitionGalleryConfig`
+ *  spreads this rather than restating the numbers, and a size-dependent kind
+ *  (`clock-wipe`, `iris`) resolves against it, so the demo shows the same
+ *  geometry the config renders. */
 export const GALLERY_DIMS = { width: 1920, height: 1080, fps: 30 };
 
 /** RESOLVES A CATALOG KIND THE WAY A REEL DOES — the single line that ends the
@@ -520,9 +521,10 @@ export const transitionGalleryConfig = {
     (acc, t) => acc + getSegmentDuration(t),
     0
   ),
-  fps: 30,
-  width: 1920,
-  height: 1080,
+  // Read off GALLERY_DIMS, not restated. A size-dependent kind (`clock-wipe`,
+  // `iris`) resolves against those numbers, so a second copy here would be one
+  // more "two answers to the same question" waiting to drift apart.
+  ...GALLERY_DIMS,
 };
 
 // For single-transition preview (useful for interactive player)
