@@ -59,11 +59,38 @@ safety model:** a re-baseline is a committed edit a reviewer sees, not a silent
 overwrite. It refuses to reduce the number of covered kinds unless you also pass
 `--allow-shrink`.
 
-**`--allow-shrink` gates TWO guards, and only for a kind the CATALOG has lost.**
-The kind-count guard (`COVERAGE SHRANK`) and the per-key `STALE GOLDEN` guard both
-fire when a catalog kind is removed — the second one 15 times, once per cell.
-Because *any* recorded failure makes the re-baseline refuse to write, gating only
-the first left the flag unable to complete the removal it exists for; found the
+**A cell is `kind × mode × progress`, and ALL THREE axes are shrink-guarded.** They
+were not always: every protection in this file lived on the KIND axis, and the two
+cell axes had none at all. Narrowing `PROGRESS` from five points to three and
+running **plain `--update-goldens`, with no `--allow-shrink` anywhere**, deleted 120
+of 300 cells at exit 0 — and the follow-up `--strict` run passed. 40% of coverage
+gone, green.
+
+**It was silent because it was self-healing.** `probe.progress` is rewritten from
+the live axis on every re-baseline, and the `PROBE AXIS CHANGED` check is gated on
+`!UPDATE` — so the one mode that *mutates* the axis was the one mode that stopped
+checking it, and the next gate run compared the new axis against a `probe` block
+that had just been rewritten to match. It also de-listed 10 `bimodalCells` entries
+belonging to **surviving** kinds, which is the union rule's exact prohibition rather
+than the kind-removal case it exempts. The `MODES` variant was caught only
+*incidentally*, by semantic checks that happen to name `cut__p0`/`p05`/`p1`;
+`p025` and `p075` are named by nothing.
+
+`AXIS SHRANK` now applies the kind axis' rule one axis over: **losing a member of
+`modes` or `progress` needs the same explicit two-flag opt-in, with the same
+per-key itemisation** (`AXIS-DROPPED GOLDEN`, one line per cell, and the count of
+bimodal attractors among them called out by name). **Widening stays free** — adding
+a progress point only ever adds cells, and is a normal thing to want. An axis change
+on a *filtered* run is refused outright whatever the flags say: `frames` is the union
+on a filtered run, so the old-axis cells would survive while `probe.progress` was
+rewritten to the new axis, leaving a golden file claiming an axis its own keys
+contradict.
+
+**`--allow-shrink` gates the kind guards too, and only for a kind the CATALOG has
+lost.** The kind-count guard (`COVERAGE SHRANK`) and the per-key `STALE GOLDEN`
+guard both fire when a catalog kind is removed — the second one 15 times, once per
+cell. Because *any* recorded failure makes the re-baseline refuse to write, gating
+only the first left the flag unable to complete the removal it exists for; found the
 first time a kind was actually removed (`fade-coal`, Phase 4).
 
 **The narrowing is the load-bearing half, and the first fix got it wrong.** The
@@ -93,6 +120,10 @@ read raw and validated *before* any defaulting:
 |---|---|
 | kind absent from catalog, no probe, `--update-goldens --allow-shrink` | pruned, itemised per cell |
 | kind absent from catalog, no probe, any other invocation | `STALE GOLDEN`, refuse |
+| `modes` or `progress` loses a member, `--update-goldens --allow-shrink` | pruned, itemised per cell |
+| `modes` or `progress` loses a member, any other invocation | `AXIS SHRANK` + per-key `AXIS-DROPPED GOLDEN`, refuse |
+| `modes` or `progress` **gains** a member | free — cells added, no opt-in |
+| any axis change on a **filtered** run | `AXIS CHANGE ON A FILTERED RUN`, refuse |
 | kind **in** catalog, no probe | `MISSING PROBE` + per-key `STALE GOLDEN`, refuse **regardless of any flag** |
 | manifest composition missing | `MANIFEST MISSING`, refuse |
 | manifest present, `kinds` absent or not an array | `MANIFEST MALFORMED`, refuse |

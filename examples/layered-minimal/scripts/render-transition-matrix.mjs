@@ -339,7 +339,9 @@ const rawCatalogKinds = manifest?.defaultProps?.kinds;
 if (manifest && !Array.isArray(rawCatalogKinds)) {
   fail(
     'MANIFEST MALFORMED: `TransitionCatalogManifest.defaultProps.kinds` is ' +
-      `${rawCatalogKinds === undefined ? 'absent' : JSON.stringify(rawCatalogKinds)}` +
+      // Truncated: this is an arbitrary payload from the bundle, and a
+      // diagnostic must not be able to dump an unbounded object into the log.
+      `${rawCatalogKinds === undefined ? 'absent' : `${JSON.stringify(rawCatalogKinds).slice(0, 120)}…`}` +
       ', not an array. It is the only thing that distinguishes a removed kind from a broken probe, and an ' +
       'unreadable catalog must never read as an EMPTY one — that would authorise pruning every golden.',
   );
@@ -386,7 +388,9 @@ for (const k of only) if (!allKinds.includes(k)) fail(`no probe compositions for
 // is what makes either of them trustworthy as evidence about the other.
 {
   const missingFromManifest = allKinds.filter((k) => !catalogKinds.includes(k));
-  if (manifest && Array.isArray(rawCatalogKinds) && missingFromManifest.length > 0) {
+  // `rawCatalogKinds.length > 0` so an EMPTY manifest reports once, as MANIFEST
+  // EMPTY, rather than also listing every kind in the catalog as "stale".
+  if (manifest && Array.isArray(rawCatalogKinds) && rawCatalogKinds.length > 0 && missingFromManifest.length > 0) {
     fail(
       `MANIFEST STALE: ${missingFromManifest.length} kind(s) registered probe compositions but are absent from ` +
         `TransitionCatalogManifest — ${missingFromManifest.join(', ')}. The manifest is the harness's second, ` +
@@ -724,6 +728,84 @@ await browser.close({ silent: true });
     for (const field of ['progress', 'modes']) {
       if (JSON.stringify(probe[field]) !== JSON.stringify(now[field])) {
         fail(`PROBE AXIS CHANGED: ${field} was ${JSON.stringify(probe[field])}, is now ${JSON.stringify(now[field])}`);
+      }
+    }
+  }
+
+  // ---- THE CELL AXES ARE SHRINK-GUARDED TOO (`modes`, `progress`) --------
+  //
+  // A matrix cell is `kind × mode × progress`. Until this guard, EVERY shrink
+  // protection in this file was on the KIND axis — `COVERAGE SHRANK`,
+  // `STALE GOLDEN`, `MISSING PROBE`, `kindCount`, all of them — and the other
+  // two axes had none at all. Narrowing `PROGRESS` to `[0, 0.5, 1]` and running
+  // PLAIN `--update-goldens`, with no `--allow-shrink` anywhere, deleted 120 of
+  // 300 cells at exit 0 and the follow-up `--strict` run then passed: 40% of
+  // coverage gone, green.
+  //
+  // IT WAS SILENT BECAUSE IT WAS SELF-HEALING. `probe.progress` is rewritten
+  // from the live axis on every re-baseline, and the `PROBE AXIS CHANGED` check
+  // above is gated on `!UPDATE` — so the one mode that MUTATES the axis was the
+  // one mode that stopped checking it. The follow-up gate compared the new axis
+  // against a `probe` block that had just been rewritten to match.
+  //
+  // And it de-listed attractors: 10 `bimodalCells` entries belonging to
+  // SURVIVING kinds went with the dropped cells, which is the union rule's
+  // exact prohibition rather than the kind-removal case it exempts.
+  //
+  // The rule here is the same one the kind axis gets, one axis over: losing a
+  // member is a SHRINK and needs the explicit two-flag opt-in, itemised per
+  // cell. Gaining one is a widening and stays free — adding a progress point is
+  // a normal thing to want, and it only ever adds cells.
+  {
+    const axes = [
+      ['modes', probe.modes, MODES],
+      ['progress', probe.progress, PROGRESS],
+    ];
+    const shrunk = axes
+      .map(([name, was, nowAxis]) => ({
+        name,
+        was,
+        nowAxis,
+        // Compared by `pKey`/string identity, the same way the golden keys are
+        // built — so `0.25` vs `0.250` cannot read as a lost member.
+        gone: Array.isArray(was) ? was.filter((v) => !nowAxis.some((x) => pKey(x) === pKey(v))) : [],
+      }))
+      .filter((a) => a.gone.length > 0);
+
+    if (shrunk.length > 0) {
+      // Every key the CURRENT axes can still produce, for the kinds that still
+      // exist. Anything baselined outside it, for a kind that survives, is a
+      // cell this axis change would delete — deliberately disjoint from the
+      // kind-axis guards above, which own the kinds that went away.
+      const survivable = new Set();
+      for (const kind of allKinds) for (const mode of MODES) for (const p of PROGRESS) survivable.add(keyOf(kind, mode, p));
+      const dropped = Object.keys(oldFrames).filter(
+        (k) => !survivable.has(k) && allKinds.includes(k.split('__')[0]),
+      );
+      const attractors = dropped.filter((k) => declaredBimodal.has(k));
+
+      if (!(UPDATE && ALLOW_SHRINK)) {
+        for (const a of shrunk) {
+          fail(
+            `AXIS SHRANK: \`${a.name}\` lost ${a.gone.length} member(s) — ${JSON.stringify(a.gone)} — ` +
+              `was ${JSON.stringify(a.was)}, is now ${JSON.stringify(a.nowAxis)}. A cell is kind × mode × progress, ` +
+              `so this deletes ${dropped.length} baselined cell(s)` +
+              (attractors.length ? ` INCLUDING ${attractors.length} recorded bimodal attractor(s) for surviving kinds` : '') +
+              '. Pass --update-goldens --allow-shrink if the narrowing is intended.',
+          );
+        }
+        for (const key of dropped) fail(`AXIS-DROPPED GOLDEN: "${key}" would be deleted by the axis change above`);
+      }
+      // An axis change touches EVERY kind, so re-baselining one from a filtered
+      // run is incoherent whatever the flags say: `frames` is the union on a
+      // filtered run, so the old-axis cells survive while `probe.progress` is
+      // rewritten to the narrow axis — a golden file claiming an axis its own
+      // keys contradict.
+      if (only.length > 0) {
+        fail(
+          `AXIS CHANGE ON A FILTERED RUN: \`${shrunk.map((a) => a.name).join('`, `')}\` changed, but this run was ` +
+            `filtered to ${JSON.stringify(only)}. An axis change touches every kind; re-baseline it unfiltered.`,
+        );
       }
     }
   }
