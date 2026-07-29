@@ -415,13 +415,89 @@ export function fromRemotionPresentation(p: AnyPresentation): TransitionNode {
   return { composite };
 }
 
+// TASK R1 — FIX 3, UNIVERSAL (not preview-gated: this is pure caching of a
+// pure function's result, so it changes nothing about what gets drawn, in
+// preview OR at render time).
+//
+// THE AMPLIFIER. `fromRemotionPresentation` (above) — and every native
+// two-input presentation that follows the same shape (`wipe.tsx`,
+// `pixelate.tsx`, `checkerboard.tsx`, `scanline-glitch.tsx`,
+// `fade-to-color.tsx`) — defines its `composite` component INSIDE the
+// factory, so every call returns a brand-new function reference. `node` is
+// used as a JSX ELEMENT TYPE at the call site (`<node.composite .../>` in
+// `AtCutTransition`), and React remounts a subtree whenever its element type
+// changes between renders — even when every prop is identical. Since
+// `buildVideoNodes` calls `transitionNodeFor` fresh on every render of
+// `LayeredReelComposition`, ANY re-render (every inspector edit — playback
+// itself is memoized, see `EditorHost.tsx`) handed EVERY boundary a new
+// element type and remounted its videos, whether or not that boundary's own
+// config had changed.
+//
+// Rather than restructure five presentation files to take their params via
+// props/context instead of closure (a public-contract change that reaches
+// brand-authored `TransitionNode`s too), this caches the RESOLVED node per
+// distinct (transition record, palette, size) — the brief's sanctioned
+// alternative ("memoize transitionNodeFor per boundary record"). A boundary
+// whose authored config is unchanged between renders gets back the exact
+// same node/composite reference and does not remount. A boundary whose
+// params genuinely changed (e.g. mid-drag on its own slider) still gets a new
+// node — unavoidable, since its picture actually differs — but that no
+// longer drags every OTHER boundary down with it.
+//
+// Keyed first by the TRANSITIONS REGISTRY object (a brand-theme-level
+// reference, stable for a session) via a WeakMap, so a registry swap (hot
+// reload, a different brand) can never serve a stale cross-registry hit; keyed
+// second by a JSON digest of the record + the dims that can change what it
+// resolves to. Bounded per registry so a long slider drag that visits
+// hundreds of distinct param values cannot grow this without limit — the
+// benefit is for the (typically many) UNCHANGED boundaries, not the one being
+// dragged, so eviction cost is cheap.
+const TRANSITION_NODE_CACHE_LIMIT = 64;
+const NO_REGISTRY: TransitionRegistry = {};
+const transitionNodeCacheByRegistry = new WeakMap<TransitionRegistry, Map<string, TransitionNode | null>>();
+
+function transitionNodeCacheFor(registry: TransitionRegistry | undefined): Map<string, TransitionNode | null> {
+  const registryKey = registry ?? NO_REGISTRY;
+  let cache = transitionNodeCacheByRegistry.get(registryKey);
+  if (!cache) {
+    cache = new Map();
+    transitionNodeCacheByRegistry.set(registryKey, cache);
+  }
+  return cache;
+}
+
 /** THE RENDER PATH. Resolves a kind to the two-input node the boundary drives,
  *  lifting a one-sided presentation on the way when that is what it resolved
- *  to. */
+ *  to. Memoized — see the block above — so repeated calls with an unchanged
+ *  record/dims return the SAME node, not merely an equivalent one.
+ *
+ *  `resolveTransition` ALWAYS RUNS, cache hit or not — it is not only a pure
+ *  computation, it is also the SITE of `resolveAccentColorOrWarn`'s
+ *  `warnOnce` diagnostics (`wipe`/`fade-to-color`'s unresolved-accent-key
+ *  warning). Skipping that call on a cache hit would make the warning's OWN
+ *  de-duplication (which already guarantees "at most once, ever") into "at
+ *  most once, and only if this exact config was never memoized before" — a
+ *  strictly weaker guarantee that broke three existing tests the first time
+ *  this was tried (they call `resetWarnOnce()` between cases and expect the
+ *  render path to re-diagnose on request). What the cache memoizes is only
+ *  the FINAL node object/composite reference `resolveTransition`'s result
+ *  turns into — never whether the resolution logic itself runs. */
 export function transitionNodeFor(t: TransitionRecord | undefined, dims: Dims): TransitionNode | null {
   const resolved = resolveTransition(t, dims);
   if (!resolved) return null;
-  return isTransitionNode(resolved) ? resolved : fromRemotionPresentation(resolved);
+
+  const cache = transitionNodeCacheFor(dims.transitions);
+  const key = JSON.stringify({ t, width: dims.width, height: dims.height, palette: dims.palette });
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  const node = isTransitionNode(resolved) ? resolved : fromRemotionPresentation(resolved);
+  if (cache.size >= TRANSITION_NODE_CACHE_LIMIT) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey !== undefined) cache.delete(oldestKey);
+  }
+  cache.set(key, node);
+  return node;
 }
 
 // THE BOUNDARY COMPOSITOR. Mounted inside the boundary's OWN `Sequence` (see

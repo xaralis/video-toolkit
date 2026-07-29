@@ -29,6 +29,7 @@ import React from 'react';
 import { Sequence, useCurrentFrame } from 'remotion';
 import { AtCutTransition, transitionNodeFor } from './at-cut-transitions';
 import { computeVideoLayout, type VideoLayoutEntry } from './video-track-layout';
+import { isPreviewEnvironment } from './preview-environment';
 import { warnOnce } from './warn-once';
 import type { AccentSlot } from '../theming/palette';
 import type { TransitionRegistry } from '../theming/transitions';
@@ -43,12 +44,44 @@ type Range = readonly [number, number];
 
 /** Renders `children` except on the frames a boundary has taken over. The
  *  frames are item-relative, so this must be mounted INSIDE the item's own
- *  Sequence. */
+ *  Sequence.
+ *
+ *  TASK R1 — FIX 1, PREVIEW-GATED. Returning `null` on a blanked frame is a
+ *  real React unmount of everything beneath it, and the boundary's re-based
+ *  copy of the SAME content mounts fresh in a different position in the tree
+ *  (see video-track.tsx's module docblock) — so crossing a boundary meant a
+ *  footage `<video>` was destroyed and recreated. That is invisible at render
+ *  time (frames are extracted independently of any DOM) but is a real
+ *  re-fetch + re-seek — a background-colour flash and a stall — in the Player
+ *  or Studio, so this branch is gated on `isPreviewEnvironment()`: outside
+ *  preview, behaviour is BYTE-IDENTICAL to before this task (`return null`).
+ *
+ *  `display:none`, not `visibility:hidden`: nothing here needs to keep taking
+ *  up space (this Sequence's `layout` is the default `absolute-fill`, so a
+ *  visible sibling would have to fight a hidden one's box otherwise), and
+ *  `OffthreadVideo`/`Video` seek to an explicit frame-derived time regardless
+ *  of the element's own visibility — Remotion's own `premountFor` (Fix 2,
+ *  below) hides a premounting Sequence with `display:none` for the identical
+ *  reason (see `use-premounting.js`'s `hideWhilePremounted` default).
+ *
+ *  THE WRAPPER MUST BE STRUCTURALLY CONSTANT ACROSS THE BLANKED/DRAWN
+ *  TOGGLE, not just present-while-blanked: React reconciles by position and
+ *  TYPE, so switching between `<div>…</div>` (blanked) and a `<>…</>`
+ *  Fragment (drawn) at the same tree position is ITSELF a type change and
+ *  remounts `children` — exactly the defect this fix exists to remove, just
+ *  moved to the OTHER edge of the blanked window. In preview the wrapper is
+ *  therefore a `<div>` for the item's entire mounted life, toggling only its
+ *  `style`; outside preview there is no wrapper at all, ever (byte-identical
+ *  to pre-Task-R1). */
 const ItemBody: React.FC<{ blank: readonly Range[]; children: React.ReactNode }> = ({ blank, children }) => {
   const frame = useCurrentFrame();
-  if (blank.some(([a, b]) => frame >= a && frame <= b)) return null;
-  // eslint-disable-next-line react/jsx-no-useless-fragment
-  return <>{children}</>;
+  const blanked = blank.some(([a, b]) => frame >= a && frame <= b);
+  if (!isPreviewEnvironment()) {
+    if (blanked) return null;
+    // eslint-disable-next-line react/jsx-no-useless-fragment
+    return <>{children}</>;
+  }
+  return <div style={blanked ? { display: 'none' } : undefined}>{children}</div>;
 };
 
 /** The boundary Sequence is `frames + 1` long, not `frames`.
@@ -60,6 +93,25 @@ const ItemBody: React.FC<{ blank: readonly Range[]; children: React.ReactNode }>
  *  of a cut, because the outgoing clip's own range has expired by then and its
  *  re-based Sequence renders nothing — exactly as its real Sequence did. */
 const BOUNDARY_TAIL = 1;
+
+/** TASK R1 — FIX 2, PREVIEW-GATED. The boundary's re-based `from`/`to` copies
+ *  (see `rebased()` below) mount fresh at the boundary Sequence's own first
+ *  frame — cold, with no chance to fetch or seek before that frame is due to
+ *  paint. Remotion's `premountFor` mounts a Sequence's subtree early, hidden,
+ *  and PROPAGATES that "premounting" state into every nested Sequence
+ *  (including a `layout="none"` one, which cannot take `premountFor` itself —
+ *  its type is `{layout:'none'}`, which the `AbsoluteFillLayout` variant
+ *  carrying `premountFor` is not a member of; verified against this repo's
+ *  pinned `remotion@4.0.498`, `Sequence.d.ts`). So this is applied to the
+ *  boundary's OWN Sequence, one level up from `rebased()` — its two re-based
+ *  children inherit the premount for free, exactly the mechanism `<Video>`/
+ *  `<OffthreadVideo>` rely on to preload during a premount window.
+ *
+ *  ONE SECOND (fps frames): Remotion's own eventual default for an
+ *  unspecified `premountFor` once `ENABLE_V5_BREAKING_CHANGES` ships (see
+ *  `use-premounting.js`: `premountFor ?? fps`) — borrowed here rather than
+ *  invented, since this repo does not carry that flag yet. */
+const PREVIEW_BOUNDARY_PREMOUNT_FRAMES = (fps: number): number => fps;
 
 /** One boundary between two clips (or between a clip and the edge of the reel). */
 interface Boundary {
@@ -258,6 +310,7 @@ export function buildVideoNodes(
           from={b.start}
           durationInFrames={b.frames + BOUNDARY_TAIL}
           name={`${b.record.kind} @ ${item.id}`}
+          {...(isPreviewEnvironment() ? { premountFor: PREVIEW_BOUNDARY_PREMOUNT_FRAMES(opts.fps) } : {})}
         >
           <AtCutTransition
             node={transitionNodeFor(b.record, dims)}
