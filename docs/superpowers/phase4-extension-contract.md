@@ -212,8 +212,10 @@ See §5.
 > media element (`blend`'s `to: '…mp4'`), which is the exact blocker named above. Verified,
 > anchored on the colon (an unanchored `grep -rn "scope"` over the same trees matches prose
 > too and returns 26 hits — see the correction just above):
-> `grep -rn "scope:" lib/theming lib/reel-config-base lib/render` (2026-07-29, post-3.2)
-> still returns **0** — no `scope:` field of any kind.
+> `grep -rn "scope?:" lib/theming lib/reel-config-base lib/render` (2026-07-29, post-3.2,
+> anchored on the `?` a REAL optional field carries — a bare `scope:` would also match this
+> section's own prose, e.g. "`scope: 'media'`" in a comment, which is not a field) still
+> returns **0** — no `scope` field of any kind.
 >
 > The seam Task 3.2 deliberately leaves open for 3.3: `StyleEffectRenderProps` carries `item`
 > (the whole `VideoItem`, including its `crop`/`grade`/`focalX`/`focalY`) and returns a
@@ -222,6 +224,70 @@ See §5.
 > treatment as the first, without `blend` (or `scope: 'media'` generally) needing yet another
 > new prop bag. Nothing in Task 3.2 promotes `blend`, registers it, or narrows this seam; that
 > remains 3.3's job.
+
+> **RESOLVED 2026-07-29, Task 3.3 — the condition IS now met.** `scope: 'media'`
+> (`EffectRegistration.scope`, `lib/theming/effects/index.ts`) lets a registration route the
+> SAME wrapper shape (`EffectRenderer`: `{ effect, index, item, handles, config, mediaStyle,
+> children } => ReactNode`) to wrap the media element itself instead of the whole item
+> renderer — delivered via `MediaEffectsContext` (`lib/theming/effects/media-effects-context.tsx`)
+> to `SegmentMedia`, not a new prop (verified: neither brand repo forwards extra props to
+> `SegmentMedia` — see the task report). The blocker named above was precise: "no way to ask
+> core to build a second [media element]". A media-scope renderer now CAN — it receives
+> `mediaStyle`, the exact merged style (crop + style-effects/ken-burns + grade)
+> `SegmentMedia` computed for its OWN element, so a second `<OffthreadVideo>` built inside the
+> effect renderer carries the identical treatment without recomputing it and risking drift.
+> Nothing else about the wrapper contract changed — `item`/`handles`/`config` were already
+> there — so `blend` needs no further core capability to be authored as a brand registration.
+>
+> **What a brand writes to register `blend` under this scope** (illustrative — this is what
+> PP's `brand-lib/segments/FootageSegment.tsx:122-188` reduces to, not a promotion of it into
+> core; PP itself stays read-only per the phase's scope rule):
+>
+> ```tsx
+> const BlendEffect: EffectRenderer = ({ item, handles, config, mediaStyle, children }) => {
+>   const cfg = config as { to: string; angle?: number; startPct?: number; endPct?: number; softness?: number };
+>   const secondSrc = resolveMediaSource(cfg.to, item.kind as MediaRole); // core's rule, or the brand's own override
+>   return (
+>     <>
+>       {children}
+>       <OffthreadVideo
+>         src={secondSrc.startsWith('http') ? secondSrc : staticFile(secondSrc)}
+>         muted
+>         // same trim math SegmentMedia uses for `item` itself — the effect has
+>         // `item`/`handles`, everything that math needs.
+>         startFrom={/* … */}
+>         endAt={/* … */}
+>         style={{ ...mediaStyle, maskImage: gradientMask(cfg) }} // mediaStyle: identical crop/grade/ken-burns
+>       />
+>     </>
+>   );
+> };
+>
+> const theme: CompositionTheme = {
+>   // …
+>   effects: {
+>     blend: {
+>       renderer: BlendEffect,
+>       scope: 'media',
+>       config: { to: 'br_vizualizace_zelen_vic.mp4', angle: 30, startPct: 30, endPct: 65, softness: 40 },
+>     },
+>   },
+> };
+> ```
+>
+> **What is still missing, precisely, so this is not overstated:** the mask math itself
+> (`gradientMask(cfg)`, PP's own angle lookup + softness ramp) is brand code either way —
+> core does not generalize a gradient-mask primitive, and nothing here asks it to. What
+> changed is that the renderer now has a legal SEAM to build the second element at all,
+> where before it had none. **Promoting `blend` into core** — moving this shape into
+> `CORE_EFFECT_RENDERERS` and having PP delete its own registration (the two-sided promotion
+> mechanics in §2) — is a SEPARATE future change: core-only still binds this phase, PP is
+> read-only, and the promotion itself needs its own criterion-3 count (does a second brand
+> want a gradient-mask cross-blend, not just PP). Re-verified command, anchored the same way as
+> above: `grep -rn "scope?:" lib/theming lib/reel-config-base lib/render` now returns exactly
+> **1** hit, `lib/theming/effects/index.ts` (`EffectRegistration.scope`) — no longer 0, which
+> is the whole point; `BrandTheme.effects` in `lib/theming/types.ts` carries the field only
+> through that same `EffectRegistration` type, not a second declaration of its own.
 
 #### `ken-burns` — core, but not yet on the ordinary contract
 

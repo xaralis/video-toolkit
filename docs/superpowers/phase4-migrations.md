@@ -1560,3 +1560,60 @@ style-effect axis**, not before. No code changes to either brand repo (both are 
 for this task); the fix, when needed, is for `PhotoSegment.tsx` and `RoostSegment.tsx` to
 accept and forward a `styleEffects` prop the same way they'd need to for `tokens` or
 `resolveMediaSource` today.
+
+## Task 3.3 — `scope: 'media'` via React context
+
+### 3.3-a No brand action of any kind — the delivery mechanism is deliberately NOT a prop
+
+This task's whole design constraint (re-verified before writing any code, not assumed from
+the brief) is that neither brand forwards extra props to `SegmentMedia`:
+
+```
+grep -rn "<SegmentMedia" /Users/xaralis/Workspace/progpce/video-toolkit/projects /Users/xaralis/Workspace/progpce/video-toolkit/templates /Users/xaralis/Workspace/progpce/video-toolkit/brand-lib
+grep -rn "<SegmentMedia" /Users/xaralis/Workspace/roost/video-toolkit/projects /Users/xaralis/Workspace/roost/video-toolkit/templates
+```
+
+**PP: 12 `PhotoSegment.tsx:39` call sites** (11 projects + the template), all
+`<SegmentMedia item={mediaItem} handles={handles} />`, plus two more of the same shape in
+`brand-lib/segments/FootageSegment.tsx:218` and `brand-lib/segments/MultiClipSegment.tsx:54`
+— 14 total, none forwarding anything beyond `item`/`handles`. **roost: 2 call sites**
+(`RoostSegment.tsx:97` project, `:109` template), `{item, handles, config}` — same absence.
+
+Because of that, `scope: 'media'` is delivered via `MediaEffectsContext`
+(`lib/theming/effects/media-effects-context.tsx`), read by `SegmentMedia` through
+`useContext`, not through a new field on `VideoRenderProps`. **This is precisely why no
+brand file needs to change to benefit from — or be broken by — this task**: the context
+value is supplied one level up, at `renderVideoItemNode` (which the brand's own renderer is
+already rendered underneath), and read back down inside `SegmentMedia` regardless of what
+props the brand's own call site passes. A brand that never authors a `scope: 'media'`
+effect sees `useMediaEffects()` return `[]` (the context's own default) and nothing changes;
+a brand that DOES register one gets it applied with no `PhotoSegment.tsx`/`RoostSegment.tsx`
+edit required, unlike the `styleEffects` gap 3.2-c documents.
+
+**Graded: PARITY-PRESERVING, unconditionally** — this task changes core's render path only
+(`SegmentMedia`, `GenericMultiClip`, `renderVideoItemNode`), all internal to `lib/`.  Default
+`scope` (unset, i.e. `'clip'`) is unchanged for every existing effect and registration in
+either brand repo, so nothing already rendering moves. No brand file changes; no action for
+either repo now or later, unless a brand chooses to author a NEW `scope: 'media'`
+registration — see `phase4-extension-contract.md`'s resolved `blend` verdict for what that
+registration would look like.
+
+### 3.3-b The `blend` verdict — resolved, not promoted
+
+`phase4-extension-contract.md` recorded PP's `blend` as **"PROMOTE, conditional on an effect
+scope that participates in constructing the media element rather than wrapping it"**, naming
+this task as the one to earn or deny the condition. **The condition is now MET**: a
+`scope: 'media'` registration receives `EffectRenderProps.mediaStyle` — the exact merged
+style (crop + style-effects/ken-burns + grade) `SegmentMedia` computed for its own element —
+so a renderer CAN construct a second media element (`blend`'s `to: '…mp4'`) carrying the
+identical treatment without recomputing it. See `phase4-extension-contract.md`'s "RESOLVED
+2026-07-29, Task 3.3" note for the full argument and the code sample of what such a
+registration looks like.
+
+**This is a capability unlock, not a promotion.** `blend` itself is not moved into core here
+— PP stays read-only for this task (per `CONSTRAINTS.md`), and promoting the kind is a
+separate future change needing its own criterion-3 count (a second brand wanting a
+gradient-mask cross-blend). No PP file changes as a result of this task; PP's own
+`brand-lib/segments/FootageSegment.tsx:122-188` implementation is untouched and keeps
+rendering exactly as it does today, `blend` read as an item-level effect by PP's OWN video
+renderer, same as before this task.
