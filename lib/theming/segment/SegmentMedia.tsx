@@ -108,6 +108,15 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
     objectPosition: merged.objectPosition,
     ...(merged.transform ? { transform: merged.transform, transformOrigin: merged.transformOrigin } : {}),
     ...(merged.filter ? { filter: merged.filter } : {}),
+    // CRITICAL 1 fix (Task 3.2 review, round 1): `opacity` is in the
+    // MediaStyleFragment contract and `composeMediaStyle` multiplies it, but
+    // nothing read it back out until now — a style effect setting `opacity`
+    // rendered fully green and changed nothing on screen. Conditioned on
+    // `!== undefined` (not truthiness — `opacity: 0` is a legitimate fully
+    // transparent value) so parity holds: crop/grade never set `opacity`, so
+    // when no style effect does either, `merged.opacity` stays `undefined`
+    // and this key is omitted exactly as before this fix existed.
+    ...(merged.opacity !== undefined ? { opacity: merged.opacity } : {}),
   };
 
   if (useImg) {

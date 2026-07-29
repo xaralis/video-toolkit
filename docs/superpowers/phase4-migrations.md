@@ -1455,8 +1455,11 @@ what that does or doesn't do to its promotion eligibility — is analysed in
 
 The task brief names this as the check to re-run rather than trust: `findKenBurns`
 (pre-3.2) took the FIRST matching, ENABLED entry; the new generic `applyStyleEffects`
-pipeline was designed to match that exactly (first-enabled-per-type wins, a later entry of
-the same type is ignored whether enabled or not) — but only because no fixture in either
+pipeline was designed to match that exactly — the first ENABLED entry of a type wins, and
+a later entry of that SAME type is then ignored regardless of its own `enabled` value
+(fixed 2026-07-29, round 1: this is NOT "any first entry blocks a later one" — a DISABLED
+first entry does not consume the slot, so a later enabled entry of the same type still
+wins, exactly like `Array.find` skipping past it) — but only because no fixture in either
 brand repo exercises two `ken-burns` entries on one item, so this was never forced to
 matter in practice. Verified, not assumed:
 
@@ -1504,13 +1507,56 @@ No config in either brand repo is affected by this decision today (see 3.2-a) �
 recorded so a future duplicate-authoring config gets the INTENDED behaviour, not a surprise.
 No brand action required.
 
-### 3.2-c No other brand action
+### 3.2-c The render path itself needed no brand action — but a LATENT trap does (corrected 2026-07-29, round 1)
 
 This task rebuilt the crop/ken-burns/grade merge inside `SegmentMedia` and made the
 reserved-effect-type set derived rather than listed. Both are internal to core's render
 path — `segment-media-merge-baseline.test.tsx` (Task 3.1's baseline, 25 assertions across
 the 18-cell matrix plus the dedicated objectPosition/transformOrigin pairing test) stays
 green, UNMODIFIED, across the rewrite, and the `MinimalReel` 5-frame hash table and the
-20-kind pixel-gate matrix are unchanged. Neither brand repo registers anything on the new
-`theme.styleEffects` axis (it did not exist before this task), so there is nothing to
-migrate there either.
+20-kind pixel-gate matrix are unchanged.
+
+**The original version of this section stopped there and said "nothing to migrate." That
+was wrong** — it checked only whether either brand registers on the new
+`theme.styleEffects` axis (neither does; the axis did not exist before this task), and
+missed that both brands ALREADY bypass the axis entirely for a different, pre-existing
+reason: both replace core's per-kind video renderer with their OWN, and that renderer calls
+`SegmentMedia` directly without forwarding `styleEffects` (or several of `SegmentMedia`'s
+other narrowly-threaded props). Verified with an ANCHORED grep (call sites only, not every
+`SegmentMedia` mention):
+
+```
+grep -rn "<SegmentMedia" /Users/xaralis/Workspace/progpce/video-toolkit/projects /Users/xaralis/Workspace/progpce/video-toolkit/templates
+grep -rn "<SegmentMedia" /Users/xaralis/Workspace/roost/video-toolkit/projects /Users/xaralis/Workspace/roost/video-toolkit/templates
+```
+
+**PP: 12 call sites**, one per project (11) plus the template, ALL identical:
+`src/segments/PhotoSegment.tsx:39` — `<SegmentMedia item={mediaItem} handles={handles} />`.
+`PhotoSegment`'s own `Props` (`{ segment, mediaItem, handles }`) is a brand-specific
+reconstruction, not `VideoRenderProps` — so it never receives `styleEffects` (or `tokens`,
+or `resolveMediaSource`) from `renderVideoItemNode` in the first place; there is nothing to
+forward because the brand renderer's prop shape stops it upstream of this call.
+
+**roost: 2 call sites** (the template and its one real project), both
+`src/segments/RoostSegment.tsx` — `<SegmentMedia item={item} handles={handles}
+config={config} />` (project, line 97) / `<SegmentMedia item={resolved} handles={handles}
+config={config} />` (template, line 109). Same shape, same gap.
+
+**No regression exists TODAY.** `resolveStyleEffectRenderer` falls back to
+`CORE_STYLE_EFFECT_RENDERERS` when its registry argument is `undefined` (see
+`lib/theming/effects/style-effect.ts`), so `SegmentMedia` called with no `styleEffects` at
+all still resolves core's own `ken-burns` correctly — every existing segment in every
+project renders exactly as before. This is a LATENT trap, not a live bug: the moment either
+brand registers `theme.styleEffects` (to ship its own ken-burns replacement, or another
+style effect), that registration is a silent no-op on every segment that goes through
+`PhotoSegment`/`RoostSegment` — it would only take effect on a hypothetical segment
+rendered through core's OWN generic instead. This is the exact same shape as the
+pre-existing `resolveMediaSource`/`resolveAudioSource` threading gap these same files
+already have (see `lib/theming/types.ts`'s notes on which axes actually honour a wholesale
+override) — not a new category of risk, but a new instance of a known one.
+
+**Graded: PARITY-PRESERVING today; a migration item for WHENEVER either brand adopts the
+style-effect axis**, not before. No code changes to either brand repo (both are read-only
+for this task); the fix, when needed, is for `PhotoSegment.tsx` and `RoostSegment.tsx` to
+accept and forward a `styleEffects` prop the same way they'd need to for `tokens` or
+`resolveMediaSource` today.

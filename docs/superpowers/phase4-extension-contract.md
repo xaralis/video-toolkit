@@ -194,9 +194,12 @@ node it is handed, and has no way to ask core to build a second one. Rendering a
 > **Verdict: PROMOTE, conditional on an effect scope that participates in constructing the
 > media element rather than wrapping it** — the `scope: 'media'` idea the plan named.
 >
-> **Owning task: Workstream 3 (3.2–3.4), none of which has landed.** Verified:
-> `grep -rn "scope" lib/theming lib/reel-config-base lib/render` returns no `scope:` field
-> of any kind. Re-evaluate `blend` when that lands; do not promote it before.
+> **Owning task: Workstream 3 (3.2–3.4), none of which has landed.** Verified — MINOR fix,
+> round 1: the command as first written here (`grep -rn "scope" …`, no trailing colon) also
+> matches every prose use of the word "scope" and returns 26 hits, none of them a field; the
+> command that actually demonstrates "no `scope:` field of any kind" is anchored on the colon:
+> `grep -rn "scope:" lib/theming lib/reel-config-base lib/render` returns **0**. Re-evaluate
+> `blend` when that lands; do not promote it before.
 
 The plan recorded this as **promote**, on the premise that "Task 3.3 added it". It did not.
 See §5.
@@ -206,9 +209,11 @@ See §5.
 > `StyleEffectRenderProps`), but that shape is `{ effect, index, item, frame, durationInFrames,
 > focalX, focalY } => MediaStyleFragment` — a pure function returning a style FRAGMENT for the
 > ONE media element SegmentMedia already owns. It still cannot ask core to construct a SECOND
-> media element (`blend`'s `to: '…mp4'`), which is the exact blocker named above. Verified:
-> `grep -n "scope" lib/theming lib/reel-config-base lib/render` (2026-07-29, post-3.2) still
-> returns no `scope:` field.
+> media element (`blend`'s `to: '…mp4'`), which is the exact blocker named above. Verified,
+> anchored on the colon (an unanchored `grep -rn "scope"` over the same trees matches prose
+> too and returns 26 hits — see the correction just above):
+> `grep -rn "scope:" lib/theming lib/reel-config-base lib/render` (2026-07-29, post-3.2)
+> still returns **0** — no `scope:` field of any kind.
 >
 > The seam Task 3.2 deliberately leaves open for 3.3: `StyleEffectRenderProps` carries `item`
 > (the whole `VideoItem`, including its `crop`/`grade`/`focalX`/`focalY`) and returns a
@@ -255,6 +260,38 @@ enable check. A second reserved type would need one too.
 > exists, unchanged, as a standalone utility, but SegmentMedia no longer calls it — the generic
 > pipeline handles `enabled` for every style type uniformly). A second style-effect type gets
 > `enabled: false` support for free, with no new file to touch.
+>
+> **IMPORTANT 3, corrected 2026-07-29, round 1 — "same contract as grain/grade" overstated
+> the parity.** It is true on the RENDER contract (`resolveRegistered`, one resolution rule,
+> no name check) — that part stands. It is **not yet true on the EDITOR contract**: `grain`
+> and `grade` each get a catalog entry with declared `params` (`CORE_EFFECTS`,
+> `lib/editor/app/editor-meta.ts`), so the inspector renders real controls for them. A style
+> effect has **no editor surface at all** — `effectsFromTheme` (`editor-meta.ts:127`) iterates
+> only `theme.effects`, `grep -rn styleEffects lib/editor/app/` returns zero hits, and any
+> `params` a brand declares on a `StyleEffectRegistration` are dead: nothing ever calls
+> `registrationParams` against the style registry. The precise, honest statement is
+> **"renderable, not yet authorable or editable in the reel editor — owned by Task 4.4."**
+>
+> The one fact that makes this load-bearing rather than cosmetic: it **removes a workaround
+> that used to exist**. Before Task 3.2, a brand wanting an editor entry for `ken-burns` (or
+> a style-effect type it planned to add) could register it on `theme.effects` — inert at
+> RENDER time (reserved, skipped by `applyEffects`) but visible at EDIT time, because
+> `editorMetaFromTheme` read `theme.effects` regardless of reserved status *before* Task
+> 3.2's derivation tightened that check. The derived reserved set now also governs
+> `effectsFromTheme`'s own skip (`isReservedEffectType(theme, type)`, `editor-meta.ts`), so
+> a `theme.effects` registration for a reserved type is now UNCONDITIONALLY invisible to the
+> editor too — the workaround is gone, with nothing put in its place yet.
+>
+> **User ruling, 2026-07-29: DEFERRED and SCHEDULED, not a standing limitation.** Task 3.2
+> does not build the editor surface. It is not left as an open-ended known gap either —
+> it has a task number: **Task 4.4, Workstream 4 ("close the write-only props")**. A
+> registered style effect that renders but cannot be authored or edited is a write-only
+> prop, the same shape `anchoredOverlays` is in Task 4.1; it belongs in the same cleanup as
+> that, alongside closing core's five generic WRAPPER effects' own missing `params` (the
+> pre-existing gap this carries forward from Workstream 2 — there is no effect-axis
+> equivalent of the transition differential pin yet, for either axis). Recorded here so the
+> gap is TRACKED, not tolerated — the "same contract as grain/grade" line was, before this
+> correction, quietly implying the editor half was already closed too.
 
 ### Transitions
 

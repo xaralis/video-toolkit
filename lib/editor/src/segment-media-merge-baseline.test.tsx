@@ -63,6 +63,18 @@ const FRAME = 25;
 
 const CROP = { width: 0.5, x: 0.3, y: 0.7 } as const;
 const KB_DIRECTION = { type: 'ken-burns', direction: 'left' } as const;
+// MINOR, closed (Task 3.2 review, round 1 — brief's own wording): before this
+// addition only `direction: 'left'` was exercised, and 'in' emits NO
+// translate (kenBurnsStyle's `x`/`y` are both 0 unless direction is
+// 'left'/'up' — see ../../theming/effects/ken-burns.ts). Because `scale(A)
+// scale(B)` commutes visually regardless of concatenation order while
+// `scale(A) translate(x,y)` does not, 'left' is what makes ORDER a real
+// picture-level fact; 'in' alone would let a reordering regression pass
+// unnoticed on the picture even though this file's EXACT-STRING assertions
+// would still catch it as a string diff. Adding 'in' widens the exact-string
+// pin to the OTHER branch of the direction shorthand. This ADDS a cell; it
+// does not touch any existing assertion.
+const KB_DIRECTION_IN = { type: 'ken-burns', direction: 'in' } as const;
 const KB_FROMTO = {
   type: 'ken-burns',
   fromX: 0.2,
@@ -83,6 +95,7 @@ const kenBurnses: Array<[string, any]> = [
   ['no ken-burns', undefined],
   ['direction ken-burns', KB_DIRECTION],
   ['from/to ken-burns', KB_FROMTO],
+  ['direction ken-burns (in)', KB_DIRECTION_IN],
 ];
 const grades: Array<[string, any]> = [
   ['no grade', undefined],
@@ -95,6 +108,10 @@ const CROP_POS = '30% 70%'; // cropCoverStyle: crop.x/crop.y win over focalX/foc
 const FOCAL_POS = '30% 80%'; // no crop: focalX/focalY alone
 const KB_FROMTO_POS = '31.525717950314885% 25.36762393375318%';
 const KB_DIRECTION_TRANSFORM = 'scale(1.0966666666666667) translate(-16.666666666666668px, 0px)';
+// Derived by RUNNING kenBurnsStyle, same rule as every other literal here —
+// see the module comment. `direction: 'in'` at frame 25/90 → scale
+// 1.08 + (25/90)*0.12, translate(0px, 0px) (neither 'left' nor 'up').
+const KB_DIRECTION_IN_TRANSFORM = 'scale(1.1133333333333335) translate(0px, 0px)';
 const KB_FROMTO_TRANSFORM = 'scale(1.1076285897515745)';
 const FILTER = 'brightness(1.1) contrast(1.2) saturate(0.9)';
 // url(#…) is APPENDED — it runs last in the chain, after the three native
@@ -172,6 +189,26 @@ const EXPECTED: Record<string, Merged> = {
     transformOrigin: KB_FROMTO_POS,
     filter: FILTER_WB,
   },
+  // ADDED (Task 3.2 review, round 1, MINOR — see KB_DIRECTION_IN above): the
+  // 'in' branch of the direction shorthand, not exercised before this.
+  'no crop | direction ken-burns (in) | no grade': {
+    transform: KB_DIRECTION_IN_TRANSFORM,
+    objectPosition: FOCAL_POS,
+    transformOrigin: undefined,
+    filter: undefined,
+  },
+  'no crop | direction ken-burns (in) | grade': {
+    transform: KB_DIRECTION_IN_TRANSFORM,
+    objectPosition: FOCAL_POS,
+    transformOrigin: undefined,
+    filter: FILTER,
+  },
+  'no crop | direction ken-burns (in) | grade + white-balance': {
+    transform: KB_DIRECTION_IN_TRANSFORM,
+    objectPosition: FOCAL_POS,
+    transformOrigin: undefined,
+    filter: FILTER_WB,
+  },
   // -- crop -------------------------------------------------------------
   'crop | no ken-burns | no grade': {
     transform: 'scale(2)',
@@ -231,7 +268,40 @@ const EXPECTED: Record<string, Merged> = {
     transformOrigin: KB_FROMTO_POS,
     filter: FILTER_WB,
   },
+  // ADDED (Task 3.2 review, round 1, MINOR — see KB_DIRECTION_IN above).
+  'crop | direction ken-burns (in) | no grade': {
+    transform: `scale(2) ${KB_DIRECTION_IN_TRANSFORM}`,
+    objectPosition: CROP_POS,
+    transformOrigin: CROP_POS,
+    filter: undefined,
+  },
+  'crop | direction ken-burns (in) | grade': {
+    transform: `scale(2) ${KB_DIRECTION_IN_TRANSFORM}`,
+    objectPosition: CROP_POS,
+    transformOrigin: CROP_POS,
+    filter: FILTER,
+  },
+  'crop | direction ken-burns (in) | grade + white-balance': {
+    transform: `scale(2) ${KB_DIRECTION_IN_TRANSFORM}`,
+    objectPosition: CROP_POS,
+    transformOrigin: CROP_POS,
+    filter: FILTER_WB,
+  },
 };
+
+// MINOR, closed (Task 3.2 review, round 1): guard that EXPECTED has exactly
+// one entry per matrix cell — computed from the axis arrays themselves
+// (crops × kenBurnses × grades), not a hardcoded count, so it stays correct
+// as cells are added (as just happened above) rather than going stale. A
+// missing or an orphaned EXTRA key in EXPECTED was previously invisible: the
+// `describe.each`-style loop below only ever looks UP a key from EXPECTED, it
+// never iterates EXPECTED's own keys, so a stale key sits there unchecked and
+// a missing one silently gets `undefined` compared via `.toEqual` (which
+// would still fail — see the note in the loop below for what this guard adds
+// on top of that: an EXTRA key, not a missing one).
+it('EXPECTED has exactly one entry per matrix cell — no stale or orphaned key', () => {
+  expect(Object.keys(EXPECTED)).toHaveLength(crops.length * kenBurnses.length * grades.length);
+});
 
 function renderCell(crop: any, kb: any, grade: any) {
   captured.img.length = 0;
