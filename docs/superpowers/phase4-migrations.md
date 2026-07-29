@@ -1681,11 +1681,31 @@ grep -rn "routing" /Users/xaralis/Workspace/roost/video-toolkit --exclude-dir=to
 registers its own renderer for ALL SIX video kinds
 (`composition-theme.tsx:165-172` — `clip`/`broll`/`multi-clip`/`photo`/`card`/`outro` all
 resolve to `ClipItem`/`BrollItem`/`MultiClipItem`/`PhotoItem`/`CardItem`/`OutroItem`, never to
-a core generic), and each of those (`templates/campaign-reels/src/config/video-item-renderers.tsx`)
-reads `anchoredOverlays` directly via `pickTitleOverlay(anchoredOverlays)`, feeding a
-`titleOverlaySpec` into the reused `FootageSegment` body itself. Core's generics — the only
-place this task's fix landed — are never invoked for PP's video track, so PP's title overlay
-was rendering correctly the whole time and this task changes nothing observable for PP.
+a core generic). Core's generics — the only place this task's fix landed — are never invoked
+for PP's video track, so this task changes nothing observable for PP.
+
+**CORRECTED (fix round 1) — only FOUR of those six renderers actually consume
+`anchoredOverlays`, not all six as this section originally claimed.** Verified against
+`templates/campaign-reels/src/config/video-item-renderers.tsx`: `ClipItem` (:126), `BrollItem`
+(:160), `MultiClipItem` (:200), and `PhotoItem` (:233) each destructure `anchoredOverlays` and
+call `pickTitleOverlay(anchoredOverlays)`, feeding a `titleOverlaySpec` into the reused
+`FootageSegment`/`MultiClipSegment` bodies. `CardItem` (:257) destructures `{ item: raw }`
+only; `OutroItem` (:270) is `() => <OutroSegment />` — **neither reads `anchoredOverlays` at
+all**. This is currently unreachable rather than a live gap: `lib/reel-config-base/derive-layered.ts:227`'s
+own comment says "card/outro carry none", and `buildOverlayItems` (called only for clip/photo's
+`overlays[]` array and broll/multi-clip's single `overlay`, at derive-layered.ts:328/330) never
+anchors an overlay to a card or outro segment — so PP's authoring format cannot currently
+produce one that would expose the gap. So: **four of the six (clip/broll/multi-clip/photo)
+consume it; card/outro consume none, currently unreachable because `buildOverlayItems` never
+anchors to a card or outro item.**
+
+**MINOR, also added in fix round 1** — this analysis covers the `campaign-reels` TEMPLATE
+only. PP's 11 live campaign projects each vendor their own `src/LayeredCampaignReel.tsx`
+calling `buildVideoNodes` directly with their own overlay assembly (e.g.
+`projects/pp-ricni-sauna/src/LayeredCampaignReel.tsx:23`) — none render through
+`LayeredReelComposition`, so `routeOverlays` (and this whole routing/delivery axis) never runs
+for a live cut. Only the template a new project is scaffolded from goes through the core
+composition. This strengthens the parity conclusion below, not weakens it.
 
 **roost does NOT set it anywhere outside its own `toolkit/` submodule** (the only hits there
 are core's own source + core's own test suite, vendored in).
