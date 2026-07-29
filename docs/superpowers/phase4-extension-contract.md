@@ -546,8 +546,15 @@ region and (b) a caption clipped by an item boundary the way an anchored overlay
 - **No editor surface.** A `captions` item is renderable but has no inspector controls or
   catalog entry — the same write-only shape Task 4.4 owns for style effects and the five core
   wrapper effects. Recorded here as tracked, not tolerated.
-- **No derivation.** `derive-layered.ts` does not emit `captions` items from a transcript
-  sidecar; authoring is manual (or a brand's own `/cut` step). Core's transcript helpers
+- **No derivation FROM A TRANSCRIPT.** Core's transcript helpers
   (`lib/transcripts/transcriptWindow`) produce the word shape the content bag wants, but
-  nothing wires them together automatically, deliberately: which clip's transcript becomes
+  nothing wires them together automatically — deliberately: which clip's transcript becomes
   which caption item is a cut decision.
+  **This is not the same as "`derive-layered` cannot emit a `captions` item".** It can, and
+  does the moment a cut config authors one: `buildOverlayItems`
+  (`lib/reel-config-base/derive-layered.ts:227-247`) passes the authored overlay `kind`
+  through verbatim (sole rewrite: `quote-pull → text` at `:239`) and `CutOverlaySpec.kind` is
+  plain `string` at `:29`. So authoring `{ kind: 'captions', … }` in a cut config is a
+  one-line change that reaches core's generic — which is precisely why a brand adopting this
+  track must delete its own caption mount in the same commit
+  (`phase4-migrations.md` § 4.3-a).

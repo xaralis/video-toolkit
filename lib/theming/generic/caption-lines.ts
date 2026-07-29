@@ -166,6 +166,18 @@ export interface CaptionTimes {
  * anchored route wrap an overlay item in a Sequence starting at that item's own
  * `startMs`, so ONE origin — the overlay item's `startMs` — is correct for both.
  *
+ * SUB-FRAME CAVEAT — this conversion is NOT exact, and the docblock used to
+ * imply it was. The origin subtracted here is `item.startMs` in MILLISECONDS,
+ * while the Sequence's local zero actually sits at
+ * `Math.round(item.startMs / 1000 * fps)` FRAMES. For a `startMs` that is not
+ * frame-aligned — and `derive-layered` builds one as
+ * `videoItem.startMs + appearAt` from arbitrary authored ms — the two differ by
+ * up to half a frame (±16.7 ms at 30 fps), so a line or lift-window boundary can
+ * resolve one frame early or late. That is the same rounding `msToFrames`
+ * already imposes on every other boundary in the composition, and correcting it
+ * would mean quantising caption times to the frame grid here (a worse contract:
+ * the caller's authored ms would stop round-tripping). Left deliberately.
+ *
  * Nothing is clamped. A word that starts before the origin gets a negative
  * `start` and is simply never active, which is what "the caption began before
  * this item" should look like.

@@ -285,10 +285,25 @@ describe('captions coexist with the anchored route (the design criterion)', () =
     expect(root(container)!.style.bottom).toBe('42%');
   });
 
-  it('a TRACK-routed caption is NOT clipped by the video item beneath it', () => {
-    // The video item ends at 9000 ms; the caption item runs to 14000 ms. On the
-    // track route the caption owns its own Sequence, so it still draws at
-    // 11000 ms — the property that motivated choosing 'track' as the default.
+  it('routes a caption to its OWN top-level Sequence, not into the video item', () => {
+    // The video item ends at 9000 ms; the caption item runs to 14000 ms, and
+    // still draws at 11000 ms.
+    //
+    // WHAT THIS DOES AND DOES NOT PIN (corrected, fix round 1 — it was named
+    // "…is NOT clipped by the video item beneath it", which it cannot show).
+    // The `Sequence` mock at the top of this file models the frame OFFSET only
+    // and ignores `durationInFrames` entirely — it never clips — so an
+    // ANCHORED caption would pass this identical assertion. What it genuinely
+    // pins is the ROUTING/ASSEMBLY half: with no `routing` registration the
+    // item lands on the track list and is assembled independently of the video
+    // item, surviving past that item's own `endMs`.
+    //
+    // The non-clipping property itself — the reason 'track' is the default — is
+    // an a-priori consequence of Remotion's real `<Sequence durationInFrames>`
+    // (track: the caption's own [startMs, endMs); anchored: nested inside the
+    // video item's, so bounded by it). Making the mock clip would mean
+    // reimplementing Remotion inside a test file to assert a property of
+    // Remotion; deliberately not done.
     const shortClip: VideoItem = { ...clip, endMs: 9000, sourceOutMs: 9000 };
     const { container } = draw(reel([captionsItem()], [shortClip]), theme(), 330);
     expect(words(container)).toEqual(['second line']);

@@ -1864,23 +1864,61 @@ git grep -n "<CaptionStrip"
 #   brands/progresivni-pardubice/BRAND-RULES.md:187                  (prose)
 
 # roost @ ffca36d — /Users/xaralis/Workspace/roost/video-toolkit
-git grep -n "kind: *['\"]captions['\"]"            # NO hits (exit 1)
-git grep -n "caption" | grep -v '^toolkit/'        # 4 hits, ALL prose/typography:
-#   brands/roost/brand.json:43 ("Coda Caption" — a FONT NAME), :51 (a dead `reels.caption`
-#   block, see below), projects/roost-reel-01/README.md:181, templates/roost-reels/README.md:181
-git grep -n "caption" | wc -l                      # 3 files total, incl. toolkit/ — see note
+git grep -n "kind: *['\"]captions['\"]"      # 0 hits (exit 1)
+git grep -n "caption"                        # UNFILTERED: 4 hits in 3 files, ALL inert:
+#   brands/roost/brand.json:43   "Coda Caption" — a FONT NAME
+#   brands/roost/brand.json:51   a dead `reels.caption` block (see below)
+#   projects/roost-reel-01/README.md:181  , templates/roost-reels/README.md:181  — prose
 ```
 
-**Why a double-render is impossible today, a priori.** Core's new generic fires for exactly
-one condition: an overlay item with `content.kind === 'captions'`. Neither brand authors that
-kind (0 hits above), and core's own derivation cannot produce one either —
-`git grep -n "caption" lib/reel-config-base/` returns only two comments in
-`base-types.ts:1` and `segment-base-schemas.ts:1`, and the overlay kinds `derive-layered.ts`
-emits are `chevron`, `watermark`, `disclaimer` and the video kinds, never `captions`. PP's
-captions come from a different mechanism entirely — `segment.caption` / `transcript` props read
-by `FootageSegment`, which mounts `CaptionStrip` **inside the video item's own renderer**. That
-path is untouched. For a PP reel to render two caption tracks, someone would have to author a
-`captions` overlay item, which is a new authoring act, not a consequence of this change.
+*(Fix round 1, MINOR: this block previously recorded "3 files total" against a `wc -l` that
+counts HITS, and paired it with a `| grep -v '^toolkit/'` filter justified as making the
+exclusion visible. Both were wrong. The unfiltered count is **4 hits across 3 files**
+(`brand.json` carries two), and `toolkit` is a git **submodule** — `git ls-files -s toolkit`
+shows mode `160000`, a gitlink — so `git grep` never descends into it and the filter removed
+nothing. The filter is dropped rather than re-explained: with a submodule, `git grep` from
+inside the repo already excludes the vendored toolkit by tracking, which is the whole
+technique CONSTRAINTS.md prescribes.)*
+
+**Why no brand renders two caption tracks today — and what would make one.** Core's new
+generic fires for exactly one condition: an overlay item with `content.kind === 'captions'`.
+**Neither brand authors that kind.** Verified independently twice, at PP `0e2dfb9`:
+
+```bash
+git grep -n "kind: *['\"]captions['\"]"          # 0 hits (exit 1)
+git grep -n "'captions'\|\"captions\"" -- '*.ts' '*.tsx'   # 0 hits ANYWHERE (exit 1)
+```
+
+> **CORRECTED, fix round 1 — an earlier version of this paragraph claimed core's derivation
+> "cannot produce" a `captions` overlay, and enumerated `derive-layered.ts`'s emitted overlay
+> kinds as "`chevron`, `watermark`, `disclaimer`". Both were false.** `buildOverlayItems`
+> (`lib/reel-config-base/derive-layered.ts:227-247`) passes the authored overlay `kind`
+> **through verbatim** — the sole rewrite is `quote-pull → text` at `:239` — and
+> `CutOverlaySpec.kind` is typed plain `string` at `:29`, not a closed enum. The enumeration
+> was already refuted by the tree: the same pass-through emits PP's `title`, `stat-callout`,
+> `source-tag`, `party-logos`, `claim-plate` and `update-badge`.
+>
+> **The true statement, which is the one to rely on:** `deriveLayered` emits a `captions`
+> overlay item **iff a cut config authors one**; neither brand does (0 hits, commands above).
+>
+> **So the live failure scenario is a ONE-LINE authoring change, not a core or brand-lib
+> edit.** A PP author adding `overlays: [{ kind: 'captions', appearAt, durationMs, … }]` to a
+> cut config gets a derived `captions` overlay item, core's generic draws it, and
+> `FootageSegment` goes on mounting `CaptionStrip` off `segment.caption`/`transcript` —
+> which is independent of that overlay. **That is two caption tracks.** It is still not
+> caused by this change (nothing renders differently until someone authors the kind), but
+> "authoring it is a one-line change away" is a materially different warning from "derivation
+> cannot produce it", and a brand adopting core's caption track must delete its own mount in
+> the same commit — see the two-sided move below.
+>
+> This is the **third** false claim of one species in this file: an enumeration presented as
+> exhaustive. Where this file names a set, prefer the rule that generates it (here: "kinds
+> pass through verbatim") over a list of today's members.
+
+PP's captions come from a structurally different mechanism — `segment.caption` / `transcript`
+props read by `FootageSegment`, which mounts `CaptionStrip` **inside the video item's own
+renderer** (`FootageSegment.tsx:241`). That path is untouched by this task, which is exactly
+why it would coexist with a core caption track rather than replace it.
 
 **The tokens are likewise inert today, and the reason is worth recording.** `theme.tokens?.caption`
 is `undefined` for both brands: `git grep -n "tokens:" -- '*.ts' '*.tsx'` in PP returns two
