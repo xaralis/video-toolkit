@@ -202,14 +202,32 @@ const NODE_KINDS = KINDS.filter((k) => {
 });
 
 describe('one-sided presentations vs native two-input nodes', () => {
-  // FIVE since the `fade-coal` correction: the deprecated alias now dips to
-  // black, and a dip cannot be expressed as a one-sided presentation, so it
-  // joined the node set. That is a real consequence and is graded in
-  // docs/superpowers/phase4-migrations.md § 2.3-a / § 2.3-d, not an accident:
-  // a PP boundary driven through `presentationFor` gets a HARD CUT plus the
-  // warning below, exactly as the four two-input nodes already do.
-  it('exactly five core kinds are native two-input nodes', () => {
-    expect([...NODE_KINDS].sort()).toEqual(['checkerboard', 'fade-coal', 'pixelate', 'scanline-glitch', 'wipe']);
+  // FOUR, and the count is a measurement of the PROBE, not of the catalog.
+  // `fade-to-color` is a node only when its `color` key resolves — a dip has no
+  // one-sided form, but a colourless `fade-to-color` is not a dip at all, it is
+  // the plain `fade()`. `probeTransitionFor` deliberately skips `accent`-typed
+  // sub-options (there is no in-bounds key to invent for a palette core does
+  // not own), so the probe carries no colour and the kind resolves one-sided
+  // here. That CONDITIONAL ARITY is reviewed and accepted, and it is pinned
+  // directly — with and without a colour — in "a fade’s colour is a parameter"
+  // below, so it cannot drift unnoticed just because this list does not name it.
+  //
+  // The fifth entry used to be a brand-named fade kind hardwired to a black
+  // core had chosen for it. It was removed from core entirely; the colour is
+  // the brand's to name now, which is why the arity became conditional.
+  it('exactly four core kinds are ALWAYS native two-input nodes', () => {
+    expect([...NODE_KINDS].sort()).toEqual(['checkerboard', 'pixelate', 'scanline-glitch', 'wipe']);
+  });
+
+  // The other half of the conditional arity, stated where the list above is —
+  // otherwise "four" reads as "and `fade-to-color` never is", which is false.
+  it('fade-to-color joins them the moment a colour resolves', () => {
+    const withColor = resolveTransition(
+      { kind: 'fade-to-color', frames: 15, color: 'primary' } as never,
+      { ...DIMS, palette: PALETTE },
+    );
+    const without = resolveTransition({ kind: 'fade-to-color', frames: 15 } as never, { ...DIMS, palette: PALETTE });
+    expect([isTransitionNode(withColor!), isTransitionNode(without!)]).toEqual([true, false]);
   });
 
   // THE LIVE TRAP. Six files in the PP brand repo call `presentationFor` and
@@ -228,9 +246,9 @@ describe('one-sided presentations vs native two-input nodes', () => {
         expect(presentationFor(transition as never, DIMS)).toBeNull();
         expect(presentationFor(transition as never, DIMS)).toBeNull();
       }
-      // Filtered on HARD CUT rather than counting every call: `fade-coal` is
-      // both a node AND deprecated, so it legitimately emits a second, unrelated
-      // warning. What is pinned is one degradation warning per node kind.
+      // Filtered on HARD CUT rather than counting every call: a kind may
+      // legitimately emit other, unrelated warnings. What is pinned is exactly
+      // one degradation warning per node kind.
       const hardCut = warn.mock.calls.filter(([m]) => String(m).includes('HARD CUT'));
       expect(hardCut).toHaveLength(NODE_KINDS.length);
       for (const kind of NODE_KINDS) {
@@ -394,21 +412,10 @@ describe.each(NODE_KINDS)('two-input node %s delivers every authored param', (ki
     (o) => o.type !== 'accent' && o.type !== 'string' && o.type !== 'color',
   );
 
-  // `fade-coal` is the ONE documented exception: it is a DEPRECATED ALIAS, and
-  // giving it a knob would invite configuring what one should be migrating off.
-  // Its single "param" — the black it dips through — is fixed by definition, and
-  // is pinned by DOM assertion in "fade-coal dips through BLACK at the midpoint".
-  // The successor kind, `fade-to-color`, is where the tunable colour lives.
-  const PARAMLESS_BY_DESIGN = ['fade-coal'];
-
-  // Asserted rather than skipped, in both directions: a knob appearing on the
-  // deprecated alias goes red here just as loudly as a knob vanishing from a
-  // real node.
+  // Asserted rather than skipped: a knob vanishing from a node goes red here
+  // rather than quietly emptying the differential check below.
   it('declares at least one tunable param for this check to bite on', () => {
-    expect({ kind, tunable: tunable.length > 0 }).toEqual({
-      kind,
-      tunable: !PARAMLESS_BY_DESIGN.includes(kind),
-    });
+    expect({ kind, tunable: tunable.length > 0 }).toEqual({ kind, tunable: true });
   });
 
   it.each(tunable.map((o) => [o.prop, o.type, o.options] as const))(
@@ -915,9 +922,9 @@ describe('transitionNodeFor is the render path', () => {
 // `from === null` is its LEADING edge. Until this task the missing side was
 // simply not drawn, and every kind whose EXITING branch is the identity
 // function therefore did nothing at all as a `transitionOut` — measured, not
-// assumed: `fade`, `dissolve`, `fade-coal`, `burn`, `clock-wipe`, `iris`,
-// `gradient-wipe` (the brief's seven) and `checkerboard`, which Task 2.1
-// deliberately left drawing no grid there.
+// assumed: `fade`, `dissolve`, a colourless `fade-to-color`, `burn`,
+// `clock-wipe`, `iris`, `gradient-wipe` (the brief's seven) and `checkerboard`,
+// which Task 2.1 deliberately left drawing no grid there.
 //
 // The model's answer is that the missing neighbour IS the composition
 // background: a fade against `null` is a fade to `theme.background`. The
@@ -943,9 +950,14 @@ describe('a reel edge resolves the missing input to the theme background', () =>
     inputs: { from?: React.ReactNode | null; to?: React.ReactNode | null },
     progress: number,
     background = BG,
+    // `fade-to-color` needs both: a `color` key on the record, and a palette to
+    // resolve it against. Every other kind here is palette-independent, so both
+    // default to the empty case they have always used.
+    extra: Record<string, unknown> = {},
+    palette: readonly AccentSlot[] = [],
   ) => {
-    const t = defaultTransition(kind, { frames: 20 }) as unknown as TransitionRecord;
-    const Composite = transitionNodeFor(t, DIMS)!.composite;
+    const t = { ...(defaultTransition(kind, { frames: 20 }) as object), ...extra } as unknown as TransitionRecord;
+    const Composite = transitionNodeFor(t, { ...DIMS, palette })!.composite;
     return render(
       <Composite
         from={inputs.from === undefined ? CLIP : inputs.from}
@@ -955,7 +967,7 @@ describe('a reel edge resolves the missing input to the theme background', () =>
         width={1080}
         height={1920}
         fps={30}
-        palette={[]}
+        palette={palette}
         background={background}
       />,
     );
@@ -1004,31 +1016,43 @@ describe('a reel edge resolves the missing input to the theme background', () =>
     },
   );
 
-  // `fade-coal` left that family when it started actually dipping: it is a
-  // two-input node now, not a lifted one-sided presentation, so its trailing
-  // edge is the DIP resolving into the background rather than the background
-  // fading in linearly. Both must still be there — the black plate AND the
-  // theme background it hands off to — which is what this pins.
-  it('fade-coal dips to black and then resolves into the theme background at the trailing edge', () => {
+  // A `fade-to-color` WITH a colour is not in that family: it is a two-input
+  // node, not a lifted one-sided presentation, so its trailing edge is the DIP
+  // resolving into the background rather than the background fading in
+  // linearly. Both must still be there — the dip plate AND the theme background
+  // it hands off to — which is what this pins.
+  //
+  // Moved here from an identical pin that named a brand-derived kind hardwired
+  // to a black core had chosen. The kind is gone; the CAPABILITY is unchanged,
+  // and the colour is now the author's, resolved through the brand palette.
+  it('fade-to-color dips through its colour and then resolves into the theme background at the trailing edge', () => {
+    // `secondary` = #abcdef. Deliberately NOT black: a black here would be
+    // indistinguishable from a colour core had picked.
+    const DIP_RGB = 'rgb(171, 205, 239)';
     const at = (p: number) => {
-      const { container, unmount } = mount('fade-coal', { to: null }, p);
-      const plate = platesOf(container)[0];
-      const black = [...container.querySelectorAll('div')].filter(
-        (d) => d.style.backgroundColor === 'rgb(0, 0, 0)',
+      const { container, unmount } = mount(
+        'fade-to-color',
+        { to: null },
+        p,
+        BG,
+        { color: 'secondary' },
+        PALETTE,
       );
+      const plate = platesOf(container)[0];
+      const dip = [...container.querySelectorAll('div')].filter((d) => d.style.backgroundColor === DIP_RGB);
       const out = {
         bgPlates: platesOf(container).length,
         // The background plate is the INCOMING side here, held back behind the
-        // black exactly as a real clip would be.
+        // dip exactly as a real clip would be.
         bgOpacity: plate?.parentElement?.style.opacity ?? null,
-        blackOpacity: black[0]?.style.opacity ?? null,
+        dipOpacity: dip[0]?.style.opacity ?? null,
       };
       unmount();
       return out;
     };
     expect([at(0.25), at(0.75)]).toEqual([
-      { bgPlates: 1, bgOpacity: '0', blackOpacity: '0.5' },
-      { bgPlates: 1, bgOpacity: '0.5', blackOpacity: '1' },
+      { bgPlates: 1, bgOpacity: '0', dipOpacity: '0.5' },
+      { bgPlates: 1, bgOpacity: '0.5', dipOpacity: '1' },
     ]);
   });
 
@@ -1086,7 +1110,7 @@ describe('a reel edge resolves the missing input to the theme background', () =>
   // eight is the identity — so the incoming clip resolves out of the background
   // rather than out of nothing. Same mechanism, so one pin per family is enough
   // here; what must not happen is the plate silently disappearing.
-  it.each(['fade', 'dissolve', 'fade-coal', 'burn', 'gradient-wipe', 'clock-wipe', 'iris'] as const)(
+  it.each(['fade', 'dissolve', 'fade-to-color', 'burn', 'gradient-wipe', 'clock-wipe', 'iris'] as const)(
     '%s draws the theme background beneath the incoming clip at the leading edge',
     (kind) => {
       const { container } = mount(kind, { from: null }, 0.5);
@@ -1152,28 +1176,28 @@ describe('a reel edge resolves the missing input to the theme background', () =>
 // ---------------------------------------------------------------------------
 // HONEST VOCABULARY: A FADE'S COLOUR IS A PARAMETER (Phase 4 Task 2.3).
 //
-// Three kinds rendered byte-identically — `fade`, `dissolve` and `fade-coal`
-// were all `() => fade()` — and `fade-coal`'s label promised a dip to black
-// that never happened. The plan's reading, and the point of the task: A
-// MISLEADING NAME IS USUALLY A MISSING PARAMETER. `fade-coal` is not a rename,
-// it is a fade whose COLOUR was never exposed.
+// Three kinds rendered byte-identically — `fade`, `dissolve`, and a third whose
+// name was ONE BRAND'S COLOUR WORD, all `() => fade()` — while that third one's
+// label promised a dip that never happened. The plan's reading, and the point
+// of the task: A MISLEADING NAME IS USUALLY A MISSING PARAMETER. It was not a
+// rename; it was a fade whose COLOUR was never exposed.
 //
-// THIS BLOCK CARRIES TWO ROUNDS OF CAPABILITY, and mislabelling which is which
-// is the exact trap this repo keeps falling into — so the labels are explicit.
+// The brand-named kind has since been REMOVED FROM CORE OUTRIGHT rather than
+// aliased: core ships the mechanism, the brand supplies the colour. Everything
+// the alias used to pin lives here now, against `fade-to-color` with an
+// explicit colour —
 //
-//  - Round 1 (Task 2.3): the first four `it`s. `fade-to-color` dips through a
-//    colour the AUTHOR chose, resolved through the BRAND's palette. Red before
-//    2.3, green after.
-//  - Round 2 (the 2026-07-29 correction): the two `it`s under "THE ALIAS
-//    ACTUALLY DIPS". `fade-coal` dips to black, and only `fade-coal` does. Red
-//    before that correction — `fade-coal` painted no plate at all and its DOM
-//    was byte-identical to `fade`'s — and green after.
+//  - the DIP itself (opaque colour plate at the midpoint, incoming clip held
+//    back): "dips through the NON-BLACK colour it is given" + "holds the
+//    incoming clip back until the colour has covered";
+//  - the DIFFERENTIAL against the plain crossfade: "the dip belongs to a
+//    fade-to-color WITH a colour";
+//  - the TRAILING-EDGE behaviour: "fade-to-color dips through its colour and
+//    then resolves into the theme background", in the reel-edge block above.
 //
-// Round 2's `it`s are NOT the parity half of round 1, despite sitting after it.
-// The parity half of round 2 is round 1's "explicit non-black colour is
-// honoured" assertions, which were green on both sides of the correction. The
-// deprecation `it`s at the end are neither: they pin that the warning is
-// audible, not fatal.
+// No deprecation `it`s remain, because there is no deprecated kind to warn
+// about: a baked literal naming the removed kind now fails to PARSE, loudly,
+// which is the intended migration signal.
 // ---------------------------------------------------------------------------
 describe('a fade’s colour is a parameter (fade-to-color)', () => {
   const A = <div data-testid="a" />;
@@ -1216,11 +1240,11 @@ describe('a fade’s colour is a parameter (fade-to-color)', () => {
       })
       .join('\n');
 
-  // ---- ROUND 1'S CAPABILITY: an AUTHORED colour is honoured ---------------
+  // ---- THE CAPABILITY: an AUTHORED colour is honoured ---------------------
 
-  // Deliberately a NON-BLACK colour. A test that `fade-coal` still renders
-  // black would be testing what this change PRESERVES; what it ADDS is that the
-  // colour is the author's to choose.
+  // Deliberately a NON-BLACK colour. A test that some fixed black still renders
+  // would be testing a colour CORE chose; what this pins is that the colour is
+  // the author's, and reaches the picture through the BRAND's palette.
   it('dips through the NON-BLACK colour it is given, resolved through the brand palette', () => {
     const t = { kind: 'fade-to-color', frames: 15, color: 'secondary' };
     const at = (p: number) => {
@@ -1280,66 +1304,47 @@ describe('a fade’s colour is a parameter (fade-to-color)', () => {
     bare.unmount();
   });
 
-  // ---- ROUND 2'S CAPABILITY: THE ALIAS ACTUALLY DIPS (2026-07-29) ---------
+  // ---- THE DIP IS A DIP, AND IT BELONGS TO THIS KIND ALONE ----------------
   //
-  // The FIRST pass of this task read "keep existing literals' pixels exactly"
-  // as the goal and made `fade-coal` an alias with NO colour — i.e. the same
-  // plain crossfade it had always drawn. That was backwards. `fade-coal` NOT
-  // DIPPING IS THE DEFECT: its label has promised "Fade to black" since it was
-  // added, and the whole reason the plan cites it. Making it dip is the fix,
-  // and the look change is intended and graded as such in
-  // docs/superpowers/phase4-migrations.md § 2.3-a.
+  // MOVED, not deleted. This assertion used to name a brand-derived kind that
+  // core hardwired to a `#000000` of its own choosing; that kind is gone from
+  // core entirely (the colour word was one brand's, and core had no business
+  // holding it). The capability it carried — "a dip is opaque at the midpoint
+  // and holds the incoming clip back, and a plain crossfade does neither" — is
+  // exactly what is pinned below, now against a colour the AUTHOR named.
   //
-  // Core's black is a NEUTRAL `#000000`. It is deliberately NOT the `coal`
-  // near-black PP calls this — hardcoding that hex here would be a brand leak
-  // that the brand-leak grep cannot see (the plan's own worked example). A brand
-  // that wants its near-black declares it in its palette and writes
-  // `fade-to-color` with that key.
-  //
-  // THIS is the added capability of the correction; the `fade-to-color`
-  // assertions above (an explicit non-black colour is honoured) are the parity
-  // half and were green before it.
+  // The colour is deliberately not black. A black would be indistinguishable
+  // from a colour core picked, which is the thing being removed.
 
-  it('fade-coal dips through BLACK at the midpoint — the black its label always promised', () => {
-    const at = (p: number) => {
-      const { container, unmount } = mountKind({ kind: 'fade-coal', frames: 15 }, p);
-      const painted = paintedIn(container);
-      const out = {
-        progress: p,
-        plates: painted.length,
-        color: painted[0]?.style.backgroundColor,
-        opacity: painted[0]?.style.opacity,
-      };
-      unmount();
-      return out;
-    };
-    expect([at(0), at(0.25), at(0.5), at(1)]).toEqual([
-      { progress: 0, plates: 1, color: 'rgb(0, 0, 0)', opacity: '0' },
-      { progress: 0.25, plates: 1, color: 'rgb(0, 0, 0)', opacity: '0.5' },
-      // Fully opaque black at the midpoint, with the incoming clip still held
-      // back — that is a dip, not a crossfade.
-      { progress: 0.5, plates: 1, color: 'rgb(0, 0, 0)', opacity: '1' },
-      { progress: 1, plates: 1, color: 'rgb(0, 0, 0)', opacity: '1' },
-    ]);
-    const opacityOfB = (p: number) => {
-      const { container, unmount } = mountKind({ kind: 'fade-coal', frames: 15 }, p);
+  it('the dip belongs to a fade-to-color WITH a colour — fade and dissolve render the plain crossfade', () => {
+    const dip = { kind: 'fade-to-color', frames: 15, color: 'secondary' };
+    // The dip: one opaque plate at the midpoint, in the brand's own colour…
+    const { container: mid, unmount: unmountMid } = mountKind(dip, 0.5);
+    const painted = paintedIn(mid);
+    expect({ plates: painted.length, color: painted[0]?.style.backgroundColor, opacity: painted[0]?.style.opacity })
+      .toEqual({ plates: 1, color: 'rgb(171, 205, 239)', opacity: '1' });
+    unmountMid();
+
+    // …with the incoming clip still held back behind it. That pairing is what
+    // makes it a dip rather than a crossfade.
+    const opacityOfB = (t: Record<string, unknown>, p: number) => {
+      const { container, unmount } = mountKind(t, p);
       const o = container.querySelector('[data-testid="b"]')!.parentElement!.style.opacity;
       unmount();
       return o;
     };
-    expect([opacityOfB(0.5), opacityOfB(0.75)]).toEqual(['0', '0.5']);
-  });
+    expect([opacityOfB(dip, 0.5), opacityOfB(dip, 0.75)]).toEqual(['0', '0.5']);
 
-  it('the dip is fade-coal’s alone — fade and dissolve still render the plain crossfade', () => {
+    // The crossfades paint NO plate at all, at the same progress.
     for (const kind of ['fade', 'dissolve'] as const) {
       const { container, unmount } = mountKind({ kind, frames: 15 }, 0.5);
       expect({ kind, plates: paintedIn(container).length }).toEqual({ kind, plates: 0 });
       unmount();
     }
-    // `fade` and `dissolve` remain synonyms of each other, and `fade-coal` is
-    // now emphatically neither.
+    // `fade` and `dissolve` remain synonyms of each other, and a coloured
+    // `fade-to-color` is emphatically neither.
     expect(htmlAt({ kind: 'dissolve', frames: 15 })).toBe(htmlAt({ kind: 'fade', frames: 15 }));
-    expect(htmlAt({ kind: 'fade-coal', frames: 15 })).not.toBe(htmlAt({ kind: 'fade', frames: 15 }));
+    expect(htmlAt(dip)).not.toBe(htmlAt({ kind: 'fade', frames: 15 }));
     for (const kind of ['fade', 'dissolve'] as const) {
       // Still ONE-SIDED presentations, so the six `presentationFor` call sites
       // in the PP repo keep working for both.
@@ -1350,26 +1355,14 @@ describe('a fade’s colour is a parameter (fade-to-color)', () => {
     }
   });
 
-  // ---- THE DEPRECATION IS AUDIBLE, NOT FATAL ------------------------------
+  // ---- CORE WARNS ABOUT NO KIND IN THIS FAMILY ----------------------------
+  //
+  // There is nothing deprecated left here to warn about. The kind that used to
+  // carry a `warnOnce` was REMOVED rather than deprecated, so a baked literal
+  // naming it now fails to PARSE — loudly, at the schema, which is a better
+  // signal than a console line nobody reads in a render farm.
 
-  it('warns once that fade-coal is a deprecated alias, without refusing to render it', () => {
-    resetWarnOnce();
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      const t = { kind: 'fade-coal', frames: 15 } as TransitionRecord;
-      expect(transitionNodeFor(t, DIMS)).not.toBeNull();
-      expect(transitionNodeFor(t, DIMS)).not.toBeNull();
-      expect(warn.mock.calls).toHaveLength(1);
-      const message = String(warn.mock.calls[0][0]);
-      expect(message).toContain('fade-coal');
-      expect(message).toContain('fade-to-color');
-    } finally {
-      warn.mockRestore();
-      resetWarnOnce();
-    }
-  });
-
-  it('says nothing about the kinds that are not deprecated', () => {
+  it('says nothing about any of the fade kinds', () => {
     resetWarnOnce();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {

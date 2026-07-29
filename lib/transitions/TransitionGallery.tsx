@@ -26,7 +26,7 @@ import type { TransitionKind } from '../reel-config-base/transition-schema';
 // `TRANSITIONS`, `transitionMap` and `TRANSITION_NOTES` — in camelCase
 // spellings (`rgbSplit`, `lightLeak`) that disagreed with the catalog's kinds
 // (`rgb-split`, `light-leak`), plus a `noteFor` helper whose only job was to
-// paper over that mismatch. They covered 8 of the catalog's 21 kinds and
+// paper over that mismatch. They covered 8 of the catalog's 20 kinds and
 // nothing caught them drifting further; that is how the gallery came to show
 // `@remotion/transitions/wipe` under a name reels used for a different
 // component (Task 2.5).
@@ -46,10 +46,10 @@ import type { TransitionKind } from '../reel-config-base/transition-schema';
 // AND NO `TransitionSeries`. It hands a presentation ONE clip at a time, so it
 // structurally cannot drive a NATIVE TWO-INPUT kind. There were four when this
 // path was built (`wipe`, `pixelate`, `checkerboard`, `scanline-glitch` — Task
-// 2.1), and that is why those four had no gallery entry at all; the set is
-// **five** since the deprecated `fade-coal` started actually dipping — a set
-// this file never enumerates, because every kind goes through
-// `transitionNodeFor` either way. `transitionNodeFor` LIFTS a one-sided
+// 2.1), and that is why those four had no gallery entry at all; `fade-to-color`
+// joins them whenever its colour resolves — a set this file never enumerates,
+// because every kind goes through `transitionNodeFor` either way, which LIFTS a
+// one-sided
 // presentation into the same two-input shape, so one demo component
 // (`NodeTransitionDemo`) now drives every kind and the split disappears with
 // the tables.
@@ -78,7 +78,6 @@ const DEMO_TRANSITION_FRAMES = 45;
 const TRANSITION_NOTES: Partial<Record<TransitionKind, string>> = {
   'dissolve': 'A→B crossfade — the canonical name',
   'fade': 'Crossfade; a synonym of dissolve, rendered identically',
-  'fade-coal': 'DEPRECATED alias of fade-to-color, fixed at a neutral black',
   'fade-to-color': 'Dips through a brand accent colour — with none set, a crossfade',
   'glitch': 'Digital distortion with RGB shift',
   'rgb-split': 'Chromatic aberration effect',

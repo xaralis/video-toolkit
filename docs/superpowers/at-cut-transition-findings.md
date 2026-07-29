@@ -12,7 +12,8 @@
 > in words, in `docs/superpowers/phase4-migrations.md` § Task 2.1.
 >
 > **AND THE EXITING NO-OPS ARE FIXED TOO, SINCE TASK 2.2.** The `exit` column
-> below reads `no-op` for `fade`, `dissolve`, `fade-coal`, `burn`, `clock-wipe`,
+> below reads `no-op` for `fade`, `dissolve`, `fade-coal` (since removed —
+> its row is kept as the record of what was measured), `burn`, `clock-wipe`,
 > `iris` and `gradient-wipe` — plus `checkerboard`, which 2.1 left that way on
 > purpose. A reel edge now resolves its missing input to the composition
 > background (`edgeInput`, lib/transitions/edge-plate.tsx), so all EIGHT render.
@@ -82,7 +83,7 @@ what the composite does, which is what a reel actually renders.
 | `cut` | n/a | n/a | **correct** — no transition; the switch lands on the authored frame |
 | `dissolve` | **correct** — fades up from the background | **no-op** (see "the trailing-edge caveat") | **correct** crossfade |
 | `fade` | **correct** | **no-op** | **correct** crossfade |
-| `fade-coal` | **correct** | **no-op** | **correct** crossfade — *as measured in this audit*; it now DIPS to black, see "fade-coal does not dip to black" |
+| `fade-coal` | **correct** | **no-op** | **correct** crossfade — *as measured in this audit*. **The kind has since been REMOVED from core**; see "fade-coal does not dip to black" below |
 | `glitch` | **correct** — fades in with block/shear artifacts | **correct** — fades out with artifacts | **correct** glitchy crossfade |
 | `rgb-split` | **correct** — chromatic ghosts pull apart, fades in | **correct** | **correct** |
 | `scanline-glitch` | **DEFECTIVE** — never transparent | **ambiguous** — scanline/RGB shimmer, but no fade-out | **DEFECTIVE** — hard cut, landing early |
@@ -222,7 +223,8 @@ pin's comment names the fix shape it assumes.
 > **eight**, not seven — `checkerboard` joined it in Task 2.1.
 
 Seven kinds do nothing at all in the exiting direction: `fade`, `dissolve`,
-`fade-coal`, `burn` (all four are Remotion's `fade()`, whose
+`fade-coal` (since removed from core; a colourless `fade-to-color` is its
+successor here), `burn` (all four are Remotion's `fade()`, whose
 `shouldFadeOutExitingScene` defaults to `false`), `clock-wipe`, `iris` (the
 official presentations mask only the entering side) and `gradient-wipe`.
 
@@ -238,29 +240,33 @@ Not a defect in any presentation; a mismatch between that comment and what
 renders. Recorded here rather than changed, because "should a reel fade out at
 the end" is a look decision too.
 
-### `fade-coal` does not dip to black — FIXED by Phase 4 Task 2.3 (as corrected 2026-07-29)
+### `fade-coal` does not dip to black — CLOSED by REMOVING THE KIND (Phase 4)
 
-> **Resolved BY MAKING IT DIP.** The finding below is now history: `fade-coal`
-> dips through a neutral black at the midpoint, measured at the probe's centre
-> pixel (`fade-coal__cut__p05` = `#000000`), and 10 of its 15 golden cells moved
-> to record it. **That look change is the point** — the missing dip was the
-> defect, not the name.
+> **Resolved by DELETING IT.** The kind no longer exists in core: it is gone from
+> the catalog, the schema, the renderer and the pixel harness (315 → 300 cells).
+> The finding below is history.
 >
-> Two things landed together. The missing thing was *also* an exposed **colour
-> parameter**: `fade-to-color` carries one (a brand accent-slot key, so core
-> names no brand colour), and `fade-coal` is its **deprecated alias fixed at a
-> neutral `#000000`**, warning once in dev. Core's black is neutral on purpose —
-> a brand's own near-black is a hex core must never carry, because such a hex
-> passes the brand-leak grep and is still a leak.
+> **What the defect actually was.** A misleading name is usually a missing
+> parameter: what this kind lacked was an exposed **colour**. `fade-to-color`
+> carries one — a brand accent-slot key, so core names no colour at all — and it
+> is the replacement, with no alias behind it.
 >
-> A first pass of this task read "keep existing literals' pixels" as the goal and
-> shipped the alias with *no* colour, i.e. the same crossfade. That was corrected
-> on 2026-07-29. Consequence recorded: a dip cannot be expressed as a one-sided
-> presentation, so `fade-coal` is now a **native two-input node** and
-> `presentationFor()` returns `null` for it with a HARD CUT warning.
-> `fade` and `dissolve` both still mean crossfade; `dissolve` is the canonical
-> name and the migration is written up, not applied
-> (`docs/superpowers/phase4-migrations.md` § 2.3).
+> **Two wrong resolutions preceded this one, both worth remembering.** Task 2.3
+> first read "keep existing literals' pixels" as the goal and shipped the alias
+> with *no* colour, i.e. the same crossfade — which preserved the defect. A
+> correction then made the alias dip through a hardcoded `#000000` constant in
+> `lib/render`. That is still core choosing a colour on a brand's behalf, one
+> abstraction step removed from a brand hex and equally invisible to the
+> brand-leak grep. The user removed the kind outright.
+>
+> **Consequence recorded:** a dip cannot be expressed as a one-sided
+> presentation, so a `fade-to-color` **with a resolved colour** is a native
+> two-input node and `presentationFor()` returns `null` for it with a HARD CUT
+> warning; with no colour it stays one-sided. `fade` and `dissolve` both still
+> mean crossfade; `dissolve` is the canonical name and that migration is written
+> up, not applied. The `fade-coal` rewrite, by contrast, is **required** — a
+> baked literal no longer parses (`docs/superpowers/phase4-migrations.md`
+> § 2.3-a).
 
 The kind is labelled "Fade to black" and at a cut it renders as a plain
 **crossfade** between the two clips — no dip to black. That is exactly what the

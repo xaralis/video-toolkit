@@ -106,16 +106,15 @@ describe('catalog is derived from TransitionSchema', () => {
 });
 
 describe('TRANSITION_KINDS', () => {
-  it('lists all 21 kinds with human-readable labels', () => {
-    // 20 until Phase 4 Task 2.3 added `fade-to-color` — the parameterised
-    // successor to `fade-coal`, whose deprecated label is pinned below.
-    expect(TRANSITION_KINDS).toHaveLength(21);
+  it('lists all 20 kinds with human-readable labels', () => {
+    // 20 again: Phase 4 Task 2.3 added `fade-to-color` (21), and the removal of
+    // the brand-named fade kind it replaced took one back off. Core's catalog
+    // names NO brand's colour word — that is the point of the removal, so this
+    // count going back to 21 without a new generic kind is the regression.
+    expect(TRANSITION_KINDS).toHaveLength(20);
     const byKind = Object.fromEntries(TRANSITION_KINDS.map((k) => [k.kind, k.label]));
     expect(byKind['cut']).toBe('Cut');
     expect(byKind['dissolve']).toBe('Dissolve');
-    // Deprecated in Task 2.3: it never dipped to black, so the label stopped
-    // promising it and points at the kind that can.
-    expect(byKind['fade-coal']).toBe('Fade to black (deprecated — use Fade to colour)');
     expect(byKind['fade-to-color']).toBe('Fade to colour');
     expect(byKind['glitch']).toBe('Glitch');
     expect(byKind['whip-pan']).toBe('Whip pan');
@@ -267,13 +266,12 @@ describe('presetForFrames', () => {
 });
 
 describe('subOptionsFor', () => {
-  it('returns no sub-options for cut, dissolve, and fade-coal', () => {
-    // `fade-coal` deliberately keeps NO colour control of its own: it is the
-    // deprecated alias, and a control there would invite authors to configure
-    // a kind they should be migrating off. `fade-to-color` carries the knob.
+  it('returns no sub-options for cut, dissolve, and fade', () => {
+    // `fade`/`dissolve` are the parameterless crossfade; the dip's ONE knob
+    // lives on `fade-to-color`, pinned below.
     expect(subOptionsFor('cut')).toEqual([]);
     expect(subOptionsFor('dissolve')).toEqual([]);
-    expect(subOptionsFor('fade-coal')).toEqual([]);
+    expect(subOptionsFor('fade')).toEqual([]);
   });
 
   // Task 2.4: four presentation props that existed only as glitch.tsx's own
@@ -592,9 +590,11 @@ describe('defaultTransition', () => {
     expect(defaultTransition('cut')).toEqual({ kind: 'cut' });
   });
 
-  it('defaults dissolve/fade-coal to 15 frames', () => {
+  it('defaults dissolve/fade-to-color to 15 frames', () => {
     expect(defaultTransition('dissolve')).toEqual({ kind: 'dissolve', frames: 15 });
-    expect(defaultTransition('fade-coal')).toEqual({ kind: 'fade-coal', frames: 15 });
+    // No `color`: core seeds no colour, so the default is the plain crossfade
+    // until the author picks a slot from the brand's own palette.
+    expect(defaultTransition('fade-to-color')).toEqual({ kind: 'fade-to-color', frames: 15 });
   });
 
   // Task 2.4: glitch's two toggles are seeded true (the presentation's own

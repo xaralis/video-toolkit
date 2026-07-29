@@ -81,17 +81,10 @@ type Dims = {
 // The return type is `ResolvedTransition | null`, not `AnyPresentation | null`:
 // since Task 2.1 four of core's own kinds (`wipe`, `checkerboard`, `pixelate`,
 // `scanline-glitch`) are NATIVE two-input nodes rather than one-sided
-// presentations core lifts — five since the `fade-coal` correction below.
+// presentations core lifts. `fade-to-color` joins them CONDITIONALLY — only
+// when its `color` key resolves against the brand's palette, because only then
+// is there a dip to express; with no colour it is the plain one-sided fade.
 type Renderer<K extends TransitionKind> = (t: Extract<CoreTransition, { kind: K }>, dims: Dims) => ResolvedTransition | null;
-
-/** The colour the DEPRECATED `fade-coal` alias dips through.
- *
- *  A NEUTRAL black, and the only colour core names anywhere in this file. It is
- *  deliberately NOT any brand's `coal` near-black, and a
- *  hardcoded brand hex passes the brand-leak grep while still being a leak. A
- *  brand's own near-black belongs in its `accentSlots`, reached through
- *  `fade-to-color`'s `color` key. */
-const DEPRECATED_FADE_COAL_BLACK = '#000000';
 
 const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   // `cut` is the absence of a transition; the gate in ./transition-record
@@ -107,38 +100,16 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   //
   // NO COLOUR → THE PLAIN CROSSFADE. An unresolvable key lands here too, and
   // that is the point: core inventing a colour for a key the brand did not
-  // declare would be the brand leak this programme exists to remove. (The
-  // DEPRECATED `fade-coal` alias below is the one place core does name a
-  // colour, and it names a neutral `#000000`, not any brand's near-black.)
+  // declare would be the brand leak this programme exists to remove. CORE NAMES
+  // NO COLOUR IN THIS FILE AT ALL — not even a "neutral" default, because a
+  // default colour is still core deciding what a brand's dip looks like.
+  //
+  // The conditional arity is deliberate and is pinned in the editor suite: with
+  // a resolved colour this is a native two-input NODE (a dip has no one-sided
+  // form); with none it is the same one-sided presentation `fade` returns.
   'fade-to-color': (t, dims) => {
     const color = resolveAccentColor(dims.palette ?? [], t.color ?? null);
     return color === null ? (fade() as AnyPresentation) : fadeToColor({ color });
-  },
-  // DEPRECATED ALIAS of `fade-to-color`, defaulting to BLACK — and it now
-  // actually dips.
-  //
-  // Its label has read "Fade to black" since it was added, and it never dipped
-  // to anything: it was `() => fade()`, the same plain crossfade as `fade`.
-  // THAT WAS THE DEFECT, and this line is the fix. It moves pixels on every
-  // baked `{kind:'fade-coal'}` literal, deliberately — graded as a look change
-  // in docs/superpowers/phase4-migrations.md § 2.3-a.
-  //
-  // `#000000`, and NOT the `coal` near-black one brand calls this. Writing that hex
-  // here would pass the brand-leak grep and still be a leak (the plan's own
-  // worked example). Core ships the generic mechanism with a neutral default,
-  // and a brand that wants ITS near-black declares the slot and writes
-  // `{ kind: 'fade-to-color', color: '<its key>' }`.
-  'fade-coal': () => {
-    warnOnce(
-      'transition:deprecated:fade-coal',
-      () =>
-        '[video-toolkit] transition kind "fade-coal" is DEPRECATED: it is one brand’s colour word ' +
-        'in core’s vocabulary. It now dips to a NEUTRAL BLACK (#000000) — the black its label always ' +
-        'promised but never drew — so its pixels have changed. Use "fade-to-color" with a `color` ' +
-        'accent-slot key naming your own near-black, or "dissolve" if a plain crossfade is what you ' +
-        'meant. See docs/superpowers/phase4-migrations.md.',
-    );
-    return fadeToColor({ color: DEPRECATED_FADE_COAL_BLACK });
   },
   // Task 2.4: forward the four params `glitch.tsx` always read but no schema
   // field could set. Every field is optional on both sides, so an explicit
@@ -342,7 +313,8 @@ export function presentationFor(t: TransitionRecord | undefined, dims: Dims): An
  *  drew nothing on the missing side, which reproduced the pre-1.3 pixels
  *  exactly — and preserved the defect that came with them: a one-sided
  *  presentation whose EXITING branch is the identity function (`fade`,
- *  `dissolve`, `fade-coal`, `burn`, `clock-wipe`, `iris`, `gradient-wipe`) did
+ *  `dissolve`, `fade-to-color` with no colour, `burn`, `clock-wipe`, `iris`,
+ *  `gradient-wipe`) did
  *  literally nothing as a `transitionOut`, because the only branch that draws
  *  had no input. Feeding it a plate of `background` is what makes the reel's
  *  trailing edge actually fade — and it is the same operation at the leading

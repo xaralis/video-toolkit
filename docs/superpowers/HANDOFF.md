@@ -806,16 +806,22 @@ frame 45 is mid-clip. Tasks 2.2–2.7 each held all five byte-identical.
 
 ### The findings that must survive
 
-**1. The `presentationFor` trap was LATENT, not active — and it widened by exactly one kind.**
+**1. The `presentationFor` trap was LATENT, not active — and it did NOT widen.**
 The blast radius is confirmed at **6 files** in PP (five `projects/*/src/WebProgramIntro.tsx`
 plus `templates/web-program-intro/`), roost **0**. But **none of the six authors any transition
 at all** (`transitionOut:` = 0 in all six) and there are **zero authored uses** of the four
 converted kinds in either repo, so no brand pixel changed. A `warnOnce` warning was added
 rather than a compatibility shim — a wrong picture silently is worse than a visible
-degradation. Task 2.2's conversions did **not** widen the set; the 2026-07-29 `fade-coal`
-correction did, because a dip has no one-sided form. `NODE_KINDS` is now **five**
-(`checkerboard`, `fade-coal`, `pixelate`, `scanline-glitch`, `wipe`), and PP's one authored
-`fade-coal` is in a **layered** reel, which never touches `presentationFor`.
+degradation. Task 2.2's conversions did **not** widen the set. The 2026-07-29 `fade-coal`
+correction briefly made it five, because a dip has no one-sided form — but `fade-coal` was
+then **removed from core outright** (the user's call: core has no business holding one
+brand's colour word, nor picking a "neutral" black on a brand's behalf), so `NODE_KINDS` is
+back to **four** (`checkerboard`, `pixelate`, `scanline-glitch`, `wipe`). `fade-to-color`
+is a node **only when its `color` resolves** — conditional arity, reviewed and accepted,
+and pinned in both directions rather than by membership of that list. PP's one authored
+`fade-coal` literal must now be rewritten (`docs/superpowers/phase4-migrations.md` § 2.3-a);
+it is in a **layered** reel, which never touches `presentationFor`, so this trap is not
+what it hits — a parse error is.
 
 **2. Neither brand registers a single effect or transition — which is the UNAPPLIED-MIGRATION
 state, not a fact about the kinds.** *(Conclusion corrected 2026-07-29; the measurement is
@@ -845,15 +851,23 @@ pixels exactly — on measurement those conflict, because pre-correction `fade-c
 `() => fade()` and never dipped, and all 15 `fade-coal__*` goldens were hash-identical to
 `fade__*`.
 
-> **The RESOLUTION of that conflict was wrong, and was corrected 2026-07-29.** The task
-> shipped "no colour" for parity; the user's goal was the opposite. **`fade-coal` not dipping
-> was the defect** — its label promised a dip to black that never happened, which is the very
-> thing the plan cites it for. It now dips through a **neutral `#000000`** (never any brand's
-> near-black — a brand hex passes the brand-leak grep and is still a leak), 10 of its 15
-> golden cells moved to record it, and § 2.3-a of `phase4-migrations.md` is re-graded from
-> parity-preserving to a **deliberate look change**. The measurement in this finding was
-> right; the conclusion drawn from it was not. **A brief's premise is not evidence — and
-> neither is a task's own re-derivation of the goal.**
+> **The RESOLUTION of that conflict was wrong, and took TWO corrections.** The task first
+> shipped "no colour" for parity; the user's goal was the opposite. **`fade-coal` not
+> dipping was the defect** — its label promised a dip to black that never happened, which is
+> the very thing the plan cites it for. The 2026-07-29 correction made it dip through a
+> hardcoded `#000000` and moved 10 of its 15 golden cells.
+>
+> **That was still wrong, and the user removed the kind.** A `DEPRECATED_FADE_COAL_BLACK =
+> '#000000'` constant in `lib/render` is core choosing a colour on a brand's behalf — the
+> same class of leak as a brand hex, one step abstracted, and it passes the brand-leak grep
+> just as cleanly. `fade-coal` is now **gone from core entirely**: no alias, no shim, no
+> constant. Core ships the generic mechanism (`fade-to-color`, colour exposed as a
+> parameter); the brand supplies its own colour through its own `accentSlots`. The harness
+> went 315 → 300 cells, `TRANSITION_KINDS` 21 → 20, and § 2.3-a of `phase4-migrations.md` is
+> re-graded again — from "deliberate look change" to a **required, breaking migration** with
+> a two-edit rewrite. The measurement in this finding was right; the conclusion drawn from it
+> was wrong twice. **A brief's premise is not evidence — and neither is a task's own
+> re-derivation of the goal, nor a correction's.**
 
 **4. The gallery had been demonstrating a component reels never rendered.** Task 2.5 deleted
 Remotion's official `wipe` from core; core's native two-input `wipe` is the only one. Because
@@ -1277,8 +1291,12 @@ for the record:
   `resolveMediaSource` and no longer knows folder names.
 - From the writer rework: inline arrays reflow on insert; `lcsAnchors` allocates n×m; one
   asymmetric filter typing. All bounded, reels are tens of items.
-- `fade-coal` is a brand-derived **kind name**. Renaming touches every baked `Root.tsx`, so it
-  is deliberately kept — see the NAME NOTE on its catalog entry.
+- ~~`fade-coal` is a brand-derived **kind name**. Renaming touches every baked `Root.tsx`, so
+  it is deliberately kept.~~ **✅ CLOSED in Phase 4** — the cost was paid deliberately. Task
+  2.3 shipped the generic replacement (`fade-to-color`, colour exposed as a parameter) and a
+  follow-up **removed `fade-coal` from core entirely**, alias and all. The one baked literal
+  is a required, breaking migration written up in `docs/superpowers/phase4-migrations.md`
+  § 2.3-a.
 
 **✅ CLOSED in Phase 3, Task 10 — the at-cut visual pass ran.** All **20** catalog kinds were
 rendered at a cut in **both** directions: **310 stills**, all reviewed. Result: 16 kinds correct

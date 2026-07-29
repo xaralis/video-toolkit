@@ -215,7 +215,7 @@ const oldFrames = { ...(goldens.frames ?? {}) };
 // the semantic checks currently catch. They differ, and pretending otherwise
 // would be a lie in the gate: `checkerboard`'s defect is that its EXITING layer
 // does nothing, which is pixel-identical to the seven kinds that legitimately
-// do nothing when exiting (fade, dissolve, fade-coal, burn, clock-wipe, iris,
+// do nothing when exiting (fade, dissolve, a colourless fade-to-color, burn, clock-wipe, iris,
 // gradient-wipe — see the findings doc). No pixel test can separate those, so
 // `checkerboard` is pinned by its golden hashes only.
 const knownDefective = new Set(goldens.knownDefective ?? []);
@@ -556,9 +556,19 @@ await browser.close({ silent: true });
   if (allKinds.length < expectedKinds && !(UPDATE && ALLOW_SHRINK)) {
     fail(`COVERAGE SHRANK: goldens were taken over ${expectedKinds} kinds, this run found ${allKinds.length}. If that is intended, re-baseline with --update-goldens --allow-shrink.`);
   }
-  for (const key of Object.keys(oldFrames)) {
-    const kind = key.split('__')[0];
-    if (!allKinds.includes(kind)) fail(`STALE GOLDEN: "${key}" is baselined but kind "${kind}" no longer exists`);
+  // Gated on the SAME escape hatch as the count guard above, and it has to be:
+  // `--allow-shrink` was unusable without this. Removing a catalog kind makes
+  // every one of its 15 cells stale at once, each one a `fail()`, and any
+  // failure makes the re-baseline refuse to write — so the flag the COVERAGE
+  // SHRANK message tells you to reach for could never actually complete the
+  // removal it exists for. On an unfiltered `--update-goldens` run the written
+  // set is `newFrames`, so the stale keys are pruned by construction; the check
+  // stays live in every other mode, which is where it earns its keep.
+  if (!(UPDATE && ALLOW_SHRINK)) {
+    for (const key of Object.keys(oldFrames)) {
+      const kind = key.split('__')[0];
+      if (!allKinds.includes(kind)) fail(`STALE GOLDEN: "${key}" is baselined but kind "${kind}" no longer exists`);
+    }
   }
   // …and the converse, cross-producted rather than observed. The per-still
   // `missing-golden` check below only ever fires for kinds this run RENDERED, so

@@ -334,10 +334,8 @@ the kind twice, catalog default vs an in-bounds probe value for that one param, 
 progress points, and requires the rendered output to differ. All **11** tunable params are
 covered (`pixelate` ×5, `checkerboard` ×4, `scanline-glitch.rgbShiftPx`, `wipe.direction`;
 `wipe.color` and `fade-to-color.color` by the accent tests — an `accent`-typed param has no
-in-bounds probe value to invent, so it gets a differential test of its own instead). The
-deprecated `fade-coal` is a node with **no** tunable param at all, which the block asserts
-explicitly rather than skipping — its fixed black is pinned by DOM assertion, and its
-successor `fade-to-color` is where the knob lives. It is derived so a new param is covered the day it is
+in-bounds probe value to invent, so it gets a differential test of its own instead). It is
+derived so a new param is covered the day it is
 added, and it fails whether the value is dropped at the forwarding table in
 `lib/render/at-cut-transitions.tsx` or ignored inside the node. **This hole was real:**
 deleting `scanlines: t.scanlines` from that table previously passed every gate, because

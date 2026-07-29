@@ -36,8 +36,9 @@ export type { GlitchProps } from './presentations/glitch';
 export { burn } from './presentations/burn';
 export type { BurnProps } from './presentations/burn';
 
-// A dip to a colour the BRAND chose (Phase 4 Task 2.3) — the parameter
-// `fade-coal` was missing. See the note at the top of the module.
+// A dip to a colour the BRAND chose (Phase 4 Task 2.3) — the parameter that
+// core's old brand-named fade kind was missing. See the note at the top of the
+// module.
 export { fadeToColor } from './presentations/fade-to-color';
 export type { FadeToColorProps } from './presentations/fade-to-color';
 

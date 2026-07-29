@@ -3,8 +3,10 @@
 // The last extension axis to get a registry. Until Phase 4 a
 // transition resolved through a module-private table in
 // lib/render/at-cut-transitions.tsx with NO theme surface at all: a brand that
-// wanted its own look had to edit three core files, which is how `fade-coal`
-// (one brand's colour word) ended up frozen into core's public vocabulary.
+// wanted its own look had to edit three core files, which is how one brand's
+// colour word ended up frozen into core's public vocabulary as a kind of its
+// own. That kind is gone (Phase 4); this registry is where its replacement
+// belongs.
 //
 // Resolution is the ONE rule from ./registry.ts — brand registration wins, core
 // generic beneath, a registration with only `config` does NOT mask the generic,

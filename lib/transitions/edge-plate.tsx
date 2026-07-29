@@ -5,7 +5,8 @@
 // is why `TransitionNodeProps.from`/`to` are nullable. Until this task the
 // missing side was simply not drawn, and every kind whose EXITING branch is
 // the identity function therefore did NOTHING as a `transitionOut`: `fade`,
-// `dissolve`, `fade-coal`, `burn`, `clock-wipe`, `iris`, `gradient-wipe`, and
+// `dissolve`, `fade-to-color` with no colour, `burn`, `clock-wipe`, `iris`,
+// `gradient-wipe`, and
 // `checkerboard` (which drew no grid there at all).
 //
 // The model's answer is that the missing neighbour IS the composition

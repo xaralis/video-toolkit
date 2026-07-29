@@ -63,19 +63,22 @@ can ship something exotic without pushing it into core's public vocabulary.** ro
 `vintage` is a good brand effect and should stay one; the fact that core cannot express it
 is a fact about `vintage`, not a defect in either side.
 
-`fade-coal` is what the absence of this path costs. One brand's colour word — "coal" — is
-frozen into core's transition catalog forever, editable by every other brand's users, with
-a deprecation label as its only remedy (`lib/reel-config-base/transition-schema.ts`,
-`label: 'Fade to black (deprecated — use Fade to colour)'`). It cannot be deleted: **one**
+`fade-coal` is what the absence of this path costs. One brand's colour word — "coal" — sat
+frozen in core's transition catalog for a year, editable by every other brand's users, for
+want of anywhere else to put a look of its own. **It has since been deleted from core**
+(Phase 4): Task 2.3 shipped the generic replacement `fade-to-color`, whose colour is a
+brand accent-slot key, and a follow-up removed the brand-named kind entirely — no alias, no
+deprecation shim, and no colour constant of core's own.
+
+The cost of that year is what this section is really about, and it is not zero: **one**
 authored use exists in a PP reel (`projects/pp-namesti-republiky/src/Root.tsx:155`, plus a
 type-union member at `pp-05-zastupitelsky-klub/src/config/types.ts:14` that is not an
-authored transition), and a published kind name cannot be withdrawn from under a baked
-literal whatever its use count. *(Corrected 2026-07-29: this said "two authored uses … that
-must keep rendering". The count was wrong, and "keep rendering" was the wrong premise too —
-`fade-coal` now dips to a neutral black, a deliberate look change, so what is preserved is
-that the literal still PARSES and RENDERS, not that it renders the same pixels. See
-`phase4-migrations.md` § 2.3-a.)* That is the whole argument for the two-tier model in one
-entry.
+authored transition), and that literal now **fails to parse** until it is rewritten — a
+required, breaking migration for a name core should never have owned
+(`phase4-migrations.md` § 2.3-a). *(This entry has been corrected twice: it first claimed
+"two authored uses that must keep rendering" — the count was wrong; then that the kind
+"cannot be deleted" — that was wrong too, it just is not free.)* That is the whole argument
+for the two-tier model in one entry.
 
 ---
 
@@ -224,13 +227,13 @@ classify and nothing to promote.
 
 | Brand | Authored kinds | All core? |
 |---|---|---|
-| PP | `cut`, `fade`, `fade-coal`, `dissolve`, `glitch`, `wipe`, `whip-pan`, `zoom-through` | yes (8/8) |
+| PP | `cut`, `fade`, `fade-coal`, `dissolve`, `glitch`, `wipe`, `whip-pan`, `zoom-through` | 7/8 — `fade-coal` was **removed from core**; see § 2.3-a for its rewrite |
 | roost | `cut`, `fade`, `burn`, `gradient-wipe` | yes (4/4) |
 
-Core's catalog is **21** kinds (`TRANSITION_CATALOG`, derived from `CATALOG` in
-`lib/reel-config-base/transition-schema.ts`; `fade-coal` is the deprecated alias of
-`fade-to-color`, added by Task 2.3). The two brands author **10** distinct kinds between
-them, so **11** core kinds are authored by neither — `fade-to-color`, `rgb-split`,
+Core's catalog is **20** kinds (`TRANSITION_CATALOG`, derived from `CATALOG` in
+`lib/reel-config-base/transition-schema.ts`; Task 2.3 added `fade-to-color`, and the
+follow-up removal of `fade-coal` took one back off). The two brands author **10** distinct
+kinds between them, of which 9 are core; so **11** core kinds are authored by neither — `fade-to-color`, `rgb-split`,
 `scanline-glitch`, `light-leak`, `slide`, `flip`, `zoom-blur`, `clock-wipe`, `iris`,
 `pixelate`, `checkerboard`. The catalog is wider than demand, which is the opposite of the pressure the promotion rule is
 designed to relieve.

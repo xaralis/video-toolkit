@@ -4,10 +4,10 @@
 // (`TRANSITIONS`, `transitionMap`, `TRANSITION_NOTES`) written in camelCase
 // spellings that disagreed with catalog kinds, plus a `noteFor` helper whose
 // only job was reconciling the two spellings. Between them they covered 8 of
-// the catalog's 21 kinds, and nothing caught them drifting further.
+// the catalog's 20 kinds, and nothing caught them drifting further.
 //
-// The capability pinned here is NOT "all 21 kinds appear" — that would pass
-// against a hardcoded list of 21 and pin nothing. It is that the table is
+// The capability pinned here is NOT "all 20 kinds appear" — that would pass
+// against a hardcoded list of 20 and pin nothing. It is that the table is
 // DERIVED: a kind the catalog gains shows up in the gallery with no gallery
 // edit at all.
 import React from 'react';

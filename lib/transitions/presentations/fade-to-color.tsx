@@ -3,33 +3,27 @@
 // A DIP TO COLOUR — the outgoing clip is covered by a colour, and the incoming
 // one resolves out of it. A native two-input node (Phase 4 Task 2.3).
 //
-// WHY THIS EXISTS. Core's catalog carried `fade-coal`: one brand's colour word
-// ("coal" was its near-black) frozen permanently into core's PUBLIC vocabulary,
-// because before Task 1.2 there was nowhere else for a brand to put a look of
-// its own. Worse, it never dipped to anything — it was `() => fade()`, the same
-// plain crossfade as `fade` and `dissolve`, byte for byte, while its editor
-// label read "Fade to black".
+// WHY THIS EXISTS. Core's catalog used to carry a fade kind named after ONE
+// BRAND'S COLOUR WORD — its own near-black — frozen permanently into core's
+// PUBLIC vocabulary, because before Task 1.2 there was nowhere else for a brand
+// to put a look of its own. Worse, it never dipped to anything: it was
+// `() => fade()`, the same plain crossfade as `fade` and `dissolve`, byte for
+// byte, under a label promising a dip.
 //
 // The fix is not a rename. A MISLEADING NAME IS USUALLY A MISSING PARAMETER:
-// what `fade-coal` lacked was an exposed COLOUR. That colour is a brand
+// what that kind lacked was an exposed COLOUR. That colour is a brand
 // ACCENT-SLOT KEY, resolved against the brand's own palette in
 // `lib/render/at-cut-transitions.tsx` before it reaches this file — so a brand
-// that wants a coal dip declares `coal` in its own palette and writes
-// `{ kind: 'fade-to-color', color: 'coal' }`, and core never learns the word.
+// that wants a dip through its near-black declares that slot in its own palette
+// and writes `{ kind: 'fade-to-color', color: '<its key>' }`, and core never
+// learns the word. The old kind is GONE from core, not aliased: core ships the
+// mechanism, the brand supplies the colour.
 //
 // NO COLOUR MEANS NO DIP, and that is load-bearing rather than defensive: the
 // renderer only builds this node when a colour actually resolved, and falls
 // back to the plain `fade()` presentation otherwise. Core inventing a colour for
-// a key the brand never declared is the brand leak this programme exists to
-// remove.
-//
-// The DEPRECATED `fade-coal` alias is the one exception, and it is the reason
-// this file exists: it is built from this node with a NEUTRAL `#000000`, so it
-// finally draws the dip its "Fade to black" label always promised. That moves
-// pixels on every baked literal, deliberately — see
-// docs/superpowers/phase4-migrations.md § 2.3-a. A NEUTRAL black, and not the
-// `coal` near-black one brand calls this: a hardcoded brand hex passes the
-// brand-leak grep while still being a leak.
+// a key the brand never declared — including a "neutral" default of its own —
+// is the brand leak this programme exists to remove.
 import React from 'react';
 import { AbsoluteFill } from 'remotion';
 import type { TransitionNode, TransitionNodeProps } from '../../theming/transitions';

@@ -1007,11 +1007,11 @@
     "fadeToColor": {
       "path": "lib/transitions/presentations/fade-to-color.tsx",
       "kind": "fade-to-color",
-      "description": "Dip to a colour the BRAND names (an accent-slot key, resolved via the theme's accentSlots); with no colour it is the plain crossfade. The deprecated `fade-coal` is this node fixed at a neutral black, so it now really dips",
+      "description": "Dip to a colour the BRAND names (an accent-slot key, resolved via the theme's accentSlots); with no colour it is the plain crossfade. A native two-input node ONLY when the colour resolves — conditional arity, pinned in lib/editor/src/at-cut-transitions.test.tsx",
       "options": [
         "color"
       ],
-      "bestFor": "Section breaks, a beat of black/brand colour between clips, migrating off `fade-coal`",
+      "bestFor": "Section breaks, a beat of brand colour between clips; the replacement for the brand-named fade kind core removed in Phase 4",
       "status": "beta",
       "created": "2026-07-28"
     },
@@ -1038,7 +1038,7 @@
       "created": "2026-05-19"
     }
   },
-  "transitionAxisNote": "What EVERY transition carries, whatever its kind, plus how a brand adds a kind of its own. Added in Phase 4 (Workstream 1); brand migration notes in docs/superpowers/phase4-migrations.md. The `transitions` map above lists CORE presentations only and is not a complete index of the catalog — `lib/reel-config-base/transition-schema.ts` is (21 kinds counting `cut`; `cut`, `dissolve`, `fade`, `fade-coal`, `slide`, `flip`, `clock-wipe` and `iris` have no entry above). Phase 4 Task 2.3 added `fade-to-color` and DEPRECATED `fade-coal` (an alias of it fixed at a neutral black — it now DIPS, a deliberate look change, plus one dev warning).",
+  "transitionAxisNote": "What EVERY transition carries, whatever its kind, plus how a brand adds a kind of its own. Added in Phase 4 (Workstream 1); brand migration notes in docs/superpowers/phase4-migrations.md. The `transitions` map above lists CORE presentations only and is not a complete index of the catalog — `lib/reel-config-base/transition-schema.ts` is (20 kinds counting `cut`; `cut`, `dissolve`, `fade`, `slide`, `flip`, `clock-wipe` and `iris` have no entry above). Phase 4 Task 2.3 added `fade-to-color`; a follow-up REMOVED the brand-named fade kind it replaced (core's catalog no longer carries any brand's colour word), so a baked literal naming it now fails to parse — see docs/superpowers/phase4-migrations.md § 2.3-a for the two-edit rewrite.",
   "transitionAxis": {
     "timingFields": {
       "frames": {

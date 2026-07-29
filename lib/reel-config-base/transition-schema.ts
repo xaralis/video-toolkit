@@ -245,21 +245,6 @@ const CATALOG = catalog(
   // is a Phase 5 decision; do not do it here.
   { schema: z.object({ kind: z.literal('dissolve'), frames: TransitionFrames }), label: 'Dissolve' },
   { schema: z.object({ kind: z.literal('fade'), frames: TransitionFrames }), label: 'Fade' },
-  // DEPRECATED, and kept only so baked literals keep parsing and rendering.
-  // `fade-coal` was one brand's colour word ("coal" was its near-black) frozen
-  // into core's PUBLIC vocabulary because, before Task 1.2, a brand had nowhere
-  // else to put a look of its own — and it never dipped to anything: it was the
-  // same plain crossfade as `fade`, under a label that read "Fade to black".
-  //
-  // The successor is `fade-to-color` below, which is what it always should have
-  // been: a fade whose COLOUR is a parameter. `fade-coal` now renders as that
-  // kind with a NEUTRAL `#000000` — so it finally draws the dip its label
-  // promises — and warns once in dev (lib/render/at-cut-transitions.tsx). THAT
-  // MOVES PIXELS on every baked literal, deliberately: the missing dip was the
-  // defect, not the name. See docs/superpowers/phase4-migrations.md § 2.3-a.
-  // Core's black is neutral and NOT any brand's near-black; a brand declares its
-  // own in `accentSlots` and writes `fade-to-color` with that key.
-  { schema: z.object({ kind: z.literal('fade-coal'), frames: TransitionFrames }), label: 'Fade to black (deprecated — use Fade to colour)' },
   {
     // THE MISSING PARAMETER, exposed. `color` is a brand ACCENT-SLOT KEY, not a
     // literal — same convention as `wipe.color`, and the reason the field is
@@ -268,9 +253,15 @@ const CATALOG = catalog(
     //
     // OPTIONAL, with no seed: with no colour there is nothing to dip through,
     // so the renderer falls back to the plain crossfade. Core has no colour
-    // vocabulary to seed this from; a brand that wants a specific dip declares
-    // the slot in its own palette. (The deprecated `fade-coal` above is the one
-    // place core names a colour, and it names a neutral black.)
+    // vocabulary to seed this from — it names NO colour anywhere in this
+    // catalog; a brand that wants a specific dip declares the slot in its own
+    // palette and writes that key here.
+    //
+    // This kind REPLACED a per-brand kind name: core's catalog used to carry
+    // one brand's colour word as a kind of its own, which is what a missing
+    // parameter looks like when there is no brand extension path. There is one
+    // now (Task 1.2), so the word went back to the brand and the parameter
+    // stayed here.
     schema: z.object({
       kind: z.literal('fade-to-color'),
       frames: TransitionFrames,

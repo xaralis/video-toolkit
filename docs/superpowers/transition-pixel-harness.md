@@ -29,7 +29,7 @@ Files:
 ```bash
 cd examples/layered-minimal
 
-npm run pixel-gate              # the gate: 315 stills, ~48s, exit 0 = green
+npm run pixel-gate              # the gate: 300 stills, ~48s, exit 0 = green
 npm run pixel-gate:strict       # …with NEAR fatal — REQUIRED for any parity claim
 npm run pixel-gate:self-test    # ~0.1s, no rendering — proves the checks go red
 npm run pixel-gate:update       # re-baseline: 600 stills, ~90s (see below)
@@ -46,7 +46,7 @@ a `NEAR` result fatal. There is no exempted kind: the renderer's (real, measured
 nondeterminism is recorded per cell as a second accepted hash instead. See "the renderer
 flake" for what lenient mode forgives and why that matters for a compositing rewrite.
 
-Measured on this machine, 2026-07-28 (21 kinds): **315 stills in 48s** (46s wall including the
+Measured on this machine, 2026-07-29 (20 kinds, after `fade-coal`'s removal): **300 stills in 48s** (46s wall including the
 one-off webpack bundle) for a full gate run. Per kind that is ~2.2s, so
 `node scripts/render-transition-matrix.mjs <kind>` while iterating on one presentation
 takes about 5s end to end. `--update-goldens` renders everything twice: ~88s.
@@ -58,6 +58,22 @@ added / removed / changed, and tells you to review the diff. **That is the whole
 safety model:** a re-baseline is a committed edit a reviewer sees, not a silent
 overwrite. It refuses to reduce the number of covered kinds unless you also pass
 `--allow-shrink`.
+
+**`--allow-shrink` gates TWO guards, and it has to.** The kind-count guard
+(`COVERAGE SHRANK`) and the per-key `STALE GOLDEN` guard both fire when a catalog
+kind is removed — the second one 15 times, once per cell. Because *any* recorded
+failure makes the re-baseline refuse to write, gating only the first left the flag
+unable to complete the removal it exists for; this was found the first time a kind
+was actually removed (`fade-coal`, Phase 4). On an unfiltered `--update-goldens`
+run the written set is `newFrames`, so stale keys are pruned by construction; the
+guard stays live in every other mode. A removal therefore shows up as `-15 removed,
+~0 changed` — a **removal of cells**, which is exactly what a reviewer should
+expect, and not a de-listing of a surviving cell.
+
+**A shrinking `bimodalCells` list needs the same scrutiny.** The union rule exists
+so a *surviving* cell is never de-listed on absence. Cells that disappear because
+their KIND was removed are a different thing and are legitimate — but say so in the
+commit, because the two look identical in a diff.
 
 It renders every still `--repeat=N` times (default **2**) and requires them to agree (a third render breaks a
 tie, and the key is reported; three mutually different renders fail as `UNSTABLE` rather
@@ -89,7 +105,7 @@ will fail rather than quietly cover less.
 
 **Golden hashes.** One per `kind__mode__progress`, taken over the **decoded RGBA
 buffer** rather than the PNG file, so a PNG-encoder change is not reported as a
-rendering change. 315 entries today (21 kinds × 3 modes × 5 progress points).
+rendering change. 300 entries today (20 kinds × 3 modes × 5 progress points).
 
 **Semantic checks** (`pixel-metrics.mjs`), which hold for any correct kind and are
 independent of its golden:
@@ -149,7 +165,8 @@ Two lists in the golden file, kept separate on purpose:
 
 `checkerboard` was deliberately *not* in `semanticXfail`. Its defect was that its
 exiting layer did nothing, which was pixel-identical to the seven kinds that
-legitimately do nothing when exiting (`fade`, `dissolve`, `fade-coal`, `burn`,
+legitimately do nothing when exiting (`fade`, `dissolve`, `fade-coal` — since
+removed from core, its successor here being a colourless `fade-to-color` — `burn`,
 `clock-wipe`, `iris`, `gradient-wipe`). No pixel test could separate those, so
 `checkerboard` was pinned by its golden hashes alone. Claiming otherwise would have
 been a gate that covers less than it says.
@@ -204,7 +221,7 @@ Because the flake is bimodal and globally stable, both attractors are **recorded
 ```
 
 A frame matching **either** accepted hash is `ok`; anything else is `near`/`drift` exactly
-as before. So **byte-exact enforcement still applies to all 315 cells** — there is no
+as before. So **byte-exact enforcement still applies to all 300 cells** — there is no
 exempted kind and no blind spot, and `--strict` is reliably green on an unchanged tree.
 
 The cells that carry a second hash are listed in `bimodalCells` in the golden file. Two
@@ -322,4 +339,4 @@ is never skipped). Both alternatives were measured and are worse:
 
 **If a run hangs at startup, check for stray `chrome-headless-shell` processes first.**
 The one 105-still hang seen while building this was on a machine still holding orphans
-from a killed run; on a clean machine a single instance carries all 315 stills.
+from a killed run; on a clean machine a single instance carries all 300 stills.
