@@ -967,19 +967,54 @@ all three are now guarded, which is the reason to believe the class is closed; t
 evidence, not that sentence. **`PROBE GEOMETRY CHANGED` is still update-path-blind** (it changes
 cell *content*, not the cell *set*) and was decided by reasoning, not measurement.
 
-### Open, and not this work's to fix
+### The follow-ups — all closed (2026-07-29)
 
-- **The pin bump added +15 type errors in web-program-intro** — 3 each in all five WPI projects
-  (`TS2339`/`TS2345`, `frames` missing on the `cut` variant), plus pre-existing `TS2322`
-  "audioMode missing" in 3 of 5, confirmed by A/B against the old pin. **`phase4-migrations.md`
-  § 1.3-b currently grades WPI "no action / cannot be discovered by compiling", which is now
-  false**, and the template carries it so new WPI projects inherit it. Needs a migration item.
-- **PP's `buildVideoNodes` call still passes no `palette`**, so any accent-typed transition param
-  at that site is silently inert. Fixed here by using a hex; the underlying gap remains.
-- **Three PP projects have no local `typescript`** — their `tsc` is *unverified*, not clean.
-- `pp-mov-koalice` renders differently from its old pin (mean delta ~1.1). **Expected** — the
-  `glitch` clock rebase from Task 1.3, already graded at `phase4-migrations.md` § "One baked cut
-  IS affected".
+**The WPI type regression was WPI's, and the attribution matters.** The +15 errors (3 each in all
+five projects, `TS2339`/`TS2345`, `frames` on the `cut` variant) came from **Task 1.0**
+(`062b4f2`), not Task 1.5 as first assumed: 1.0 made `Transition = CoreTransition |
+BrandTransition` with `BrandTransition.kind: z.string()`, which **killed discrimination**. 1.5's
+`cut` collapse never reached WPI. And `cut` **never had `frames`** — `9202e79`'s schema is
+`z.object({kind: z.literal('cut')})`, byte-identical to today's, so **core dropped nothing**. WPI
+was hand-rolling a `cut` guard against a union that had stopped narrowing. Fixed in PP
+(`4492507`) by using core's `getTransitionRecord`, which is the *right* seam rather than a
+convenient one: its parameter is deliberately `Transition | Record<string, unknown> | undefined`
+("a project's `Root.tsx` is hand-edited, so this gate is the last line") and `Exclude` narrows
+structurally, immune to the open `kind`. 3 → 0 in all five projects and the template.
+`phase4-migrations.md` § 1.3-b — which graded WPI "no action / cannot be discovered by
+compiling" — is corrected in place (`7e7aa9c`).
+
+**PP's unthreaded `palette` was 11 call sites, not one** (`24ea7df`). Every pre-Phase-2.5 project
+still carrying its own hand-rolled `LayeredCampaignReel.tsx` called `buildVideoNodes` without it.
+**Parity-preserving, and structurally so**: only two accent-typed params exist
+(`fade-to-color.color`, `wipe.color`), and the single authored instance uses a hex — so the
+bimodal-render question never had to be adjudicated. Liveness was *demonstrated*, not assumed:
+a temporary `color: 'lime'` rendered a solid lime dip, then changing the theme's `lime` hex to
+magenta with no other edit re-rendered magenta. Probe fully reverted.
+
+**`wipe` no longer no-ops silently** (`c991b28`). It fell back to `#000` with no diagnostic where
+`fade-to-color` warns — one step behind for no reason but that nobody wrote it. Both directions
+are pinned: an unresolvable key warns once, a valid key/hex/absent colour does not. And
+`video-track.tsx`'s comment, which described omitting `palette` as harmless — **the sentence
+under which 11 sites dropped it** — now says what actually happens.
+
+Two of the earlier claims here were **wrong on measurement** and are corrected: all five WPI
+projects *do* have local `typescript` (nothing was unverified), and the pre-existing `audioMode`
+`TS2322` count is **17**, not 18 (1/9/7/0/0, plus 1 in the template — which the tally omitted).
+
+`pp-mov-koalice` still renders differently from its old pin (mean delta ~1.1). **Expected** — the
+`glitch` clock rebase from Task 1.3, graded at `phase4-migrations.md` § "One baked cut IS
+affected".
+
+### Still open
+
+- **`palette` is optional on `buildVideoNodes`, and that is why this happened.** Making it
+  **required** is one line and kills the class — but it is a contract change that would break
+  roost until it threads it too. A decision, not an oversight.
+- **Three PP projects had stale lockfiles** and needed `npm install` before `tsc` would run —
+  meaning their "green" state had **never actually been observed**. That is the same blind spot
+  that let the pin bump ship +15 errors unnoticed.
+- **Task 2.1's `presentationFor` hazard is untouched** and lives in the same six WPI files.
+  Still latent: none of the six authors a `transitionOut` at all.
 
 ### Carried out of Phase 4
 
