@@ -41,7 +41,7 @@ vi.mock('remotion', async () => {
 
 import { SegmentMedia } from '@video-toolkit/lib/theming/segment/SegmentMedia';
 import { findKenBurns } from '@video-toolkit/lib/theming/effects/ken-burns';
-import { RESERVED_EFFECT_TYPES } from '@video-toolkit/lib/theming/effects';
+import { CORE_STYLE_EFFECT_TYPES } from '@video-toolkit/lib/theming/effects';
 import type { VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
 const photo = (effects: VideoItem['effects']): VideoItem => ({
@@ -103,16 +103,20 @@ describe('findKenBurns', () => {
 // ---------------------------------------------------------------------------
 // THE BYPASS ITSELF, not just its one instance.
 //
-// `applyEffects` (lib/theming/effects/index.ts) skips RESERVED_EFFECT_TYPES
-// BEFORE its `isNodeEnabled` test, so every reserved type needs its OWN enable
-// test on its own render path. A comment says so; nothing failed if a second
-// reserved type arrived without one. This is that failure.
+// `applyEffects` (lib/theming/effects/index.ts) skips every RESERVED type
+// BEFORE its `isNodeEnabled` test — reserved-ness is DERIVED as of Phase 4
+// Task 3.2 (`isReservedEffectType`, style-effect.ts), not a hand-maintained
+// list, but CORE's own reserved types are still exactly
+// `CORE_STYLE_EFFECT_TYPES` (the keys of its style-effect registry). Every
+// core reserved type needs its OWN enable test on its own render path — a
+// comment says so; nothing failed if a second one arrived without one. This
+// is that failure.
 //
 // The set has exactly one member today, so this is cheap insurance rather than
-// coverage: adding a reserved type without registering a probe here makes the
-// completeness assertion red, which is the point.
+// coverage: adding a core style-effect type without registering a probe here
+// makes the completeness assertion red, which is the point.
 // ---------------------------------------------------------------------------
-describe('every RESERVED_EFFECT_TYPE honours `enabled: false` on its own path', () => {
+describe('every CORE_STYLE_EFFECT_TYPE honours `enabled: false` on its own path', () => {
   /** type → a probe that returns TRUE when a disabled entry of that type is
    *  correctly ignored by the path that renders it. */
   const PROBES: Record<string, () => boolean> = {
@@ -125,14 +129,41 @@ describe('every RESERVED_EFFECT_TYPE honours `enabled: false` on its own path', 
     },
   };
 
-  it('has a probe for every reserved type — add one when you add a type', () => {
-    expect([...RESERVED_EFFECT_TYPES].sort()).toEqual(Object.keys(PROBES).sort());
+  it('has a probe for every core style-effect type — add one when you add a type', () => {
+    expect([...CORE_STYLE_EFFECT_TYPES].sort()).toEqual(Object.keys(PROBES).sort());
   });
 
-  for (const type of RESERVED_EFFECT_TYPES) {
+  for (const type of CORE_STYLE_EFFECT_TYPES) {
     it(`'${type}' ignores a disabled entry`, () => {
       expect(PROBES[type], `no enable probe registered for reserved type '${type}'`).toBeDefined();
       expect(PROBES[type]()).toBe(true);
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// THE GENERIC PIPELINE ALSO HONOURS IT — not just `findKenBurns`.
+//
+// Phase 4 Task 3.2 dissolves the "each reserved path carries its own enable
+// check" coupling the comments above describe historically: `applyStyleEffects`
+// (style-effect.ts) applies ONE generic `isNodeEnabled` test to EVERY
+// style-axis type, so a brand's own style-effect registration gets `enabled:
+// false` support for free, without writing a bespoke finder like
+// `findKenBurns`. This is that generic path, exercised directly (not via
+// SegmentMedia), so the two mechanisms are pinned independently.
+// ---------------------------------------------------------------------------
+describe('applyStyleEffects (the generic pipeline) honours enabled: false directly', () => {
+  it('a disabled ken-burns entry contributes no fragment', async () => {
+    const { applyStyleEffects } = await import('@video-toolkit/lib/theming/effects/style-effect');
+    const item = { id: 'p1', kind: 'photo' as const, startMs: 0, endMs: 3000, source: 'photos/a.jpg' };
+    const frag = applyStyleEffects(undefined, { ...item, effects: [{ type: 'ken-burns', direction: 'in', enabled: false }] }, 10, 90);
+    expect(frag).toEqual({});
+  });
+
+  it('an enabled ken-burns entry contributes a transform', async () => {
+    const { applyStyleEffects } = await import('@video-toolkit/lib/theming/effects/style-effect');
+    const item = { id: 'p1', kind: 'photo' as const, startMs: 0, endMs: 3000, source: 'photos/a.jpg' };
+    const frag = applyStyleEffects(undefined, { ...item, effects: [{ type: 'ken-burns', direction: 'in' }] }, 10, 90);
+    expect(frag.transform).toContain('scale(');
+  });
 });

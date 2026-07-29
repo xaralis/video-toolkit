@@ -1448,3 +1448,69 @@ The only brand-facing consequence of Task 2.7 that is *not* "no action" —
 roost's `sepia(0.22)` now being expressible in core's own vocabulary, and
 what that does or doesn't do to its promotion eligibility — is analysed in
 `docs/superpowers/phase4-extension-contract.md`, not repeated here.
+
+## Task 3.2 — the STYLE axis, a derived reserved set, and the ken-burns adapter
+
+### 3.2-a Duplicate `ken-burns` entries on the same item — CHECKED, ABSENT in both repos
+
+The task brief names this as the check to re-run rather than trust: `findKenBurns`
+(pre-3.2) took the FIRST matching, ENABLED entry; the new generic `applyStyleEffects`
+pipeline was designed to match that exactly (first-enabled-per-type wins, a later entry of
+the same type is ignored whether enabled or not) — but only because no fixture in either
+brand repo exercises two `ken-burns` entries on one item, so this was never forced to
+matter in practice. Verified, not assumed:
+
+```
+grep -rn "ken-burns" projects/ templates/ --include="*.tsx" --include="*.ts" | grep -v "/toolkit/"
+```
+
+run in both `/Users/xaralis/Workspace/progpce/video-toolkit` (PP, `main` @ `0e2dfb9`) and
+`/Users/xaralis/Workspace/roost/video-toolkit` (roost, `main` @ `ffca36d`), excluding each
+repo's own vendored `toolkit/` submodule copy (which is core's own test/example fixtures,
+not brand content) and, for roost, its `.claude/worktrees/` scratch copy.
+
+**PP: 0 items with two `ken-burns` entries.** 22 hits total, but every `effects:` array
+literal in `WebProgramIntro.tsx`-family files is `[{ type: 'ken-burns', ...seg.kenBurns }]`
+— exactly one entry, constructed from a single `seg.kenBurns` field, so it cannot
+duplicate. `LayeredCampaignReel.tsx`-family files only ever `.find()` a ken-burns entry
+(read, not author). The three literal `type: 'ken-burns',` occurrences in
+`pp-namesti-republiky/src/Root.tsx` (lines 57/86/123) and one in `pp-mov-koalice/src/Root.tsx`
+were each inspected directly (not just counted): each is in a DIFFERENT segment
+(`seg-002`, `seg-004`, `seg-006`, …), one `ken-burns` per segment. `seg-004`/`seg-006` each
+pair their one `ken-burns` with one `blend` entry (the effect discussed in
+`phase4-extension-contract.md`, not this task's concern) — still one `ken-burns` each, no
+duplicate.
+
+**roost: 0 items with two `ken-burns` entries.** 4 hits (2 in the vendored template, 2 in
+the one real project `roost-reel-01`), inspected directly: `templates/roost-reels/src/Root.tsx`
+lines 34 and 55 are `seg-001` and `seg-002` respectively — two DIFFERENT segments, each
+pairing one `ken-burns` with one `vintage` entry. `roost-reel-01/src/Root.tsx` mirrors the
+same shape.
+
+**Conclusion: the duplicate-entry decision this task had to pin (see below) has NOT been
+exercised by any real project in either brand repo as of this measurement.** It is
+insurance for a config that does not exist today, not a fix for one that does. No brand
+migration action follows from this finding.
+
+### 3.2-b The pinned decision for a duplicate: first ENABLED entry per type wins
+
+`applyStyleEffects` (`lib/theming/effects/style-effect.ts`) generalizes the pre-3.2
+`findKenBurns` semantics (`Array.find(e => e.type === 'ken-burns' && isNodeEnabled(e))`) to
+every style-axis type: iterating `item.effects[]` in order, a type already applied is
+skipped on a later occurrence; a DISABLED entry does not count as "applied", so a later
+enabled entry of the same type can still win. Silently applying every duplicate (doubling
+the movement) was considered and rejected as almost certainly wrong, per the task brief.
+No config in either brand repo is affected by this decision today (see 3.2-a) — this is
+recorded so a future duplicate-authoring config gets the INTENDED behaviour, not a surprise.
+No brand action required.
+
+### 3.2-c No other brand action
+
+This task rebuilt the crop/ken-burns/grade merge inside `SegmentMedia` and made the
+reserved-effect-type set derived rather than listed. Both are internal to core's render
+path — `segment-media-merge-baseline.test.tsx` (Task 3.1's baseline, 25 assertions across
+the 18-cell matrix plus the dedicated objectPosition/transformOrigin pairing test) stays
+green, UNMODIFIED, across the rewrite, and the `MinimalReel` 5-frame hash table and the
+20-kind pixel-gate matrix are unchanged. Neither brand repo registers anything on the new
+`theme.styleEffects` axis (it did not exist before this task), so there is nothing to
+migrate there either.

@@ -69,7 +69,7 @@ const fillStyle: React.CSSProperties = { position: 'absolute', inset: 0 };
  *  AROUND this whole renderer by `renderVideoItemNode`, not here.
  *
  *  `SubSource.zoom` is currently ignored, as it is in campaign-reels. */
-export const GenericMultiClip: React.FC<VideoRenderProps> = ({ item, tokens, resolveMediaSource }) => {
+export const GenericMultiClip: React.FC<VideoRenderProps> = ({ item, tokens, resolveMediaSource, styleEffects }) => {
   if (item.kind !== 'multi-clip') return null;
 
   const t: MultiClipTokens = tokens?.multiClip ?? {};
@@ -90,8 +90,20 @@ export const GenericMultiClip: React.FC<VideoRenderProps> = ({ item, tokens, res
       ? { ...span, kind: 'clip', sourceInMs: s.sourceInMs, sourceOutMs: s.sourceOutMs }
       : { ...span, kind: 'photo' }; // a still has no source trim — its span IS its on-screen span
     // The brand's wholesale source resolver (if any) is forwarded, so a
-    // sub-source follows the same media-path rule as a top-level clip.
-    return <SegmentMedia item={subItem} handles={{ inHalf: 0, outHalf: 0 }} resolveMediaSource={resolveMediaSource} />;
+    // sub-source follows the same media-path rule as a top-level clip. Same
+    // for the style-effect registry — a sub-source's synthetic VideoItem
+    // carries no `effects` today, so this is currently inert, but forwarding
+    // it keeps this call site consistent with every other prop SegmentMedia
+    // reads off the theme, rather than a silent gap waiting for the day a
+    // sub-source DOES get an `effects[]`.
+    return (
+      <SegmentMedia
+        item={subItem}
+        handles={{ inHalf: 0, outHalf: 0 }}
+        resolveMediaSource={resolveMediaSource}
+        styleEffects={styleEffects}
+      />
+    );
   };
 
   const renderLabel = (i: number): React.ReactNode => {

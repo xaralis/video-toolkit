@@ -6,6 +6,7 @@ import { gradeFilter, gradeNeedsWb, gradeWbMatrixValues } from '../../reel-confi
 import type { Crop, Grade } from '../../reel-config-base/base-types';
 import type { VideoRenderProps } from '../types';
 import { kenBurnsStyle, findKenBurns, type KenBurnsEffect } from '../effects/ken-burns';
+import { applyStyleEffects, composeMediaStyle, type MediaStyleFragment } from '../effects/style-effect';
 import { resolveMediaSource, type MediaRole, type MediaSourceResolver } from '../media-source';
 
 const VIDEO_EXT_RE = /\.(mp4|mov|webm)$/i;
@@ -38,7 +39,12 @@ export { kenBurnsStyle, findKenBurns, type KenBurnsEffect };
  *  brands' clip/broll/photo renderers compose around — vintage, paper-frame,
  *  and overlays are brand wrappers rendered AROUND this, not part of it.
  *  multi-clip/card/outro items render nothing here (out of scope). */
-export const SegmentMedia: React.FC<VideoRenderProps> = ({ item, handles, resolveMediaSource: override }) => {
+export const SegmentMedia: React.FC<VideoRenderProps> = ({
+  item,
+  handles,
+  resolveMediaSource: override,
+  styleEffects,
+}) => {
   const { fps } = useVideoConfig();
   const frame = useCurrentFrame();
 
@@ -55,36 +61,43 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({ item, handles, resolv
   // `crop`/`grade` are permissive `z.record` fields on the schema (like the
   // transition records), so they are asserted to their shapes here; malformed
   // values are tolerated downstream by cropCoverStyle/gradeFilter.
+  //
+  // The merge, as of Phase 4 Task 3.2: crop's own fragment is the BASE, then
+  // every STYLE-axis effect on the item (`applyStyleEffects` — ken-burns
+  // today, or a brand's own style-effect registration) composes onto it via
+  // `composeMediaStyle`'s ONE rule per property (see style-effect.ts), then
+  // grade's filter+defs compose the same way. This is the SAME merge the old
+  // hand-inlined version did — segment-media-merge-baseline.test.tsx pins the
+  // 18-cell matrix byte-for-byte across the rewrite, including the
+  // objectPosition/transformOrigin PAIRING (the highest-risk regression named
+  // in the task brief).
   const cropStyle = cropCoverStyle(item.crop as Crop | undefined, item.focalX, item.focalY);
-  let transform = cropStyle.transform;
-  let objectPosition = cropStyle.objectPosition;
-  let transformOrigin = cropStyle.transformOrigin;
-
-  const kb = findKenBurns(item.effects);
-  if (kb) {
-    const kbs = kenBurnsStyle(kb, frame, durationInFrames, item.focalX, item.focalY);
-    transform = [transform, kbs.transform].filter(Boolean).join(' ');
-    if (kbs.objectPosition) {
-      objectPosition = kbs.objectPosition;
-      transformOrigin = kbs.transformOrigin;
-    }
-  }
+  const cropFragment: MediaStyleFragment = {
+    transform: cropStyle.transform,
+    objectPosition: cropStyle.objectPosition,
+    transformOrigin: cropStyle.transformOrigin,
+  };
+  const styleEffectFragment = applyStyleEffects(styleEffects, item, frame, durationInFrames);
+  let merged = composeMediaStyle(cropFragment, styleEffectFragment);
 
   const grade = item.grade as Grade | undefined;
-  const filter = gradeFilter(grade, `grade-${item.id}`);
+  const filterId = `grade-${item.id}`;
+  const filter = gradeFilter(grade, filterId);
   // Self-contained white-balance (temperature/tint) SVG filter def, so grade
   // works for every brand without depending on a brand-side <GradeDefs>. Only
   // rendered when the grade actually needs WB — absent for every clip without
   // temperature/tint, so existing renders are byte-identical.
-  const wbDef = gradeNeedsWb(grade) ? (
+  const gradeDefs = gradeNeedsWb(grade) ? (
     <svg style={{ position: 'absolute', width: 0, height: 0 }} aria-hidden="true">
       <defs>
-        <filter id={`grade-${item.id}`} colorInterpolationFilters="sRGB">
+        <filter id={filterId} colorInterpolationFilters="sRGB">
           <feColorMatrix type="matrix" values={gradeWbMatrixValues(grade!)} />
         </filter>
       </defs>
     </svg>
-  ) : null;
+  ) : undefined;
+  merged = composeMediaStyle(merged, { filter, defs: gradeDefs });
+  const wbDef = merged.defs ?? null;
 
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -92,9 +105,9 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({ item, handles, resolv
     width: '100%',
     height: '100%',
     objectFit: 'cover',
-    objectPosition,
-    ...(transform ? { transform, transformOrigin } : {}),
-    ...(filter ? { filter } : {}),
+    objectPosition: merged.objectPosition,
+    ...(merged.transform ? { transform: merged.transform, transformOrigin: merged.transformOrigin } : {}),
+    ...(merged.filter ? { filter: merged.filter } : {}),
   };
 
   if (useImg) {

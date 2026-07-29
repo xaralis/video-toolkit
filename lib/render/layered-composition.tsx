@@ -61,7 +61,8 @@ const CORE_OVERLAY_GENERICS: Record<string, React.FC<{ item: OverlayItem; theme:
  *
  *  `ken-burns` is the one exception: it stays inside SegmentMedia, composing
  *  into the media element's own transform/objectPosition alongside the crop.
- *  applyEffects skips it explicitly (RESERVED_EFFECT_TYPES) so it can never be
+ *  applyEffects skips every STYLE-axis type (`isReservedEffectType`, derived
+ *  from `theme.styleEffects` — Phase 4 Task 3.2) so it can never be
  *  double-applied, however a brand registers it.
  *
  *  SCOPE, chosen deliberately: effects wrap the renderer's WHOLE output, which
@@ -94,6 +95,10 @@ export function renderVideoItemNode(
       // Same narrow threading for the media-path rule: the brand's wholesale
       // override, or `undefined` → the renderer uses core's resolveMediaSource.
       resolveMediaSource={theme.resolveMediaSource}
+      // Same narrow threading for the STYLE-effect registry (Phase 4 Task
+      // 3.2) — lets SegmentMedia resolve a brand's own `ken-burns` (or any
+      // other style-effect type) without holding the whole theme.
+      styleEffects={theme.styleEffects}
     />
   );
   return applyEffects(theme, item, handles, media);

@@ -201,6 +201,23 @@ node it is handed, and has no way to ask core to build a second one. Rendering a
 The plan recorded this as **promote**, on the premise that "Task 3.3 added it". It did not.
 See §5.
 
+> **STILL CONDITIONAL after Task 3.2 — this is Task 3.3's verdict to earn, not this one's.**
+> Task 3.2 shipped a STYLE axis (`theme.styleEffects`, `MediaStyleFragment`,
+> `StyleEffectRenderProps`), but that shape is `{ effect, index, item, frame, durationInFrames,
+> focalX, focalY } => MediaStyleFragment` — a pure function returning a style FRAGMENT for the
+> ONE media element SegmentMedia already owns. It still cannot ask core to construct a SECOND
+> media element (`blend`'s `to: '…mp4'`), which is the exact blocker named above. Verified:
+> `grep -n "scope" lib/theming lib/reel-config-base lib/render` (2026-07-29, post-3.2) still
+> returns no `scope:` field.
+>
+> The seam Task 3.2 deliberately leaves open for 3.3: `StyleEffectRenderProps` carries `item`
+> (the whole `VideoItem`, including its `crop`/`grade`/`focalX`/`focalY`) and returns a
+> `MediaStyleFragment` rather than a `ReactNode` — so a future `scope: 'media'` axis has
+> everything a second-media-element renderer would need to build the same crop/grade/ken-burns
+> treatment as the first, without `blend` (or `scope: 'media'` generally) needing yet another
+> new prop bag. Nothing in Task 3.2 promotes `blend`, registers it, or narrows this seam; that
+> remains 3.3's job.
+
 #### `ken-burns` — core, but not yet on the ordinary contract
 
 `ken-burns` is in core (`lib/theming/effects/ken-burns.ts`) and is the *only* member of
@@ -219,6 +236,25 @@ transform/objectPosition rather than wrapping it.
 Note the coupling this exception creates, already documented at the definition site: the
 reserved `continue` runs *before* the `enabled` test, so each reserved path carries its own
 enable check. A second reserved type would need one too.
+
+> **RESOLVED 2026-07-29, Task 3.2.** `RESERVED_EFFECT_TYPES` (the hand-maintained `Set`) is
+> gone. `isReservedEffectType(theme, type)` (`lib/theming/effects/style-effect.ts`) is now a
+> pure function of `(theme, type)`: reserved exactly when `type` resolves on the new STYLE
+> axis (`theme.styleEffects`, core's own generic being `ken-burns` via
+> `CORE_STYLE_EFFECT_RENDERERS`). "Core implements ken-burns" and "ken-burns is on the same
+> contract as grain/grade" are now the SAME statement: `ken-burns` is a normal registered
+> style effect, resolved through `resolveRegistered` exactly like every other axis — the only
+> thing distinguishing it is which registry it lives in (style vs. wrapper), not a name check.
+> A brand can now register its OWN `styleEffects['ken-burns']` (or any other type name) to
+> replace the movement without replacing SegmentMedia or the whole video renderer.
+>
+> The `enabled` coupling is **DISSOLVED**, not merely relocated: `applyStyleEffects`
+> (`lib/theming/effects/style-effect.ts`) applies ONE generic `isNodeEnabled` test to every
+> style-axis type in the loop that also resolves and merges it, rather than each reserved type
+> needing its own bespoke finder (`findKenBurns` used to be that bespoke check; it still
+> exists, unchanged, as a standalone utility, but SegmentMedia no longer calls it — the generic
+> pipeline handles `enabled` for every style type uniformly). A second style-effect type gets
+> `enabled: false` support for free, with no new file to touch.
 
 ### Transitions
 

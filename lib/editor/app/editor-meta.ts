@@ -15,7 +15,7 @@
 
 import type { CompositionTheme } from '../../theming/types';
 import { overlayRegistry } from '../../theming/brand-theme';
-import { RESERVED_EFFECT_TYPES } from '../../theming/effects';
+import { isReservedEffectType } from '../../theming/effects';
 import type { ParamField } from '../../theming/registry';
 
 /** One declared, editable parameter inside an opaque bag (`props`, effect
@@ -112,16 +112,19 @@ export function effectDefinition(meta: EditorMeta | undefined, type: string): Ef
 // overlayLabels, which have no theme source and simply pass through).
 
 /** Every effect type the theme registers, as catalog entries — minus the
- *  RESERVED ones. A reserved type (`ken-burns`) is skipped by `applyEffects`
- *  BEFORE resolution, so a brand's effect-axis registration for it never draws;
- *  deriving an editor entry from it would advertise params that cannot take
- *  effect. Core's own `ken-burns` entry (rendered by SegmentMedia, edited by
- *  the inspector's bespoke editor) is unaffected and stays offerable — it is
- *  the effect-axis OVERRIDE that is inert, not the effect. */
+ *  RESERVED ones. A reserved type (`ken-burns`, or a brand's own style-effect
+ *  registration — Phase 4 Task 3.2 made this DERIVED via
+ *  `isReservedEffectType`, see lib/theming/effects/style-effect.ts) is skipped
+ *  by `applyEffects` BEFORE resolution, so a brand's effect-AXIS registration
+ *  for it never draws; deriving an editor entry from it would advertise
+ *  params that cannot take effect. Core's own `ken-burns` entry (rendered by
+ *  SegmentMedia, edited by the inspector's bespoke editor) is unaffected and
+ *  stays offerable — it is the effect-axis OVERRIDE that is inert, not the
+ *  effect. */
 function effectsFromTheme(theme: CompositionTheme): EffectDefinition[] {
   const out: EffectDefinition[] = [];
   for (const [type, reg] of Object.entries(theme.effects ?? {})) {
-    if (RESERVED_EFFECT_TYPES.has(type)) continue;
+    if (isReservedEffectType(theme, type)) continue;
     out.push(reg?.params ? { type, params: reg.params } : { type });
   }
   return out;

@@ -22,6 +22,7 @@ import {
   GradeEffect,
   TransformEffect,
 } from './primitives';
+import { isReservedEffectType } from './style-effect';
 
 export interface EffectRenderProps {
   /** The effect entry off the item's `effects[]`, minus nothing — `type` included. */
@@ -50,23 +51,30 @@ export type EffectRegistration = Registry<EffectRenderProps>[string];
  *
  *  `ken-burns` is a STYLE effect, not a wrapper: it composes into the media
  *  element's own transform/objectPosition/transformOrigin alongside the crop,
- *  inside SegmentMedia (see ./ken-burns.ts). If applyEffects ALSO wrapped it,
- *  every ken-burns item would get the movement twice.
+ *  inside SegmentMedia (see ./ken-burns.ts and ./style-effect.ts). If
+ *  applyEffects ALSO wrapped it, every ken-burns item would get the movement
+ *  twice.
  *
- *  This list is the real invariant. Core not registering a `ken-burns` generic
- *  is NOT sufficient: the registry is open-keyed, so a brand writing
- *  `effects: { 'ken-burns': { renderer: X } }` would otherwise resolve and
- *  double-apply. A brand that genuinely wants its own ken-burns replaces it on
- *  the VIDEO axis (its own renderer, which owns the media transform), not here.
+ *  Phase 4 Task 3.2: this used to be a hand-maintained `Set` here. It is now
+ *  DERIVED — `isReservedEffectType(theme, type)` (./style-effect.ts) is `true`
+ *  exactly when `type` resolves on the STYLE axis for this theme (core's own
+ *  `ken-burns`, or a brand's own style-effect registration for any type name
+ *  it chooses). Core not registering a `ken-burns` generic on the WRAPPER axis
+ *  was never sufficient on its own — the registry is open-keyed, so a brand
+ *  writing `effects: { 'ken-burns': { renderer: X } }` would otherwise resolve
+ *  and double-apply — and a hand-maintained list is a second source of truth
+ *  that can drift from the style registrations it is supposed to describe.
+ *  Deriving it means `applyEffects` and `editorMetaFromTheme` read the SAME
+ *  registrations and cannot disagree.
  *
- *  EXPORTED since Phase 3 Task 7: a brand registration for a reserved type is
- *  inert at RENDER time, so `editorMetaFromTheme` consults this same set to
- *  keep it inert at EDIT time too, rather than offering params that would
- *  never be applied. One list, both ends. */
-export const RESERVED_EFFECT_TYPES: ReadonlySet<string> = new Set(['ken-burns']);
+ *  Since Phase 3 Task 7, and still true: a brand registration for a reserved
+ *  type is inert at RENDER time, so `editorMetaFromTheme` consults the same
+ *  derivation to keep it inert at EDIT time too, rather than offering params
+ *  that would never be applied. */
+export { isReservedEffectType } from './style-effect';
 
 /** Core generic effect renderers, keyed by effect type. `ken-burns` is absent
- *  by the rule above — see RESERVED_EFFECT_TYPES. */
+ *  by the rule above — see `isReservedEffectType`. */
 const CORE_EFFECT_RENDERERS: Record<string, EffectRenderer> = {
   grain: GrainEffect,
   scanlines: ScanlinesEffect,
@@ -106,11 +114,12 @@ export function applyEffects(
     // resolution, so a brand registration cannot re-open the double-apply.
     //
     // NOTE FOR `enabled`: this `continue` runs BEFORE the enable test below, so
-    // a reserved type never reaches it. Each reserved path therefore has to
-    // carry its OWN enable test — `findKenBurns` (./ken-burns.ts) does. If a
-    // second reserved type is ever added, it needs one too, or `enabled: false`
-    // will parse and be silently ignored on exactly that type.
-    if (RESERVED_EFFECT_TYPES.has(effect.type)) continue;
+    // a reserved type never reaches it. That is no longer a gap needing a
+    // bespoke per-type probe, though: `applyStyleEffects` (./style-effect.ts)
+    // — the thing that actually renders every reserved type — applies the
+    // SAME generic `isNodeEnabled` test to every style-axis type uniformly,
+    // so a second reserved type gets `enabled: false` support for free.
+    if (isReservedEffectType(theme, effect.type)) continue;
     // A DISABLED effect is skipped ENTIRELY — no wrapper is allocated, so the
     // node is referentially what it would be if the entry were deleted, while
     // the entry's authored params stay in the config for the toggle back. Also
@@ -149,3 +158,15 @@ export {
   transformString,
   transformLayerStyle,
 } from './primitives';
+export {
+  resolveStyleEffectRenderer,
+  styleEffectConfig,
+  composeMediaStyle,
+  applyStyleEffects,
+  CORE_STYLE_EFFECT_TYPES,
+  type MediaStyleFragment,
+  type StyleEffectRenderProps,
+  type StyleEffectRenderer,
+  type StyleEffectRegistry,
+  type StyleEffectRegistration,
+} from './style-effect';

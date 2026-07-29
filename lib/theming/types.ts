@@ -3,6 +3,7 @@ import type { Registration, Registry } from './registry';
 // Type-only import — erased at runtime, so this does NOT create a module cycle
 // with effects/index.ts (which imports BrandTheme back, also type-only).
 import type { EffectRenderProps } from './effects';
+import type { StyleEffectRenderProps, StyleEffectRenderer } from './effects/style-effect';
 import type { AccentSlot } from './palette';
 import type { ThemeTokens } from './tokens';
 import type { Placement } from './placement';
@@ -58,6 +59,18 @@ export interface BrandTheme {
    *  them, core never enumerates them. Absent type → core generic primitive
    *  (grain/scanlines/vignette/grade/transform) → silently skipped. */
   effects?: Registry<EffectRenderProps>;
+  /** ONE open-keyed STYLE-effect registry (Phase 4 Task 3.2) — a SEPARATE axis
+   *  from `effects` above, for effect types that compose into the media
+   *  element's own style rather than wrapping it (today: `ken-burns`, core's
+   *  own; see lib/theming/effects/style-effect.ts). Absent type → core's own
+   *  style-effect generic (`ken-burns`) → not a style type at all, so it falls
+   *  through to the WRAPPER axis (`effects` above) like any other type.
+   *
+   *  Registering a type HERE is what makes `isReservedEffectType` treat it as
+   *  reserved on the wrapper axis: this is the "brand can register its own
+   *  style ken-burns" capability — replacing the movement without replacing
+   *  the whole video renderer. */
+  styleEffects?: Registry<StyleEffectRenderProps, StyleEffectRenderer>;
   /** ONE open-keyed transition registry. Transition kinds are OPEN as of
    *  Phase 4 — core's catalog (lib/reel-config-base/transition-schema.ts) is
    *  core's vocabulary, not THE vocabulary. Absent kind → core's generic
@@ -116,6 +129,14 @@ export interface VideoRenderProps {
    *  A renderer must apply this at render time only — never write the result
    *  back onto `item.source`, which captions are derived from. */
   resolveMediaSource?: MediaSourceResolver;
+  /** The theme's STYLE-effect registry, threaded down the same narrow way as
+   *  `tokens`/`resolveMediaSource` — `renderVideoItemNode` passes
+   *  `theme.styleEffects` here so `SegmentMedia` can resolve a brand's style
+   *  effect (or fall back to core's own `ken-burns`) without ever holding a
+   *  `CompositionTheme`. Absent (a renderer not built on SegmentMedia, or a
+   *  direct SegmentMedia call outside the composition, e.g. in a test) → core
+   *  style effects only. */
+  styleEffects?: Registry<StyleEffectRenderProps, StyleEffectRenderer>;
 }
 
 export type VideoRenderer = React.FC<VideoRenderProps>;
