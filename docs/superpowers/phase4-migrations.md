@@ -896,10 +896,11 @@ would be `pp-namesti-republiky` gaining a real fade-to-coal at its end, which is
 what its author wrote `transitionOut: { kind: 'fade-coal' }` on the last item
 intending to get.
 
-> **Updated (§ 2.3-a).** `fade-coal` is now REMOVED from core; that project's
-> literal must be rewritten to `{ kind: 'fade-to-color', color: 'coal' }` with a
-> `coal` accent slot declared. Once it is, the dip happens on its own, background
-> or no background, so that end-of-reel beat no longer waits on threading
+> **Updated (§ 2.3-a), twice now.** `fade-coal` is REMOVED from core; that
+> project's literal must be rewritten to `{ kind: 'fade-to-color', color:
+> '#0a0a0a' }` — a **literal**, since the `color` widening (§ 2.3-a), not an
+> accent slot. Once it is, the dip happens on its own, background or no
+> background, so that end-of-reel beat no longer waits on threading
 > `background`. What `background` still buys that project is the colour the dip
 > *resolves into* afterwards.
 
@@ -976,40 +977,54 @@ presentation, so a `fade-to-color` **with a resolved colour** is a native
 two-input node; with no colour it stays one-sided. `presentationFor()` returns
 `null` for the node form and warns HARD CUT. See § 2.3-d.
 
-#### The rewrite — TWO edits, both required
+#### The rewrite — ONE edit, superseding the two-edit shape below
+
+> **Superseded again, by the `color` literal-widening.** The two-edit shape
+> originally written here (rewrite the kind, THEN declare a `coal` accent slot
+> just to give the new `color` parameter something to resolve) is no longer
+> what a migrator should do. `fade-to-color.color` and `wipe.color` both
+> widened from `AccentKey`-only to `AccentOrColorHex` — an accent-slot key OR
+> a literal colour (hex) — specifically because this migration exposed the
+> defect in the two-edit shape: PP's `coal` is a **background colour in PP's
+> own model, not an accent**, and declaring it as an accent slot only to
+> satisfy core's field type was misrepresenting the brand's own palette to
+> work around a core limitation. (It also turned out to be broken in a second,
+> independent way — see the diagnosis at
+> `.superpowers/sdd/2026-07-26-phase4-node-contract/fade-to-color-edge-fix-report.md`:
+> PP's vendored `LayeredCampaignReel.tsx:407` calls `buildVideoNodes` without
+> `palette` at all, so an accent-slot key can **never** resolve at that call
+> site regardless of what the theme declares — a second, independent reason
+> the accent-slot detour was the wrong fix.)
+>
+> The rewrite is now ONE edit, and it needs no theme change at all.
 
 PP's one authored use is `projects/pp-namesti-republiky/src/Root.tsx:155` (the
 `transitionOut` on `seg-008`, the outro — i.e. the reel's trailing edge).
 
-**Edit 1 — the literal** (`projects/pp-namesti-republiky/src/Root.tsx`, ~line 154):
+**The literal** (`projects/pp-namesti-republiky/src/Root.tsx`, ~line 154):
 
 ```diff
                  transitionOut: {
 -                  kind: 'fade-coal',
 +                  kind: 'fade-to-color',
                    frames: 30,
-+                  color: 'coal',
++                  color: '#0a0a0a',
                  },
 ```
 
-**Edit 2 — declare the slot** (`projects/pp-namesti-republiky/src/config/theme.ts`).
-Without this the rewrite silently crossfades: `color` is an **accent-slot key**,
-and PP's `accentSlots` is `[lime, teal]` — `coal` is a `colors.*` token, **not**
-an accent slot, so it resolves to nothing.
-
-```diff
-   accentSlots: [
-     { key: 'lime', label: 'Lime', color: '#c6f432' },
-     { key: 'teal', label: 'Teal', color: '#2ad4c5' },
-+    { key: 'coal', label: 'Coal', color: '#0a0a0a' },
-   ],
-```
+That is the whole migration. `color` now accepts the hex directly — PP's
+`coal` token (`colors.*` in its own theme, not `accentSlots`) is written as
+its literal value, resolved with **no palette lookup at all** (see
+`resolveAccentOrColor`, `lib/theming/palette.ts`), so it is immune to the
+`buildVideoNodes`-without-`palette` bug that made the accent-slot version of
+this rewrite silently crossfade regardless of what the theme declared. No
+`accentSlots` edit is needed or wanted — `coal` is not an accent slot in PP's
+model, and this rewrite no longer asks PP to pretend it is one.
 
 **Doing nothing is no longer valid.** Once the brand repo bumps its `toolkit/`
-submodule past this change, an unmigrated literal fails to parse. Both edits land
-in the same commit, and the follow-up should re-render that reel: the trailing
-edge now dips through `#0a0a0a` where it previously crossfaded, which is the
-intended look change.
+submodule past this change, an unmigrated literal fails to parse. The literal
+edit is what produces the intended look change: the trailing edge now dips
+through `#0a0a0a` where it previously crossfaded.
 
 **One more hit, and it is NOT an authored transition:**
 `projects/pp-05-zastupitelsky-klub/src/config/types.ts:14` is a hand-written
@@ -1093,6 +1108,16 @@ own palette. That control comes from `ACCENT_FIELDS` — the field is named
 `color`, exactly like `wipe.color`, and Task 1.6's mark is by NAME. The old
 `Fade to black` entry is **gone** from the dropdown: the kind behind it no longer
 exists, so `TRANSITION_KINDS` is 20 rather than 21.
+
+> **Superseded by the `color` literal-widening.** `color` moved from
+> `ACCENT_FIELDS` to a new, disjoint `ACCENT_OR_COLOR_FIELDS`, and its control
+> from `type: 'accent'` to `type: 'accent-or-color'` — a dropdown over the
+> brand's accent slots PLUS a "Custom colour" option that reveals a literal
+> hex field. Unlike the pure `accent` control above, it is never omitted for
+> lack of a palette: its literal half needs none, so with no `accentSlots` at
+> all it degrades to a plain colour swatch+text control instead of
+> disappearing. `wipe.color` widened identically, in the same commit — same
+> field name, same schema type (`AccentOrColorHex`), same control.
 
 ## Task 2.4 — the orphan knobs (glitch, whip-pan, zoom-through)
 
