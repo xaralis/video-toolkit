@@ -1722,43 +1722,87 @@ not just through a brand's own hand-rolled renderer that happens to duplicate th
 
 ### 4.2-a Non-`text` overlay kind registered with a `config` — sweep, both repos; no live gap found
 
+**Fix round 1 correction:** the sweep commands originally recorded here all ended in
+`| grep -v toolkit/`, and both repo paths are themselves `…/video-toolkit/…` — so the filter
+matched (and discarded) every single line, and the commands returned **0 hits by
+construction**, not because there were none. This is the fifth false-negative-grep artefact
+in this programme and the second in this document (Task 4.1's own fix round hit the same
+thing). The conclusions below were correct — re-derived independently by the reviewer and
+now re-run properly — but the ORIGINAL commands must not be trusted or reused. Re-run from
+inside each repo with `git grep`, which excludes `node_modules` and the vendored `toolkit/`
+submodule by what's tracked, not by a text filter that can eat its own targets:
+
+```
+cd /Users/xaralis/Workspace/progpce/video-toolkit && git grep -n "overlays:\|overlayItems:" -- '*.ts' '*.tsx'   # 49 hits
+cd /Users/xaralis/Workspace/progpce/video-toolkit && git grep -n "quote-pull" -- '*.ts' '*.tsx'                  # 57 hits
+cd /Users/xaralis/Workspace/roost/video-toolkit && git grep -n "overlays:\|overlayItems:" -- '*.ts' '*.tsx'      # 4 hits
+cd /Users/xaralis/Workspace/roost/video-toolkit && git grep -n "quote-pull" -- '*.ts' '*.tsx'                    # 5 hits
+```
+
 Before this task, `TrackTextOverlay` (lib/render/layered-composition.tsx) always called
 `overlayConfig(theme, 'text')` regardless of which kind ('text' or its legacy alias
 'quote-pull') the item actually carried — so a kind other than the hardcoded literal could
-never reach its own registered config through this path. Swept both repos for any
-`overlays: { <kind>: { renderer, config } }` shape on a kind besides `text` (printed every
-hit, inspected each):
-```
-grep -rn "overlays:\|overlayItems:" --include='*.ts' --include='*.tsx' /Users/xaralis/Workspace/progpce/video-toolkit 2>/dev/null | grep -v node_modules | grep -v toolkit/
-grep -rn "overlays:\|overlayItems:" --include='*.ts' --include='*.tsx' /Users/xaralis/Workspace/roost/video-toolkit 2>/dev/null | grep -v node_modules | grep -v toolkit/
-grep -rn "quote-pull" --include='*.ts' --include='*.tsx' /Users/xaralis/Workspace/progpce/video-toolkit /Users/xaralis/Workspace/roost/video-toolkit 2>/dev/null | grep -v node_modules | grep -v toolkit/
-```
+never reach its own registered config through this path.
 
 **Neither brand registers a non-`text` kind via the `overlays.<kind> = { renderer, config }`
 shape** — the only shape this bug affects:
 
 - **PP** registers `overlays: { text: { renderer: QuotePullAdapter } }` (no `config`) in every
-  project's `src/config/brand-theme.tsx:20`, plus `overlayItems: { chevron, 'stat-callout',
-  'source-tag', title }` on `templates/campaign-reels/src/config/composition-theme.tsx:76-`.
-  Every one of those four `overlayItems` entries uses the item-level `render` escape hatch
-  (`render: (item) => …`), which bypasses `OverlayRenderProps`/`config`/`tokens` entirely —
-  so none of them was ever reachable through `overlayConfig` in the first place, buggy or
-  not. `'quote-pull'` is never registered as its own key anywhere in PP; PP's live projects
-  handle it through their own hand-rolled `LayeredCampaignReel.tsx` (`case 'quote-pull':`),
-  outside `LayeredReelComposition`/`TrackTextOverlay` altogether (same "own pipeline, core
-  axis never runs" situation Task 4.1 found for routing).
+  project's `src/config/brand-theme.tsx:20`, plus **six** `overlayItems` kinds on
+  `templates/campaign-reels/src/config/composition-theme.tsx:77-161`: `title` (:77),
+  `chevron` (:86), `'stat-callout'` (:105), `'source-tag'` (:121), `'update-badge'` (:135),
+  `'party-logos'` (:148) — corrected from an earlier miscount of "four…all use `render`":
+  `title` is `{ routing: 'anchored' }` alone, with **no** `render` and no `config`; the other
+  five all use the item-level `render` escape hatch (`render: (item) => …`), which bypasses
+  `OverlayRenderProps`/`config`/`tokens` entirely, so none of them was ever reachable through
+  `overlayConfig` in the first place, buggy or not.
 - **roost** registers exactly one entry, `overlays: { text: { renderer: Text, config: {
   strokeRatio: 0.2, lineStaggerSec: 0.35 } } }` (`templates/roost-reels/src/config/brand-theme.ts:12`).
   That IS the hardcoded-'text' kind itself, so it was reachable under the old code
-  unconditionally — the bug never touched it. roost has no `'quote-pull'` registration.
+  unconditionally — the bug never touched it.
 
-**Grade: PARITY-PRESERVING for both repos, no brand file changes required.** No live
-project in either repo currently depends on the old hardcoded-`'text'` behaviour, so fixing
-`overlayConfig(theme, 'text')` → `overlayConfig(theme, kind)` changes nothing observable
-today. It is still a real fix: a brand that registers distinct config for `'text'` and
-`'quote-pull'` in the future (a very natural thing to do, since both are today advertised as
-independently registrable kinds) would otherwise have silently gotten `'text'`'s config for
-its `'quote-pull'` items, with no error.
+**Neither brand registers `'quote-pull'` as its own key anywhere** (the 57/5 `quote-pull`
+hits above are all comments, type-union members, and `case 'quote-pull':` branches in code
+that never touches `overlays`/`overlayItems`). But registration is only half the risk — the
+sharper question is whether any LIVE item actually CARRIES `kind: 'quote-pull'` through
+`LayeredReelComposition`, since that is exactly the case the fix changes the resolved config
+for. Checked directly:
+
+- **roost**: every authored overlay item is `kind: 'text'`
+  (`projects/roost-reel-01/src/Root.tsx:178`, `templates/roost-reels/src/Root.tsx:177`) — no
+  `quote-pull` item exists anywhere. Moot in any case: roost's `LayeredRoostReel.tsx` renders
+  its overlay track through core's `LayeredReelComposition` (`import { LayeredReelComposition
+  } from '@video-toolkit/lib/render/layered-composition'`, `LayeredRoostReel.tsx:6,17`), so
+  this IS the live path — and the only kind on it is `text`, unaffected by the fix.
+- **PP**: `templates/campaign-reels/src/config/composition-theme.tsx:74`'s own comment
+  confirms `'text'`/`'quote-pull'` deliberately have no `overlayItems` entry, and the
+  template's `Root.tsx` never authors a `kind: 'quote-pull'` overlay item. PP's 11 LIVE
+  projects go further out of reach: each vendors its own `src/LayeredCampaignReel.tsx` that
+  calls `buildVideoNodes` directly (confirmed: `projects/pp-ricni-sauna/src/LayeredCampaignReel.tsx:23`
+  imports `buildVideoNodes`, not `LayeredReelComposition`) and dispatches overlays itself via
+  a hand-rolled `case 'quote-pull':` (`LayeredCampaignReel.tsx:326` in all 11) — so
+  `TrackTextOverlay`/`overlayConfig` never runs for a live PP cut at all. Only the
+  `campaign-reels` TEMPLATE (the scaffold a NEW project starts from) actually renders through
+  `LayeredReelComposition`, and it authors no `quote-pull` item.
+
+**Grade: PARITY-PRESERVING for both repos, no brand file changes required** — demonstrated,
+not assumed: no live item of either brand carries the one kind (`quote-pull`) whose resolved
+config the fix changes, so `overlayConfig(theme, 'text')` → `overlayConfig(theme, kind)`
+changes nothing observable today. It is still a real fix: a brand that registers distinct
+config for `'text'` and `'quote-pull'` in the future (a very natural thing to do, since both
+are today advertised as independently registrable kinds) would otherwise have silently
+gotten `'text'`'s config for its `'quote-pull'` items, with no error.
+
+**Recorded, not to be fixed here (scope stays closed):** renderer RESOLUTION stays
+hardcoded to `'text'` (`layered-composition.tsx:37`, `resolveOverlayRenderer(theme,
+'text')`) while CONFIG became per-kind (`:47`, `overlayConfig(theme, kind)`) — deliberate,
+since the `'quote-pull'`→`'text'` renderer alias is documented and pre-existing. The
+asymmetry it leaves: a brand that registers `overlays: { 'quote-pull': { renderer: X,
+config: Y } }` now gets `Y` delivered to **`'text'`'s** renderer (whatever that resolves to
+— the brand's own `overlays.text.renderer`, or `GenericTextOverlay`), never to `X`, because
+renderer resolution never looks at the `'quote-pull'` registration at all. Neither brand
+does this today (confirmed above), so it is not a live gap — but it is a trap for whoever
+registers `'quote-pull'` with its OWN renderer next, and is not this task's to close.
 
 ### 4.2-b Which of the four `TextTokens` values each brand overrides today, by writing its own renderer
 
