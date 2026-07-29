@@ -15,7 +15,7 @@ import {
   type DraftTransition,
 } from './transitions';
 import { parseActionId, type LaneId } from '../src/timeline/layered-adapter';
-import type { AccentSlot } from '../../theming/palette';
+import { isColorLiteral, type AccentSlot } from '../../theming/palette';
 import { PLACEMENTS } from '../../theming/placement';
 import { effectCatalog, effectDefinition, humanizeKey, paramChoices, type EditorMeta, type ParamField } from './editor-meta';
 
@@ -206,6 +206,73 @@ function ColorField({ lbl, value, onCommit }: { lbl: string; value: string | und
   );
 }
 
+// A colour that is EITHER a brand accent-slot key OR a literal (hex) —
+// `type: 'accent-or-color'`, the dual widening `fade-to-color.color` and
+// `wipe.color` both took (see `ACCENT_OR_COLOR_FIELDS`,
+// transition-schema.ts). STATELESS by construction — mode is derived from
+// `value` alone, never from a local toggle — so it round-trips correctly no
+// matter how the underlying data got there (hand-edited literal, an older
+// editor, a fresh pick) and never carries stale UI state across a different
+// selected node that happens to share the field name.
+//
+// NEVER RETURNS NULL, unlike pure `accent`: even with no brand palette in
+// scope there is still a usable control (the literal half needs none), so a
+// dual field must not vanish the way `renderParamControl`'s plain `accent`
+// branch does — that would be the same class of editor data-loss this repo
+// has hit three times already (the inspector's kind coercion, `sepia: 1`
+// dropped, the deprecated `from` alias).
+const ACCENT_OR_COLOR_LITERAL_OPTION = '__literal__';
+
+function AccentOrColorField({
+  lbl,
+  value,
+  slots,
+  onCommit,
+}: {
+  lbl: string;
+  value: string | undefined;
+  slots: readonly AccentSlot[];
+  onCommit: (v: unknown) => void;
+}): ReactNode {
+  // No brand palette at all: nothing to pick a SLOT from, so the field is
+  // simply its literal half. Never `null` — see the comment above.
+  if (slots.length === 0) return <ColorField key={lbl} lbl={lbl} value={value} onCommit={onCommit} />;
+
+  // An explicit EMPTY STRING also counts as literal mode: it is what
+  // "Custom colour" seeds (below) before anything is typed, and it must not
+  // be indistinguishable from "nothing authored" (`undefined`, which stays in
+  // accent mode) or the picker would snap straight back the moment it
+  // re-renders. Deliberately not a hex placeholder: core names no colour of
+  // its own anywhere in this file, so the seed is "no value yet", not a
+  // literal.
+  const literalMode = value !== undefined && (isColorLiteral(value) || value === '');
+  // A KNOWN slot key selects itself; an unrecognised non-literal string
+  // (a stale/renamed slot, or nothing authored yet) is handed to SelectField
+  // as-is — its own unknown-value handling prepends it rather than losing it,
+  // so a retired slot's key still shows as itself instead of silently
+  // resetting to the first option.
+  const selectValue = literalMode ? ACCENT_OR_COLOR_LITERAL_OPTION : value;
+  return (
+    <>
+      <SelectField
+        lbl={lbl}
+        value={selectValue}
+        options={[...slots.map((s) => s.key), ACCENT_OR_COLOR_LITERAL_OPTION]}
+        optionLabel={(v) => (v === ACCENT_OR_COLOR_LITERAL_OPTION ? 'Custom colour (hex)' : slots.find((s) => s.key === v)?.label ?? v)}
+        onChange={(next) => {
+          // Choosing "custom" with no literal authored yet needs SOME value to
+          // seed the colour control with, so its mode switches on this render
+          // rather than needing a second interaction; an already-literal value
+          // re-commits itself unchanged rather than resetting the seed.
+          if (next === ACCENT_OR_COLOR_LITERAL_OPTION) onCommit(literalMode ? value : '');
+          else onCommit(next);
+        }}
+      />
+      {literalMode && <ColorField key={`${lbl}-literal`} lbl={`${lbl} (hex)`} value={value} onCommit={onCommit} />}
+    </>
+  );
+}
+
 // ---- THE parameter control -------------------------------------------------
 // ONE dispatch from a `ParamField` to a control, for BOTH extension axes.
 //
@@ -260,6 +327,15 @@ function renderParamControl({
         optionLabel={(v) => slots.find((s) => s.key === v)?.label ?? v}
         onChange={onCommit}
       />
+    );
+  }
+
+  // The DUAL form — accent-slot key OR a literal (hex). A SEPARATE branch
+  // from `accent` above (see `AccentOrColorField`'s own doc comment): unlike
+  // `accent`, this never returns null for lack of a palette.
+  if (field.type === 'accent-or-color') {
+    return (
+      <AccentOrColorField key={field.prop} lbl={lbl} value={asString} slots={accentSlots ?? []} onCommit={onCommit} />
     );
   }
 

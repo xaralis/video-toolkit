@@ -206,6 +206,29 @@ export const AccentKey = z
  */
 export const ColorHex = z.string().describe('A literal colour (hex).');
 
+/**
+ * A colour field that accepts EITHER an {@link AccentKey} (a brand accent-slot
+ * key) OR a {@link ColorHex} literal — the union of the two. To zod this is
+ * still just `z.string()` (both alternatives already are, and see the note on
+ * `subOptionForField` about why a `z.union` of two `ZodString`s is deliberately
+ * NOT used here), so this exists to document intent, exactly as `AccentKey`
+ * and `ColorHex` themselves do — the editor control and the render-time
+ * resolution are what actually give the two meanings apart (see
+ * `ACCENT_OR_COLOR_FIELDS` below, and `resolveAccentOrColor` in
+ * `lib/theming/palette.ts`).
+ *
+ * `fade-to-color.color` and `wipe.color` are both this, not plain `AccentKey`:
+ * a brand's colour is not always an accent in the BRAND's own model (PP's
+ * `coal` is a background token, not an accent slot), and forcing it into
+ * `accentSlots` to satisfy a core type that only accepted a key was the brand
+ * leak this widening removes. A literal written directly in the brand's own
+ * config (`color: '#RRGGBB'`) is exactly where a brand hex belongs; core still
+ * names no colour of its own anywhere in this file.
+ */
+export const AccentOrColorHex = z
+  .string()
+  .describe('Brand accent-slot key OR a literal colour (hex). A literal is used as-is; an accent key resolves via the brand theme’s accentSlots at render time.');
+
 /** One entry in the catalog: the kind's zod member plus the presentation
  *  metadata the zod schema cannot express (a human label, and the seed values
  *  `defaultTransition` uses where "first enum option" is the wrong choice). */
@@ -246,16 +269,22 @@ const CATALOG = catalog(
   { schema: z.object({ kind: z.literal('dissolve'), frames: TransitionFrames }), label: 'Dissolve' },
   { schema: z.object({ kind: z.literal('fade'), frames: TransitionFrames }), label: 'Fade' },
   {
-    // THE MISSING PARAMETER, exposed. `color` is a brand ACCENT-SLOT KEY, not a
-    // literal — same convention as `wipe.color`, and the reason the field is
-    // NAMED `color`: `ACCENT_FIELDS` (below) is what gives it a palette picker
-    // in the editor, and core cannot enumerate a vocabulary the brand owns.
+    // THE MISSING PARAMETER, exposed. `color` accepts EITHER a brand
+    // ACCENT-SLOT KEY OR a literal colour (hex) — `AccentOrColorHex`, same dual
+    // convention as `wipe.color`. It used to be `AccentKey`-only; the widening
+    // is what lets a brand for whom the colour is NOT an accent in its own
+    // model (a background token, say) write the hex directly instead of
+    // declaring a fake accent slot to satisfy this field's type. `color` is
+    // still the field's NAME regardless: `ACCENT_OR_COLOR_FIELDS` (below) is
+    // what gives it its dual editor control, and core still cannot enumerate a
+    // brand's accent vocabulary — only the literal half is core-nameable, and
+    // core names none.
     //
     // OPTIONAL, with no seed: with no colour there is nothing to dip through,
     // so the renderer falls back to the plain crossfade. Core has no colour
     // vocabulary to seed this from — it names NO colour anywhere in this
-    // catalog; a brand that wants a specific dip declares the slot in its own
-    // palette and writes that key here.
+    // catalog; a brand that wants a specific dip writes a hex or declares an
+    // accent slot in its own palette and writes that key here.
     //
     // This kind REPLACED a per-brand kind name: core's catalog used to carry
     // one brand's colour word as a kind of its own, which is what a missing
@@ -265,7 +294,7 @@ const CATALOG = catalog(
     schema: z.object({
       kind: z.literal('fade-to-color'),
       frames: TransitionFrames,
-      color: AccentKey.optional().describe('Colour dipped through, as a brand accent-slot key. Unset = a plain crossfade.'),
+      color: AccentOrColorHex.optional().describe('Colour dipped through — a brand accent-slot key OR a literal (hex). Unset = a plain crossfade.'),
     }),
     label: 'Fade to colour',
   },
@@ -439,13 +468,16 @@ const CATALOG = catalog(
     schema: z.object({
       kind: z.literal('wipe'),
       frames: TransitionFrames,
-      // The sweep's colour, as a BRAND accent-slot key rather than a fixed
-      // enum — this field used to be a fixed three-value enum naming one
+      // The sweep's colour, as EITHER a BRAND accent-slot key OR a literal
+      // (hex) — `AccentOrColorHex`, the same dual widening `fade-to-color`
+      // took. This field used to be a fixed three-value enum naming one
       // brand's palette colours, sitting in the shared schema and inherited by
-      // every other brand. Optional: unset means the presentation's own
-      // neutral sweep, which is the only honest default core can offer for a
+      // every other brand; then an accent-key-only field, which still forced a
+      // brand whose sweep colour is not an accent in its own model to declare
+      // a fake slot. Optional: unset means the presentation's own neutral
+      // sweep, which is the only honest default core can offer for a
       // vocabulary it doesn't own.
-      color: AccentKey.optional().describe('Wipe sweep colour, as a brand accent-slot key.'),
+      color: AccentOrColorHex.optional().describe('Wipe sweep colour — a brand accent-slot key OR a literal (hex).'),
       direction: z.enum(['left', 'right']),
     }),
     label: 'Wipe',
@@ -760,9 +792,14 @@ export function withTransitionField(t: DraftTransition, prop: string, value: unk
 }
 
 // Field NAMES whose string value is a BRAND ACCENT-SLOT KEY rather than free
-// text — `wipe.color` names a slot in the brand's palette (see `AccentKey`),
-// which `resolveAccentColor` turns into a hex at render time. The editor gives
-// these a palette picker, filled from the brand's own accent slots.
+// text (see `AccentKey`), which `resolveAccentColor` turns into a hex at
+// render time. The editor gives these a palette picker, filled from the
+// brand's own accent slots, and NOTHING ELSE — no free-text escape hatch. Core
+// has no catalog field of this pure-accent-only shape today (`color` moved to
+// `ACCENT_OR_COLOR_FIELDS` below when it went dual); the set stays as
+// infrastructure for the next one, and for a brand's own `EditorMeta`
+// declarations, which read `type: 'accent'` directly rather than through this
+// set at all — see `lib/editor/app/LayeredInspector.tsx`'s `renderParamControl`.
 //
 // WHY A NAME LIST AND NOT THE SCHEMA. To zod an accent key, a hex literal and
 // burn's `mask` file path are all `z.string()` — nothing in the shape tells
@@ -778,15 +815,33 @@ export function withTransitionField(t: DraftTransition, prop: string, value: unk
 // core's own CATALOG members (`subOptionsFor` returns `[]` for a brand kind), so
 // this is core's closed field vocabulary — not a global rule about the word
 // "color". The completeness and non-string guards live in that same test file.
-export const ACCENT_FIELDS: ReadonlySet<string> = new Set(['color']);
+export const ACCENT_FIELDS: ReadonlySet<string> = new Set([]);
 
 /** Field NAMES holding a LITERAL colour (a hex string) — sibling of
  *  {@link ACCENT_FIELDS}, same mechanism, same reasons. @see ColorHex */
 export const COLOR_FIELDS: ReadonlySet<string> = new Set(['glowColor']);
 
-/** True when `prop` names a brand accent-slot key. THE one place that decides
- *  it — same rule as {@link isTransitionAlignment} and {@link isCut}: one
- *  exported decider, no site keeping its own copy of the list. */
+/**
+ * Field NAMES that accept EITHER a brand accent-slot key OR a literal colour
+ * (hex) — the DUAL widening (`AccentOrColorHex`) `fade-to-color.color` and
+ * `wipe.color` both moved to. Deliberately its own set, disjoint from both
+ * {@link ACCENT_FIELDS} and {@link COLOR_FIELDS}, rather than folding into
+ * `ACCENT_FIELDS`: the field is literally named `color`, which is the exact
+ * name-collision seam Task 1.6 warned about, and `color` is ALSO the name a
+ * brand's own `EditorMeta` declarations use for a pure accent-only control
+ * (see `lib/editor/src/param-control-unified.test.tsx`'s `tint` example,
+ * declared with `type: 'accent'` directly — a different mechanism entirely,
+ * untouched by this set). Reusing `type: 'accent'` for both would have made
+ * EVERY declared accent field dual whether the brand wanted that or not — a
+ * silent behaviour change for a mechanism this set does not own. A distinct
+ * type (`'accent-or-color'`) and a distinct set keep the two apart.
+ */
+export const ACCENT_OR_COLOR_FIELDS: ReadonlySet<string> = new Set(['color']);
+
+/** True when `prop` names a brand accent-slot key (accent-ONLY — no literal
+ *  escape hatch). THE one place that decides it — same rule as
+ *  {@link isTransitionAlignment} and {@link isCut}: one exported decider, no
+ *  site keeping its own copy of the list. */
 export function isAccentField(prop: string): boolean {
   return ACCENT_FIELDS.has(prop);
 }
@@ -794,6 +849,12 @@ export function isAccentField(prop: string): boolean {
 /** True when `prop` names a literal-colour field. @see isAccentField */
 export function isColorField(prop: string): boolean {
   return COLOR_FIELDS.has(prop);
+}
+
+/** True when `prop` names a DUAL colour field (accent key OR literal).
+ *  @see isAccentField */
+export function isAccentOrColorField(prop: string): boolean {
+  return ACCENT_OR_COLOR_FIELDS.has(prop);
 }
 
 // Enum VALUES whose humanized form would be unreadable. Keyed by the raw value;
@@ -885,10 +946,12 @@ export function subOptionForField(prop: string, field: z.ZodTypeAny): ParamField
   const def = declaredDefault(field);
   // NAME, not shape: an accent key IS a string, and so is burn's `mask`, and so
   // is its `glowColor` — the shape cannot tell them apart, so the declaration
-  // does (see `ACCENT_FIELDS` / `COLOR_FIELDS` above). Deliberately BEFORE the
-  // `instanceof` ladder and independent of `innerType`: `.transform()` produces
-  // a `ZodEffects` that `innerType` cannot see through at all, and the whole
-  // point of this task is that no chain can cost a field its control.
+  // does (see `ACCENT_FIELDS` / `COLOR_FIELDS` / `ACCENT_OR_COLOR_FIELDS`
+  // above). Deliberately BEFORE the `instanceof` ladder and independent of
+  // `innerType`: `.transform()` produces a `ZodEffects` that `innerType`
+  // cannot see through at all, and the whole point of this task is that no
+  // chain can cost a field its control.
+  if (isAccentOrColorField(prop)) return { prop, label, type: 'accent-or-color', ...def };
   if (isAccentField(prop)) return { prop, label, type: 'accent', ...def };
   if (isColorField(prop)) return { prop, label, type: 'color', ...def };
   if (t instanceof z.ZodEnum) {

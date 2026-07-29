@@ -20,3 +20,36 @@ export function resolveAccentColor(slots: readonly AccentSlot[], key: string | n
   if (key === null) return null;
   return paletteMap(slots)[key] ?? null;
 }
+
+/** True when `s` is a CSS hex colour LITERAL (a `#` followed by 3, 6, or 8 hex
+ *  digits — the shorthand, standard, and alpha-suffixed forms) rather than a
+ *  brand accent-slot key. Shape only, same idiom the editor's own
+ *  `ColorField` swatch already uses (`lib/editor/app/LayeredInspector.tsx`) —
+ *  not a new convention, just the render-side use of the existing one. An
+ *  accent-slot key is brand-chosen free text (`'coal'`, `'gold'`), so anything
+ *  NOT shaped like `#…` is unambiguously a key, never a colour this function
+ *  mistakes for one. */
+export function isColorLiteral(s: string): boolean {
+  return /^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3}(?:[0-9a-fA-F]{2})?)?$/.test(s);
+}
+
+/**
+ * Resolve a `color` field that accepts EITHER a brand accent-slot key OR a
+ * literal colour (hex) — the dual form `fade-to-color.color` and `wipe.color`
+ * widened to since Phase 4 (see `AccentOrColorHex` in
+ * `lib/reel-config-base/transition-schema.ts`). A literal is used AS-IS: no
+ * palette lookup, and therefore no possibility of "unresolved" — it IS the
+ * colour. Anything else is treated as an accent-slot key and resolved exactly
+ * as `resolveAccentColor` does (including returning `null` when the brand
+ * never declared that slot, or when no palette was threaded in at all).
+ *
+ * This is what lets a brand for whom the colour is genuinely NOT an accent
+ * (PP's `coal`, a background token in its own model) write the hex directly
+ * instead of declaring a fake accent slot to satisfy a schema that used to
+ * accept only a key.
+ */
+export function resolveAccentOrColor(slots: readonly AccentSlot[], key: string | null): string | null {
+  if (key === null) return null;
+  if (isColorLiteral(key)) return key;
+  return resolveAccentColor(slots, key);
+}

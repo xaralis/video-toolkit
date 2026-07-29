@@ -314,13 +314,14 @@ describe('subOptionsFor', () => {
     expect(byProp.zoomAmount.max).toBe(3);
   });
 
-  // wipe's colour is a BRAND accent-slot key, not a fixed palette: core no
-  // longer names one brand's colours, so the control is an 'accent' picker
-  // whose options come from the brand's own accentSlots at edit time.
-  it('returns an accent colour picker + a direction enum for wipe', () => {
+  // wipe's colour is EITHER a BRAND accent-slot key OR a literal (hex) — core
+  // no longer names one brand's colours, so the control is a DUAL
+  // 'accent-or-color' picker whose accent half comes from the brand's own
+  // accentSlots at edit time and whose literal half needs no brand at all.
+  it('returns a dual accent-or-color picker + a direction enum for wipe', () => {
     const opts = subOptionsFor('wipe');
     const byProp = Object.fromEntries(opts.map((o) => [o.prop, o]));
-    expect(byProp.color.type).toBe('accent');
+    expect(byProp.color.type).toBe('accent-or-color');
     expect(byProp.color.options).toBeUndefined();
     expect(byProp.direction.type).toBe('enum');
     expect(optValues(byProp.direction.options)!.sort()).toEqual(['left', 'right']);
@@ -393,7 +394,7 @@ describe('subOptionsFor', () => {
       const shape = shapeFor(kind);
       for (const opt of subOptionsFor(kind)) {
         const f = inner(shape[opt.prop]);
-        if (f instanceof z.ZodString) expect(opt.type, `${kind}.${opt.prop}`).toMatch(/^(string|color|accent)$/);
+        if (f instanceof z.ZodString) expect(opt.type, `${kind}.${opt.prop}`).toMatch(/^(string|color|accent|accent-or-color)$/);
       }
     }
   });
@@ -533,13 +534,18 @@ describe('subOptionForField', () => {
     expect(subOptionForField('glow', z.string().optional())?.type).toBe('string');
   });
 
-  it('maps an accent field to an accent picker, options left to the brand', () => {
+  // `color` is a DUAL field since the Phase 4 widening (accent-slot key OR a
+  // literal hex — `ACCENT_OR_COLOR_FIELDS`, transition-schema.ts), so its
+  // control is 'accent-or-color', not plain 'accent'. It still gets no
+  // `options` from the schema: the accent half's choices are the brand's, and
+  // the literal half needs none.
+  it('maps `color` to the DUAL accent-or-color picker, options left to the brand', () => {
     expect(subOptionForField('color', AccentKey)).toEqual({
       prop: 'color',
       label: 'Color',
-      type: 'accent',
+      type: 'accent-or-color',
     });
-    expect(subOptionForField('color', AccentKey.optional())?.type).toBe('accent');
+    expect(subOptionForField('color', AccentKey.optional())?.type).toBe('accent-or-color');
     // burn's `mask` is also a string and must stay a plain TEXT field — that is
     // the distinction the declaration carries. Since Task 1.1 it is "which
     // control", not "control or nothing", which makes it worth restating.
@@ -551,9 +557,9 @@ describe('subOptionForField', () => {
   // this replaced only survived `.optional()` BEFORE `.describe()` — the order
   // every existing catalog field happens to use. The reverse order used to
   // silently produce no control at all (not even an error).
-  it('still maps to an accent picker when .describe() comes before .optional()', () => {
+  it('still maps `color` to the dual picker when .describe() comes before .optional()', () => {
     const field = AccentKey.describe('A differently-worded description').optional();
-    expect(subOptionForField('color', field)?.type).toBe('accent');
+    expect(subOptionForField('color', field)?.type).toBe('accent-or-color');
   });
 });
 

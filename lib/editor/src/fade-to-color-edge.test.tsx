@@ -201,3 +201,55 @@ describe('an authored fade-to-color colour that does not resolve', () => {
     expect(warnings).toHaveLength(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// (3) THE WIDENING: `color` accepts a literal hex too, not just an accent key.
+//
+// This is the fix for the PP migration itself (see
+// .superpowers/sdd/2026-07-26-phase4-node-contract/fade-to-color-edge-fix-report.md):
+// PP's `coal` is a BACKGROUND colour in its own model, not an accent, and its
+// vendored renderer never threads `palette` into `buildVideoNodes` at all —
+// so an accent-slot key can NEVER resolve at that call site regardless of what
+// the brand theme declares. A literal sidesteps both problems: it needs no
+// palette to resolve, because it already IS the colour.
+// ---------------------------------------------------------------------------
+describe('fade-to-color with a LITERAL colour (no palette needed)', () => {
+  it('THE CAPABILITY: a literal paints, with NO palette threaded at all', () => {
+    const painted = paintedColors(build(reelEndingWith('#0a0a0a'), { background: '#123456' }));
+    expect(painted.filter((c) => c === 'rgb(10, 10, 10)')).toHaveLength(1);
+  });
+
+  it('a literal paints even when a palette IS present, unaffected by its slots', () => {
+    const painted = paintedColors(build(reelEndingWith('#0a0a0a'), {
+      palette: slots('#ff00ff'),
+      background: '#123456',
+    }));
+    // The dip is the literal, not the (unrelated) palette slot.
+    expect(painted.filter((c) => c === 'rgb(10, 10, 10)')).toHaveLength(1);
+    expect(painted.filter((c) => c === 'rgb(255, 0, 255)')).toHaveLength(0);
+  });
+
+  it('does NOT warn for a literal colour, with or without a palette', () => {
+    build(reelEndingWith('#0a0a0a'), { background: '#123456' });
+    build(reelEndingWith('#0a0a0a'), { palette: slots('#ff00ff'), background: '#123456' });
+    expect(warnings).toEqual([]);
+  });
+
+  // An accent key still resolves through the palette, unaffected by the
+  // widening — the PARITY half, kept alongside the capability so the two
+  // cannot be confused for the same pin.
+  it('an accent key still resolves through the palette, exactly as before', () => {
+    const painted = paintedColors(build(reelEndingWith('dip'), {
+      palette: slots('#0a0a0a'),
+      background: '#123456',
+    }));
+    expect(painted.filter((c) => c === 'rgb(10, 10, 10)')).toHaveLength(1);
+  });
+
+  // An unresolvable ACCENT KEY (not shaped like a literal) must still warn —
+  // the widening must not quiet the real defect this file exists to catch.
+  it('an unresolvable accent key still warns, unaffected by the widening', () => {
+    build(reelEndingWith('no-such-slot'), { palette: slots('#0a0a0a'), background: '#123456' });
+    expect(warnings.join('\n')).toMatch(/no-such-slot/);
+  });
+});

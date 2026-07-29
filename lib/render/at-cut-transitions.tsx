@@ -17,7 +17,7 @@ import {
 } from '../transitions';
 import { useCurrentFrame } from 'remotion';
 import { getTransitionRecord, type TransitionRecord } from './transition-record';
-import { resolveAccentColor, type AccentSlot } from '../theming/palette';
+import { resolveAccentOrColor, type AccentSlot } from '../theming/palette';
 import { resolveRegistered, registrationConfig } from '../theming/registry';
 import { isTransitionNode } from '../theming/transitions';
 import type {
@@ -108,7 +108,13 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   // a resolved colour this is a native two-input NODE (a dip has no one-sided
   // form); with none it is the same one-sided presentation `fade` returns.
   'fade-to-color': (t, dims) => {
-    const color = resolveAccentColor(dims.palette ?? [], t.color ?? null);
+    // `t.color` is DUAL, since the Phase 4 widening: either a brand
+    // accent-slot key (resolved through the palette, as before) OR a literal
+    // colour (hex), used as-is with no palette lookup at all. A literal can
+    // never be "unresolved" — see `resolveAccentOrColor`
+    // (lib/theming/palette.ts) — so the warning below fires only for a key
+    // that genuinely failed to resolve, never for a literal.
+    const color = resolveAccentOrColor(dims.palette ?? [], t.color ?? null);
     // AN AUTHORED COLOUR THAT RESOLVES TO NOTHING IS A BUG, NOT A CHOICE — and
     // until it said so, it was an INVISIBLE one. Falling back to `fade()` is
     // still the right RENDER (core naming a colour of its own is the leak this
@@ -128,11 +134,13 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
         `transition:fade-to-color:unresolved:${t.color}`,
         () =>
           `[video-toolkit] transition "fade-to-color" has color "${t.color}", which resolved to no ` +
-          'colour, so this boundary renders as a PLAIN CROSSFADE with no dip. `color` is a brand ' +
-          'ACCENT-SLOT KEY, not a CSS colour. Either the brand theme does not declare that slot in ' +
-          '`accentSlots`, or the renderer never threaded `palette` into buildVideoNodes() — check ' +
-          'the call site before the theme, because an unthreaded palette makes EVERY key fail ' +
-          'identically. (Warning only; nothing is blocked, and this is reported once per key.)',
+          'colour, so this boundary renders as a PLAIN CROSSFADE with no dip. `color` accepts EITHER ' +
+          'a literal colour (a `#`-prefixed hex value) OR a brand ACCENT-SLOT KEY — this value is not ' +
+          'a literal (not `#`-prefixed), so it was read as a key. Either the brand theme does not ' +
+          'declare that slot in `accentSlots`, or the renderer never threaded `palette` into ' +
+          'buildVideoNodes() — check the call site before the theme, because an unthreaded palette ' +
+          'makes EVERY key fail identically. (Warning only; nothing is blocked, and this is reported ' +
+          'once per key.)',
       );
     }
     return color === null ? (fade() as AnyPresentation) : fadeToColor({ color });
@@ -171,11 +179,12 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   },
   'clock-wipe': (_t, dims) => clockWipe({ width: dims.width, height: dims.height }) as AnyPresentation,
   'iris': (_t, dims) => iris({ width: dims.width, height: dims.height }) as AnyPresentation,
-  // `t.color` is a brand accent-slot KEY, not a colour: resolve it here, where
-  // the palette is in scope. Unknown/unset → undefined → the presentation's own
-  // neutral sweep.
+  // `t.color` is DUAL (same widening as `fade-to-color.color`, see there): a
+  // brand accent-slot KEY, resolved here where the palette is in scope, OR a
+  // literal colour (hex), used as-is with no palette lookup. Unknown/unset →
+  // undefined → the presentation's own neutral sweep.
   'wipe': (t, dims) => customWipe({
-    color: resolveAccentColor(dims.palette ?? [], t.color ?? null) ?? undefined,
+    color: resolveAccentOrColor(dims.palette ?? [], t.color ?? null) ?? undefined,
     direction: t.direction,
   }),
   'gradient-wipe': (t) => gradientWipe({ direction: t.direction, softness: t.softness }) as AnyPresentation,

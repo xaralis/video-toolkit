@@ -99,12 +99,14 @@ describe('LayeredInspector accentSlots', () => {
   });
 });
 
-// wipe's `color` sub-option is the one 'accent' control in the catalog: the
-// schema names the field but not its values (see AccentKey in
-// transition-schema.ts), so TransitionFields fills the dropdown from whatever
-// accentSlots the brand handed the editor, and drops the control entirely
-// when there is no palette to choose from (see LayeredInspector.tsx's
-// `TransitionFields`, the `opt.kind === 'accent'` branch).
+// wipe's `color` sub-option is a DUAL 'accent-or-color' control in the
+// catalog (widened from pure 'accent' — see the `color` literal-widening task
+// and `AccentOrColorHex` in transition-schema.ts): the schema names the field
+// but not its accent values (see AccentKey), so TransitionFields fills the
+// dropdown's accent half from whatever accentSlots the brand handed the
+// editor. Unlike a PURE accent field, the control is never omitted for lack
+// of a palette — its literal half needs none (see LayeredInspector.tsx's
+// `AccentOrColorField`).
 const wipeReel: LayeredReel = {
   version: 'layered-1', meta: { topic: 't', totalDurationMs: 2000 },
   tracks: {
@@ -116,7 +118,7 @@ const wipeReel: LayeredReel = {
   },
 };
 
-describe('LayeredInspector accent sub-option (wipe color)', () => {
+describe('LayeredInspector dual accent-or-color sub-option (wipe color)', () => {
   it('renders the brand slots as options, keyed by slot key with slot label as text', () => {
     render(
       <LayeredInspector
@@ -138,10 +140,136 @@ describe('LayeredInspector accent sub-option (wipe color)', () => {
     expect(rust.value).toBe('rust');
   });
 
-  it('omits the control entirely when there is no brand palette', () => {
+  // CHANGED FROM the pre-widening behaviour: a pure `accent` field used to
+  // vanish entirely with no palette in scope (there was nothing valid it
+  // could offer). A DUAL field always has its literal half, which needs no
+  // palette — so it degrades to a plain colour control instead of
+  // disappearing. Disappearing here would be exactly the class of editor
+  // data-loss this repo has hit three times before: a control that cannot be
+  // reached cannot be used to author the one form (a literal) that doesn't
+  // need a brand at all.
+  it('degrades to a plain literal-colour control when there is no brand palette, rather than vanishing', () => {
     render(
       <LayeredInspector reel={wipeReel} selectedId="transition:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
-    expect(screen.queryByText('Color')).toBeNull();
+    const colorInput = screen.getByLabelText('Color') as HTMLInputElement;
+    expect(colorInput.type).toBe('text');
+    expect(screen.getByLabelText('Color swatch')).toBeInTheDocument();
+  });
+
+  it('commits an accent SLOT KEY when one is picked from the dropdown', () => {
+    const onChange = vi.fn();
+    render(
+      <LayeredInspector
+        reel={wipeReel}
+        selectedId="transition:v1"
+        onChange={onChange}
+        onSeek={() => {}}
+        fps={30}
+        accentSlots={[{ key: 'gold', label: 'Gold', color: '#f6aa1c' }]}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Color'), { target: { value: 'gold' } });
+    const next = onChange.mock.calls.at(-1)![0] as LayeredReel;
+    expect((next.tracks.video[0].transitionOut as Record<string, unknown>).color).toBe('gold');
+  });
+
+  // Picking "Custom colour" from a field that has never authored anything
+  // must switch the control into literal mode WITHOUT core inventing a hex of
+  // its own — the seed is an empty string, not a colour.
+  it('picking "Custom colour" from an unset field seeds an empty literal, never a hex', () => {
+    const onChange = vi.fn();
+    render(
+      <LayeredInspector
+        reel={wipeReel}
+        selectedId="transition:v1"
+        onChange={onChange}
+        onSeek={() => {}}
+        fps={30}
+        accentSlots={[{ key: 'gold', label: 'Gold', color: '#f6aa1c' }]}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Color'), { target: { value: '__literal__' } });
+    const next = onChange.mock.calls.at(-1)![0] as LayeredReel;
+    expect((next.tracks.video[0].transitionOut as Record<string, unknown>).color).toBe('');
+  });
+
+  // THE ROUND-TRIP, both directions, and the data-loss guard: an authored
+  // LITERAL must still show as itself (not silently coerced into the
+  // dropdown's palette half and lost), and an authored slot KEY not in the
+  // CURRENT palette (stale/renamed) must still show as itself too — neither
+  // form the control does not currently favour gets discarded on render.
+  it('shows an authored LITERAL colour as itself, with the picker reflecting "custom"', () => {
+    const literalReel: LayeredReel = {
+      ...wipeReel,
+      tracks: {
+        ...wipeReel.tracks,
+        video: [{ ...wipeReel.tracks.video[0], transitionOut: { kind: 'wipe', frames: 15, direction: 'left', color: '#0a0a0a' } }],
+      },
+    };
+    render(
+      <LayeredInspector
+        reel={literalReel}
+        selectedId="transition:v1"
+        onChange={() => {}}
+        onSeek={() => {}}
+        fps={30}
+        accentSlots={[{ key: 'gold', label: 'Gold', color: '#f6aa1c' }]}
+      />,
+    );
+    // The literal itself is still visible, in a colour control.
+    expect((screen.getByLabelText('Color (hex)') as HTMLInputElement).value).toBe('#0a0a0a');
+    // The dropdown does NOT coerce the literal into (or hide it behind) an
+    // unrelated accent slot — it reflects "custom colour", not "gold".
+    const select = screen.getByLabelText('Color') as HTMLSelectElement;
+    expect(select.value).not.toBe('gold');
+  });
+
+  it('shows an authored slot key NOT in the current palette as itself, not silently dropped', () => {
+    const staleReel: LayeredReel = {
+      ...wipeReel,
+      tracks: {
+        ...wipeReel.tracks,
+        video: [{ ...wipeReel.tracks.video[0], transitionOut: { kind: 'wipe', frames: 15, direction: 'left', color: 'retired-slot' } }],
+      },
+    };
+    render(
+      <LayeredInspector
+        reel={staleReel}
+        selectedId="transition:v1"
+        onChange={() => {}}
+        onSeek={() => {}}
+        fps={30}
+        accentSlots={[{ key: 'gold', label: 'Gold', color: '#f6aa1c' }]}
+      />,
+    );
+    expect((screen.getByLabelText('Color') as HTMLSelectElement).value).toBe('retired-slot');
+  });
+
+  // Switching FROM a literal TO the palette, via the dropdown's own "custom
+  // colour" option round-tripping back: picking a real slot after a literal
+  // was authored must commit the slot key, not leave the old literal in place.
+  it('switches a literal back to an accent key when a slot is picked from the dropdown', () => {
+    const onChange = vi.fn();
+    const literalReel: LayeredReel = {
+      ...wipeReel,
+      tracks: {
+        ...wipeReel.tracks,
+        video: [{ ...wipeReel.tracks.video[0], transitionOut: { kind: 'wipe', frames: 15, direction: 'left', color: '#0a0a0a' } }],
+      },
+    };
+    render(
+      <LayeredInspector
+        reel={literalReel}
+        selectedId="transition:v1"
+        onChange={onChange}
+        onSeek={() => {}}
+        fps={30}
+        accentSlots={[{ key: 'gold', label: 'Gold', color: '#f6aa1c' }]}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Color'), { target: { value: 'gold' } });
+    const next = onChange.mock.calls.at(-1)![0] as LayeredReel;
+    expect((next.tracks.video[0].transitionOut as Record<string, unknown>).color).toBe('gold');
   });
 });
 

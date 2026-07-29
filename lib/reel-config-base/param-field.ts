@@ -33,13 +33,28 @@
  *  degree count. They change the CONTROL, never the data.
  *
  *  `accent` carries no `options`: core does not know a brand's palette, so the
- *  editor fills the choices from the accent slots it was handed.
+ *  editor fills the choices from the accent slots it was handed. It is
+ *  accent-ONLY — no literal escape hatch — which matters for a brand's own
+ *  `EditorMeta` declaration of a pure accent field (e.g. a `tint` prop): with
+ *  no palette in scope, the control is omitted entirely rather than shown
+ *  empty, because there is nothing valid it could offer.
  *
  *  `color` is a colour literal (a hex string), distinct from `string` so the
  *  editor can offer a swatch. A field is `color` because something DECLARES it
  *  so — a registration's own `type`, or, for a core catalog field, the
  *  `COLOR_FIELDS` list in `transition-schema.ts`. Never because zod says
- *  `z.string()`: an accent key, a hex and a file path are the same shape. */
+ *  `z.string()`: an accent key, a hex and a file path are the same shape.
+ *
+ *  `accent-or-color` is the DUAL form — an accent-slot key OR a literal (hex)
+ *  — that `fade-to-color.color` and `wipe.color` both take (marked by
+ *  `ACCENT_OR_COLOR_FIELDS`, transition-schema.ts). Deliberately a SEPARATE
+ *  type from `accent`, not a variant selected by some other flag: reusing
+ *  `accent` for this would have made every brand-declared pure-accent field
+ *  dual too (they share the same `renderParamControl` dispatch), silently
+ *  changing behaviour for a mechanism this type does not own. Unlike `accent`,
+ *  a dual field with NO palette in scope still renders — its literal half
+ *  always works — so it degrades to a plain colour control instead of
+ *  vanishing. */
 export type ParamType =
   | 'number'
   | 'string'
@@ -47,6 +62,7 @@ export type ParamType =
   | 'enum'
   | 'color'
   | 'accent'
+  | 'accent-or-color'
   | 'percent'
   | 'angle';
 
@@ -78,6 +94,11 @@ export type ParamOption = string | ParamChoice;
  *       `accent`. (With no palette supplied, an `accent` field renders NOTHING
  *       rather than falling through to a text box — there is no valid value it
  *       could offer.)
+ *    1b. `type: 'accent-or-color'` → the same accent dropdown, PLUS a literal
+ *        (hex) escape hatch, and the two round-trip without discarding
+ *        whichever form the field does not currently hold. With no palette in
+ *        scope it does NOT vanish like plain `accent` — the literal half needs
+ *        no palette, so the field degrades to a plain colour control instead.
  *    2. else `options` present (or `type: 'enum'`) → a dropdown over exactly
  *       those values;
  *    3. else `type` if declared (`number`/`percent`/`angle`, `boolean`,

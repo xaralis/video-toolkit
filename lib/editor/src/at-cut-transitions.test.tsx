@@ -133,11 +133,12 @@ function probeTransitionFor(kind: TransitionKind): { transition: Transition; pro
   const t = defaultTransition(kind) as Record<string, unknown>;
   const probes: Record<string, unknown> = {};
   for (const opt of subOptionsFor(kind)) {
-    // `accent` is covered by the palette test below. `string`/`color` are
-    // brand-supplied assets (burn's mask path, its glow hex) with no
-    // in-bounds probe value to invent — they became sub-options in Phase 4
-    // Task 1.1 and are pinned by the editor tests, not by this render probe.
-    if (opt.type === 'accent' || opt.type === 'string' || opt.type === 'color') continue;
+    // `accent` (and the dual `accent-or-color`) is covered by the palette
+    // tests below. `string`/`color` are brand-supplied assets (burn's mask
+    // path, its glow hex) with no in-bounds probe value to invent — they
+    // became sub-options in Phase 4 Task 1.1 and are pinned by the editor
+    // tests, not by this render probe.
+    if (opt.type === 'accent' || opt.type === 'accent-or-color' || opt.type === 'string' || opt.type === 'color') continue;
     const v = probeValueFor(kind, opt.prop, opt.type as 'enum' | 'number' | 'boolean', opt.options);
     t[opt.prop] = v;
     probes[opt.prop] = v;
@@ -406,10 +407,11 @@ describe.each(NODE_KINDS)('two-input node %s delivers every authored param', (ki
       return html;
     }).join('\n');
 
-  // `accent` is pinned by the palette tests below; `string`/`color` are
-  // brand-supplied assets with no in-bounds probe value to invent (burn only).
+  // `accent` (and the dual `accent-or-color`) is pinned by the palette tests
+  // below; `string`/`color` are brand-supplied assets with no in-bounds probe
+  // value to invent (burn only).
   const tunable = subOptionsFor(kind).filter(
-    (o) => o.type !== 'accent' && o.type !== 'string' && o.type !== 'color',
+    (o) => o.type !== 'accent' && o.type !== 'accent-or-color' && o.type !== 'string' && o.type !== 'color',
   );
 
   // Asserted rather than skipped: a knob vanishing from a node goes red here
