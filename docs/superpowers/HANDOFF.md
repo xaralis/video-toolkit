@@ -765,7 +765,7 @@ watching went stale.
 
 | Gate | Value |
 |---|---|
-| Editor tests | **91 files / 1263** (1259 passed, **4 skipped**), ~44 s |
+| Editor tests | **91 files / 1264** (1259 passed, **5 skipped**), ~44 s |
 | Editor types | **3** errors, **exit 2** — the same three, read separately from the count |
 | Render/transition types | **0**, coverage guard at or above every recorded floor |
 | Pixel harness | **PASS** — `315 accepted (13 on a bimodal cell's second hash), 0 same-picture-different-bytes, 0 drifted, 0 missing`, ~47 s |
@@ -776,7 +776,7 @@ watching went stale.
 
 - **The four `it.fails` known-defect pins are GONE.** `grep -n 'it.fails'
   lib/editor/src/at-cut-transitions.test.tsx` now returns **nothing**, and a new one appearing
-  is a new known defect. The **4 skipped** in the run are a different thing
+  is a new known defect. The **5 skipped** in the run are a different thing
   (`it.skipIf(isNode)`); their params are pinned by the differential param test at
   `at-cut-transitions.test.tsx:357`.
 - **The harness is 300 → 315 cells** (21 kinds × 3 modes × 5 progress points; Task 2.3 added
@@ -804,33 +804,54 @@ frame 45 is mid-clip. Tasks 2.2–2.7 each held all five byte-identical.
 
 ### The findings that must survive
 
-**1. The `presentationFor` trap was LATENT, not active — and it never widened.** The blast
-radius is confirmed at **6 files** in PP (five `projects/*/src/WebProgramIntro.tsx` plus
-`templates/web-program-intro/`), roost **0**. But **none of the six authors any transition at
-all** (`transitionOut:` = 0 in all six) and there are **zero authored uses** of the four
+**1. The `presentationFor` trap was LATENT, not active — and it widened by exactly one kind.**
+The blast radius is confirmed at **6 files** in PP (five `projects/*/src/WebProgramIntro.tsx`
+plus `templates/web-program-intro/`), roost **0**. But **none of the six authors any transition
+at all** (`transitionOut:` = 0 in all six) and there are **zero authored uses** of the four
 converted kinds in either repo, so no brand pixel changed. A `warnOnce` warning was added
 rather than a compatibility shim — a wrong picture silently is worse than a visible
-degradation. Task 2.2's conversions did **not** widen the set.
+degradation. Task 2.2's conversions did **not** widen the set; the 2026-07-29 `fade-coal`
+correction did, because a dip has no one-sided form. `NODE_KINDS` is now **five**
+(`checkerboard`, `fade-coal`, `pixelate`, `scanline-glitch`, `wipe`), and PP's one authored
+`fade-coal` is in a **layered** reel, which never touches `presentationFor`.
 
-**2. Neither brand registers a single effect or transition.** This refutes the plan's
-promotion table at its root and was re-derived independently by a reviewer under its own
-anchored greps. `vintage` and `blend` are `defaultProps` entries read by brand **video
-renderers**, not registry entries; PP's only registry keys are `overlays.text` and `video`,
-roost's likewise. Every transition either brand authors is already core — **10 distinct kinds
-against a 21-kind catalog, so 11 of core's kinds are authored by neither.** `vintage(vhs)` has
-**zero** authored uses; `vintage(film)` has zero in a real reel (all six are in roost's
-template demo, none in `roost-reel-01`). And `sepia(0.22)` needed **no** non-diagonal WB
-matrix — just a CSS filter core had not added.
+**2. Neither brand registers a single effect or transition — which is the UNAPPLIED-MIGRATION
+state, not a fact about the kinds.** *(Conclusion corrected 2026-07-29; the measurement is
+unchanged and was re-derived independently by a reviewer under its own anchored greps.)*
+`vintage` and `blend` are `defaultProps` entries read by brand **video renderers** today; PP's
+only registry keys are `overlays.text` and `video`, roost's likewise. But
+`phase3-migrations.md` **§2 requires PP to register `blend` as a brand effect** and **§4 rules
+that roost's `vintage` STAYS brand-registered** (params-only). **Phase 3.5 is unapplied — that
+is why nothing is registered**, and registering both is the intended end state. This refutes
+nothing about the promotion table; the classification's verdicts in
+`docs/superpowers/phase4-extension-contract.md` stand on their **merits** (what core's
+rendering model can express), and were re-checked one by one against `phase3-migrations.md`
+when this was corrected — none of them depended on the wrong inference.
+
+What *does* bear on the plan's framing is authored **demand**: every transition either brand
+authors is already core — **10 distinct kinds against a 21-kind catalog, so 11 of core's kinds
+are authored by neither.** `vintage(vhs)` has **zero** authored uses; `vintage(film)` has zero
+in a real reel (all six are in roost's template demo, none in `roost-reel-01`). And
+`sepia(0.22)` needed **no** non-diagonal WB matrix — just a CSS filter core had not added.
 
 **3. A brief's premise is not evidence, and three briefs were wrong on measurement.** Each was
 caught only because the task re-derived rather than conformed: the exiting-no-op family is
 **eight**, not seven (`checkerboard` joined it in 2.1); the gallery covered **8 by name + 1 by
 catalog kind**, not "10 of 20", against a **21**-kind catalog; and Task 2.3's brief specified
 `fade-coal`'s colour default as **black** while also requiring existing literals to keep their
-pixels exactly — on measurement those conflict, because today's `fade-coal` is literally
-`() => fade()` and never dips. All 15 `fade-coal__*` goldens are hash-identical to `fade__*`.
-The default shipped as **no colour**; the goal governed over the mechanism. The black variant
-is one line away and correctly graded a deliberate look change.
+pixels exactly — on measurement those conflict, because pre-correction `fade-coal` was literally
+`() => fade()` and never dipped, and all 15 `fade-coal__*` goldens were hash-identical to
+`fade__*`.
+
+> **The RESOLUTION of that conflict was wrong, and was corrected 2026-07-29.** The task
+> shipped "no colour" for parity; the user's goal was the opposite. **`fade-coal` not dipping
+> was the defect** — its label promised a dip to black that never happened, which is the very
+> thing the plan cites it for. It now dips through a **neutral `#000000`** (never any brand's
+> near-black — a brand hex passes the brand-leak grep and is still a leak), 10 of its 15
+> golden cells moved to record it, and § 2.3-a of `phase4-migrations.md` is re-graded from
+> parity-preserving to a **deliberate look change**. The measurement in this finding was
+> right; the conclusion drawn from it was not. **A brief's premise is not evidence — and
+> neither is a task's own re-derivation of the goal.**
 
 **4. The gallery had been demonstrating a component reels never rendered.** Task 2.5 deleted
 Remotion's official `wipe` from core; core's native two-input `wipe` is the only one. Because

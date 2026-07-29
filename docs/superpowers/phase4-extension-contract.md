@@ -129,13 +129,26 @@ grep -rhoE "kind: ['\"][a-z-]+['\"]" --include='*.ts' --include='*.tsx' ./templa
 grep -rhoE "type: ['\"][a-z-]+['\"]" --include='*.ts' --include='*.tsx' ./templates ./projects | sort | uniq -c
 ```
 
-**The headline result: NEITHER brand registers a single entry on the effect axis or the
-transition axis.** PP @ `5a9cc1e`, roost @ `c498f8c`. Every `effects:` hit above is an
+**The headline measurement: NEITHER brand registers a single entry on the effect axis or the
+transition axis today.** PP @ `5a9cc1e`, roost @ `c498f8c`. Every `effects:` hit above is an
 `item.effects[]` array inside a `defaultProps` literal, not a `theme.effects` key. Both
-brands register only on the **overlay** and **video** axes. `vintage` and `blend` are
-therefore not brand *effect registrations* at all — they are effect *entries* consumed by
-each brand's own video renderer, which reads them off the item before core's `applyEffects`
-ever sees them.
+brands register only on the **overlay** and **video** axes. `vintage` and `blend` are, in
+the tree as it stands, effect *entries* consumed by each brand's own video renderer, which
+reads them off the item before core's `applyEffects` ever sees them.
+
+> **Read that as the UNAPPLIED-MIGRATION state, not as a fact about the kinds.**
+> *(Corrected 2026-07-29; the first pass of this document drew the opposite inference.)*
+> `phase3-migrations.md` **§2 requires PP to register `blend` as a brand effect** — it gives
+> the `effects: { blend: { renderer: BlendEffect, params: […] } }` shape verbatim and tells
+> PP to delete `extractEffects` — and **§4 rules that roost's `vintage` STAYS
+> brand-registered**, with a params-only registration so the editor learns the kind.
+> Phase 3.5 is unapplied, which is the entire reason nothing is registered. **Registering
+> both is the intended end state**, and the measurement above is evidence of a pending
+> migration, not evidence that these kinds do not belong in a registry.
+>
+> Every verdict in this section is therefore stated on its **merits** — what core's
+> vocabulary and rendering model can express — and none of them turns on the absence of a
+> registration. Re-checked one by one when this correction was written.
 
 ### Effects
 
@@ -215,10 +228,17 @@ them, so **11** core kinds are authored by neither — `fade-to-color`, `rgb-spl
 `pixelate`, `checkerboard`. The catalog is wider than demand, which is the opposite of the pressure the promotion rule is
 designed to relieve.
 
-**This is the single largest refutation in this document.** The plan's hypothesis table
-implicitly frames both brands as pushing against core's transition vocabulary. Measured,
-neither brand registers a transition at all, and roost's `burn` is the *post-promotion*
+**The plan's hypothesis table implicitly frames both brands as pushing against core's
+transition vocabulary, and the demand measurement does not support that**: 10 authored kinds
+against a 21-kind catalog, all 10 already core. roost's `burn` is the *post-promotion*
 pattern working exactly as designed.
+
+That conclusion rests on the **authored** counts above, not on the fact that neither brand
+registers a transition. *(Clarified 2026-07-29.)* The absence of transition registrations is
+a separate observation, and unlike the effect axis it is **not** a pending migration:
+`phase3-migrations.md` asks for exactly two registrations — PP's `blend` (§2) and roost's
+`vintage` (§4) — and both are effects. It specifies no transition registration for either
+brand.
 
 ### Registered but out of scope here
 
@@ -275,9 +295,14 @@ misapplied.
 2. **`blend`'s "promote" verdict rested on that premise** and is downgraded to
    **conditional** above, with the condition and the owning workstream named. A verdict that
    will be wrong next week is worse than one that names its own dependency.
-3. **Neither brand registers ANY effect or transition.** The table's framing — brand kinds
-   pressing against core's tiers — does not describe the tree. `vintage` and `blend` are
-   effect *entries* read by brand *video* renderers.
+3. **Neither brand registers ANY effect or transition *yet*.** The measurement stands; the
+   inference the first pass drew from it did not, and is corrected in §3. `vintage` and
+   `blend` are effect *entries* read by brand *video* renderers **because Phase 3.5 is
+   unapplied** — `phase3-migrations.md` §2 requires PP to register `blend`, and §4 rules
+   that roost's `vintage` stays brand-registered. They are pending registrations, and this
+   item is a note about migration state, not a refutation of the two-tier model. Nothing in
+   the plan's hypothesis table is overturned by it; what does bear on that table is the
+   authored-demand count in §3.
 4. **`vintage (vhs)` has zero authored uses.** The plan rejected it on criterion (2). It
    fails (3) first, and (3) is the cheaper and more honest test.
 5. **`sepia(0.22)` was cited as needing "a non-diagonal WB matrix".** It needs no matrix at
