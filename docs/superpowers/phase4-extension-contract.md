@@ -352,36 +352,39 @@ enable check. A second reserved type would need one too.
 > `enabled: false` support for free, with no new file to touch.
 >
 > **IMPORTANT 3, corrected 2026-07-29, round 1 — "same contract as grain/grade" overstated
-> the parity.** It is true on the RENDER contract (`resolveRegistered`, one resolution rule,
-> no name check) — that part stands. It is **not yet true on the EDITOR contract**: `grain`
-> and `grade` each get a catalog entry with declared `params` (`CORE_EFFECTS`,
-> `lib/editor/app/editor-meta.ts`), so the inspector renders real controls for them. A style
-> effect has **no editor surface at all** — `effectsFromTheme` (`editor-meta.ts:127`) iterates
-> only `theme.effects`, `grep -rn styleEffects lib/editor/app/` returns zero hits, and any
-> `params` a brand declares on a `StyleEffectRegistration` are dead: nothing ever calls
-> `registrationParams` against the style registry. The precise, honest statement is
-> **"renderable, not yet authorable or editable in the reel editor — owned by Task 4.4."**
+> the parity, AT THE TIME.** It was true on the RENDER contract (`resolveRegistered`, one
+> resolution rule, no name check) from the start. It was **not yet true on the EDITOR
+> contract** for one release: `grain` and `grade` each got a catalog entry with declared
+> `params` (`CORE_EFFECTS`, `lib/editor/app/editor-meta.ts`), so the inspector rendered real
+> controls for them, while a brand's own STYLE-axis registration had no editor surface at
+> all — `effectsFromTheme` (`editor-meta.ts`) iterated only `theme.effects`, and any `params`
+> a brand declared on a `StyleEffectRegistration` were dead: nothing called
+> `registrationParams` against the style registry.
 >
-> The one fact that makes this load-bearing rather than cosmetic: it **removes a workaround
-> that used to exist**. Before Task 3.2, a brand wanting an editor entry for `ken-burns` (or
-> a style-effect type it planned to add) could register it on `theme.effects` — inert at
-> RENDER time (reserved, skipped by `applyEffects`) but visible at EDIT time, because
-> `editorMetaFromTheme` read `theme.effects` regardless of reserved status *before* Task
-> 3.2's derivation tightened that check. The derived reserved set now also governs
-> `effectsFromTheme`'s own skip (`isReservedEffectType(theme, type)`, `editor-meta.ts`), so
-> a `theme.effects` registration for a reserved type is now UNCONDITIONALLY invisible to the
-> editor too — the workaround is gone, with nothing put in its place yet.
+> **CLOSED 2026-07-29, Task 4.4.** `editorMetaFromTheme` now also derives from
+> `theme.styleEffects` (`styleEffectsFromTheme`, `lib/editor/app/editor-meta.ts`), using the
+> SAME `registrationParams` accessor the transition axis uses — everything registered there
+> except core's own two reserved types (`ken-burns`, `grade`, which keep their static
+> `CORE_EFFECTS` entries and bespoke inspector panels) is now offerable in "+ Add effect"
+> with its declared `params` editable, exactly like a WRAPPER-axis registration. A brand
+> gets this by registering on `theme.styleEffects` alone — no second `theme.effects`
+> declaration, no workaround needed. **"Same contract as grain/grade" is true on both the
+> render and the editor contract now.** The statement this correction replaces —
+> "renderable, not yet authorable or editable in the reel editor — owned by Task 4.4" — is
+> corrected, not still open.
 >
-> **User ruling, 2026-07-29: DEFERRED and SCHEDULED, not a standing limitation.** Task 3.2
-> does not build the editor surface. It is not left as an open-ended known gap either —
-> it has a task number: **Task 4.4, Workstream 4 ("close the write-only props")**. A
-> registered style effect that renders but cannot be authored or edited is a write-only
-> prop, the same shape `anchoredOverlays` is in Task 4.1; it belongs in the same cleanup as
-> that, alongside closing core's five generic WRAPPER effects' own missing `params` (the
-> pre-existing gap this carries forward from Workstream 2 — there is no effect-axis
-> equivalent of the transition differential pin yet, for either axis). Recorded here so the
-> gap is TRACKED, not tolerated — the "same contract as grain/grade" line was, before this
-> correction, quietly implying the editor half was already closed too.
+> The fact that made this load-bearing rather than cosmetic, for the historical record: Task
+> 3.2 **removed a workaround that used to exist**. Before it, a brand wanting an editor entry
+> for `ken-burns` (or a style-effect type it planned to add) could register it on
+> `theme.effects` — inert at RENDER time (reserved, skipped by `applyEffects`) but visible at
+> EDIT time, because `editorMetaFromTheme` read `theme.effects` regardless of reserved status
+> before Task 3.2's derivation tightened that check. Task 4.4 does not restore that
+> workaround; it gives the STYLE axis its own catalog source instead, so the workaround is
+> no longer needed.
+>
+> **User ruling, 2026-07-29, at the time of 3.2's review: DEFERRED and SCHEDULED, not a
+> standing limitation** — recorded with a task number, **Task 4.4, Workstream 4 ("close the
+> write-only props")**, and closed by it as of this task.
 
 ### Transitions
 
@@ -543,9 +546,39 @@ region and (b) a caption clipped by an item boundary the way an anchored overlay
 
 ### What this does NOT settle
 
-- **No editor surface.** A `captions` item is renderable but has no inspector controls or
-  catalog entry — the same write-only shape Task 4.4 owns for style effects and the five core
-  wrapper effects. Recorded here as tracked, not tolerated.
+- **No editor surface — investigated and left open by Task 4.4, deliberately, as the
+  smaller of its two gaps (the STYLE-EFFECTS one is closed; see the style-effects section
+  above).** A `captions` item is renderable but has no inspector controls or catalog entry.
+  Task 4.4's brief scoped this in only as far as "kind selectable, `ThemeTokens.caption`
+  values editable" — investigating that surfaced it is not a same-shape gap to Gap 1's:
+  - There is **no "+ Add overlay" kind picker anywhere in core** — `git grep` for one across
+    `lib/editor/app/` and `lib/editor/host/` returns nothing, for `captions` or any other
+    overlay kind. Every overlay in a project today is authored into `defaultProps` by
+    `/toolkit:cut` or by hand; the reel editor only edits an overlay item that already
+    exists. "Making captions selectable" would mean building overlay-kind creation from
+    scratch — a new mechanism, not a reuse of one, unlike Gap 1's reuse of the existing
+    effect catalog.
+  - The overlay content editor (`LayeredInspector.tsx`, the `lane === 'overlays'` branch)
+    only renders `ParamFields` for a kind's content bag when `declared.length > 0` — an
+    undeclared field gets **no value-presence fallback at all** on this axis (unlike the
+    video-item `props` panel, which falls back to a generic typed editor for any prop with
+    no declaration). So even with a catalog entry, a captions item's `lines`/`liftWindows`
+    would stay invisible without ALSO declaring params for them — which is the word-timing
+    editor the brief names as staying deferred.
+  - `ThemeTokens.caption` (and every other `ThemeTokens` block — `text`, `multiClip`,
+    `card`, `watermark`, `disclaimer`) has **no editor surface for any category**, because
+    it is brand-wide look configuration, not per-reel instance data — the reel editor edits
+    `LayeredReel`, never `CompositionTheme`. Editing it would mean a new theme-editing
+    surface, a different axis of the editor entirely, not an extension of the inspector's
+    existing per-item panels.
+
+  **True size: materially larger than Gap 1**, and its two structural pieces (an overlay-kind
+  creation mechanism; a theme-tokens editor) are both reusable-by-nature building blocks with
+  no existing analogue to extend, unlike Gap 1's one-function reuse of an already-built
+  catalog. Per the brief's own scope-control instruction, Task 4.4 completed Gap 1 and
+  stopped here rather than half-build either piece. Not built: transcript import,
+  word-timing editing (both already recorded as separately deferred by Task 4.3), an
+  overlay-kind picker, or a theme-tokens editor.
 - **No derivation FROM A TRANSCRIPT.** Core's transcript helpers
   (`lib/transcripts/transcriptWindow`) produce the word shape the content bag wants, but
   nothing wires them together automatically — deliberately: which clip's transcript becomes
