@@ -310,21 +310,31 @@ Docker images, cuts releases, and syncs the Remotion skill from upstream).
 | Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **91 files / 1264 tests** — 1259 passed, **5 skipped**, ~45-50 s |
 | Editor types | `cd lib/editor && npx tsc --noEmit` | Same surface as above, plus all of `lib/render` (declared directly in `lib/editor/tsconfig.json`'s `include`, or reached transitively) and **all 16** of `lib/transitions`' files — `index.ts`, `edge-plate.tsx`, all 13 presentations, **and `TransitionGallery.tsx`**, which arrives through `src/transition-gallery*.test.tsx` (it used to be reachable only from `examples/layered-minimal`; that stopped being true at Phase 4 Task 2.5 and this row was stale for a round). Verify with `npx tsc --noEmit --listFiles`; the counts grow as presentations are added — re-derive, do not trust | **3** pre-existing errors, **exit code 2** |
 | Render/transitions types | `cd examples/layered-minimal && npm run typecheck` | `lib/render` and `lib/transitions` (including their `.tsx` components), via the example that actually imports them — see `docs/superpowers/core-typecheck-gate.md` | **0**, plus a coverage guard |
-| Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` | Every at-cut transition kind × mode × progress — one still per cell, hash-compared against committed goldens | **PASS**, ~47 s: `300 accepted, 0 same-picture-different-bytes, 0 drifted, 0 missing`, **zero** semantic xfails, `knownDefective` and `semanticXfail` both **empty** |
+| Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` — **while iterating, filter to the kinds you touched** (see below); this full form is for the gate itself | Every at-cut transition kind × mode × progress — one still per cell, hash-compared against committed goldens | **PASS**, ~47 s: `300 accepted, 0 same-picture-different-bytes, 0 drifted, 0 missing`, **zero** semantic xfails, `knownDefective` and `semanticXfail` both **empty** |
 
-### Don't run the full pixel harness while iterating
+### ALWAYS filter the pixel harness while iterating — this is an instruction, not a tip
 
-**The harness takes a kind filter, as bare positional arguments**, and almost nobody
-remembers:
+**When you are working on specific transition kinds, pass them as bare positional arguments.
+Do not run the full harness to check a change that touches two kinds.**
 
 ```bash
 cd examples/layered-minimal && node scripts/render-transition-matrix.mjs wipe pixelate
 ```
 
 That renders 2 kinds × 3 modes × 5 progress points = **30 stills instead of 300**, seconds
-instead of ~47 s. Most work touches one to four kinds. **Filter while iterating, run the full
-gate once before committing.** An entire workstream was run with every agent doing a full
-315-still pass on every iteration — minutes per task, thrown away.
+instead of ~47 s. Most work touches one to four kinds.
+
+**The rule:**
+
+- **Iterating on a change** → filter to the kinds you touched. Every time. Re-running 300
+  stills to learn about 30 is waste, and you will do it many times per task.
+- **Before committing** → one full `npm run pixel-gate:strict`, unfiltered. That is the gate;
+  the filtered runs are not.
+- **Reviewing** → filter unless the finding is about the harness itself or an axis.
+
+An entire workstream was run with every agent doing a full pass on every iteration — minutes
+per task, thrown away, because the filter is undocumented anywhere the agents were reading.
+If you catch yourself waiting ~47 s to look at one kind, you have made this mistake.
 
 **Two things the filter does NOT substitute for**, both deliberate:
 
