@@ -77,15 +77,36 @@ shipping kind, which is exactly what this harness exists to prevent.
 The two cases are told apart by a second, independent source: `TransitionMatrix.tsx`
 registers a non-probe **`TransitionCatalogManifest`** composition carrying
 `defaultProps.kinds = TRANSITION_CATALOG.map(e => e.kind)`, which
-`getCompositions()` hands back alongside the probes. Its absence is a hard failure,
-never a fallback. So:
+`getCompositions()` hands back alongside the probes.
+
+**The manifest is a security boundary for the goldens, so every way of not
+answering is a failure — not just a missing composition.** An earlier version of
+this section claimed "its absence is a hard failure, never a fallback"; that was
+true only of a *missing composition*, and the code behind it read
+`manifest?.defaultProps?.kinds ?? []` and asked `Array.isArray` *afterwards*, so a
+manifest that was present but carried **no `kinds` payload** degraded silently to
+"the catalog is empty" — which marks every baselined kind as removed and authorises
+pruning everything. **A spoof by omission is still a spoof.** The payload is now
+read raw and validated *before* any defaulting:
 
 | situation | result |
 |---|---|
 | kind absent from catalog, no probe, `--update-goldens --allow-shrink` | pruned, itemised per cell |
 | kind absent from catalog, no probe, any other invocation | `STALE GOLDEN`, refuse |
 | kind **in** catalog, no probe | `MISSING PROBE` + per-key `STALE GOLDEN`, refuse **regardless of any flag** |
-| manifest missing | `MANIFEST MISSING`, refuse |
+| manifest composition missing | `MANIFEST MISSING`, refuse |
+| manifest present, `kinds` absent or not an array | `MANIFEST MALFORMED`, refuse |
+| manifest present, `kinds` an empty array | `MANIFEST EMPTY`, refuse |
+| a discovered probe kind is **not** in `kinds` | `MANIFEST STALE`, refuse — **on the ordinary path** |
+
+That last row is the liveness check, and it is deliberately **not** gated on
+`--update-goldens` or `--allow-shrink`. Nothing else compared the two lists in that
+direction, so a rotted manifest used to pass every routine gate run and bite only
+on the day somebody re-baselined — the worst possible moment to learn that the
+harness's second source had stopped agreeing with its first. It now fails at the
+next `pixel-gate` run, naming the kinds it has lost. Together with `MISSING PROBE`
+(the converse) the two lists are pinned equal, which is what makes either usable as
+evidence about the other.
 
 A legitimate removal therefore shows up as `-15 removed, ~0 changed` — a **removal
 of cells**, which is exactly what a reviewer should expect, and not a de-listing of

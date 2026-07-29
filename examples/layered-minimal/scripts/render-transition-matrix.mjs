@@ -313,9 +313,20 @@ const comps = allComps.filter((c) => c.id.startsWith('Probe-'));
 // probe list alone they are indistinguishable, and a re-baseline would happily
 // delete live coverage. See the STALE GOLDEN / MISSING PROBE guards below.
 //
-// A HARD FAILURE if the manifest is absent, never a silent fallback to "no
-// catalog known" — a missing second source must not quietly collapse the two
-// cases back into one.
+// A HARD FAILURE on every way this source can be absent, and the ORDER of these
+// checks is the whole guard. An earlier version read
+// `manifest?.defaultProps?.kinds ?? []` and only THEN asked whether the result
+// was an array — so a manifest that was PRESENT but carried no `kinds` payload
+// degraded silently to "the catalog is empty", the `??` having already replaced
+// the nullish value the `Array.isArray` check was there to catch. An empty
+// catalog authorises pruning EVERYTHING: `catalogKinds.includes(kind)` is false
+// for every kind, so every stale key reads as "removed from the catalog" and a
+// `--update-goldens --allow-shrink` run deletes live coverage and exits 0. The
+// manifest is a security boundary for the goldens; a spoof by OMISSION is still
+// a spoof.
+//
+// So: read RAW, validate BEFORE defaulting, and only then hand downstream code a
+// safe array.
 const manifest = allComps.find((c) => c.id === 'TransitionCatalogManifest');
 if (!manifest) {
   fail(
@@ -324,8 +335,26 @@ if (!manifest) {
       'Register it from examples/layered-minimal/src/TransitionMatrix.tsx.',
   );
 }
-const catalogKinds = manifest?.defaultProps?.kinds ?? [];
-if (manifest && !Array.isArray(catalogKinds)) fail('MANIFEST MALFORMED: `TransitionCatalogManifest.defaultProps.kinds` is not an array');
+const rawCatalogKinds = manifest?.defaultProps?.kinds;
+if (manifest && !Array.isArray(rawCatalogKinds)) {
+  fail(
+    'MANIFEST MALFORMED: `TransitionCatalogManifest.defaultProps.kinds` is ' +
+      `${rawCatalogKinds === undefined ? 'absent' : JSON.stringify(rawCatalogKinds)}` +
+      ', not an array. It is the only thing that distinguishes a removed kind from a broken probe, and an ' +
+      'unreadable catalog must never read as an EMPTY one — that would authorise pruning every golden.',
+  );
+}
+if (manifest && Array.isArray(rawCatalogKinds) && rawCatalogKinds.length === 0) {
+  fail(
+    'MANIFEST EMPTY: `TransitionCatalogManifest.defaultProps.kinds` is an empty array. TRANSITION_CATALOG is ' +
+      'never empty, so this is a broken manifest, and treating it as the truth would mark every baselined ' +
+      'kind as removed.',
+  );
+}
+// Downstream code indexes this freely; validation above is what makes the
+// fallback safe rather than load-bearing (a run that reached it has already
+// recorded a failure, so no re-baseline can be written).
+const catalogKinds = Array.isArray(rawCatalogKinds) ? rawCatalogKinds : [];
 
 // "Probe-<kind>-<mode>" — mode is the LAST segment, kind is everything between
 // (kinds contain dashes: zoom-through, scanline-glitch, …). The kind list is
@@ -340,6 +369,32 @@ const parsed = comps.map((c) => {
 const allKinds = [...new Set(parsed.map((p) => p.kind))];
 const kinds = allKinds.filter((k) => only.length === 0 || only.includes(k));
 for (const k of only) if (!allKinds.includes(k)) fail(`no probe compositions for requested kind "${k}"`);
+
+// MANIFEST LIVENESS — every discovered probe kind must be IN the manifest.
+//
+// Deliberately on the ORDINARY path, not gated on `--update-goldens` or
+// `--allow-shrink`. Without it a rotted manifest is invisible until the day
+// somebody re-baselines, which is the worst possible moment to discover that
+// the harness's second source stopped agreeing with its first: every routine
+// gate run would pass, and the damage would land inside the one operation that
+// deletes goldens. A stale, truncated or empty manifest fails HERE, at the next
+// gate run, with the kinds it has lost named.
+//
+// This is the converse of the MISSING PROBE guard below: that one catches
+// "the catalog has a kind the probes do not", this one catches "the probes have
+// a kind the catalog does not". Together they pin the two lists as equal, which
+// is what makes either of them trustworthy as evidence about the other.
+{
+  const missingFromManifest = allKinds.filter((k) => !catalogKinds.includes(k));
+  if (manifest && Array.isArray(rawCatalogKinds) && missingFromManifest.length > 0) {
+    fail(
+      `MANIFEST STALE: ${missingFromManifest.length} kind(s) registered probe compositions but are absent from ` +
+        `TransitionCatalogManifest — ${missingFromManifest.join(', ')}. The manifest is the harness's second, ` +
+        'independent source; when it stops matching the probes it can no longer tell a removed kind from a ' +
+        'broken one, and a later --allow-shrink re-baseline would prune live coverage on its word.',
+    );
+  }
+}
 
 const entryFor = (kind, mode) => parsed.find((p) => p.kind === kind && p.mode === mode);
 
