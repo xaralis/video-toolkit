@@ -305,12 +305,12 @@ Run these before considering `lib/` or `examples/` work done. All are manual —
 there is no CI in this repo that runs them (`.github/workflows/` only builds
 Docker images, cuts releases, and syncs the Remotion skill from upstream).
 
-| Gate | Command | Covers | Baseline (measured 2026-07-28) |
+| Gate | Command | Covers | Baseline (measured 2026-07-29) |
 |---|---|---|---|
-| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **91 files / 1264 tests** — 1259 passed, **5 skipped**, ~43 s |
+| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **91 files / 1264 tests** — 1259 passed, **5 skipped**, ~45-50 s |
 | Editor types | `cd lib/editor && npx tsc --noEmit` | Same surface as above, plus all of `lib/render` (declared directly in `lib/editor/tsconfig.json`'s `include`, or reached transitively) and **all 16** of `lib/transitions`' files — `index.ts`, `edge-plate.tsx`, all 13 presentations, **and `TransitionGallery.tsx`**, which arrives through `src/transition-gallery*.test.tsx` (it used to be reachable only from `examples/layered-minimal`; that stopped being true at Phase 4 Task 2.5 and this row was stale for a round). Verify with `npx tsc --noEmit --listFiles`; the counts grow as presentations are added — re-derive, do not trust | **3** pre-existing errors, **exit code 2** |
 | Render/transitions types | `cd examples/layered-minimal && npm run typecheck` | `lib/render` and `lib/transitions` (including their `.tsx` components), via the example that actually imports them — see `docs/superpowers/core-typecheck-gate.md` | **0**, plus a coverage guard |
-| Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` | Every at-cut transition kind × mode × progress — 315 stills, hash-compared against committed goldens | **PASS**, ~48 s: `315 accepted, 0 same-picture-different-bytes, 0 drifted, 0 missing`, **zero** semantic xfails, `knownDefective` and `semanticXfail` both **empty** |
+| Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` | Every at-cut transition kind × mode × progress — 315 stills, hash-compared against committed goldens | **PASS**, ~52 s: `315 accepted, 0 same-picture-different-bytes, 0 drifted, 0 missing`, **zero** semantic xfails, `knownDefective` and `semanticXfail` both **empty** |
 
 **There are no `it.fails` pins left.** Four known-defect pins used to live in
 `lib/editor/src/at-cut-transitions.test.tsx` (`checkerboard`, `pixelate`, `scanline-glitch`,

@@ -1158,12 +1158,22 @@ describe('a reel edge resolves the missing input to the theme background', () =>
 // MISLEADING NAME IS USUALLY A MISSING PARAMETER. `fade-coal` is not a rename,
 // it is a fade whose COLOUR was never exposed.
 //
-// So the ADDED capability, and the only thing here that is new, is the first
-// four `it`s: `fade-to-color` dips through a colour the author chose, resolved
-// through the BRAND's palette. Everything after them is the PARITY half — what
-// the change must not break — and is green before the change as well as after.
-// Both halves are here on purpose, labelled, so a reader can tell which is
-// which.
+// THIS BLOCK CARRIES TWO ROUNDS OF CAPABILITY, and mislabelling which is which
+// is the exact trap this repo keeps falling into — so the labels are explicit.
+//
+//  - Round 1 (Task 2.3): the first four `it`s. `fade-to-color` dips through a
+//    colour the AUTHOR chose, resolved through the BRAND's palette. Red before
+//    2.3, green after.
+//  - Round 2 (the 2026-07-29 correction): the two `it`s under "THE ALIAS
+//    ACTUALLY DIPS". `fade-coal` dips to black, and only `fade-coal` does. Red
+//    before that correction — `fade-coal` painted no plate at all and its DOM
+//    was byte-identical to `fade`'s — and green after.
+//
+// Round 2's `it`s are NOT the parity half of round 1, despite sitting after it.
+// The parity half of round 2 is round 1's "explicit non-black colour is
+// honoured" assertions, which were green on both sides of the correction. The
+// deprecation `it`s at the end are neither: they pin that the warning is
+// audible, not fatal.
 // ---------------------------------------------------------------------------
 describe('a fade’s colour is a parameter (fade-to-color)', () => {
   const A = <div data-testid="a" />;
@@ -1206,7 +1216,7 @@ describe('a fade’s colour is a parameter (fade-to-color)', () => {
       })
       .join('\n');
 
-  // ---- THE ADDED CAPABILITY ----------------------------------------------
+  // ---- ROUND 1'S CAPABILITY: an AUTHORED colour is honoured ---------------
 
   // Deliberately a NON-BLACK colour. A test that `fade-coal` still renders
   // black would be testing what this change PRESERVES; what it ADDS is that the
@@ -1270,7 +1280,7 @@ describe('a fade’s colour is a parameter (fade-to-color)', () => {
     bare.unmount();
   });
 
-  // ---- THE ALIAS ACTUALLY DIPS (user correction, 2026-07-29) --------------
+  // ---- ROUND 2'S CAPABILITY: THE ALIAS ACTUALLY DIPS (2026-07-29) ---------
   //
   // The FIRST pass of this task read "keep existing literals' pixels exactly"
   // as the goal and made `fade-coal` an alias with NO colour — i.e. the same

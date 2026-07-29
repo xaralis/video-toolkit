@@ -65,10 +65,17 @@ is a fact about `vintage`, not a defect in either side.
 
 `fade-coal` is what the absence of this path costs. One brand's colour word — "coal" — is
 frozen into core's transition catalog forever, editable by every other brand's users, with
-a deprecation label as its only remedy (`lib/reel-config-base/transition-schema.ts:260`,
-`label: 'Fade to black (deprecated — use Fade to colour)'`). It cannot be deleted: two
-authored uses exist in PP reels that must keep rendering. That is the whole argument for
-the two-tier model in one entry.
+a deprecation label as its only remedy (`lib/reel-config-base/transition-schema.ts`,
+`label: 'Fade to black (deprecated — use Fade to colour)'`). It cannot be deleted: **one**
+authored use exists in a PP reel (`projects/pp-namesti-republiky/src/Root.tsx:155`, plus a
+type-union member at `pp-05-zastupitelsky-klub/src/config/types.ts:14` that is not an
+authored transition), and a published kind name cannot be withdrawn from under a baked
+literal whatever its use count. *(Corrected 2026-07-29: this said "two authored uses … that
+must keep rendering". The count was wrong, and "keep rendering" was the wrong premise too —
+`fade-coal` now dips to a neutral black, a deliberate look change, so what is preserved is
+that the literal still PARSES and RENDERS, not that it renders the same pixels. See
+`phase4-migrations.md` § 2.3-a.)* That is the whole argument for the two-tier model in one
+entry.
 
 ---
 

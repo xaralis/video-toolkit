@@ -44,9 +44,12 @@ import type { TransitionKind } from '../reel-config-base/transition-schema';
 // answer and it is production's.
 //
 // AND NO `TransitionSeries`. It hands a presentation ONE clip at a time, so it
-// structurally cannot drive the four NATIVE TWO-INPUT kinds (`wipe`,
-// `pixelate`, `checkerboard`, `scanline-glitch` — Task 2.1), which is why they
-// had no gallery entry at all. `transitionNodeFor` LIFTS a one-sided
+// structurally cannot drive a NATIVE TWO-INPUT kind. There were four when this
+// path was built (`wipe`, `pixelate`, `checkerboard`, `scanline-glitch` — Task
+// 2.1), and that is why those four had no gallery entry at all; the set is
+// **five** since the deprecated `fade-coal` started actually dipping — a set
+// this file never enumerates, because every kind goes through
+// `transitionNodeFor` either way. `transitionNodeFor` LIFTS a one-sided
 // presentation into the same two-input shape, so one demo component
 // (`NodeTransitionDemo`) now drives every kind and the split disappears with
 // the tables.
