@@ -310,7 +310,54 @@ Docker images, cuts releases, and syncs the Remotion skill from upstream).
 | Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **91 files / 1264 tests** — 1259 passed, **5 skipped**, ~45-50 s |
 | Editor types | `cd lib/editor && npx tsc --noEmit` | Same surface as above, plus all of `lib/render` (declared directly in `lib/editor/tsconfig.json`'s `include`, or reached transitively) and **all 16** of `lib/transitions`' files — `index.ts`, `edge-plate.tsx`, all 13 presentations, **and `TransitionGallery.tsx`**, which arrives through `src/transition-gallery*.test.tsx` (it used to be reachable only from `examples/layered-minimal`; that stopped being true at Phase 4 Task 2.5 and this row was stale for a round). Verify with `npx tsc --noEmit --listFiles`; the counts grow as presentations are added — re-derive, do not trust | **3** pre-existing errors, **exit code 2** |
 | Render/transitions types | `cd examples/layered-minimal && npm run typecheck` | `lib/render` and `lib/transitions` (including their `.tsx` components), via the example that actually imports them — see `docs/superpowers/core-typecheck-gate.md` | **0**, plus a coverage guard |
-| Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` | Every at-cut transition kind × mode × progress — 315 stills, hash-compared against committed goldens | **PASS**, ~52 s: `315 accepted, 0 same-picture-different-bytes, 0 drifted, 0 missing`, **zero** semantic xfails, `knownDefective` and `semanticXfail` both **empty** |
+| Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` | Every at-cut transition kind × mode × progress — one still per cell, hash-compared against committed goldens | **PASS**, ~47 s: `300 accepted, 0 same-picture-different-bytes, 0 drifted, 0 missing`, **zero** semantic xfails, `knownDefective` and `semanticXfail` both **empty** |
+
+### Don't run the full pixel harness while iterating
+
+**The harness takes a kind filter, as bare positional arguments**, and almost nobody
+remembers:
+
+```bash
+cd examples/layered-minimal && node scripts/render-transition-matrix.mjs wipe pixelate
+```
+
+That renders 2 kinds × 3 modes × 5 progress points = **30 stills instead of 300**, seconds
+instead of ~47 s. Most work touches one to four kinds. **Filter while iterating, run the full
+gate once before committing.** An entire workstream was run with every agent doing a full
+315-still pass on every iteration — minutes per task, thrown away.
+
+**Two things the filter does NOT substitute for**, both deliberate:
+
+- A filtered run **refuses an axis change** (`MODES` / `PROGRESS`) — an axis change touches
+  every kind, so it must be re-baselined unfiltered. You will see
+  `AXIS CHANGE ON A FILTERED RUN`.
+- **Harness-machinery work needs unfiltered runs.** Several guards behave differently on a
+  filtered run (by design — read the comments before changing one), so if you are editing
+  `scripts/render-transition-matrix.mjs` itself, filtering hides the thing you are testing.
+
+### The harness renders serially — and the "parallel is slower" comment is narrower than it looks
+
+`shoot()` is called from a plain triple `for` loop over kind × mode × progress against **one
+warm browser**, i.e. 300 sequential `renderStill` calls on a 10-core machine. The long comment
+above `openBrowser` says other arrangements "measured worse" — but what was actually measured
+is (a) letting `renderStill` launch its **own Chrome per still** (~7× slower, dies around 60
+stills) and (b) **recycling** the browser every 15 stills (`EPIPE` crashes, orphaned
+`chrome-headless-shell` processes that wedge the next run). **Neither is "shard the kind list
+across N concurrent browsers"**, which is untried here and is the normal way to parallelise
+this. Expect 3–4× on 10 cores.
+
+**If you do it, know the hazard first.** Render non-determinism in this repo is **bimodal and
+process-dependent**, and separate processes are the *enumerating* axis for it — so sharding
+across processes will surface bimodal cells the serial run never sampled. That is *allowed*
+(the union rule treats the list as a lower bound and additions are fine), but it means the
+first runs churn the golden file. Do the re-seed **deliberately, in the same commit**, rather
+than discovering it mid-task and reading it as drift.
+
+**Do not shrink the render scale to go faster.** It invalidates every golden and destroys the
+margin that separates a real regression (8×8 mean delta 1–2) from the flake (0.0183).
+
+**If a gate run hangs at startup, check for stray `chrome-headless-shell` processes** before
+anything else — a killed run leaves orphans that wedge the next one for minutes.
 
 **There are no `it.fails` pins left.** Four known-defect pins used to live in
 `lib/editor/src/at-cut-transitions.test.tsx` (`checkerboard`, `pixelate`, `scanline-glitch`,
