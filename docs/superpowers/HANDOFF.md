@@ -738,9 +738,11 @@ Say which half is done, not that it is done:
 
 **Tasks 2.1–2.7, all complete and independently reviewed, plus a final whole-workstream review
 whose fix wave has landed.** Re-derived from `git log` / `git diff --stat` over
-`6dbd60e..20bfc36` — the range from Workstream 1's close to Workstream 2's, never carried
-forward from a running total: **18 commits, 44 files, +4389 / −1046**. Re-derive rather than
-trust this after any further commit; a commit cannot state its own diffstat.
+`6dbd60e..898cab7` — the range from Workstream 1's close to Workstream 2's, never carried
+forward from a running total: **22 commits, 44 files, +4646 / −1054**. Re-derive rather than
+trust this after any further commit; a commit cannot state its own diffstat. (The last three
+commits are the 2026-07-29 **user corrections** — see findings 2 and 3 below — plus their own
+review's four accuracy fixes.)
 
 **The final review's verdict: mergeable, no Critical, no wrong picture, and — the thing it was
 sent to find — the render path carries no cross-task fork.** It reconstructed the golden
