@@ -192,6 +192,19 @@ describe('an authored fade-to-color colour that does not resolve', () => {
     expect(warnings).toEqual([]);
   });
 
+  // AN EMPTY STRING IS THE EDITOR'S OWN PLACEHOLDER, NOT AN AUTHORED KEY.
+  // `AccentOrColorField` (LayeredInspector.tsx) commits `''` the instant
+  // "Custom colour" is picked, before anything is typed — so a reel can
+  // legitimately carry `color: ''` (abandoned mid-pick, or simply not yet
+  // typed into). Warning "has color \"\" ... read as a key" would be
+  // confusing about a value the editor itself wrote, not something a human
+  // typed as an accent key — same "no colour means no dip" carve-out as
+  // `undefined`, not a second kind of unresolved key.
+  it('stays silent for an empty-string colour — the editor’s own not-yet-typed placeholder', () => {
+    build(reelEndingWith(''), { palette: slots('#0a0a0a'), background: '#123456' });
+    expect(warnings).toEqual([]);
+  });
+
   // Render-path code: `resolveTransition` runs on every frame of the boundary,
   // so the message must not repeat 600 times for a 20-second reel.
   it('warns once per key, not once per frame', () => {

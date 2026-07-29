@@ -15,7 +15,7 @@ import {
   type DraftTransition,
 } from './transitions';
 import { parseActionId, type LaneId } from '../src/timeline/layered-adapter';
-import { isColorLiteral, type AccentSlot } from '../../theming/palette';
+import type { AccentSlot } from '../../theming/palette';
 import { PLACEMENTS } from '../../theming/placement';
 import { effectCatalog, effectDefinition, humanizeKey, paramChoices, type EditorMeta, type ParamField } from './editor-meta';
 
@@ -238,14 +238,28 @@ function AccentOrColorField({
   // simply its literal half. Never `null` — see the comment above.
   if (slots.length === 0) return <ColorField key={lbl} lbl={lbl} value={value} onCommit={onCommit} />;
 
-  // An explicit EMPTY STRING also counts as literal mode: it is what
-  // "Custom colour" seeds (below) before anything is typed, and it must not
-  // be indistinguishable from "nothing authored" (`undefined`, which stays in
+  // MODE, deliberately NOT `isColorLiteral` (the render-time predicate
+  // `resolveAccentOrColor` resolves with). That one requires a COMPLETE
+  // 3/4/6/8-digit hex, which is correct for RESOLUTION but wrong for this
+  // MOUNT decision: against a real (stateful) parent, the first keystroke of
+  // a hex commits `'#'`, `isColorLiteral('#')` is false, and the control
+  // would flip back to accent mode and UNMOUNT ITSELF — discarding whatever
+  // was being typed, mid-edit, and removing the very control that could
+  // repair it. That was caught by review as the fourth instance of this
+  // repo's recurring editor data-loss bug (the kind coercion, `sepia: 1`
+  // dropped, the deprecated `from` alias) — see the stateful-parent
+  // character-by-character tests in LayeredInspector.test.tsx.
+  //
+  // A `#`-prefixed string is unambiguously an ATTEMPT at a literal regardless
+  // of completeness — an accent-slot key is brand-chosen free text and never
+  // starts with `#` (the same assumption `isColorLiteral` itself makes for
+  // resolution) — so mode is decided by the prefix alone and never flips
+  // mid-edit. An explicit EMPTY STRING is the third case: what "Custom
+  // colour" seeds (below) before anything is typed, which must not be
+  // indistinguishable from "nothing authored" (`undefined`, which stays in
   // accent mode) or the picker would snap straight back the moment it
-  // re-renders. Deliberately not a hex placeholder: core names no colour of
-  // its own anywhere in this file, so the seed is "no value yet", not a
-  // literal.
-  const literalMode = value !== undefined && (isColorLiteral(value) || value === '');
+  // re-renders.
+  const literalMode = value !== undefined && (value === '' || value.startsWith('#'));
   // A KNOWN slot key selects itself; an unrecognised non-literal string
   // (a stale/renamed slot, or nothing authored yet) is handed to SelectField
   // as-is — its own unknown-value handling prepends it rather than losing it,

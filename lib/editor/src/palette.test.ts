@@ -38,8 +38,12 @@ describe('resolveAccentColor', () => {
 // background token in its own model) can write the hex directly instead of
 // declaring a fake accent slot to satisfy core's type.
 describe('isColorLiteral', () => {
-  it('recognises 3/6/8-digit hex forms', () => {
+  it('recognises 3/4/6/8-digit hex forms', () => {
     expect(isColorLiteral('#000')).toBe(true);
+    // 4-digit: CSS shorthand + alpha (#RGBA). Caught by review: rejecting
+    // this meant a literal like `#0a0f` was read as an accent key instead —
+    // warned about (not silent), but still the wrong colour vocabulary.
+    expect(isColorLiteral('#0a0f')).toBe(true);
     expect(isColorLiteral('#0a0a0a')).toBe(true);
     expect(isColorLiteral('#0a0a0aff')).toBe(true);
   });

@@ -128,8 +128,14 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
     // Both causes land here and the author cannot tell them apart from the
     // picture, so the message names both. `t.color === undefined` is NOT one of
     // them: "no colour means no dip" is documented behaviour, and warning on it
-    // would cry wolf on every reel that uses it deliberately.
-    if (color === null && t.color !== undefined) {
+    // would cry wolf on every reel that uses it deliberately. `t.color === ''`
+    // is the SAME carve-out: the editor's own dual control
+    // (`AccentOrColorField`, LayeredInspector.tsx) commits an empty string the
+    // instant "Custom colour" is picked, before anything is typed, so an
+    // empty string is the editor's OWN placeholder, not an authored key a
+    // human typed — warning "has color \"\" ... read as a key" would be
+    // confusing about a value the editor itself wrote.
+    if (color === null && t.color !== undefined && t.color !== '') {
       warnOnce(
         `transition:fade-to-color:unresolved:${t.color}`,
         () =>

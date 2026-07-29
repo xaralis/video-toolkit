@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, screen } from '@testing-library/react';
 import { LayeredInspector } from './LayeredInspector';
@@ -270,6 +271,94 @@ describe('LayeredInspector dual accent-or-color sub-option (wipe color)', () => 
     fireEvent.change(screen.getByLabelText('Color'), { target: { value: 'gold' } });
     const next = onChange.mock.calls.at(-1)![0] as LayeredReel;
     expect((next.tracks.video[0].transitionOut as Record<string, unknown>).color).toBe('gold');
+  });
+
+  // THE CRITICAL FIX. A `render={() => {}}` fixture (every test above) never
+  // shows the control its OWN committed value, so it cannot catch a control
+  // that unmounts itself on its own output — the fourth instance of this
+  // repo's recurring editor data-loss bug. This wrapper is a REAL controlled
+  // parent: every commit updates state and re-renders, exactly like the real
+  // inspector, so the control sees what it just wrote.
+  //
+  // Before the fix: `literalMode` was derived from `isColorLiteral(value)`,
+  // which requires a COMPLETE hex. The first keystroke commits `'#'`,
+  // `isColorLiteral('#')` is false, mode flips back to accent, and the hex
+  // input — the one the user is typing into — unmounts, stranding `'#'` in
+  // the data. Typing over an already-good literal is worse: select-all +
+  // retype replaces a valid `#0a0a0a` with `'#'` and removes the very control
+  // that could fix it.
+  function StatefulWipeReel({ onColor }: { onColor: (color: unknown) => void }) {
+    const [reel, setReel] = useState<LayeredReel>({
+      ...wipeReel,
+      tracks: {
+        ...wipeReel.tracks,
+        video: [{ ...wipeReel.tracks.video[0], transitionOut: { kind: 'wipe', frames: 15, direction: 'left', color: '' } }],
+      },
+    });
+    return (
+      <LayeredInspector
+        reel={reel}
+        selectedId="transition:v1"
+        onChange={(next) => {
+          setReel(next);
+          onColor((next.tracks.video[0].transitionOut as Record<string, unknown>).color);
+        }}
+        onSeek={() => {}}
+        fps={30}
+        accentSlots={[{ key: 'gold', label: 'Gold', color: '#f6aa1c' }]}
+      />
+    );
+  }
+
+  it('survives typing a hex character by character against a STATEFUL parent, never unmounting the hex input', () => {
+    const onColor = vi.fn();
+    render(<StatefulWipeReel onColor={onColor} />);
+    // Field starts in literal mode (seeded `''`, as "Custom colour" leaves it).
+    for (const ch of '#0a0a0a') {
+      const input = screen.getByLabelText('Color (hex)') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: input.value + ch } });
+    }
+    expect(onColor).toHaveBeenLastCalledWith('#0a0a0a');
+    // The control is STILL there after the final keystroke — it never
+    // unmounted mid-typing.
+    expect((screen.getByLabelText('Color (hex)') as HTMLInputElement).value).toBe('#0a0a0a');
+  });
+
+  it('survives retyping OVER an already-valid literal, character by character', () => {
+    const onColor = vi.fn();
+    function StatefulLiteralWipeReel() {
+      const [reel, setReel] = useState<LayeredReel>({
+        ...wipeReel,
+        tracks: {
+          ...wipeReel.tracks,
+          video: [{ ...wipeReel.tracks.video[0], transitionOut: { kind: 'wipe', frames: 15, direction: 'left', color: '#0a0a0a' } }],
+        },
+      });
+      return (
+        <LayeredInspector
+          reel={reel}
+          selectedId="transition:v1"
+          onChange={(next) => {
+            setReel(next);
+            onColor((next.tracks.video[0].transitionOut as Record<string, unknown>).color);
+          }}
+          onSeek={() => {}}
+          fps={30}
+          accentSlots={[{ key: 'gold', label: 'Gold', color: '#f6aa1c' }]}
+        />
+      );
+    }
+    render(<StatefulLiteralWipeReel />);
+    expect((screen.getByLabelText('Color (hex)') as HTMLInputElement).value).toBe('#0a0a0a');
+    // Select-all + retype: the first keystroke replaces the whole value.
+    let typed = '';
+    for (const ch of '#f6aa1c') {
+      typed += ch;
+      const input = screen.getByLabelText('Color (hex)') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: typed } });
+    }
+    expect(onColor).toHaveBeenLastCalledWith('#f6aa1c');
+    expect((screen.getByLabelText('Color (hex)') as HTMLInputElement).value).toBe('#f6aa1c');
   });
 });
 
