@@ -71,6 +71,12 @@ const reelEndingWith = (color: string | undefined): VideoItem[] =>
     transitionOut: { kind: 'fade-to-color', frames: 20, ...(color === undefined ? {} : { color }) },
   }] as unknown as VideoItem[];
 
+// `opts.palette` stays optional HERE — that is the whole point of this file's
+// second describe block, which deliberately omits it to exercise the
+// no-palette-threaded runtime path. `buildVideoNodes` itself now requires the
+// KEY (TS2741 if it's missing), so it is passed explicitly below, still
+// `undefined` when `opts.palette` is: that is the documented "no palette in
+// scope" case, distinct from forgetting to write the key at all.
 const build = (
   items: VideoItem[],
   opts: { palette?: readonly AccentSlot[]; background?: string } = {},
@@ -82,7 +88,8 @@ const build = (
         height: 1920,
         fps: 30,
         renderItem: () => <div style={{ backgroundColor: '#00ff00' }} />,
-        ...opts,
+        palette: opts.palette,
+        background: opts.background,
       })}
     </>,
   ).container;
@@ -264,5 +271,41 @@ describe('fade-to-color with a LITERAL colour (no palette needed)', () => {
   it('an unresolvable accent key still warns, unaffected by the widening', () => {
     build(reelEndingWith('no-such-slot'), { palette: slots('#0a0a0a'), background: '#123456' });
     expect(warnings.join('\n')).toMatch(/no-such-slot/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (4) THE CONTRACT ITSELF, at the type level. Everything above pins what
+// happens at RUNTIME when `palette` is missing (a warning, a degraded
+// crossfade). This pins that it can no longer be missing BY ACCIDENT: the
+// option is a REQUIRED key on `buildVideoNodes`'s options object, so an
+// options object that omits it entirely fails `tsc` with TS2741 — the same
+// class of error the branch's own review reproduced by deleting a
+// `Record<TransitionKind, Renderer>` entry. `@ts-expect-error` is itself an
+// error when the line COMPILES, so this fails loudly the moment `palette`
+// goes back to being optional — a regression a runtime assertion could never
+// catch, because a runtime call can't observe "the key was never written".
+//
+// `palette: undefined` stays legal and is pinned separately: a caller with
+// genuinely no brand palette in scope (or a test exercising the fallback
+// path, as every `build(...)` call above that omits it from `opts` does) must
+// still be able to say so explicitly. Required is about the KEY, not about
+// ruling out `undefined` as a value.
+// ---------------------------------------------------------------------------
+describe('`palette` is a required key on buildVideoNodes — compile-time', () => {
+  it('rejects an options object that omits `palette` entirely', () => {
+    type Opts = Parameters<typeof buildVideoNodes>[1];
+    const missing = (): Opts =>
+      // @ts-expect-error `palette` is required — this object omits the key entirely.
+      ({ renderItem: () => null, width: 1080, height: 1920, fps: 30 });
+    expect(typeof missing).toBe('function');
+  });
+
+  it('still accepts `palette: undefined` — "no brand palette in scope" stays legal', () => {
+    type Opts = Parameters<typeof buildVideoNodes>[1];
+    const explicit: Opts = {
+      renderItem: () => null, width: 1080, height: 1920, fps: 30, palette: undefined,
+    };
+    expect(explicit.palette).toBeUndefined();
   });
 });

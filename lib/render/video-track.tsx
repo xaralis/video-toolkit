@@ -92,18 +92,24 @@ export function buildVideoNodes(
      *  in `../reel-config-base/transition-schema.ts`; re-derive with
      *  `grep -n AccentOrColorHex` there if this list has grown).
      *
-     *  Optional, but DO NOT read that as harmless to omit: every accent-KEYED
-     *  transition param on this call resolves to `null` without it, on EVERY
-     *  boundary, silently. "Silently" is asymmetric between the two kinds —
-     *  `fade-to-color` warns once per unresolved key (`at-cut-transitions.tsx`,
+     *  REQUIRED — the key must be present, so omitting it is a compile error
+     *  (`TS2741`), not a silent runtime fallback. It may still be explicitly
+     *  `undefined` for a caller that genuinely has no brand palette in scope;
+     *  what the type rules out is FORGETTING to thread it, which is what
+     *  actually shipped: every accent-KEYED transition param on this call
+     *  resolves to `null` without it, on EVERY boundary, silently.
+     *  "Silently" is asymmetric between the two kinds — `fade-to-color` warns
+     *  once per unresolved key (`at-cut-transitions.tsx`,
      *  `resolveAccentColorOrWarn`); `wipe` warns too, via the same helper, but
      *  its fallback is a rendered picture (a black sweep), not an absent one,
-     *  so the warning is the only signal at all. This is not a hypothetical:
-     *  an unthreaded `palette` at 11 real call sites is exactly what shipped
-     *  a `fade-to-color` that rendered a plain crossfade instead of the
-     *  brand's dip, undetected until it was measured with three renders. Pass
-     *  it. */
-    palette?: readonly AccentSlot[];
+     *  so the warning is the only signal at all. That warning is a runtime
+     *  last line of defence — it stays, because a hand-edited `Root.tsx` is
+     *  not type-checked at render time — but it is not the first line
+     *  anymore. This is not a hypothetical: an unthreaded `palette` at 11
+     *  real call sites is exactly what shipped a `fade-to-color` that
+     *  rendered a plain crossfade instead of the brand's dip, undetected
+     *  until it was measured with three renders. */
+    palette: readonly AccentSlot[] | undefined;
     /** The brand's transition registry (`BrandTheme.transitions`), threaded the
      *  same narrow way `palette` is — one typed field, not the whole theme.
      *  Absent → core's generic presentations are the only tier, exactly as

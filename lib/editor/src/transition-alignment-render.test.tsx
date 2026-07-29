@@ -79,6 +79,7 @@ function progressAt(items: VideoItem[], frame: number): number | null {
         width: 540,
         height: 960,
         fps: 30,
+        palette: undefined,
         transitions: registry,
       })}
     </>,

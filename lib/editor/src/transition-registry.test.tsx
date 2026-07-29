@@ -182,6 +182,7 @@ function build(transitions?: TransitionRegistry) {
       width: 1080,
       height: 1920,
       fps: 30,
+      palette: undefined,
       transitions,
     });
     return { nodes, warned };

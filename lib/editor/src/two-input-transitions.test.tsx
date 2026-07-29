@@ -88,6 +88,7 @@ function draw(items: VideoItem[], frame: number) {
         width: 540,
         height: 960,
         fps: 30,
+        palette: undefined,
         transitions: registry,
       })}
     </>,
@@ -140,6 +141,7 @@ describe('a transition receives BOTH clips at a cut', () => {
           width: 540,
           height: 960,
           fps: 30,
+          palette: undefined,
           transitions: registry,
         })}
       </>,
