@@ -300,9 +300,32 @@ async function recycleBrowser(why) {
   notes.push(`browser replaced after a render error: ${why}`);
 }
 
-const comps = (await getCompositions(serveUrl, { puppeteerInstance: browser })).filter((c) =>
-  c.id.startsWith('Probe-'),
-);
+const allComps = await getCompositions(serveUrl, { puppeteerInstance: browser });
+const comps = allComps.filter((c) => c.id.startsWith('Probe-'));
+
+// THE CATALOG, read as DATA — not inferred from which probes turned up.
+//
+// `catalogKinds` and `allKinds` (below) are two INDEPENDENT observations, and
+// keeping them apart is the whole point. "This kind produced no probe" has two
+// causes with opposite correct responses: the kind left the catalog (a real
+// removal, prunable under an explicit opt-in) or its probe registration broke
+// while the kind is still very much shipping (a coverage hole). Read off the
+// probe list alone they are indistinguishable, and a re-baseline would happily
+// delete live coverage. See the STALE GOLDEN / MISSING PROBE guards below.
+//
+// A HARD FAILURE if the manifest is absent, never a silent fallback to "no
+// catalog known" — a missing second source must not quietly collapse the two
+// cases back into one.
+const manifest = allComps.find((c) => c.id === 'TransitionCatalogManifest');
+if (!manifest) {
+  fail(
+    'MANIFEST MISSING: no `TransitionCatalogManifest` composition in the bundle. It is what tells a REMOVED kind ' +
+      'apart from a kind whose probe failed to register, so the coverage guards cannot run without it. ' +
+      'Register it from examples/layered-minimal/src/TransitionMatrix.tsx.',
+  );
+}
+const catalogKinds = manifest?.defaultProps?.kinds ?? [];
+if (manifest && !Array.isArray(catalogKinds)) fail('MANIFEST MALFORMED: `TransitionCatalogManifest.defaultProps.kinds` is not an array');
 
 // "Probe-<kind>-<mode>" — mode is the LAST segment, kind is everything between
 // (kinds contain dashes: zoom-through, scanline-glitch, …). The kind list is
@@ -556,19 +579,47 @@ await browser.close({ silent: true });
   if (allKinds.length < expectedKinds && !(UPDATE && ALLOW_SHRINK)) {
     fail(`COVERAGE SHRANK: goldens were taken over ${expectedKinds} kinds, this run found ${allKinds.length}. If that is intended, re-baseline with --update-goldens --allow-shrink.`);
   }
-  // Gated on the SAME escape hatch as the count guard above, and it has to be:
-  // `--allow-shrink` was unusable without this. Removing a catalog kind makes
-  // every one of its 15 cells stale at once, each one a `fail()`, and any
-  // failure makes the re-baseline refuse to write — so the flag the COVERAGE
-  // SHRANK message tells you to reach for could never actually complete the
-  // removal it exists for. On an unfiltered `--update-goldens` run the written
-  // set is `newFrames`, so the stale keys are pruned by construction; the check
-  // stays live in every other mode, which is where it earns its keep.
-  if (!(UPDATE && ALLOW_SHRINK)) {
-    for (const key of Object.keys(oldFrames)) {
-      const kind = key.split('__')[0];
-      if (!allKinds.includes(kind)) fail(`STALE GOLDEN: "${key}" is baselined but kind "${kind}" no longer exists`);
+  // A CATALOG KIND THAT REGISTERED NO PROBE is a coverage hole, and it is NOT
+  // what `--allow-shrink` is for. Checked against the manifest rather than
+  // against what rendered, so it fires on a filtered run too, and BEFORE the
+  // per-key loop below so the diagnosis is one line rather than fifteen.
+  //
+  // This is the case an earlier version of the shrink fix let through: it
+  // disabled the whole stale-golden loop under `--update-goldens
+  // --allow-shrink`, and the loop's real predicate is "no probe was
+  // discovered", never "the catalog no longer has it". Break only `wipe`'s
+  // probe registration, leave `wipe` in the catalog, and a re-baseline would
+  // silently delete all 15 of its goldens and exit 0.
+  for (const kind of catalogKinds) {
+    if (!allKinds.includes(kind)) {
+      fail(
+        `MISSING PROBE: "${kind}" is in TRANSITION_CATALOG but registered no probe compositions, so this run ` +
+          'covers it with nothing. --allow-shrink does NOT cover this — it is a broken probe, not a removed kind. ' +
+          'Fix the registration in src/TransitionMatrix.tsx.',
+      );
     }
+  }
+
+  // Gated on the same explicit opt-in as the count guard above, and NARROWED to
+  // the one case that opt-in exists for: a key whose kind is absent from the
+  // CATALOG. `--allow-shrink` was otherwise unusable — removing a kind makes
+  // every one of its 15 cells stale at once, each a `fail()`, and any failure
+  // makes the re-baseline refuse to write, so the flag the COVERAGE SHRANK
+  // message tells you to reach for could never complete the removal it exists
+  // for. On an unfiltered `--update-goldens` run the written set is `newFrames`,
+  // so those keys are pruned by construction. A key whose kind is STILL IN the
+  // catalog keeps failing here regardless of any flag; the guard above will
+  // usually have said why first.
+  for (const key of Object.keys(oldFrames)) {
+    const kind = key.split('__')[0];
+    if (allKinds.includes(kind)) continue;
+    const inCatalog = catalogKinds.includes(kind);
+    if (!inCatalog && UPDATE && ALLOW_SHRINK) continue;
+    fail(
+      inCatalog
+        ? `STALE GOLDEN: "${key}" is baselined and kind "${kind}" IS STILL IN THE CATALOG, but no probe was discovered for it`
+        : `STALE GOLDEN: "${key}" is baselined but kind "${kind}" no longer exists`,
+    );
   }
   // …and the converse, cross-producted rather than observed. The per-still
   // `missing-golden` check below only ever fires for kinds this run RENDERED, so
@@ -668,7 +719,17 @@ if (UPDATE) {
       kindCount: nextCount,
       knownDefective: [...knownDefective].sort(),
       semanticXfail: [...semanticXfail].sort(),
-      bimodalCells: [...bimodalCells].sort(),
+      // INTERSECTED with what is actually written, which matters only when a
+      // kind is removed. `bimodalCells` starts from the declared set and is
+      // only added to / deleted from for cells this run VISITED, so a removed
+      // kind's entries survive as keys with no golden — and the strict path
+      // then fails with `bimodalCells lists "X", which has no golden at all` on
+      // the very next run, turning a clean removal into a delayed red. A cell
+      // cannot be bimodal without a golden, so this is the invariant, not a
+      // convenience. It is NOT a de-listing of a surviving cell: `frames` here
+      // is the union on a filtered run, so only cells that genuinely left the
+      // matrix drop out.
+      bimodalCells: [...bimodalCells].filter((k) => k in frames).sort(),
       frames: Object.fromEntries(Object.keys(frames).sort().map((k) => [k, frames[k]])),
     };
     mkdirSync(path.dirname(GOLDEN_FILE), { recursive: true });

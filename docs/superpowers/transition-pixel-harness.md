@@ -59,16 +59,44 @@ safety model:** a re-baseline is a committed edit a reviewer sees, not a silent
 overwrite. It refuses to reduce the number of covered kinds unless you also pass
 `--allow-shrink`.
 
-**`--allow-shrink` gates TWO guards, and it has to.** The kind-count guard
-(`COVERAGE SHRANK`) and the per-key `STALE GOLDEN` guard both fire when a catalog
-kind is removed — the second one 15 times, once per cell. Because *any* recorded
-failure makes the re-baseline refuse to write, gating only the first left the flag
-unable to complete the removal it exists for; this was found the first time a kind
-was actually removed (`fade-coal`, Phase 4). On an unfiltered `--update-goldens`
-run the written set is `newFrames`, so stale keys are pruned by construction; the
-guard stays live in every other mode. A removal therefore shows up as `-15 removed,
-~0 changed` — a **removal of cells**, which is exactly what a reviewer should
-expect, and not a de-listing of a surviving cell.
+**`--allow-shrink` gates TWO guards, and only for a kind the CATALOG has lost.**
+The kind-count guard (`COVERAGE SHRANK`) and the per-key `STALE GOLDEN` guard both
+fire when a catalog kind is removed — the second one 15 times, once per cell.
+Because *any* recorded failure makes the re-baseline refuse to write, gating only
+the first left the flag unable to complete the removal it exists for; found the
+first time a kind was actually removed (`fade-coal`, Phase 4).
+
+**The narrowing is the load-bearing half, and the first fix got it wrong.** The
+obvious patch — disable the whole stale-golden loop under the flag — looks
+equivalent and is not, because that loop's predicate is *"no probe was
+discovered"*, never *"the catalog no longer has it"*. Leave `wipe` in
+`TRANSITION_CATALOG`, break only its probe registration, and the loose version
+prunes all 15 of its goldens and exits 0 — silently deleting live coverage of a
+shipping kind, which is exactly what this harness exists to prevent.
+
+The two cases are told apart by a second, independent source: `TransitionMatrix.tsx`
+registers a non-probe **`TransitionCatalogManifest`** composition carrying
+`defaultProps.kinds = TRANSITION_CATALOG.map(e => e.kind)`, which
+`getCompositions()` hands back alongside the probes. Its absence is a hard failure,
+never a fallback. So:
+
+| situation | result |
+|---|---|
+| kind absent from catalog, no probe, `--update-goldens --allow-shrink` | pruned, itemised per cell |
+| kind absent from catalog, no probe, any other invocation | `STALE GOLDEN`, refuse |
+| kind **in** catalog, no probe | `MISSING PROBE` + per-key `STALE GOLDEN`, refuse **regardless of any flag** |
+| manifest missing | `MANIFEST MISSING`, refuse |
+
+A legitimate removal therefore shows up as `-15 removed, ~0 changed` — a **removal
+of cells**, which is exactly what a reviewer should expect, and not a de-listing of
+a surviving cell.
+
+**`bimodalCells` is intersected with what is written**, for the same reason. That
+set is only added to / deleted from for cells the run *visited*, so a removed
+kind's entries would survive as keys with no golden — and the strict path fails
+with `bimodalCells lists "X", which has no golden at all` on the very next run,
+turning a clean removal into a delayed red. A cell cannot be bimodal without a
+golden; the intersection is that invariant, not a convenience.
 
 **A shrinking `bimodalCells` list needs the same scrutiny.** The union rule exists
 so a *surviving* cell is never de-listed on absence. Cells that disappear because

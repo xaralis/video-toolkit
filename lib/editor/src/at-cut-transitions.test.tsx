@@ -215,7 +215,7 @@ describe('one-sided presentations vs native two-input nodes', () => {
   // The fifth entry used to be a brand-named fade kind hardwired to a black
   // core had chosen for it. It was removed from core entirely; the colour is
   // the brand's to name now, which is why the arity became conditional.
-  it('exactly four core kinds are ALWAYS native two-input nodes', () => {
+  it('exactly four kinds are native two-input nodes AT THEIR CATALOG DEFAULT — not a statement about the catalog', () => {
     expect([...NODE_KINDS].sort()).toEqual(['checkerboard', 'pixelate', 'scanline-glitch', 'wipe']);
   });
 
