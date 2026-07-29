@@ -86,6 +86,60 @@ type Dims = {
 // is there a dip to express; with no colour it is the plain one-sided fade.
 type Renderer<K extends TransitionKind> = (t: Extract<CoreTransition, { kind: K }>, dims: Dims) => ResolvedTransition | null;
 
+// Shared by the catalog's only two `AccentOrColorHex` fields — `fade-to-color`'s
+// `color` and `wipe`'s `color` (see `ACCENT_OR_COLOR_FIELDS` in
+// `../reel-config-base/transition-schema.ts`) — so the two kinds diagnose an
+// unresolvable colour key IDENTICALLY rather than one warning and the other
+// silently degrading. `wipe` used to be the latter: its fallback to the
+// presentation's own `#000` neutral had no diagnostic at all, so an
+// unresolvable accent key rendered a black sweep and told nobody, one step
+// behind `fade-to-color`'s warning for no reason but that nobody had written
+// it.
+//
+// `color` is DUAL, since the Phase 4 widening: either a brand accent-slot key
+// (resolved through the palette) OR a literal colour (hex), used as-is with no
+// palette lookup at all. A literal can never be "unresolved" — see
+// `resolveAccentOrColor` (lib/theming/palette.ts) — so the warning fires only
+// for a key that genuinely failed to resolve, never for a literal.
+//
+// Both causes an author cannot tell apart from the picture — an unthreaded
+// `palette` at the `buildVideoNodes` call site, or a key that is not an
+// `accentSlots` member — land here indistinguishably, so the message names
+// both. `color === undefined` is NOT one of them: "no colour" is documented,
+// intentional behaviour for both kinds, and warning on it would cry wolf on
+// every reel that uses it deliberately. `color === ''` is the SAME carve-out:
+// the editor's own dual control (`AccentOrColorField`, LayeredInspector.tsx)
+// commits an empty string the instant "Custom colour" is picked, before
+// anything is typed, so an empty string is the editor's OWN placeholder, not
+// an authored key a human typed.
+//
+// `consequence` is the one thing that differs between the two call sites — what
+// the caller does with a `null` result — and is folded into the message rather
+// than the caller composing its own text, so the two kinds stay byte-identical
+// everywhere except that clause.
+function resolveAccentColorOrWarn(
+  kind: 'fade-to-color' | 'wipe',
+  color: string | undefined,
+  palette: readonly AccentSlot[],
+  consequence: string,
+): string | null {
+  const resolved = resolveAccentOrColor(palette, color ?? null);
+  if (resolved === null && color !== undefined && color !== '') {
+    warnOnce(
+      `transition:${kind}:unresolved:${color}`,
+      () =>
+        `[video-toolkit] transition "${kind}" has color "${color}", which resolved to no colour, so ` +
+        `${consequence}. \`color\` accepts EITHER a literal colour (a \`#\`-prefixed hex value) OR a ` +
+        'brand ACCENT-SLOT KEY — this value is not a literal (not `#`-prefixed), so it was read as a ' +
+        'key. Either the brand theme does not declare that slot in `accentSlots`, or the renderer never ' +
+        'threaded `palette` into buildVideoNodes() — check the call site before the theme, because an ' +
+        'unthreaded palette makes EVERY key fail identically. (Warning only; nothing is blocked, and ' +
+        'this is reported once per key.)',
+    );
+  }
+  return resolved;
+}
+
 const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   // `cut` is the absence of a transition; the gate in ./transition-record
   // filters it out long before here, but the map must still cover it.
@@ -114,7 +168,10 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
     // never be "unresolved" — see `resolveAccentOrColor`
     // (lib/theming/palette.ts) — so the warning below fires only for a key
     // that genuinely failed to resolve, never for a literal.
-    const color = resolveAccentOrColor(dims.palette ?? [], t.color ?? null);
+    const color = resolveAccentColorOrWarn(
+      'fade-to-color', t.color, dims.palette ?? [],
+      'this boundary renders as a PLAIN CROSSFADE with no dip',
+    );
     // AN AUTHORED COLOUR THAT RESOLVES TO NOTHING IS A BUG, NOT A CHOICE — and
     // until it said so, it was an INVISIBLE one. Falling back to `fade()` is
     // still the right RENDER (core naming a colour of its own is the leak this
@@ -123,32 +180,9 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
     // forcing the slot to another colour all look identical, because the key
     // was never read. A real brand migration shipped on exactly that silence,
     // concluding `color` was inert when in fact its caller never threaded
-    // `palette` into `buildVideoNodes`.
-    //
-    // Both causes land here and the author cannot tell them apart from the
-    // picture, so the message names both. `t.color === undefined` is NOT one of
-    // them: "no colour means no dip" is documented behaviour, and warning on it
-    // would cry wolf on every reel that uses it deliberately. `t.color === ''`
-    // is the SAME carve-out: the editor's own dual control
-    // (`AccentOrColorField`, LayeredInspector.tsx) commits an empty string the
-    // instant "Custom colour" is picked, before anything is typed, so an
-    // empty string is the editor's OWN placeholder, not an authored key a
-    // human typed — warning "has color \"\" ... read as a key" would be
-    // confusing about a value the editor itself wrote.
-    if (color === null && t.color !== undefined && t.color !== '') {
-      warnOnce(
-        `transition:fade-to-color:unresolved:${t.color}`,
-        () =>
-          `[video-toolkit] transition "fade-to-color" has color "${t.color}", which resolved to no ` +
-          'colour, so this boundary renders as a PLAIN CROSSFADE with no dip. `color` accepts EITHER ' +
-          'a literal colour (a `#`-prefixed hex value) OR a brand ACCENT-SLOT KEY — this value is not ' +
-          'a literal (not `#`-prefixed), so it was read as a key. Either the brand theme does not ' +
-          'declare that slot in `accentSlots`, or the renderer never threaded `palette` into ' +
-          'buildVideoNodes() — check the call site before the theme, because an unthreaded palette ' +
-          'makes EVERY key fail identically. (Warning only; nothing is blocked, and this is reported ' +
-          'once per key.)',
-      );
-    }
+    // `palette` into `buildVideoNodes`. `resolveAccentColorOrWarn` (below)
+    // carries the shared reasoning for why the warning fires exactly when it
+    // does; `wipe` hits the identical gap via the same helper.
     return color === null ? (fade() as AnyPresentation) : fadeToColor({ color });
   },
   // Task 2.4: forward the four params `glitch.tsx` always read but no schema
@@ -188,9 +222,14 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   // `t.color` is DUAL (same widening as `fade-to-color.color`, see there): a
   // brand accent-slot KEY, resolved here where the palette is in scope, OR a
   // literal colour (hex), used as-is with no palette lookup. Unknown/unset →
-  // undefined → the presentation's own neutral sweep.
+  // undefined → the presentation's own neutral sweep — and, since the shared
+  // `resolveAccentColorOrWarn` above, an unresolvable KEY now says so instead
+  // of silently rendering that neutral as if it were chosen.
   'wipe': (t, dims) => customWipe({
-    color: resolveAccentOrColor(dims.palette ?? [], t.color ?? null) ?? undefined,
+    color: resolveAccentColorOrWarn(
+      'wipe', t.color, dims.palette ?? [],
+      'this boundary renders the sweep in its default neutral colour instead of the intended accent',
+    ) ?? undefined,
     direction: t.direction,
   }),
   'gradient-wipe': (t) => gradientWipe({ direction: t.direction, softness: t.softness }) as AnyPresentation,

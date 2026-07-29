@@ -469,6 +469,49 @@ describe('accent-slot resolution', () => {
     const t = { kind: 'wipe', frames: 15, color: 'secondary', direction: 'left' } as TransitionRecord;
     expect(sheetColorFor(t, DIMS)).toBe('rgb(0, 0, 0)');
   });
+
+  // THE GAP THIS PINS: `wipe`'s unresolved-colour fallback used to be silent —
+  // unlike `fade-to-color`'s identical situation (see the `warnOnce` pin in
+  // "a fade's colour is a parameter" below), nothing told the author their
+  // `wipe` had just rendered a default-black sweep instead of their accent.
+  // Both directions are pinned, not just the warning firing: a warning that
+  // also fires on VALID input is worse than none.
+  it('warns once when a wipe’s colour key does not resolve, naming both possible causes', () => {
+    resetWarnOnce();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const t = { kind: 'wipe', frames: 15, color: 'no-such-slot', direction: 'left' } as TransitionRecord;
+      sheetColorFor(t, { ...DIMS, palette: PALETTE });
+      expect(warn).toHaveBeenCalledTimes(1);
+      const [message] = warn.mock.calls[0];
+      expect(String(message)).toContain('transition "wipe" has color "no-such-slot"');
+      expect(String(message)).toContain('accentSlots');
+      expect(String(message)).toContain('buildVideoNodes()');
+      // De-duplicated per key, not per render.
+      sheetColorFor(t, { ...DIMS, palette: PALETTE });
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+      resetWarnOnce();
+    }
+  });
+
+  it('does not warn for a wipe whose colour key resolves, or for a literal hex colour', () => {
+    resetWarnOnce();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const validKey = { kind: 'wipe', frames: 15, color: 'secondary', direction: 'left' } as TransitionRecord;
+      const literalHex = { kind: 'wipe', frames: 15, color: '#ff8800', direction: 'left' } as TransitionRecord;
+      const noColor = { kind: 'wipe', frames: 15, direction: 'left' } as TransitionRecord;
+      sheetColorFor(validKey, { ...DIMS, palette: PALETTE });
+      sheetColorFor(literalHex, { ...DIMS, palette: PALETTE });
+      sheetColorFor(noColor, { ...DIMS, palette: PALETTE });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+      resetWarnOnce();
+    }
+  });
 });
 
 describe('burn’s string params (no sub-option control, so nothing else pins them)', () => {

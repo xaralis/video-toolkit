@@ -87,8 +87,22 @@ export function buildVideoNodes(
     height: number;
     fps: number;
     /** The brand's accent palette, forwarded to presentations that take a
-     *  colour by KEY rather than by hex (today: `wipe`). Optional — omitting it
-     *  just means those presentations fall back to their own neutral. */
+     *  colour by KEY rather than by hex — today `fade-to-color` and `wipe`,
+     *  the catalog's only two `AccentOrColorHex` fields (`ACCENT_OR_COLOR_FIELDS`
+     *  in `../reel-config-base/transition-schema.ts`; re-derive with
+     *  `grep -n AccentOrColorHex` there if this list has grown).
+     *
+     *  Optional, but DO NOT read that as harmless to omit: every accent-KEYED
+     *  transition param on this call resolves to `null` without it, on EVERY
+     *  boundary, silently. "Silently" is asymmetric between the two kinds —
+     *  `fade-to-color` warns once per unresolved key (`at-cut-transitions.tsx`,
+     *  `resolveAccentColorOrWarn`); `wipe` warns too, via the same helper, but
+     *  its fallback is a rendered picture (a black sweep), not an absent one,
+     *  so the warning is the only signal at all. This is not a hypothetical:
+     *  an unthreaded `palette` at 11 real call sites is exactly what shipped
+     *  a `fade-to-color` that rendered a plain crossfade instead of the
+     *  brand's dip, undetected until it was measured with three renders. Pass
+     *  it. */
     palette?: readonly AccentSlot[];
     /** The brand's transition registry (`BrandTheme.transitions`), threaded the
      *  same narrow way `palette` is — one typed field, not the whole theme.
