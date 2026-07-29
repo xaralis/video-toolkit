@@ -15,8 +15,8 @@
 
 import type { CompositionTheme } from '../../theming/types';
 import { overlayRegistry } from '../../theming/brand-theme';
-import { isReservedEffectType } from '../../theming/effects';
-import type { ParamField } from '../../theming/registry';
+import { isReservedEffectType, CORE_STYLE_EFFECT_TYPES } from '../../theming/effects';
+import { registrationParams, type ParamField } from '../../theming/registry';
 
 /** One declared, editable parameter inside an opaque bag (`props`, effect
  *  params) — and, since Phase 4 Task 1.1, the SAME descriptor the transition
@@ -141,6 +141,39 @@ function effectsFromTheme(theme: CompositionTheme): EffectDefinition[] {
   return out;
 }
 
+/** Every STYLE-axis effect type the theme registers as ITS OWN — i.e. every
+ *  key of `theme.styleEffects` except core's two reserved types (`ken-burns`,
+ *  `grade`, `CORE_STYLE_EFFECT_TYPES`), which already have static
+ *  `CORE_EFFECTS` entries with their own labels/defaults and (for grade) a
+ *  bespoke inspector panel — re-deriving them here would just shadow that
+ *  with a generic params list.
+ *
+ *  This is Gap 1 of Task 4.4: a brand's style-effect registration RENDERS
+ *  (`SegmentMedia` resolves it via `resolveStyleEffectRenderer`, threaded
+ *  through `theme.styleEffects`) but, before this function, had NO editor
+ *  catalog entry at all. `effectsFromTheme` above only reads `theme.effects`
+ *  (the WRAPPER axis) and explicitly EXCLUDES anything reserved — and since
+ *  Task 3.2 made the reserved set DERIVED from `theme.styleEffects` itself,
+ *  every brand style effect fell into that exclusion with nothing on the
+ *  other side to pick it back up. This function is the STYLE axis' OWN
+ *  catalog source, deliberately not a relaxation of `effectsFromTheme`'s
+ *  reserved-type skip on the WRAPPER axis — see the docblock above it for why
+ *  that skip itself must stay exactly as strict as it is.
+ *
+ *  Uses `registrationParams` (`lib/theming/registry.ts`) — the SAME accessor
+ *  the transition axis uses — rather than reaching into
+ *  `theme.styleEffects[type].params` by hand, so a third axis cannot drift
+ *  from how the other two read a registration's declared fields. */
+function styleEffectsFromTheme(theme: CompositionTheme): EffectDefinition[] {
+  const out: EffectDefinition[] = [];
+  for (const type of Object.keys(theme.styleEffects ?? {})) {
+    if (CORE_STYLE_EFFECT_TYPES.includes(type)) continue;
+    const params = registrationParams(theme.styleEffects, type);
+    out.push(params?.length ? { type, params } : { type });
+  }
+  return out;
+}
+
 /** Per-kind declared fields off one axis' registry, kinds with no `params`
  *  omitted entirely (an empty entry would claim "declared, and nothing to
  *  edit" and suppress the value-presence fallback). */
@@ -178,7 +211,11 @@ export function editorMetaFromTheme(theme: CompositionTheme, explicit?: EditorMe
   const overlayProps = paramsByKind(overlayRegistry(theme));
   // Theme-derived first, explicit appended: `effectCatalog` replaces in place
   // on a `type` collision, so the LATER entry wins — i.e. the explicit one.
-  const effects = [...effectsFromTheme(theme), ...(explicit?.effects ?? [])];
+  // WRAPPER axis first, then STYLE axis (Gap 1, Task 4.4) — order between the
+  // two never matters in practice (a type registered on one axis is reserved
+  // on the other, so their key sets cannot overlap), but wrapper-first keeps
+  // this line's history readable as an append, not a rewrite.
+  const effects = [...effectsFromTheme(theme), ...styleEffectsFromTheme(theme), ...(explicit?.effects ?? [])];
   return {
     ...explicit,
     // Spread per kind, not per axis: an explicit `videoProps.outro` overrides

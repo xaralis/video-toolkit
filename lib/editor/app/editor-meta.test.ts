@@ -163,6 +163,46 @@ describe('editorMetaFromTheme', () => {
     expect(gr?.params).toBeUndefined();
   });
 
+  // Gap 1 (Task 4.4): a brand's STYLE-axis registration (`theme.styleEffects`)
+  // renders via SegmentMedia but, before this task, had no editor catalog
+  // entry — `effectsFromTheme` only reads `theme.effects` and skips anything
+  // reserved, and a style registration makes its own type reserved.
+  it('derives a brand STYLE-axis registration into the effect catalog, with its params', () => {
+    const theme: CompositionTheme = {
+      ...bare,
+      styleEffects: { 'vignette-pulse': { params: [{ prop: 'intensity', type: 'number' }] } } as never,
+    };
+    const meta = editorMetaFromTheme(theme);
+    expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns', 'grade', 'vignette-pulse']);
+    expect(effectDefinition(meta, 'vignette-pulse')?.params).toEqual([{ prop: 'intensity', type: 'number' }]);
+  });
+
+  it('derives a param-less brand STYLE-axis registration too — registering it is what makes it addable', () => {
+    const theme: CompositionTheme = { ...bare, styleEffects: { 'light-sweep': {} } as never };
+    const meta = editorMetaFromTheme(theme);
+    expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns', 'grade', 'light-sweep']);
+    expect(effectDefinition(meta, 'light-sweep')?.params).toBeUndefined();
+  });
+
+  it('does NOT re-derive core\'s own reserved style types (ken-burns, grade) from theme.styleEffects', () => {
+    // Core registers both on styleEffects internally at render time, but the
+    // catalog must keep core's OWN labelled entries (bespoke inspector UI for
+    // grade), not shadow them with a generic params list.
+    const theme: CompositionTheme = {
+      ...bare,
+      styleEffects: {
+        'ken-burns': { params: [{ prop: 'beats', type: 'number' }] },
+        grade: { params: [{ prop: 'lut', type: 'string' }] },
+      } as never,
+    };
+    const meta = editorMetaFromTheme(theme);
+    expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns', 'grade']);
+    expect(effectDefinition(meta, 'ken-burns')?.label).toBe('Ken Burns');
+    expect(effectDefinition(meta, 'ken-burns')?.params).toBeUndefined();
+    expect(effectDefinition(meta, 'grade')?.label).toBe('Grade');
+    expect(effectDefinition(meta, 'grade')?.params).toBeUndefined();
+  });
+
   it('lets an explicit videoProps entry override that kind while others stay theme-derived', () => {
     const theme: CompositionTheme = {
       ...bare,

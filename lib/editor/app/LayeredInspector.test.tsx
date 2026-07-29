@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, screen } from '@testing-library/react';
 import { LayeredInspector } from './LayeredInspector';
+import { editorMetaFromTheme, type EditorMeta } from './editor-meta';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
+import type { CompositionTheme } from '../../theming/types';
 
 const base: LayeredReel = {
   version: 'layered-1', meta: { topic: 't', totalDurationMs: 2000 },
@@ -578,10 +580,89 @@ describe('LayeredInspector grade neutral handling', () => {
 // caught all four prior editor data-loss bugs (an inert `onChange={() => {}}`
 // never lets the component see its own committed value come back).
 // ---------------------------------------------------------------------------
-function StatefulInspector({ initial, selectedId }: { initial: LayeredReel; selectedId: string }) {
+function StatefulInspector({ initial, selectedId, meta }: { initial: LayeredReel; selectedId: string; meta?: EditorMeta }) {
   const [reel, setReel] = useState(initial);
-  return <LayeredInspector reel={reel} selectedId={selectedId} onChange={setReel} onSeek={() => {}} fps={30} />;
+  return <LayeredInspector reel={reel} selectedId={selectedId} onChange={setReel} onSeek={() => {}} fps={30} meta={meta} />;
 }
+
+// ---------------------------------------------------------------------------
+// Task 4.4, Gap 1 — a brand's STYLE-axis registration (`theme.styleEffects`)
+// end to end: derived by editorMetaFromTheme (not a hand-built EditorMeta,
+// so this exercises the SAME wiring a real host uses), offerable in
+// "+ Add effect", its declared param editable, and — per the brief's
+// stateful-parent requirement — the authored value SURVIVES a commit →
+// re-render → still-there → editable-again round trip.
+// ---------------------------------------------------------------------------
+describe('LayeredInspector style-effect catalog (Task 4.4, Gap 1)', () => {
+  const themeWithStyleEffect: CompositionTheme = {
+    background: '#000',
+    accentSlots: [],
+    styleEffects: {
+      'vignette-pulse': { params: [{ prop: 'intensity', type: 'number' }] },
+    } as never,
+  };
+  const meta = editorMetaFromTheme(themeWithStyleEffect);
+
+  const clean: LayeredReel = {
+    version: 'layered-1', meta: { topic: 't', totalDurationMs: 2000 },
+    tracks: {
+      video: [{ id: 'v1', kind: 'photo', startMs: 0, endMs: 2000, source: 'a.jpg', musicBoostDb: 0 }],
+      audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [],
+    },
+  };
+
+  it('offers the theme-derived style effect in "+ Add effect", alongside core', () => {
+    render(<LayeredInspector reel={clean} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
+    fireEvent.click(screen.getByText('+ Add effect'));
+    expect(screen.getByText('Ken Burns')).toBeTruthy();
+    expect(screen.getByText('vignette-pulse')).toBeTruthy(); // catalog button label falls back to the raw type, no humanizing
+  });
+
+  it('round-trips an authored intensity through a STATEFUL parent: add → edit → re-render → still there → editable again', () => {
+    render(<StatefulInspector initial={clean} selectedId="video:v1" meta={meta} />);
+
+    // Add the brand style effect.
+    fireEvent.click(screen.getByText('+ Add effect'));
+    fireEvent.click(screen.getByText('vignette-pulse'));
+
+    // Open its collapsible and set the declared param.
+    fireEvent.click(screen.getByText('Effect · vignette-pulse'));
+    const intensityField = screen.getByLabelText('Intensity') as HTMLInputElement;
+    fireEvent.change(intensityField, { target: { value: '0.75' } });
+    fireEvent.blur(intensityField);
+
+    // Re-render happened via the stateful parent's own onChange → setReel.
+    // The authored value must still be there, AND still editable (not
+    // dropped, not coerced, not unmounted mid-round-trip — the class of bug
+    // this task's brief calls out by name).
+    const after = screen.getByLabelText('Intensity') as HTMLInputElement;
+    expect(after.value).toBe('0.75');
+
+    // Editable again: change it a second time and confirm the new value
+    // sticks too — a control that renders once and then goes inert would
+    // pass the first assertion and fail this one.
+    fireEvent.change(after, { target: { value: '0.4' } });
+    fireEvent.blur(after);
+    expect((screen.getByLabelText('Intensity') as HTMLInputElement).value).toBe('0.4');
+  });
+
+  it('an unrecognised style-effect type is not coerced or dropped by editing a neighbouring control', () => {
+    const withUnknown: LayeredReel = {
+      ...clean,
+      tracks: {
+        ...clean.tracks,
+        video: [{ ...clean.tracks.video[0], effects: [{ type: 'unregistered-style-fx', foo: 'bar' } as never] }],
+      },
+    };
+    render(<StatefulInspector initial={withUnknown} selectedId="video:v1" meta={meta} />);
+    // Touch an unrelated control (the item's music boost) — this must not
+    // rewrite or drop the unrecognised effect entry.
+    const boost = screen.getByLabelText('Music boost (dB)') as HTMLInputElement;
+    fireEvent.change(boost, { target: { value: '3' } });
+    fireEvent.blur(boost);
+    expect(screen.getByText('Effect · unregistered-style-fx')).toBeTruthy();
+  });
+});
 
 describe('LayeredInspector grade unification guards (Phase 4 Task 3.4)', () => {
   const withGradeField: LayeredReel = {
