@@ -41,7 +41,7 @@ vi.mock('remotion', async () => {
 
 import { SegmentMedia } from '@video-toolkit/lib/theming/segment/SegmentMedia';
 import { findKenBurns } from '@video-toolkit/lib/theming/effects/ken-burns';
-import { CORE_STYLE_EFFECT_TYPES } from '@video-toolkit/lib/theming/effects';
+import { CORE_STYLE_EFFECT_TYPES, applyStyleEffects } from '@video-toolkit/lib/theming/effects';
 import type { VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
 const photo = (effects: VideoItem['effects']): VideoItem => ({
@@ -126,6 +126,17 @@ describe('every CORE_STYLE_EFFECT_TYPE honours `enabled: false` on its own path'
     'ken-burns': () => {
       const effects: Array<{ type: string }> = [{ type: 'ken-burns', direction: 'in', enabled: false } as { type: string }];
       return findKenBurns(effects) === undefined;
+    },
+    // `grade` has no bespoke finder of its own (Phase 4 Task 3.4) — both
+    // routes onto it (the `item.grade` synthetic entry, and an authored
+    // `type: 'grade'` array entry) go through `applyStyleEffects`'s ONE
+    // generic `isNodeEnabled` test. This probes the array-entry route
+    // directly; `item.grade` itself has no `enabled` field to disable (see
+    // `syntheticGradeEffect`'s doc in style-effect.ts).
+    grade: () => {
+      const item = { id: 'g1', kind: 'photo' as const, startMs: 0, endMs: 3000, source: 'photos/a.jpg' };
+      const frag = applyStyleEffects(undefined, { ...item, effects: [{ type: 'grade', brightness: 1.5, enabled: false }] }, 0, 90);
+      return frag.filter === undefined;
     },
   };
 

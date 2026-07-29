@@ -70,13 +70,24 @@ export interface EditorMeta {
 }
 
 /** Core's own effect catalog: ONLY what core itself renders. SegmentMedia (the
- *  generic footage renderer) implements Ken Burns; every other effect is a
- *  brand's and arrives via `EditorMeta.effects`. */
+ *  generic footage renderer) implements Ken Burns and — since Phase 4 Task
+ *  3.4, when `grade` joined the style axis alongside it — grade; every other
+ *  effect is a brand's and arrives via `EditorMeta.effects`.
+ *
+ *  `grade` has no non-neutral `defaults`: every `Grade` field is optional and
+ *  neutral when absent (see the item-level Color panel in
+ *  `LayeredInspector.tsx`, which edits the exact same shape), so adding the
+ *  effect starts as a genuine no-op the author then tunes — never a
+ *  surprise picture change the instant it's added. */
 export const CORE_EFFECTS: readonly EffectDefinition[] = [
   {
     type: 'ken-burns',
     label: 'Ken Burns',
     defaults: { fromScale: 1, toScale: 1.08, fromX: 0.5, toX: 0.5 },
+  },
+  {
+    type: 'grade',
+    label: 'Grade',
   },
 ];
 

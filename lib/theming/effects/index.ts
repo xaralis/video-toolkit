@@ -90,6 +90,19 @@ export interface MediaEffectEntry {
  *  applyEffects ALSO wrapped it, every ken-burns item would get the movement
  *  twice.
  *
+ *  `grade` joined it at Phase 4 Task 3.4, for the same reason: `item.grade`
+ *  merges into the media element's own `filter` inside SegmentMedia (via
+ *  `applyStyleEffects`'s synthetic entry, ./style-effect.ts), and an authored
+ *  `type: 'grade'` effect now resolves through that SAME renderer. Before
+ *  this task `grade` was a WRAPPER generic here (`primitives.tsx`'s
+ *  `GradeEffect`, a separate mechanism — an enclosing div with its own
+ *  filter) that a hand-edited item carrying both `item.grade` and a
+ *  `type:'grade'` effect would silently double up against. `GradeEffect`
+ *  and `gradeFromEffect` are still exported below for their own direct-render
+ *  tests, but no config resolves them through `applyEffects`/
+ *  `collectMediaEffects` any more — verified by
+ *  effects-registry.test.tsx's "has NO core wrapper generic for grade" case.
+ *
  *  Phase 4 Task 3.2: this used to be a hand-maintained `Set` here. It is now
  *  DERIVED — `isReservedEffectType(theme, type)` (./style-effect.ts) is `true`
  *  exactly when `type` resolves on the STYLE axis for this theme (core's own
@@ -108,13 +121,13 @@ export interface MediaEffectEntry {
  *  that would never be applied. */
 export { isReservedEffectType } from './style-effect';
 
-/** Core generic effect renderers, keyed by effect type. `ken-burns` is absent
- *  by the rule above — see `isReservedEffectType`. */
+/** Core generic effect renderers, keyed by effect type. `ken-burns` and
+ *  `grade` (Task 3.4) are both absent by the rule above — see
+ *  `isReservedEffectType`. */
 const CORE_EFFECT_RENDERERS: Record<string, EffectRenderer> = {
   grain: GrainEffect,
   scanlines: ScanlinesEffect,
   vignette: VignetteEffect,
-  grade: GradeEffect,
   transform: TransformEffect,
 };
 

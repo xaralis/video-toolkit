@@ -2,8 +2,7 @@
 import React from 'react';
 import { Img, OffthreadVideo, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { cropCoverStyle } from '../../reel-config-base/crop';
-import { gradeFilter, gradeNeedsWb, gradeWbMatrixValues } from '../../reel-config-base/grade';
-import type { Crop, Grade } from '../../reel-config-base/base-types';
+import type { Crop } from '../../reel-config-base/base-types';
 import type { VideoRenderProps } from '../types';
 import { kenBurnsStyle, findKenBurns, type KenBurnsEffect } from '../effects/ken-burns';
 import { applyStyleEffects, composeMediaStyle, type MediaStyleFragment } from '../effects/style-effect';
@@ -65,19 +64,22 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
   // edge for cross-item transitions (0 when the item has no neighbor overlap).
   const durationInFrames = Math.round(((item.endMs - item.startMs) / 1000) * fps) + handles.inHalf + handles.outHalf;
 
-  // `crop`/`grade` are permissive `z.record` fields on the schema (like the
-  // transition records), so they are asserted to their shapes here; malformed
-  // values are tolerated downstream by cropCoverStyle/gradeFilter.
+  // `crop` is a permissive `z.record` field on the schema (like the
+  // transition records), so it is asserted to its shape here; malformed
+  // values are tolerated downstream by cropCoverStyle.
   //
-  // The merge, as of Phase 4 Task 3.2: crop's own fragment is the BASE, then
-  // every STYLE-axis effect on the item (`applyStyleEffects` — ken-burns
-  // today, or a brand's own style-effect registration) composes onto it via
-  // `composeMediaStyle`'s ONE rule per property (see style-effect.ts), then
-  // grade's filter+defs compose the same way. This is the SAME merge the old
-  // hand-inlined version did — segment-media-merge-baseline.test.tsx pins the
-  // 18-cell matrix byte-for-byte across the rewrite, including the
-  // objectPosition/transformOrigin PAIRING (the highest-risk regression named
-  // in the task brief).
+  // The merge, as of Phase 4 Task 3.2 (crop + style effects) and Task 3.4
+  // (grade folded INTO the style-effect axis rather than merged separately,
+  // right here, afterward): crop's own fragment is the BASE, then every
+  // STYLE-axis effect on the item — `item.grade` FIRST (synthesized inside
+  // `applyStyleEffects`), then ken-burns / a brand's own style-effect
+  // registration in `item.effects[]` array order — composes onto it via
+  // `composeMediaStyle`'s ONE rule per property (see style-effect.ts). This is
+  // the SAME merge the old hand-inlined version did —
+  // segment-media-merge-baseline.test.tsx pins the 18-cell matrix
+  // byte-for-byte across both rewrites, including the objectPosition/
+  // transformOrigin PAIRING (the highest-risk regression named in the task
+  // brief) and grade's own filter + white-balance `defs`.
   const cropStyle = cropCoverStyle(item.crop as Crop | undefined, item.focalX, item.focalY);
   const cropFragment: MediaStyleFragment = {
     transform: cropStyle.transform,
@@ -85,25 +87,7 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
     transformOrigin: cropStyle.transformOrigin,
   };
   const styleEffectFragment = applyStyleEffects(styleEffects, item, frame, durationInFrames);
-  let merged = composeMediaStyle(cropFragment, styleEffectFragment);
-
-  const grade = item.grade as Grade | undefined;
-  const filterId = `grade-${item.id}`;
-  const filter = gradeFilter(grade, filterId);
-  // Self-contained white-balance (temperature/tint) SVG filter def, so grade
-  // works for every brand without depending on a brand-side <GradeDefs>. Only
-  // rendered when the grade actually needs WB — absent for every clip without
-  // temperature/tint, so existing renders are byte-identical.
-  const gradeDefs = gradeNeedsWb(grade) ? (
-    <svg style={{ position: 'absolute', width: 0, height: 0 }} aria-hidden="true">
-      <defs>
-        <filter id={filterId} colorInterpolationFilters="sRGB">
-          <feColorMatrix type="matrix" values={gradeWbMatrixValues(grade!)} />
-        </filter>
-      </defs>
-    </svg>
-  ) : undefined;
-  merged = composeMediaStyle(merged, { filter, defs: gradeDefs });
+  const merged = composeMediaStyle(cropFragment, styleEffectFragment);
   const wbDef = merged.defs ?? null;
 
   const style: React.CSSProperties = {
