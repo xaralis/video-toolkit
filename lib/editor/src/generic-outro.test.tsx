@@ -12,6 +12,7 @@ vi.mock('remotion', async () => {
   return {
     ...actual,
     staticFile: (s: string) => `/static/${s}`,
+    useVideoConfig: () => ({ fps: 30 }),
     OffthreadVideo: (props: any) => {
       captured.video.push(props);
       return null;

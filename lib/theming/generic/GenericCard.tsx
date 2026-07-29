@@ -1,8 +1,9 @@
 // Explicit React import: files under lib/theming are transformed with the classic JSX runtime under the editor's Vitest config, so `React` must be in scope.
 import React from 'react';
-import { interpolate, useCurrentFrame } from 'remotion';
+import { interpolate, Sequence, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { VideoRenderProps } from '../types';
 import type { CardTokens } from '../tokens';
+import { anchorTiming } from '../../render/overlay-anchor';
 
 // ---- defaults --------------------------------------------------------------
 // Every value is a default for a token in ../tokens.ts, so a brand can move any
@@ -145,7 +146,16 @@ const CARD_PLATES: Record<string, Plate> = {
  *
  *  Effects on the item are applied AROUND this by `renderVideoItemNode`, so
  *  nothing is applied here. */
-export const GenericCard: React.FC<VideoRenderProps> = ({ item, tokens }) => {
+export const GenericCard: React.FC<VideoRenderProps> = ({
+  item,
+  handles,
+  tokens,
+  anchoredOverlays,
+  renderAnchoredOverlay,
+}) => {
+  // Read before the early return below so the hook order never depends on
+  // `item.kind` (rules of hooks).
+  const { fps } = useVideoConfig();
   if (item.kind !== 'card') return null;
 
   const t: CardTokens = tokens?.card ?? {};
@@ -155,6 +165,21 @@ export const GenericCard: React.FC<VideoRenderProps> = ({ item, tokens }) => {
     <div data-card-bg="" style={{ position: 'absolute', inset: 0, backgroundColor: t.background ?? DEFAULT_BACKGROUND }}>
       {patternLayer(item.pattern, t.pattern)}
       {PlateComponent ? <PlateComponent props={item.cardProps ?? {}} tokens={t} /> : null}
+      {/* Phase 4 Task 4.1 — this item's anchored overlays, at the same
+          composition frame they would land on if routed 'track' instead (see
+          ../../render/overlay-anchor.ts). The root div above already wraps
+          unconditionally, so an empty map here changes nothing for the
+          zero-overlay case. */}
+      {(anchoredOverlays ?? []).map((o) => {
+        if (!renderAnchoredOverlay) return null;
+        const { from, durationInFrames } = anchorTiming(o, item, handles, fps);
+        if (durationInFrames <= 0) return null;
+        return (
+          <Sequence key={o.id} from={from} durationInFrames={durationInFrames} name={o.id}>
+            {renderAnchoredOverlay(o)}
+          </Sequence>
+        );
+      })}
     </div>
   );
 };

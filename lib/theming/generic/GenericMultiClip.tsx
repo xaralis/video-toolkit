@@ -1,10 +1,12 @@
 // Explicit React import: files under lib/theming are transformed with the classic JSX runtime under the editor's Vitest config, so `React` must be in scope.
 import React from 'react';
+import { Sequence, useVideoConfig } from 'remotion';
 import type { VideoItem } from '../../reel-config-base/layered-schema';
 import type { VideoRenderProps } from '../types';
 import type { MultiClipTokens } from '../tokens';
 import { SegmentMedia } from '../segment/SegmentMedia';
 import { MediaEffectsBoundary } from '../effects/media-effects-context';
+import { anchorTiming } from '../../render/overlay-anchor';
 
 // ---- defaults --------------------------------------------------------------
 // Every value here is a default for a token in ../tokens.ts, so a brand can
@@ -70,7 +72,18 @@ const fillStyle: React.CSSProperties = { position: 'absolute', inset: 0 };
  *  AROUND this whole renderer by `renderVideoItemNode`, not here.
  *
  *  `SubSource.zoom` is currently ignored, as it is in campaign-reels. */
-export const GenericMultiClip: React.FC<VideoRenderProps> = ({ item, tokens, resolveMediaSource, styleEffects }) => {
+export const GenericMultiClip: React.FC<VideoRenderProps> = ({
+  item,
+  handles,
+  tokens,
+  resolveMediaSource,
+  styleEffects,
+  anchoredOverlays,
+  renderAnchoredOverlay,
+}) => {
+  // Read before the early return below so the hook order never depends on
+  // `item.kind` (rules of hooks) — mirrors SegmentMedia's same discipline.
+  const { fps } = useVideoConfig();
   if (item.kind !== 'multi-clip') return null;
 
   const t: MultiClipTokens = tokens?.multiClip ?? {};
@@ -209,6 +222,21 @@ export const GenericMultiClip: React.FC<VideoRenderProps> = ({ item, tokens, res
     <MediaEffectsBoundary>
       <div data-multiclip-root="" style={{ ...fillStyle, backgroundColor: t.background ?? DEFAULT_BACKGROUND }}>
         {layout}
+        {/* Phase 4 Task 4.1 — this item's anchored overlays, at the same
+            composition frame they would land on if routed 'track' instead
+            (see ../../render/overlay-anchor.ts). The root div above already
+            wraps unconditionally, so appending an empty map here changes
+            nothing for the zero-overlay case. */}
+        {(anchoredOverlays ?? []).map((o) => {
+          if (!renderAnchoredOverlay) return null;
+          const { from, durationInFrames } = anchorTiming(o, item, handles, fps);
+          if (durationInFrames <= 0) return null;
+          return (
+            <Sequence key={o.id} from={from} durationInFrames={durationInFrames} name={o.id}>
+              {renderAnchoredOverlay(o)}
+            </Sequence>
+          );
+        })}
       </div>
     </MediaEffectsBoundary>
   );

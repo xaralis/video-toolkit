@@ -1,6 +1,6 @@
 // Explicit React import: files under lib/theming are transformed with the classic JSX runtime under the editor's Vitest config, so `React` must be in scope.
 import React from 'react';
-import { Img, OffthreadVideo, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Img, OffthreadVideo, Sequence, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { cropCoverStyle } from '../../reel-config-base/crop';
 import type { Crop } from '../../reel-config-base/base-types';
 import type { VideoRenderProps } from '../types';
@@ -8,6 +8,7 @@ import { kenBurnsStyle, findKenBurns, type KenBurnsEffect } from '../effects/ken
 import { applyStyleEffects, composeMediaStyle, type MediaStyleFragment } from '../effects/style-effect';
 import { useMediaEffects, applyMediaEffects } from '../effects/media-effects-context';
 import { resolveMediaSource, type MediaRole, type MediaSourceResolver } from '../media-source';
+import { anchorTiming } from '../../render/overlay-anchor';
 
 const VIDEO_EXT_RE = /\.(mp4|mov|webm)$/i;
 
@@ -44,6 +45,8 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
   handles,
   resolveMediaSource: override,
   styleEffects,
+  anchoredOverlays,
+  renderAnchoredOverlay,
 }) => {
   const { fps } = useVideoConfig();
   const frame = useCurrentFrame();
@@ -127,15 +130,47 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
   const wrapWithMediaEffects = (node: React.ReactNode): React.ReactNode =>
     applyMediaEffects(mediaEffects, { item, handles, mediaStyle: style }, node);
 
+  // Phase 4 Task 4.1 — draws this item's `anchoredOverlays` (routed 'anchored'
+  // onto THIS item's id) at the exact composition frame they would have landed
+  // on if routed 'track' instead (see ../../render/overlay-anchor.ts).
+  //
+  // Wrapped in an `AbsoluteFill` ONLY when there is at least one overlay to
+  // draw — that conditional is what keeps the zero-overlay case (every
+  // existing caller, until a brand actually routes something 'anchored') an
+  // IDENTICAL tree to before this capability existed: `mediaNode`/the
+  // `wbDef` fragment returned bare, exactly as before. An unconditional
+  // wrapper would insert a new element around every clip/broll/photo in both
+  // brand repos, which is exactly the parity break Task 4.1 must not cause.
+  const wrapWithAnchoredOverlays = (node: React.ReactNode): React.ReactNode => {
+    const overlays = anchoredOverlays ?? [];
+    if (overlays.length === 0 || !renderAnchoredOverlay) return node;
+    return (
+      <AbsoluteFill>
+        {node}
+        {overlays.map((o) => {
+          const { from, durationInFrames } = anchorTiming(o, item, handles, fps);
+          if (durationInFrames <= 0) return null;
+          return (
+            <Sequence key={o.id} from={from} durationInFrames={durationInFrames} name={o.id}>
+              {renderAnchoredOverlay(o)}
+            </Sequence>
+          );
+        })}
+      </AbsoluteFill>
+    );
+  };
+
   if (useImg) {
     const mediaNode = wrapWithMediaEffects(<Img src={src} style={style} />);
-    return wbDef ? (
-      <>
-        {wbDef}
-        {mediaNode}
-      </>
-    ) : (
-      mediaNode
+    return wrapWithAnchoredOverlays(
+      wbDef ? (
+        <>
+          {wbDef}
+          {mediaNode}
+        </>
+      ) : (
+        mediaNode
+      ),
     );
   }
 
@@ -155,12 +190,14 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
 
   const video = <OffthreadVideo src={src} muted startFrom={startFrom} endAt={endAt} style={style} />;
   const mediaNode = wrapWithMediaEffects(video);
-  return wbDef ? (
-    <>
-      {wbDef}
-      {mediaNode}
-    </>
-  ) : (
-    mediaNode
+  return wrapWithAnchoredOverlays(
+    wbDef ? (
+      <>
+        {wbDef}
+        {mediaNode}
+      </>
+    ) : (
+      mediaNode
+    ),
   );
 };

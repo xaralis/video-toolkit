@@ -141,6 +141,17 @@ export interface VideoRenderProps {
    *  direct SegmentMedia call outside the composition, e.g. in a test) → core
    *  style effects only. */
   styleEffects?: Registry<StyleEffectRenderProps, StyleEffectRenderer>;
+  /** Draws ONE overlay item exactly as the track would — the SAME function
+   *  `makeOverlayRenderer(theme)` builds for `LayeredReelComposition`'s own
+   *  track Sequences (see lib/render/layered-composition.tsx and
+   *  lib/render/overlay-anchor.ts), threaded down here by
+   *  `renderVideoItemNode` the same narrow way as `tokens`/`resolveMediaSource`.
+   *  A renderer that draws `anchoredOverlays` must call THIS, not roll its own
+   *  dispatch — that is what keeps a track-routed and an anchored-routed
+   *  overlay of the same kind unable to disagree on how they render (they are
+   *  literally the same call). Absent in any call site outside the real
+   *  composition (e.g. a renderer invoked directly in a unit test). */
+  renderAnchoredOverlay?: (item: OverlayItem) => React.ReactNode;
 }
 
 export type VideoRenderer = React.FC<VideoRenderProps>;

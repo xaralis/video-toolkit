@@ -53,6 +53,24 @@ const CORE_OVERLAY_GENERICS: Record<string, React.FC<{ item: OverlayItem; theme:
   'quote-pull': TrackTextOverlay,
 };
 
+/** ONE dispatch for "how does this overlay item draw", built once per theme —
+ *  used for BOTH the main overlay track (each item wrapped in its own
+ *  Sequence, below) and `anchoredOverlays` delivered to a video renderer
+ *  (Task 4.1). Extracting this is the point: a track-routed and an
+ *  anchored-routed overlay of the SAME kind call the exact same function, so
+ *  they cannot render differently — there is only one place this dispatch is
+ *  written. */
+export function makeOverlayRenderer(theme: CompositionTheme): (item: OverlayItem) => React.ReactNode {
+  const registry = overlayRegistry(theme);
+  return (item: OverlayItem) => {
+    const kind = overlayKind(item);
+    const reg = registry[kind];
+    if (reg?.render) return reg.render(item); // item-level escape hatch wins
+    const Generic = CORE_OVERLAY_GENERICS[kind];
+    return Generic ? <Generic item={item} theme={theme} /> : null;
+  };
+}
+
 /** One video item's node: the resolved renderer, decorated by the item's
  *  `effects[]` (see lib/theming/effects).
  *
@@ -89,7 +107,14 @@ export function renderVideoItemNode(
   theme: CompositionTheme,
   item: VideoItem,
   handles: { inHalf: number; outHalf: number },
-  extras: { anchoredOverlays?: OverlayItem[]; boundAudio?: AudioItem } = {},
+  extras: {
+    anchoredOverlays?: OverlayItem[];
+    boundAudio?: AudioItem;
+    /** How to draw one anchored overlay — `LayeredReelComposition` builds this
+     *  ONCE via `makeOverlayRenderer(theme)` and passes the SAME function to
+     *  every item, so it is threaded here rather than rebuilt per item. */
+    renderAnchoredOverlay?: (item: OverlayItem) => React.ReactNode;
+  } = {},
 ): React.ReactNode {
   const Renderer = resolveVideoRenderer(theme, item.kind);
   if (!Renderer) return null; // a kind this brand didn't register a renderer for
@@ -100,6 +125,7 @@ export function renderVideoItemNode(
         handles={handles}
         config={videoConfig(theme, item.kind)}
         anchoredOverlays={extras.anchoredOverlays ?? []}
+        renderAnchoredOverlay={extras.renderAnchoredOverlay}
         boundAudio={extras.boundAudio}
         // The theme's look constants for core's GENERIC renderers (tokens.ts).
         // Threaded here because this is where the theme lives — VideoRenderProps
@@ -127,6 +153,12 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
   const registry = overlayRegistry(theme);
   const { track, anchored } = routeOverlays(reel.tracks.overlays, registry);
 
+  // ONE dispatch for "how does this overlay item draw" (Task 4.1), built ONCE
+  // and handed to both the track Sequences below AND every video item's
+  // `renderAnchoredOverlay` — so a track-routed and an anchored-routed overlay
+  // of the same kind literally cannot render differently.
+  const renderOverlayItem = makeOverlayRenderer(theme);
+
   // ---- video ----------------------------------------------------------------
   const videoItems = theme.prepareVideoTrack ? theme.prepareVideoTrack(reel.tracks.video) : reel.tracks.video;
   const videoNodes = buildVideoNodes(videoItems, {
@@ -149,6 +181,7 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
       renderVideoItemNode(theme, item, handles, {
         anchoredOverlays: anchored.get(item.id) ?? [],
         boundAudio: reel.tracks.audio.find((a) => a.followsVideoId === item.id),
+        renderAnchoredOverlay: renderOverlayItem,
       }),
   });
 
@@ -166,18 +199,11 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
   const musicSource = reel.tracks.music.source;
 
   // ---- overlays ------------------------------------------------------------------
-  const renderTrackItem = (item: OverlayItem): React.ReactNode => {
-    const kind = overlayKind(item);
-    const reg = registry[kind];
-    if (reg?.render) return reg.render(item); // item-level escape hatch wins
-    const Generic = CORE_OVERLAY_GENERICS[kind];
-    return Generic ? <Generic item={item} theme={theme} /> : null;
-  };
   const overlayNodes = track.map((item) => {
     const from = msToFrames(item.startMs);
     const durationInFrames = msToFrames(item.endMs) - from;
     if (durationInFrames <= 0) return null;
-    const node = renderTrackItem(item);
+    const node = renderOverlayItem(item);
     if (node === null) return null;
     return (
       <Sequence key={item.id} from={from} durationInFrames={durationInFrames} name={item.id}>
