@@ -19,6 +19,11 @@ import {
   MediaEffectsContext,
   defaultRenderBrandTrack,
   resolveGenericSource,
+  GenericCaptions,
+  rebaseCaptionTimes,
+  type CaptionLine,
+  type CaptionLiftWindow,
+  type CaptionSourceWord,
 } from '../theming';
 import { buildVideoNodes } from './video-track';
 import { buildAudioNodes } from './audio-track';
@@ -52,12 +57,69 @@ const TrackTextOverlay: React.FC<{ item: OverlayItem; theme: CompositionTheme }>
   );
 };
 
+/** The content bag a `captions` overlay item carries. Times are
+ *  composition-ABSOLUTE, like every other time in the layered schema —
+ *  `rebaseCaptionTimes` moves them into the mount's own Sequence domain below. */
+interface CaptionsOverlayContent {
+  words?: CaptionSourceWord[];
+  lines?: CaptionLine[];
+  liftWindows?: CaptionLiftWindow[];
+}
+
+/**
+ * Core's mount for {@link GenericCaptions} — Phase 4 Task 4.3.
+ *
+ * WHICH TIER OWNS CAPTIONS: the OVERLAY TRACK, as an ordinary overlay kind
+ * (`content.kind === 'captions'`) resolved through the SAME
+ * `makeOverlayRenderer` dispatch every other overlay kind uses. Reasoning is
+ * recorded in docs/superpowers/phase4-extension-contract.md §6; the two load-
+ * bearing consequences are:
+ *
+ *  - **Not clipped by a video item.** Routed 'track' (the default), a caption
+ *    item gets its OWN top-level Sequence over [startMs, endMs), so it survives
+ *    a cut underneath it — which is the whole point of `lastLineGraceMs`, and
+ *    the failure mode an anchored overlay has by construction.
+ *  - **It can still be anchored, and cannot disagree with itself if it is.** A
+ *    brand that wants the per-item behaviour registers
+ *    `overlays: { captions: { routing: 'anchored' } }` and gets the identical
+ *    node from the identical function — there is no second caption path to
+ *    drift against, which is precisely what `makeOverlayRenderer` exists for.
+ *    Both routes wrap the item in a Sequence starting at the item's own
+ *    `startMs`, so the ONE rebase origin below is correct for both.
+ *
+ * Collision with an anchored overlay is resolved by MOVING, never hiding:
+ * `liftWindows` raises the caption out of the bottom band for a window (see
+ * CaptionLiftWindow). Core does not derive those windows from the anchored
+ * overlays automatically — which overlay covers the caption band is a look
+ * question only the brand's own renderers can answer.
+ */
+const TrackCaptionsOverlay: React.FC<{ item: OverlayItem; theme: CompositionTheme }> = ({ item, theme }) => {
+  const content = item.content as CaptionsOverlayContent;
+  // Composition-absolute (schema) → this mount's Sequence-local domain. The
+  // Sequence wrapping this node starts at item.startMs on BOTH routes, so that
+  // is the origin. Near a reel's first item this is the identity and the bug it
+  // fixes is invisible — which is how the units error survived Phase 3.
+  const local = rebaseCaptionTimes(content, item.startMs);
+  return (
+    <GenericCaptions
+      words={local.words}
+      lines={local.lines}
+      liftWindows={local.liftWindows}
+      // The caption token block — the field ThemeTokens documented as threaded
+      // NOWHERE until this task. This line is the whole of that threading.
+      tokens={theme.tokens?.caption}
+    />
+  );
+};
+
 // Core's item-level generics: the kinds core can draw without any brand
-// registration. Both entries are the text adapter — 'quote-pull' is the legacy
-// alias of 'text' and deliberately resolves the SAME 'text' registration.
+// registration. 'text'/'quote-pull' are the text adapter — 'quote-pull' is the
+// legacy alias of 'text' and deliberately resolves the SAME 'text'
+// registration. 'captions' is core's burned-in caption track (Task 4.3).
 const CORE_OVERLAY_GENERICS: Record<string, React.FC<{ item: OverlayItem; theme: CompositionTheme }>> = {
   text: TrackTextOverlay,
   'quote-pull': TrackTextOverlay,
+  captions: TrackCaptionsOverlay,
 };
 
 /** ONE dispatch for "how does this overlay item draw", built once per theme —

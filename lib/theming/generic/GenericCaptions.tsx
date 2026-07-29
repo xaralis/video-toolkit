@@ -9,18 +9,16 @@ import {
   strokeShadow,
   type CaptionLine,
   type CaptionLineWord,
+  type CaptionLiftWindow,
   type CaptionSourceWord,
 } from './caption-lines';
 
-/** Time ranges (ms, composition-relative) during which captions are LIFTED to a
- *  higher position to clear a title plate or other bottom-anchored chrome.
- *  Captions are never SUPPRESSED — a caption that disappears because something
- *  else wanted the space is an accessibility regression, so the only response
- *  to a collision is to move. */
-export interface CaptionLiftWindow {
-  startMs: number;
-  endMs: number;
-}
+// `CaptionLiftWindow` used to be DECLARED here, documented as
+// "ms, composition-relative", while this component compares it against a
+// Sequence-LOCAL `ms` two screens down. It now lives in ./caption-lines.ts with
+// the corrected units (see that file, and `rebaseCaptionTimes`), and is
+// re-exported from here so every existing import path keeps working.
+export type { CaptionLiftWindow };
 
 export interface GenericCaptionsProps {
   /** Word-level timings (seconds), e.g. from `transcriptWindow`. Grouped into
@@ -76,6 +74,14 @@ const withAlpha = (color: string, alpha: number): string => {
  *     ported anyway — it is the mode a second brand is likely to want, and a
  *     mode that exists only in a brand repo is the copy-paste channel Phase 3
  *     closes.
+ *
+ * TIME DOMAIN, stated once for all three inputs: `words`, `lines` and
+ * `liftWindows` are ALL read against `useCurrentFrame()`, which Remotion
+ * rebases to the enclosing `<Sequence>`. So every one of them is in THIS
+ * COMPONENT'S OWN local ms, never composition-absolute. A caller holding
+ * composition-absolute config runs it through `rebaseCaptionTimes` first —
+ * which is exactly what core's own mount (`TrackCaptionsOverlay` in
+ * lib/render/layered-composition.tsx) does.
  *
  * Every colour and font arrives from {@link CaptionTokens} with a neutral
  * default — no brand's identity colour or typeface is in this file.

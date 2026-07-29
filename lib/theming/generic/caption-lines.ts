@@ -35,6 +35,32 @@ export interface CaptionLine {
   words?: CaptionLineWord[];
 }
 
+/** Time ranges during which captions are LIFTED to a higher position to clear a
+ *  title plate or other bottom-anchored chrome.
+ *
+ *  UNITS — settled by Phase 4 Task 4.3, and the reason this type moved here from
+ *  `GenericCaptions.tsx`: **ms in the CAPTION COMPONENT'S OWN time domain**, i.e.
+ *  relative to the `<Sequence>` `GenericCaptions` is mounted inside — exactly the
+ *  same domain as {@link CaptionLine.startMs} and {@link CaptionSourceWord.start}.
+ *  It is NOT composition-relative, whatever the old docblock on this interface
+ *  said: `GenericCaptions` reads `useCurrentFrame()`, which Remotion rebases per
+ *  Sequence, so a composition-absolute window would be wrong by the mount's own
+ *  offset. That error was invisible for as long as it lived because the only
+ *  authored value was on a reel's FIRST item, where the two domains coincide.
+ *
+ *  Config authored against the layered schema is composition-ABSOLUTE (every
+ *  `startMs`/`endMs` in `layered-schema.ts` is), so the MOUNT converts —
+ *  see {@link rebaseCaptionTimes}, called by `TrackCaptionsOverlay` in
+ *  `lib/render/layered-composition.tsx`.
+ *
+ *  Captions are never SUPPRESSED — a caption that disappears because something
+ *  else wanted the space is an accessibility regression, so the only response to
+ *  a collision is to move. */
+export interface CaptionLiftWindow {
+  startMs: number;
+  endMs: number;
+}
+
 /** Max characters a line may reach before the greedy grouper breaks. */
 export const DEFAULT_CAPTION_MAX_CHARS = 28;
 /** An inter-word gap LONGER than this forces a line break (a breath / silence). */
@@ -113,6 +139,58 @@ export function linesFromWords(
     }
   }
   return lines;
+}
+
+/** The three time-carrying inputs of a caption track, in whatever ONE domain the
+ *  caller holds them. {@link rebaseCaptionTimes} moves all three at once, which
+ *  is the point: a caption whose lines are local and whose lift windows are
+ *  absolute is the exact defect Task 4.3 fixed. */
+export interface CaptionTimes {
+  /** SECONDS (the shape `transcriptWindow` produces). */
+  words?: CaptionSourceWord[];
+  /** MILLISECONDS. */
+  lines?: CaptionLine[];
+  /** MILLISECONDS. */
+  liftWindows?: CaptionLiftWindow[];
+}
+
+/**
+ * Move every caption time from composition-absolute ms into the ms domain of a
+ * mount whose Sequence starts at `originMs` — i.e. subtract `originMs` from
+ * every `startMs`/`endMs`, and `originMs / 1000` from every word's `start`/`end`
+ * (words are in SECONDS; lines and lift windows in MILLISECONDS).
+ *
+ * Why a mount needs this at all: every time in the layered schema is
+ * composition-absolute, while `GenericCaptions` reads `useCurrentFrame()`, which
+ * Remotion rebases to the enclosing `<Sequence>`. Both the track route and the
+ * anchored route wrap an overlay item in a Sequence starting at that item's own
+ * `startMs`, so ONE origin — the overlay item's `startMs` — is correct for both.
+ *
+ * Nothing is clamped. A word that starts before the origin gets a negative
+ * `start` and is simply never active, which is what "the caption began before
+ * this item" should look like.
+ *
+ * `originMs === 0` returns the SAME object, untouched — the identity case is a
+ * reel's first item, and rebuilding the arrays every frame there would be pure
+ * waste. It also means this function cannot change behaviour for the one case
+ * where the two domains agree.
+ */
+export function rebaseCaptionTimes(times: CaptionTimes, originMs: number): CaptionTimes {
+  if (originMs === 0) return times;
+  const originSec = originMs / 1000;
+  return {
+    words: times.words?.map((w) => ({ ...w, start: w.start - originSec, end: w.end - originSec })),
+    lines: times.lines?.map((l) => ({
+      ...l,
+      startMs: l.startMs - originMs,
+      endMs: l.endMs - originMs,
+      words: l.words?.map((w) => ({ ...w, startMs: w.startMs - originMs, endMs: w.endMs - originMs })),
+    })),
+    liftWindows: times.liftWindows?.map((lw) => ({
+      startMs: lw.startMs - originMs,
+      endMs: lw.endMs - originMs,
+    })),
+  };
 }
 
 /**

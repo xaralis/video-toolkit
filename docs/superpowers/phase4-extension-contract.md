@@ -481,3 +481,73 @@ misapplied.
 5. **`sepia(0.22)` was cited as needing "a non-diagonal WB matrix".** It needs no matrix at
    all — CSS `filter: sepia()` is a native function, and it is now core's, at
    `grade.ts`'s `sepia !== 0` branch. The obstacle was core's filter chain, not colour maths.
+
+---
+
+## 6. Which tier owns captions (Phase 4 Task 4.3)
+
+`GenericCaptions` shipped in Phase 3 with **zero mount sites**, and its docblock named why:
+routing captions is *"a real design decision (which tier owns them, how they interact with
+anchored overlays)"*. This section is that decision.
+
+### The decision
+
+**Captions are an OVERLAY-TRACK KIND** — `content.kind === 'captions'`, resolved by
+`CORE_OVERLAY_GENERICS` through the same `makeOverlayRenderer(theme)` dispatch as every other
+overlay kind, routed `'track'` by default. No new track, no new schema field, no new prop bag.
+
+The mount is `TrackCaptionsOverlay` (`lib/render/layered-composition.tsx`); it reads
+`theme.tokens?.caption` and rebases the item's composition-absolute times into its own
+Sequence domain via `rebaseCaptionTimes`.
+
+### Why — the criterion the docblock set, answered
+
+The stated failure modes were (a) a caption fighting an anchored overlay for the same screen
+region and (b) a caption clipped by an item boundary the way an anchored overlay is.
+
+1. **'track' routing is the direct answer to (b).** A track-routed overlay gets its own
+   top-level `Sequence` over `[startMs, endMs)`, so it is bounded by the CAPTION's span, not by
+   whatever video item happens to be underneath. That matters concretely: `lastLineGraceMs`
+   (default 600 ms) exists precisely to keep the final subtitle on screen *through* the cut
+   that follows it. An item-scoped mount cannot honour that by construction — it would clip the
+   grace at the very boundary the grace exists to survive.
+
+2. **(a) is answered by the mechanism the component already has: `liftWindows`.** Captions LIFT
+   out of the bottom band; they are never suppressed, because a caption that disappears because
+   something else wanted the space is an accessibility regression. Core deliberately does NOT
+   derive lift windows from the anchored-overlay list automatically — *which* overlay physically
+   covers the caption band is a look question about a brand's own renderers, and a wrong guess
+   would move captions for overlays that never touched them. (PP's own code makes exactly this
+   discrimination by hand: `FootageSegment.tsx:203-212` lifts only for `title`, never for
+   `quote-pull`, which lives in its own lane above the caption band.)
+
+3. **Reusing `makeOverlayRenderer` is the point, not a convenience.** Task 4.1 extracted that
+   function so a track-routed and an anchored-routed overlay of the same kind *cannot* disagree.
+   A third caption path that "should match" the other two would recreate exactly the drift the
+   extraction removed. Because captions go through the one dispatch, a brand that prefers the
+   per-item behaviour registers `overlays: { captions: { routing: 'anchored' } }` and gets the
+   identical node — and both routes wrap the item in a Sequence starting at the item's own
+   `startMs`, so the single rebase origin is correct for both. This is the property that made
+   the overlay axis the right home rather than merely an available one.
+
+4. **It costs no schema change.** `OverlayItemSchema.content` is a permissive record
+   (`layered-schema.ts`), so `{ kind: 'captions', words?, lines?, liftWindows? }` parses today.
+
+### The alternatives, and what each could not express
+
+| Alternative | Rejected because |
+|---|---|
+| **Video-item mount** (inside `SegmentMedia`/the generics, mirroring PP's `FootageSegment` → `CaptionStrip`) | Clipped by the item — failure mode (b), verbatim. Also loses the routing choice entirely: an item mount cannot be moved to the track by a registration, so a brand wanting a caption to span a cut would have to fork the generic. It is the shape PP has, and PP's `lastLineGraceMs` is the workaround for it. |
+| **Brand-layer track** (`tracks.brand`) | Would need a schema change: `BrandLayerItemSchema.kind` is a closed `z.enum(['watermark','disclaimer'])`, unlike the open overlay `content.kind`. And it is the wrong tier semantically — the brand layer is persistent chrome (watermark, legal line), while a caption is timed content with per-word state. |
+| **A dedicated caption LANE** (a fifth track) | Buys nothing the overlay track does not already give: independent Sequencing, an open kind vocabulary, per-kind registration, per-kind routing, and the existing editor lane model. It would cost a schema change, a second dispatch, and — this is the decisive part — a caption lane by definition cannot be routed anchored, so a brand wanting PP's per-item behaviour would have no path at all. **Nothing about captions needed an axis the overlay contract could not express.** That is a finding about the contract worth stating positively: the overlay axis was sufficient, and Task 4.1's `routing` field is why. |
+
+### What this does NOT settle
+
+- **No editor surface.** A `captions` item is renderable but has no inspector controls or
+  catalog entry — the same write-only shape Task 4.4 owns for style effects and the five core
+  wrapper effects. Recorded here as tracked, not tolerated.
+- **No derivation.** `derive-layered.ts` does not emit `captions` items from a transcript
+  sidecar; authoring is manual (or a brand's own `/cut` step). Core's transcript helpers
+  (`lib/transcripts/transcriptWindow`) produce the word shape the content bag wants, but
+  nothing wires them together automatically, deliberately: which clip's transcript becomes
+  which caption item is a cut decision.

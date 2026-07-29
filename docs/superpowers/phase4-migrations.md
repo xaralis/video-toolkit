@@ -1827,3 +1827,94 @@ per-character reveal animation; roost's `Text.tsx` adds a `WebkitTextStroke` out
 width derived from a `strokeRatio` config value) and its own line-stagger reveal. None of
 that is in scope here — geometry/animation tokenization is Workstream 5's territory, not
 this task's — so this section reports the finding without expanding `TextTokens` to cover it.
+
+---
+
+## Task 4.3 — captions get a mount
+
+### 4.3-a Core now draws a `captions` overlay kind
+
+**What changed in core.** `GenericCaptions` had ZERO mount sites and `ThemeTokens.caption`
+was threaded nowhere (its own docblock said so). Core now resolves an overlay item whose
+`content.kind === 'captions'` to a new core generic, `TrackCaptionsOverlay`
+(`lib/render/layered-composition.tsx`), through the SAME `makeOverlayRenderer` dispatch every
+other overlay kind uses — routed `'track'` by default, and honouring
+`routing: 'anchored'` if a brand registers it. The mount reads `theme.tokens?.caption` off the
+theme and rebases the item's composition-absolute caption times into the mount's own Sequence
+domain (`rebaseCaptionTimes`, `lib/theming/generic/caption-lines.ts`).
+
+**Grade: PARITY-PRESERVING for both repos, no brand file changes required — and NO
+double-render.** The double-render hazard is the obvious risk of mounting something that
+previously mounted nowhere (PP ships its own `brand-lib/overlays/CaptionStrip.tsx`), so it was
+checked directly rather than reasoned about. Commands run **from inside each repo** with
+`git grep`, so `node_modules` and the vendored `toolkit/` submodule are excluded by tracking,
+and every hit was printed and inspected:
+
+```bash
+# PP @ 0e2dfb9 — /Users/xaralis/Workspace/progpce/video-toolkit
+git grep -n "kind: *['\"]captions['\"]"            # NO hits (exit 1)
+git grep -hoE "kind: ['\"][a-zA-Z-]+['\"]" -- '*.ts' '*.tsx' | sort | uniq -c | sort -rn
+#   26 distinct kinds authored: clip 44, broll 35, text 24, title 22, watermark 12,
+#   outro 12, disclaimer 12, claim-plate 12, chevron 12, dissolve 6, stat-callout 4,
+#   update-badge 3, source-tag 3, party-logos 3, quote-pull 2, glitch 2, and 10 singletons.
+#   `captions` is NOT among them.
+git grep -n "<CaptionStrip"
+#   brand-lib/segments/FootageSegment.tsx:241   (the one live mount)
+#   .claude/superpowers/plans/2026-05-19-pp-campaign-reels.md:1900   (prose)
+#   brands/progresivni-pardubice/BRAND-RULES.md:187                  (prose)
+
+# roost @ ffca36d — /Users/xaralis/Workspace/roost/video-toolkit
+git grep -n "kind: *['\"]captions['\"]"            # NO hits (exit 1)
+git grep -n "caption" | grep -v '^toolkit/'        # 4 hits, ALL prose/typography:
+#   brands/roost/brand.json:43 ("Coda Caption" — a FONT NAME), :51 (a dead `reels.caption`
+#   block, see below), projects/roost-reel-01/README.md:181, templates/roost-reels/README.md:181
+git grep -n "caption" | wc -l                      # 3 files total, incl. toolkit/ — see note
+```
+
+**Why a double-render is impossible today, a priori.** Core's new generic fires for exactly
+one condition: an overlay item with `content.kind === 'captions'`. Neither brand authors that
+kind (0 hits above), and core's own derivation cannot produce one either —
+`git grep -n "caption" lib/reel-config-base/` returns only two comments in
+`base-types.ts:1` and `segment-base-schemas.ts:1`, and the overlay kinds `derive-layered.ts`
+emits are `chevron`, `watermark`, `disclaimer` and the video kinds, never `captions`. PP's
+captions come from a different mechanism entirely — `segment.caption` / `transcript` props read
+by `FootageSegment`, which mounts `CaptionStrip` **inside the video item's own renderer**. That
+path is untouched. For a PP reel to render two caption tracks, someone would have to author a
+`captions` overlay item, which is a new authoring act, not a consequence of this change.
+
+**The tokens are likewise inert today, and the reason is worth recording.** `theme.tokens?.caption`
+is `undefined` for both brands: `git grep -n "tokens:" -- '*.ts' '*.tsx'` in PP returns two
+hits, both a local variable named `tokens` in accent parsing
+(`brand-lib/overlays/QuotePullOverlay.tsx:90`, `projects/pp-05-zastupitelsky-klub/src/lib/accent-parser.ts:31`),
+and in roost returns **zero** outside `toolkit/`. Neither brand declares a `tokens` block on
+its `CompositionTheme` at all.
+
+**Three dead caption-config blocks, unchanged by this task and still dead.** This confirms
+the provenance note in `lib/theming/tokens.ts` with current counts:
+- **15** `caption: {` blocks in PP `src/config/theme.ts` files (all at line 36 — 13 projects +
+  `templates/campaign-reels` + `templates/web-program-intro`), which nothing imports.
+- **1** `reels.caption` block in `brands/roost/brand.json:51` (mode/fontFamily/color/…),
+  which no TS/TSX reads.
+- The live PP look is still the module constants inside `CaptionStrip.tsx` (`FONT_SIZE 52`,
+  `BOTTOM_PCT 0.2`, `TEXT_COLOR #c6f432`, …).
+
+A brand that WANTS core's caption track migrates by (a) authoring `captions` overlay items with
+composition-absolute times, (b) filling in `tokens.caption` from those dead blocks, and (c)
+**deleting its own caption mount** — the same two-sided move §2 of the extension contract
+describes for any promotion. Doing (a)+(b) without (c) is the double-render, and it is the
+brand's own change that would cause it, in a repo this phase does not touch.
+
+### 4.3-b The `CaptionLiftWindow` units correction — what a brand porting a mount must know
+
+`CaptionLiftWindow` was documented as **composition-relative** and compared against a
+Sequence-**local** `ms`. The doc was wrong (see 4.3 in the task report for why the code
+reading is the only possible one under Remotion's per-Sequence frame rebase). The interface
+moved to `lib/theming/generic/caption-lines.ts` with corrected units and is re-exported from
+`GenericCaptions.tsx`, so **no import path breaks**.
+
+PP is unaffected and its own doc was already right: `CaptionStrip.tsx:25` says
+"ms, **segment-relative**", and `FootageSegment.tsx:208-212` builds its windows from
+`{ appearAt, appearAt + durationMs }` on the segment's own overlays — segment-local on both
+sides. **Grade: PARITY-PRESERVING, documentation-only for both repos.** The only party the
+old wording could have misled is a brand porting to core's mount after this task, which is
+why it is recorded here rather than only in the code.

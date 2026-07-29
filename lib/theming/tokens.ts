@@ -22,11 +22,12 @@
 // `defaultRenderBrandTrack`. Deliberately ONE narrow typed field in both
 // cases, not the whole theme — neither prop bag carries a `CompositionTheme`.
 //
-// THOSE ARE THE ONLY TWO AXES THAT THREAD ANYTHING. `caption` is on neither, so
-// it is the one field below that core does not deliver to its generic for you —
-// see its declaration on `ThemeTokens` for what a brand has to do instead. Read
-// that before adding a field here: a token nothing threads is a promise the
-// module cannot keep.
+// A THIRD axis threads the two OVERLAY blocks: `text` via `TrackTextOverlay`
+// and — since Phase 4 Task 4.3 — `caption` via `TrackCaptionsOverlay`, both in
+// lib/render/layered-composition.tsx, both reading the block straight off the
+// theme at the overlay dispatch. As of 4.3 EVERY block below is threaded by
+// core; `caption` was the last one that was not. Keep it that way when adding a
+// field here: a token nothing threads is a promise the module cannot keep.
 
 /** Look constants for {@link GenericMultiClip}. */
 export interface MultiClipTokens {
@@ -222,22 +223,25 @@ export interface ThemeTokens {
    *  for why this one threads through `OverlayRenderProps` rather than
    *  `VideoRenderProps`/`BrandRenderProps`. */
   text?: TextTokens;
-  /** UNLIKE EVERY OTHER FIELD HERE, core threads this NOWHERE. Captions are on
-   *  neither token axis — not `VideoRenderProps.tokens` (captions are not a
-   *  video kind) and not `BrandRenderProps.tokens` (not a brand-layer kind) —
-   *  and core has no mount site for {@link GenericCaptions} at all. Setting
-   *  `theme.tokens.caption` on its own therefore changes nothing.
+  /** Look constants for {@link GenericCaptions}.
    *
-   *  It is declared anyway because it is the typed, reviewed vocabulary for
-   *  that look, and a brand mounting `GenericCaptions` from its OWN renderer
-   *  passes it straight through:
+   *  THREADED SINCE PHASE 4 TASK 4.3, on the OVERLAY axis — like {@link text},
+   *  and unlike the video/brand-layer blocks above. Captions are an overlay
+   *  KIND (`content.kind === 'captions'`), so core's own mount
+   *  (`TrackCaptionsOverlay`, lib/render/layered-composition.tsx) reads this
+   *  block off the theme and hands it to `GenericCaptions`. Setting
+   *  `theme.tokens.caption` now changes what renders; before 4.3 it changed
+   *  nothing, because core had no mount site at all.
+   *
+   *  A brand mounting `GenericCaptions` from its OWN renderer still passes it
+   *  straight through, exactly as before:
    *
    *  ```tsx
    *  <GenericCaptions words={words} tokens={theme.tokens?.caption} />
    *  ```
    *
-   *  Routing captions through a core axis is a real design decision (which
-   *  tier owns them, how they interact with anchored overlays) and has not been
-   *  made. When it is, this comment goes. */
+   *  The routing decision this comment used to say was unmade is recorded, with
+   *  its reasoning and the alternatives rejected, in
+   *  docs/superpowers/phase4-extension-contract.md §6. */
   caption?: CaptionTokens;
 }

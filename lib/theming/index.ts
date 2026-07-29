@@ -117,6 +117,8 @@ export {
   activeAmount,
   chunkWords,
   strokeShadow,
+  rebaseCaptionTimes,
+  type CaptionTimes,
   DEFAULT_CAPTION_MAX_CHARS,
   DEFAULT_CAPTION_GAP_BREAK_MS,
   DEFAULT_CAPTION_LAST_LINE_GRACE_MS,
