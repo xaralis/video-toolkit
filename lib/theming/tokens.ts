@@ -63,6 +63,27 @@ export interface MultiClipTokens {
   background?: string;
 }
 
+/** Look constants for {@link GenericTextOverlay}.
+ *
+ *  UNLIKE every other field on {@link ThemeTokens}, this one threads through
+ *  `OverlayRenderProps.tokens` (see `TrackTextOverlay` in
+ *  lib/render/layered-composition.tsx), not `VideoRenderProps`/
+ *  `BrandRenderProps` — text is an overlay-track kind, not a video or
+ *  brand-layer kind.
+ *
+ *  Defaults reproduce the pre-tokens hardcoded literals EXACTLY (`#ffffff` /
+ *  `sans-serif` / 700 / 1.3), so an unthemed brand renders byte-identically. */
+export interface TextTokens {
+  /** Text colour. Default `#ffffff`. */
+  color?: string;
+  /** Font family. Default `sans-serif`. */
+  fontFamily?: string;
+  /** Font weight. Default `700`. */
+  fontWeight?: number;
+  /** Line height. Default `1.3`. */
+  lineHeight?: number;
+}
+
 /** Look constants for {@link GenericCard}. */
 export interface CardTokens {
   /** Plate background. Default `#000000` (campaign-reels uses coal `#0a0a0a`). */
@@ -197,6 +218,10 @@ export interface ThemeTokens {
   card?: CardTokens;
   watermark?: WatermarkTokens;
   disclaimer?: DisclaimerTokens;
+  /** Look constants for {@link GenericTextOverlay} — see {@link TextTokens}
+   *  for why this one threads through `OverlayRenderProps` rather than
+   *  `VideoRenderProps`/`BrandRenderProps`. */
+  text?: TextTokens;
   /** UNLIKE EVERY OTHER FIELD HERE, core threads this NOWHERE. Captions are on
    *  neither token axis — not `VideoRenderProps.tokens` (captions are not a
    *  video kind) and not `BrandRenderProps.tokens` (not a brand-layer kind) —

@@ -134,4 +134,5 @@ export type {
   WatermarkTokens,
   DisclaimerTokens,
   CaptionTokens,
+  TextTokens,
 } from './tokens';

@@ -28,6 +28,12 @@ import { routeOverlays, overlayKind } from './overlay-routing';
 // the raw OverlayItem to the theming module's text contract, so brands keep
 // registering their Text via BrandTheme.overlays.text exactly as before.
 const TrackTextOverlay: React.FC<{ item: OverlayItem; theme: CompositionTheme }> = ({ item, theme }) => {
+  // Renderer RESOLUTION deliberately stays hardcoded to 'text': 'quote-pull' is
+  // documented (above) as an alias that resolves the SAME 'text' registration.
+  // CONFIG, however, is per-kind — a brand registering distinct config for
+  // 'text' vs 'quote-pull' must get its OWN kind's config, not always 'text's;
+  // that was the write-only-prop bug (task 4.2).
+  const kind = overlayKind(item);
   const Renderer = resolveOverlayRenderer(theme, 'text');
   const content = item.content as { text?: string; reveal?: 'line' | 'all' | 'none'; hide?: 'fade' | 'none'; fontSize?: number };
   return (
@@ -38,7 +44,8 @@ const TrackTextOverlay: React.FC<{ item: OverlayItem; theme: CompositionTheme }>
       reveal={content.reveal}
       hide={content.hide}
       palette={theme.accentSlots}
-      config={overlayConfig(theme, 'text')}
+      config={overlayConfig(theme, kind)}
+      tokens={theme.tokens}
       appearAtMs={0}
       durationMs={item.endMs - item.startMs}
     />

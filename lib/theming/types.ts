@@ -29,6 +29,12 @@ export interface OverlayRenderProps {
   /** Usually 0 — the overlay is mounted in a Sequence at the item's start. */
   appearAtMs: number;
   durationMs: number;
+  /** The theme's look constants for core's generic overlay renderer (see
+   *  ./tokens.ts, `TextTokens`). Core-supplied — `TrackTextOverlay` threads
+   *  `theme.tokens` through here, the same narrow-field convention as
+   *  `VideoRenderProps.tokens`/`BrandRenderProps.tokens`, except this is the
+   *  ONE place `tokens` reaches the OVERLAY axis rather than video/brand. */
+  tokens?: ThemeTokens;
 }
 
 export type OverlayRenderer = React.FC<OverlayRenderProps>;

@@ -1717,3 +1717,69 @@ have silently lost that overlay before this task landed. Worth remembering the N
 brand adds an item-level effect axis or routing-style hook: "delivered to a prop" is not
 "rendered" until something is verified to read that prop through the REAL composition path,
 not just through a brand's own hand-rolled renderer that happens to duplicate the reading.
+
+## Task 4.2 — Overlay axis parity: `tokens` on `OverlayRenderProps`, per-kind `overlayConfig`
+
+### 4.2-a Non-`text` overlay kind registered with a `config` — sweep, both repos; no live gap found
+
+Before this task, `TrackTextOverlay` (lib/render/layered-composition.tsx) always called
+`overlayConfig(theme, 'text')` regardless of which kind ('text' or its legacy alias
+'quote-pull') the item actually carried — so a kind other than the hardcoded literal could
+never reach its own registered config through this path. Swept both repos for any
+`overlays: { <kind>: { renderer, config } }` shape on a kind besides `text` (printed every
+hit, inspected each):
+```
+grep -rn "overlays:\|overlayItems:" --include='*.ts' --include='*.tsx' /Users/xaralis/Workspace/progpce/video-toolkit 2>/dev/null | grep -v node_modules | grep -v toolkit/
+grep -rn "overlays:\|overlayItems:" --include='*.ts' --include='*.tsx' /Users/xaralis/Workspace/roost/video-toolkit 2>/dev/null | grep -v node_modules | grep -v toolkit/
+grep -rn "quote-pull" --include='*.ts' --include='*.tsx' /Users/xaralis/Workspace/progpce/video-toolkit /Users/xaralis/Workspace/roost/video-toolkit 2>/dev/null | grep -v node_modules | grep -v toolkit/
+```
+
+**Neither brand registers a non-`text` kind via the `overlays.<kind> = { renderer, config }`
+shape** — the only shape this bug affects:
+
+- **PP** registers `overlays: { text: { renderer: QuotePullAdapter } }` (no `config`) in every
+  project's `src/config/brand-theme.tsx:20`, plus `overlayItems: { chevron, 'stat-callout',
+  'source-tag', title }` on `templates/campaign-reels/src/config/composition-theme.tsx:76-`.
+  Every one of those four `overlayItems` entries uses the item-level `render` escape hatch
+  (`render: (item) => …`), which bypasses `OverlayRenderProps`/`config`/`tokens` entirely —
+  so none of them was ever reachable through `overlayConfig` in the first place, buggy or
+  not. `'quote-pull'` is never registered as its own key anywhere in PP; PP's live projects
+  handle it through their own hand-rolled `LayeredCampaignReel.tsx` (`case 'quote-pull':`),
+  outside `LayeredReelComposition`/`TrackTextOverlay` altogether (same "own pipeline, core
+  axis never runs" situation Task 4.1 found for routing).
+- **roost** registers exactly one entry, `overlays: { text: { renderer: Text, config: {
+  strokeRatio: 0.2, lineStaggerSec: 0.35 } } }` (`templates/roost-reels/src/config/brand-theme.ts:12`).
+  That IS the hardcoded-'text' kind itself, so it was reachable under the old code
+  unconditionally — the bug never touched it. roost has no `'quote-pull'` registration.
+
+**Grade: PARITY-PRESERVING for both repos, no brand file changes required.** No live
+project in either repo currently depends on the old hardcoded-`'text'` behaviour, so fixing
+`overlayConfig(theme, 'text')` → `overlayConfig(theme, kind)` changes nothing observable
+today. It is still a real fix: a brand that registers distinct config for `'text'` and
+`'quote-pull'` in the future (a very natural thing to do, since both are today advertised as
+independently registrable kinds) would otherwise have silently gotten `'text'`'s config for
+its `'quote-pull'` items, with no error.
+
+### 4.2-b Which of the four `TextTokens` values each brand overrides today, by writing its own renderer
+
+Neither brand forks `GenericTextOverlay`'s source; both replace it wholesale with a custom
+`renderer` registered on `overlays.text` (as documented in `lib/theming/types.ts`'s note that
+`GenericTextOverlay` is exactly the copy-paste channel tokens exist to close). Read their
+custom renderers directly:
+
+- **PP** (`brand-lib/overlays/QuotePullOverlay.tsx:278-289`): `fontFamily: 'Geist, sans-serif'`,
+  `fontWeight: 600`, `lineHeight: 1.35`, `color: LINEN` (a brand paper tone). All **four**
+  `TextTokens` fields are overridden.
+- **roost** (`templates/roost-reels/src/overlays/TextOverlay.tsx:56-61`):
+  `fontFamily: theme.fonts.display`, `fontWeight: 800`, `lineHeight: 1.4`,
+  `color: theme.colors.paper`. All **four** `TextTokens` fields are overridden.
+
+So `TextTokens`'s four fields cover every hardcoded value either brand currently overrides —
+but covering the four values is not the same as making either brand's custom renderer
+unnecessary, and neither should attempt to fold into `GenericTextOverlay` on the strength of
+this task alone. Both custom renderers do substantially more than recolour: PP's
+`QuotePullOverlay` does per-character accent coloring with punctuation-gluing logic and a
+per-character reveal animation; roost's `Text.tsx` adds a `WebkitTextStroke` outline (stroke
+width derived from a `strokeRatio` config value) and its own line-stagger reveal. None of
+that is in scope here — geometry/animation tokenization is Workstream 5's territory, not
+this task's — so this section reports the finding without expanding `TextTokens` to cover it.
