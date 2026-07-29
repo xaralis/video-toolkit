@@ -53,6 +53,7 @@ import {
   presentationFor,
   resolveTransition,
   transitionNodeFor,
+  resetTransitionNodeCache,
   fromRemotionPresentation,
   isTransitionNode,
   TransitionLayer,
@@ -957,6 +958,92 @@ describe('transitionNodeFor is the render path', () => {
       transitions: { 'brand-x': { renderer: () => ({ composite }) } },
     });
     expect(node!.composite).toBe(composite);
+  });
+
+  // TASK R1 — MEMOIZATION, pinned at the wiring (Review Round 1, Important
+  // findings 1 and 2). `transitionNodeFor` caches the RESOLVED node so an
+  // unrelated re-render doesn't hand a stable boundary a fresh element type
+  // (see the fix's own docblock above `transitionNodeFor`); these two tests
+  // pin the two ways that cache could quietly stop doing its job.
+  describe('the memoization cache (Task R1 Fix 3)', () => {
+    // The cache is module-level and lives for the whole process (same as
+    // `warnOnce`'s SEEN set) — these tests reason about eviction ORDER, which
+    // is only deterministic from a known-empty cache, so each one starts by
+    // forgetting whatever the other 150+ tests in this file already put in it.
+    beforeEach(() => {
+      resetTransitionNodeCache();
+    });
+
+    it('returns the SAME node for an unchanged (kind, params, dims)', () => {
+      const t = { kind: 'fade', frames: 15 } as TransitionRecord;
+      const first = transitionNodeFor(t, DIMS);
+      const second = transitionNodeFor({ ...t }, { ...DIMS }); // a fresh object, same content
+      expect(second).toBe(first);
+    });
+
+    // IMPORTANT 1 (Review Round 1): a plain FIFO evicts in INSERTION order,
+    // which is backwards for this workload — a reel's STABLE boundaries are
+    // inserted first (oldest), so they would be the FIRST evicted once a
+    // slider drag alone has pushed `TRANSITION_NODE_CACHE_LIMIT` new keys
+    // through the cache, silently undoing Fix 3 for every boundary the user
+    // is NOT dragging. Reproduces that exact shape: one record ("the stable
+    // boundary") resolved once, then `frames` walked through > the cache
+    // limit worth of distinct values ("the drag"), then the stable record
+    // resolved again.
+    it('does not evict a stable boundary just because other boundaries were resolved many times (LRU, not FIFO)', () => {
+      // Models what `buildVideoNodes` actually does on every render: it
+      // resolves EVERY boundary's `transitionNodeFor`, not only the one whose
+      // slider is moving — so a stable boundary is RE-REQUESTED, with
+      // unchanged params, on every single render a drag causes, interleaved
+      // with the dragged boundary's own ever-changing key. A stale "resolved
+      // once, then ignored" probe (this test's first draft) would go LRU-evicted
+      // too and prove nothing — the point of LRU is specifically that a
+      // REPEATEDLY-touched entry survives while one-off entries around it
+      // don't, so the touch has to be repeated to be a fair test of that.
+      const stable = { kind: 'fade', frames: 999 } as TransitionRecord;
+      // Captured ONCE, before the drag — and never reassigned inside the
+      // loop. An earlier draft of this test reassigned it to the RETURN of
+      // every re-request inside the loop, which made it silently track its
+      // own eviction/recreation instead of detecting it: once evicted and
+      // recreated mid-loop, the tracked "expected" value just became the new
+      // node, and the final comparison passed trivially even against a
+      // reverted (non-LRU) cache. Confirmed live — this exact mistake shipped
+      // once, passed against the un-fixed code, and was only caught by a
+      // manual trace.
+      const stableNode = transitionNodeFor(stable, DIMS);
+
+      // Frame counts far outside anything another test in this file would
+      // plausibly use (so each is guaranteed a NEW, one-off cache entry) —
+      // well more than `TRANSITION_NODE_CACHE_LIMIT` of them, so a FIFO cache
+      // would have evicted `stable` (the oldest entry) long before this loop
+      // ends, even though it is re-requested every step.
+      for (let frames = 100_000; frames < 100_100; frames += 1) {
+        transitionNodeFor(stable, DIMS); // re-requested every "render", return value ignored
+        transitionNodeFor({ kind: 'fade', frames } as TransitionRecord, DIMS);
+      }
+
+      expect(transitionNodeFor(stable, DIMS)).toBe(stableNode);
+    });
+
+    // IMPORTANT 2 (Review Round 1): the cache is keyed first by the
+    // TRANSITIONS REGISTRY object via a WeakMap specifically so two
+    // registries that happen to register the SAME kind name with DIFFERENT
+    // renderers can never collide on an identical JSON key. Deleting that
+    // registry scoping (i.e. caching globally regardless of which registry
+    // resolved a kind) stayed green under every other test in this repo —
+    // this is the one that would have caught it.
+    it('does not serve one registry’s node for another registry’s same-named kind', () => {
+      const compositeA = () => null;
+      const compositeB = () => null;
+      const t = { kind: 'brand-sweep', frames: 15 } as unknown as TransitionRecord;
+
+      const nodeA = transitionNodeFor(t, { ...DIMS, transitions: { 'brand-sweep': { renderer: () => ({ composite: compositeA }) } } });
+      const nodeB = transitionNodeFor(t, { ...DIMS, transitions: { 'brand-sweep': { renderer: () => ({ composite: compositeB }) } } });
+
+      expect(nodeA!.composite).toBe(compositeA);
+      expect(nodeB!.composite).toBe(compositeB);
+      expect(nodeB).not.toBe(nodeA);
+    });
   });
 });
 

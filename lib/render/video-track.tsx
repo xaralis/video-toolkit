@@ -72,7 +72,19 @@ type Range = readonly [number, number];
  *  moved to the OTHER edge of the blanked window. In preview the wrapper is
  *  therefore a `<div>` for the item's entire mounted life, toggling only its
  *  `style`; outside preview there is no wrapper at all, ever (byte-identical
- *  to pre-Task-R1). */
+ *  to pre-Task-R1).
+ *
+ *  WHEN DRAWN, THE WRAPPER IS `position:absolute; inset:0`, NOT a bare
+ *  `undefined` style (Review Round 1, Minor 1). Every renderer this repo or
+ *  either brand repo ships roots its content at `AbsoluteFill`/
+ *  `position:absolute`, so an unstyled `<div>` is layout-neutral TODAY — but
+ *  that is a property of the current renderers, not of this wrapper, and a
+ *  future renderer rooting at a static/relative element with e.g.
+ *  `height:100%` would silently collapse to zero height inside this div, in
+ *  PREVIEW ONLY (outside preview there is no wrapper at all) — precisely the
+ *  preview/render divergence this whole gate exists to avoid. Filling the
+ *  wrapper explicitly removes that dependency on every current renderer's
+ *  shape. */
 const ItemBody: React.FC<{ blank: readonly Range[]; children: React.ReactNode }> = ({ blank, children }) => {
   const frame = useCurrentFrame();
   const blanked = blank.some(([a, b]) => frame >= a && frame <= b);
@@ -81,7 +93,11 @@ const ItemBody: React.FC<{ blank: readonly Range[]; children: React.ReactNode }>
     // eslint-disable-next-line react/jsx-no-useless-fragment
     return <>{children}</>;
   }
-  return <div style={blanked ? { display: 'none' } : undefined}>{children}</div>;
+  return (
+    <div style={blanked ? { display: 'none' } : { position: 'absolute', inset: 0 }}>
+      {children}
+    </div>
+  );
 };
 
 /** The boundary Sequence is `frames + 1` long, not `frames`.

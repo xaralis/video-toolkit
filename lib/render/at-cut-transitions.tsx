@@ -446,17 +446,25 @@ export function fromRemotionPresentation(p: AnyPresentation): TransitionNode {
 //
 // Keyed first by the TRANSITIONS REGISTRY object (a brand-theme-level
 // reference, stable for a session) via a WeakMap, so a registry swap (hot
-// reload, a different brand) can never serve a stale cross-registry hit; keyed
+// reload, a different brand — or, within one process, two THEMES that happen
+// to register the same kind NAME with different renderers) can never serve a
+// stale cross-registry hit; without this, `{kind:'sweep',...}` resolved
+// against theme A's registry could hand theme B's boundary theme A's node,
+// because the two would otherwise collide on an identical JSON key. Keyed
 // second by a JSON digest of the record + the dims that can change what it
-// resolves to. Bounded per registry so a long slider drag that visits
-// hundreds of distinct param values cannot grow this without limit — the
-// benefit is for the (typically many) UNCHANGED boundaries, not the one being
-// dragged, so eviction cost is cheap.
+// resolves to.
+//
+// Bounded per registry, and genuinely LRU (Review Round 1 finding — see
+// `transitionNodeFor`'s docblock for why a plain FIFO defeats this cache in
+// exactly the scenario it exists for): a long slider drag that visits
+// hundreds of distinct param values cannot grow this without limit, and the
+// entries it evicts are the ones least likely to be asked for again, not
+// whichever boundary happened to render first.
 const TRANSITION_NODE_CACHE_LIMIT = 64;
 const NO_REGISTRY: TransitionRegistry = {};
-const transitionNodeCacheByRegistry = new WeakMap<TransitionRegistry, Map<string, TransitionNode | null>>();
+let transitionNodeCacheByRegistry = new WeakMap<TransitionRegistry, Map<string, TransitionNode>>();
 
-function transitionNodeCacheFor(registry: TransitionRegistry | undefined): Map<string, TransitionNode | null> {
+function transitionNodeCacheFor(registry: TransitionRegistry | undefined): Map<string, TransitionNode> {
   const registryKey = registry ?? NO_REGISTRY;
   let cache = transitionNodeCacheByRegistry.get(registryKey);
   if (!cache) {
@@ -464,6 +472,15 @@ function transitionNodeCacheFor(registry: TransitionRegistry | undefined): Map<s
     transitionNodeCacheByRegistry.set(registryKey, cache);
   }
   return cache;
+}
+
+/** Forget every memoized node. For tests only — this module's cache is
+ *  otherwise meant to live for the whole process, the same as `warnOnce`'s
+ *  SEEN set, so a suite asserting eviction/identity behaviour from a known
+ *  empty state needs a way to get one (see `resetWarnOnce` in
+ *  `./warn-once.ts` for the same pattern, same reason). */
+export function resetTransitionNodeCache(): void {
+  transitionNodeCacheByRegistry = new WeakMap();
 }
 
 /** THE RENDER PATH. Resolves a kind to the two-input node the boundary drives,
@@ -481,7 +498,24 @@ function transitionNodeCacheFor(registry: TransitionRegistry | undefined): Map<s
  *  this was tried (they call `resetWarnOnce()` between cases and expect the
  *  render path to re-diagnose on request). What the cache memoizes is only
  *  the FINAL node object/composite reference `resolveTransition`'s result
- *  turns into — never whether the resolution logic itself runs. */
+ *  turns into — never whether the resolution logic itself runs.
+ *
+ *  LRU, NOT FIFO (Review Round 1 finding, fixed here). `Map.get` does not
+ *  reorder a `Map`'s keys — only insertion does — so a plain
+ *  "evict-the-first-key-when-full" policy evicts in INSERTION order, which is
+ *  the OPPOSITE of what a size-bounded cache should evict under this
+ *  workload: a reel's STABLE boundaries are inserted once, on the first
+ *  render, making them the OLDEST entries; a boundary the user is actively
+ *  dragging a slider on inserts one NEW key per drag step. Past
+ *  `TRANSITION_NODE_CACHE_LIMIT` steps of one drag, FIFO evicts every stable
+ *  boundary's entry first and keeps nothing but the dragged one's history —
+ *  exactly backwards, and it silently regresses every OTHER boundary back to
+ *  a fresh node (and therefore a remount) on the very next render, which is
+ *  precisely the "slow while tuning" complaint this task exists to fix. The
+ *  two-line fix: touch a hit by re-inserting it, which `Map` orders as
+ *  MOST-recently-used; eviction then removes the true least-recently-used
+ *  entry, which for a drag is an earlier VALUE of the param being dragged,
+ *  never a stable boundary. */
 export function transitionNodeFor(t: TransitionRecord | undefined, dims: Dims): TransitionNode | null {
   const resolved = resolveTransition(t, dims);
   if (!resolved) return null;
@@ -489,12 +523,18 @@ export function transitionNodeFor(t: TransitionRecord | undefined, dims: Dims): 
   const cache = transitionNodeCacheFor(dims.transitions);
   const key = JSON.stringify({ t, width: dims.width, height: dims.height, palette: dims.palette });
   const cached = cache.get(key);
-  if (cached) return cached;
+  if (cached) {
+    // Re-insert to mark MOST-recently-used — `Map` iterates in insertion
+    // order, so this is what makes eviction (below) genuinely LRU.
+    cache.delete(key);
+    cache.set(key, cached);
+    return cached;
+  }
 
   const node = isTransitionNode(resolved) ? resolved : fromRemotionPresentation(resolved);
   if (cache.size >= TRANSITION_NODE_CACHE_LIMIT) {
-    const oldestKey = cache.keys().next().value;
-    if (oldestKey !== undefined) cache.delete(oldestKey);
+    const leastRecentlyUsedKey = cache.keys().next().value;
+    if (leastRecentlyUsedKey !== undefined) cache.delete(leastRecentlyUsedKey);
   }
   cache.set(key, node);
   return node;
