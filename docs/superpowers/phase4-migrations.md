@@ -1526,16 +1526,29 @@ other narrowly-threaded props). Verified with an ANCHORED grep (call sites only,
 `SegmentMedia` mention):
 
 ```
-grep -rn "<SegmentMedia" /Users/xaralis/Workspace/progpce/video-toolkit/projects /Users/xaralis/Workspace/progpce/video-toolkit/templates
+grep -rn "<SegmentMedia" /Users/xaralis/Workspace/progpce/video-toolkit/projects /Users/xaralis/Workspace/progpce/video-toolkit/templates /Users/xaralis/Workspace/progpce/video-toolkit/brand-lib
 grep -rn "<SegmentMedia" /Users/xaralis/Workspace/roost/video-toolkit/projects /Users/xaralis/Workspace/roost/video-toolkit/templates
 ```
 
-**PP: 12 call sites**, one per project (11) plus the template, ALL identical:
-`src/segments/PhotoSegment.tsx:39` — `<SegmentMedia item={mediaItem} handles={handles} />`.
-`PhotoSegment`'s own `Props` (`{ segment, mediaItem, handles }`) is a brand-specific
-reconstruction, not `VideoRenderProps` — so it never receives `styleEffects` (or `tokens`,
-or `resolveMediaSource`) from `renderVideoItemNode` in the first place; there is nothing to
-forward because the brand renderer's prop shape stops it upstream of this call.
+**CORRECTED (Task 3.3 review, round 1, IMPORTANT 4): the count below was 12, and that missed
+two call sites.** The original command here scanned only `projects/` and `templates/`, which
+is exactly the unanchored-grep failure this document has already been bitten by twice
+(§ 1.2-c, § 2.3-a) — this time by OMISSION rather than an unintended match: `brand-lib/` is
+neither `projects/` nor `templates/`, so it was never scanned, even though PP's own two
+`FootageSegment.tsx`/`MultiClipSegment.tsx` files under `brand-lib/` are exactly the shared
+renderers the surrounding paragraph is describing.
+
+**PP: 14 call sites**, not 12: the 12 `PhotoSegment.tsx:39` sites below (one per project
+(11) plus the template, ALL identical), PLUS `brand-lib/segments/FootageSegment.tsx:218`
+and `brand-lib/segments/MultiClipSegment.tsx:54` — same shape
+(`<SegmentMedia item={…} handles={…} />`), same gap. `src/segments/PhotoSegment.tsx:39` —
+`<SegmentMedia item={mediaItem} handles={handles} />`. `PhotoSegment`'s own `Props`
+(`{ segment, mediaItem, handles }`) is a brand-specific reconstruction, not
+`VideoRenderProps` — so it never receives `styleEffects` (or `tokens`, or
+`resolveMediaSource`) from `renderVideoItemNode` in the first place; there is nothing to
+forward because the brand renderer's prop shape stops it upstream of this call. The
+conclusion of this section (no brand action needed today) is UNCHANGED by the correction —
+all 14 sites share the same shape and the same gap; only the count was wrong.
 
 **roost: 2 call sites** (the template and its one real project), both
 `src/segments/RoostSegment.tsx` — `<SegmentMedia item={item} handles={handles}
@@ -1563,7 +1576,7 @@ accept and forward a `styleEffects` prop the same way they'd need to for `tokens
 
 ## Task 3.3 — `scope: 'media'` via React context
 
-### 3.3-a No brand action of any kind — the delivery mechanism is deliberately NOT a prop
+### 3.3-a No brand action on the ORDINARY path — but a sub-item obligation exists (corrected, review round 1, IMPORTANT 3)
 
 This task's whole design constraint (re-verified before writing any code, not assumed from
 the brief) is that neither brand forwards extra props to `SegmentMedia`:
@@ -1590,13 +1603,41 @@ effect sees `useMediaEffects()` return `[]` (the context's own default) and noth
 a brand that DOES register one gets it applied with no `PhotoSegment.tsx`/`RoostSegment.tsx`
 edit required, unlike the `styleEffects` gap 3.2-c documents.
 
-**Graded: PARITY-PRESERVING, unconditionally** — this task changes core's render path only
+**Graded: PARITY-PRESERVING today** — this task changes core's render path only
 (`SegmentMedia`, `GenericMultiClip`, `renderVideoItemNode`), all internal to `lib/`.  Default
 `scope` (unset, i.e. `'clip'`) is unchanged for every existing effect and registration in
-either brand repo, so nothing already rendering moves. No brand file changes; no action for
-either repo now or later, unless a brand chooses to author a NEW `scope: 'media'`
+either brand repo, so nothing already rendering moves. No brand file changes today; no
+action for either repo now, unless a brand chooses to author a NEW `scope: 'media'`
 registration — see `phase4-extension-contract.md`'s resolved `blend` verdict for what that
 registration would look like.
+
+**The original version of this section said "no brand action of any kind" — that overstated
+it (review round 1, IMPORTANT 3).** The boundary that resets media-effect delivery for
+synthetic sub-items, `MediaEffectsBoundary`, is mounted only by CORE's `GenericMultiClip`
+(`lib/theming/generic/GenericMultiClip.tsx`). A brand that hand-rolls its OWN multi-pane
+renderer — calling `SegmentMedia` per synthetic sub-item itself, the way core's
+`GenericMultiClip` does — does NOT get that reset for free, because it never goes through
+core's component at all. **PP has exactly this shape today**:
+`brand-lib/segments/MultiClipSegment.tsx:54` builds synthetic per-source `VideoItem`s and
+calls `<SegmentMedia item={subItem} handles={{inHalf:0,outHalf:0}} />` directly, with no
+`MediaEffectsBoundary` anywhere in the file (verified: `grep -n MediaEffectsBoundary
+brand-lib/segments/MultiClipSegment.tsx` returns nothing). If PP ever registers a
+`scope: 'media'` effect AND puts it on a `multi-clip` item, that effect would apply ONCE PER
+PANE — the exact double-apply `MediaEffectsBoundary` exists to prevent — because nothing in
+`MultiClipSegment.tsx` resets the context for its own sub-items.
+
+**This is not a live bug and needs no PP change today**: PP registers no `scope: 'media'`
+effect as of `main` @ `0e2dfb9`, so the failure mode above is not yet reachable. It is a
+LATENT obligation, the same shape 3.2-c documents for `styleEffects` forwarding — except
+here the obligation is "mount `MediaEffectsBoundary` around your own synthetic sub-items",
+not "forward a prop", and it currently exists nowhere outside a code comment in core
+(`GenericMultiClip.tsx`'s own comment on why it mounts the boundary). **Graded:
+PARITY-PRESERVING for the ORDINARY (non-sub-item) path, unconditionally — the provider is
+mounted by core, above the brand's own renderer, so nothing about that path needs a brand
+change ever.** The sub-item path is a documented latent obligation for whenever PP (or any
+brand with its own synthetic-sub-item renderer) adopts `scope: 'media'`: mount
+`MediaEffectsBoundary` around each pane's `SegmentMedia` call the same way
+`GenericMultiClip` does, at `MultiClipSegment.tsx:54`.
 
 ### 3.3-b The `blend` verdict — resolved, not promoted
 

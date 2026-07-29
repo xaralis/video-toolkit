@@ -15,6 +15,7 @@
 // `useMediaEffects`) with no prop for anyone to forget.
 import React, { createContext, useContext } from 'react';
 import type { MediaEffectEntry } from './index';
+import type { VideoItem } from '../../reel-config-base/layered-schema';
 
 /** Default `[]` means "no media-scope effects" for ANY consumer that renders
  *  outside a Provider — including every existing SegmentMedia test and the
@@ -45,4 +46,37 @@ export const MediaEffectsBoundary: React.FC<{ children: React.ReactNode }> = ({ 
  *  each effect's `mediaStyle` (see `EffectRenderProps.mediaStyle`). */
 export function useMediaEffects(): readonly MediaEffectEntry[] {
   return useContext(MediaEffectsContext);
+}
+
+/** Applies a list of resolved media-scope entries around `node`,
+ *  innermost-first — the first entry ends up closest to the media, the last
+ *  outermost, mirroring `applyEffects`'s own order on the wrapper axis.
+ *
+ *  Exported alongside `useMediaEffects` (review round 1, MINOR 5) so a brand
+ *  that hand-rolls its own media element does not have to re-derive this
+ *  ordering, or remember to pass `mediaStyle` — the SAME `mediaStyle` fidelity
+ *  Task 3.3's mutation 3 pins for `SegmentMedia`'s own (now equivalent) call.
+ *  `SegmentMedia` itself calls this too, so there is exactly one
+ *  implementation of "how a media-scope effect wraps a media element",
+ *  not two that could drift. Returns `node` referentially unchanged when
+ *  `entries` is empty — the same "no wrapper for nothing to apply" rule
+ *  every axis in this codebase follows. */
+export function applyMediaEffects(
+  entries: readonly MediaEffectEntry[],
+  props: { item: VideoItem; handles: { inHalf: number; outHalf: number }; mediaStyle: React.CSSProperties },
+  node: React.ReactNode,
+): React.ReactNode {
+  let out = node;
+  for (const { effect, index, Renderer, config } of entries) {
+    out = React.createElement(Renderer, {
+      effect,
+      index,
+      item: props.item,
+      handles: props.handles,
+      config,
+      mediaStyle: props.mediaStyle,
+      children: out,
+    });
+  }
+  return out;
 }

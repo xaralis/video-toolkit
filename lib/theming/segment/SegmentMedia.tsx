@@ -7,7 +7,7 @@ import type { Crop, Grade } from '../../reel-config-base/base-types';
 import type { VideoRenderProps } from '../types';
 import { kenBurnsStyle, findKenBurns, type KenBurnsEffect } from '../effects/ken-burns';
 import { applyStyleEffects, composeMediaStyle, type MediaStyleFragment } from '../effects/style-effect';
-import { useMediaEffects } from '../effects/media-effects-context';
+import { useMediaEffects, applyMediaEffects } from '../effects/media-effects-context';
 import { resolveMediaSource, type MediaRole, type MediaSourceResolver } from '../media-source';
 
 const VIDEO_EXT_RE = /\.(mp4|mov|webm)$/i;
@@ -135,16 +135,16 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
   // Returns `node` REFERENTIALLY UNCHANGED when `mediaEffects` is empty — no
   // wrapper allocated, so an item with none renders byte-identically to
   // before this axis existed (see the merge baseline test, unmodified).
-  const applyMediaEffects = (node: React.ReactNode): React.ReactNode => {
-    let out = node;
-    for (const { effect, index, Renderer, config } of mediaEffects) {
-      out = React.createElement(Renderer, { effect, index, item, handles, config, mediaStyle: style, children: out });
-    }
-    return out;
-  };
+  //
+  // Delegated to the SHARED applier (media-effects-context.tsx) rather than a
+  // local closure (review round 1, MINOR 5) — the same function
+  // `useMediaEffects()`'s own doc points a hand-rolled brand renderer at, so
+  // there is exactly one implementation of this ordering/mediaStyle contract.
+  const wrapWithMediaEffects = (node: React.ReactNode): React.ReactNode =>
+    applyMediaEffects(mediaEffects, { item, handles, mediaStyle: style }, node);
 
   if (useImg) {
-    const mediaNode = applyMediaEffects(<Img src={src} style={style} />);
+    const mediaNode = wrapWithMediaEffects(<Img src={src} style={style} />);
     return wbDef ? (
       <>
         {wbDef}
@@ -170,7 +170,7 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
   const endAt = item.kind === 'photo' ? undefined : Math.round((item.sourceOutMs / 1000) * fps) + handles.outHalf;
 
   const video = <OffthreadVideo src={src} muted startFrom={startFrom} endAt={endAt} style={style} />;
-  const mediaNode = applyMediaEffects(video);
+  const mediaNode = wrapWithMediaEffects(video);
   return wbDef ? (
     <>
       {wbDef}

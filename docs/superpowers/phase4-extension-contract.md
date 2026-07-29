@@ -239,9 +239,18 @@ See §5.
 > Nothing else about the wrapper contract changed — `item`/`handles`/`config` were already
 > there — so `blend` needs no further core capability to be authored as a brand registration.
 >
-> **What a brand writes to register `blend` under this scope** (illustrative — this is what
-> PP's `brand-lib/segments/FootageSegment.tsx:122-188` reduces to, not a promotion of it into
-> core; PP itself stays read-only per the phase's scope rule):
+> **What a brand writes to register `blend` under this scope** (illustrative — the SHAPE PP's
+> `brand-lib/segments/FootageSegment.tsx:122-188` could be rewritten to use, NOT a
+> pixel-parity reduction of it, and not a promotion into core; PP itself stays read-only per
+> the phase's scope rule). **Correction (review round 1, MINOR 7): "reduces to" overstated
+> this.** PP's own `videoStyle` (`FootageSegment.tsx:132-157`) REPLACES the crop's style with
+> a ken-burns-only one when `segment.kenBurns` is set — the crop's own transform is dropped,
+> not composed — whereas core's `mediaStyle` (`composeMediaStyle`) always COMPOSES crop and
+> ken-burns, concatenating transforms. So a mechanical port to this shape is pixel-parity
+> only when a segment authors `blendTo` WITHOUT `kenBurns`, or authors neither; a segment
+> authoring both would render differently once `mediaStyle` is what an actual port used. The
+> migration doc does not claim parity for a hypothetical port either way — this is a wording
+> fix, not a behavioural one:
 >
 > ```tsx
 > const BlendEffect: EffectRenderer = ({ item, handles, config, mediaStyle, children }) => {
@@ -279,7 +288,22 @@ See §5.
 > (`gradientMask(cfg)`, PP's own angle lookup + softness ramp) is brand code either way —
 > core does not generalize a gradient-mask primitive, and nothing here asks it to. What
 > changed is that the renderer now has a legal SEAM to build the second element at all,
-> where before it had none. **Promoting `blend` into core** — moving this shape into
+> where before it had none.
+>
+> **Second gap, MINOR (review round 1, MINOR 6), a prerequisite of PROMOTION specifically,
+> not of the brand registration above.** `EffectRenderProps` carries no
+> `resolveMediaSource` — the sample calls the module-level `resolveMediaSource` directly,
+> which is fine for a BRAND registration (brand code can import core's default or its own
+> override freely; that is exactly what the sample above does). It stops being fine the
+> moment `blend` is promoted INTO `CORE_EFFECT_RENDERERS`: a core generic has no theme to
+> import from and must be handed the brand's `theme.resolveMediaSource` override the same
+> narrow way `VideoRenderProps` already threads it to `SegmentMedia` — today
+> `EffectRenderProps` has no equivalent field, so a promoted `blend` would silently ignore a
+> brand's wholesale media-path override on its SECOND source while honouring it on the
+> first (via `SegmentMedia`'s own `resolveSrc`). Recorded here as a prerequisite of the
+> promotion this task explicitly defers, not a gap in what 3.3 shipped.
+>
+> **Promoting `blend` into core** — moving this shape into
 > `CORE_EFFECT_RENDERERS` and having PP delete its own registration (the two-sided promotion
 > mechanics in §2) — is a SEPARATE future change: core-only still binds this phase, PP is
 > read-only, and the promotion itself needs its own criterion-3 count (does a second brand

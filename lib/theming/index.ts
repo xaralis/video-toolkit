@@ -85,6 +85,7 @@ export {
   MediaEffectsContext,
   MediaEffectsBoundary,
   useMediaEffects,
+  applyMediaEffects,
 } from './effects/media-effects-context';
 export { SegmentMedia } from './segment/SegmentMedia';
 export { GenericTextOverlay } from './generic/GenericTextOverlay';

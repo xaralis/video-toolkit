@@ -59,6 +59,21 @@ const photo = (effects?: VideoItem['effects'], crop?: Record<string, unknown>): 
   ...(crop ? { crop } : {}),
 });
 
+// broll — the OffthreadVideo branch, and the branch PP's `blend` (the whole
+// motivating case for this task) actually is. `photo` alone would leave this
+// branch's own delivery call site (`SegmentMedia.tsx`'s `applyMediaEffects(video)`)
+// completely unpinned (review round 1, IMPORTANT 1).
+const broll = (effects?: VideoItem['effects']): VideoItem => ({
+  id: 'b1',
+  kind: 'broll',
+  startMs: 0,
+  endMs: 3000,
+  source: 'broll/a.mp4',
+  sourceInMs: 0,
+  sourceOutMs: 3000,
+  ...(effects ? { effects } : {}),
+});
+
 // A media-scope effect renderer that marks its own wrapper in the DOM, so
 // presence/absence is a plain `querySelector` check, and captures the
 // `mediaStyle` it was handed for the mediaStyle-fidelity assertions.
@@ -91,6 +106,22 @@ describe('scope: "media" — context delivery (renderVideoItemNode -> SegmentMed
     expect(wrap!.querySelector('[data-testid="media"]')).not.toBeNull();
   });
 
+  it('a media-scope effect wraps the OffthreadVideo branch too (clip/broll — the motivating case: PP\'s blend is a broll effect)', () => {
+    const theme = {
+      accentSlots: [],
+      background: '#000',
+      effects: { blend: { renderer: WrapEffect, scope: 'media' } },
+    } as unknown as CompositionTheme;
+
+    const node = renderVideoItemNode(theme, broll([{ type: 'blend' }]), NO_HANDLES);
+    const { container } = render(<>{node}</>);
+
+    const wrap = container.querySelector('[data-wrap]');
+    expect(wrap).not.toBeNull();
+    expect(wrap!.querySelector('[data-testid="media"]')).not.toBeNull();
+    expect(captured.video).toHaveLength(1);
+  });
+
   it('default scope ("clip", unset) is unaffected — a clip-scope registration of the SAME shape still wraps the whole item, not the media', () => {
     const theme = {
       accentSlots: [],
@@ -105,6 +136,48 @@ describe('scope: "media" — context delivery (renderVideoItemNode -> SegmentMed
     // because a clip-scope effect never sees SegmentMedia's computed style.
     expect(container.querySelector('[data-wrap]')).not.toBeNull();
     expect(wrapCalls.mediaStyles[0]).toBeUndefined();
+  });
+});
+
+// Review round 1, IMPORTANT 2 — `collectMediaEffects`'s own documented rules
+// (reserved types skipped, disabled entries dropped) were unpinned: deleting
+// BOTH `if (isReservedEffectType(...)) continue;` and
+// `if (!isNodeEnabled(effect)) continue;` (lib/theming/effects/index.ts) left
+// the full suite green. Unlike the clip axis (node-enabled.test.tsx) and the
+// style axis (ken-burns-enabled.test.tsx), this axis had no `enabled: false`
+// pin at all.
+describe('collectMediaEffects — enabled and reserved-type rules (Task 3.3 own axis)', () => {
+  it('a scope: "media" effect with enabled: false produces no wrapper', () => {
+    const theme = {
+      accentSlots: [],
+      background: '#000',
+      effects: { blend: { renderer: WrapEffect, scope: 'media' } },
+    } as unknown as CompositionTheme;
+
+    const node = renderVideoItemNode(theme, photo([{ type: 'blend', enabled: false }]), NO_HANDLES);
+    const { container } = render(<>{node}</>);
+
+    expect(container.querySelector('[data-wrap]')).toBeNull();
+    expect(container.querySelector('[data-testid="media"]')).not.toBeNull(); // the media itself still renders, unwrapped
+  });
+
+  it('a RESERVED (style-axis) type registered scope: "media" on the wrapper axis produces no wrapper', () => {
+    // `ken-burns` is reserved because it resolves on the STYLE axis
+    // (`theme.styleEffects`) — even with no styleEffects registration, core's
+    // OWN `ken-burns` style generic makes it reserved. A wrapper-axis
+    // registration for the SAME type name, however it is scoped, must never
+    // apply — the style axis already applies it (or would), and applying it
+    // AGAIN here would double it.
+    const theme = {
+      accentSlots: [],
+      background: '#000',
+      effects: { 'ken-burns': { renderer: WrapEffect, scope: 'media' } },
+    } as unknown as CompositionTheme;
+
+    const node = renderVideoItemNode(theme, photo([{ type: 'ken-burns', direction: 'in' }]), NO_HANDLES);
+    const { container } = render(<>{node}</>);
+
+    expect(container.querySelector('[data-wrap]')).toBeNull();
   });
 });
 

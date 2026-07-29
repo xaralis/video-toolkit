@@ -47,7 +47,11 @@ export interface EffectRenderProps {
    *  leaves this `undefined`. This is what lets a media-scope wrapper build a
    *  SECOND media element carrying the exact same crop/grade/ken-burns
    *  treatment as the first (PP's `blend`) without recomputing that transform
-   *  itself and drifting from it the moment either input changes. */
+   *  itself and drifting from it the moment either input changes. This is the
+   *  SAME object reference the media element itself renders with (not a
+   *  clone) — spread it (`{ ...mediaStyle, … }`) onto a second element as the
+   *  sample above does; mutating it in place would mutate the first
+   *  element's own style too. */
   mediaStyle?: React.CSSProperties;
   children: React.ReactNode;
 }
