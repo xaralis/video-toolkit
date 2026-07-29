@@ -109,6 +109,32 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   // form); with none it is the same one-sided presentation `fade` returns.
   'fade-to-color': (t, dims) => {
     const color = resolveAccentColor(dims.palette ?? [], t.color ?? null);
+    // AN AUTHORED COLOUR THAT RESOLVES TO NOTHING IS A BUG, NOT A CHOICE — and
+    // until it said so, it was an INVISIBLE one. Falling back to `fade()` is
+    // still the right RENDER (core naming a colour of its own is the leak this
+    // programme removes), but the fallback is indistinguishable from the
+    // author's intent in every observable: the frames, deleting the slot, and
+    // forcing the slot to another colour all look identical, because the key
+    // was never read. A real brand migration shipped on exactly that silence,
+    // concluding `color` was inert when in fact its caller never threaded
+    // `palette` into `buildVideoNodes`.
+    //
+    // Both causes land here and the author cannot tell them apart from the
+    // picture, so the message names both. `t.color === undefined` is NOT one of
+    // them: "no colour means no dip" is documented behaviour, and warning on it
+    // would cry wolf on every reel that uses it deliberately.
+    if (color === null && t.color !== undefined) {
+      warnOnce(
+        `transition:fade-to-color:unresolved:${t.color}`,
+        () =>
+          `[video-toolkit] transition "fade-to-color" has color "${t.color}", which resolved to no ` +
+          'colour, so this boundary renders as a PLAIN CROSSFADE with no dip. `color` is a brand ' +
+          'ACCENT-SLOT KEY, not a CSS colour. Either the brand theme does not declare that slot in ' +
+          '`accentSlots`, or the renderer never threaded `palette` into buildVideoNodes() — check ' +
+          'the call site before the theme, because an unthreaded palette makes EVERY key fail ' +
+          'identically. (Warning only; nothing is blocked, and this is reported once per key.)',
+      );
+    }
     return color === null ? (fade() as AnyPresentation) : fadeToColor({ color });
   },
   // Task 2.4: forward the four params `glitch.tsx` always read but no schema
