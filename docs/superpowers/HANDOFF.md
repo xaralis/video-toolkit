@@ -906,6 +906,81 @@ brand kinds by name belongs in `docs/`, outside the grep's scope.
   (`EffectRenderProps`) and symbol (`RESERVED_EFFECT_TYPES`) that Workstream 3 must change.
   **Whoever writes the Task 3.2 brief must carry those conditions into it.**
 
+## `fade-coal` left core — and PP is migrated (2026-07-29)
+
+**User directive:** *"Don't wanna anything like this in codebase: `DEPRECATED_FADE_COAL_BLACK =
+'#000000'`. This needs to land in brand repos which utilize it."* Core now ships only the generic
+`fade-to-color`; the brand names its own colour. **No alias, no deprecation shim** — a baked
+`{kind:'fade-coal'}` literal **fails to parse**, loudly and by design. The user also lifted the
+core-only constraint for this migration and chose to bump PP rather than leave it written.
+
+**Core** (`b31ac1a` … `61a9326`): the kind is gone from code, schema, catalog, renderer, editor,
+gallery, registry and harness; `lib/render/at-cut-transitions.tsx` contains **no hex at all**.
+The harness is 300 cells again. `NODE_KINDS` is four. **`color` now accepts an accent-slot key OR
+a hex literal** on both `fade-to-color` and `wipe` — a brand hex in a *brand's* config is not a
+leak; the rule is that **core** carries none.
+
+**PP** (`~/Workspace/progpce/video-toolkit`, `main` @ **`29251f2`**, committed, **not pushed**,
+submodule pinned to a **local-only** core commit): the literal carries the hex directly and the
+fake `coal` accent slot is gone. The trailing dip is **visibly present** (monotonic fade to
+coal-black across frames 1359–1388) and the colour is **live**, proven by swapping the hex to
+`#ff00ff`, re-rendering, and reverting.
+
+### The three findings that cost the most to establish
+
+**1. The first PP migration typechecked, parsed, and did nothing.** The colour was **inert**:
+frames pixel-identical to the old pin, deleting the slot changed nothing, forcing `#ff00ff`
+changed nothing. My hypothesis — that Task 2.2's edge plate stole `color` at a reel edge — was
+**wrong**; a node's own colour already wins there. The real cause was in PP:
+`LayeredCampaignReel.tsx:407` calls `buildVideoNodes` **without `palette`**, so
+`resolveAccentColor([], 'coal')` → null → documented fallback to plain `fade()`. That explains
+all three probes at once, including why magenta changed nothing — an unthreaded palette makes
+*every* key fail identically. **`wipe` has the identical latent bug at the same call site**, and
+`background` being opt-in is why the failure was *perfectly* invisible. Core's real defect was
+that this fallback was the last silent degrade on that path; it now warns, naming both causes.
+
+**2. Accent-only was the wrong contract, and it distorted the brand's own model.** Forcing PP to
+declare `coal` — a **background** — as an "accent" to satisfy core's type was the tell. Widening
+`color` shrank PP's migration from two edits plus a fake slot to one hex.
+
+**3. The fourth editor data-loss bug, and the test shape that finally catches the class.**
+`literalMode` was derived from the **per-keystroke-committed** value, so typing `#` committed
+`'#'`, which failed the literal check, which **unmounted the hex input mid-typing** — and
+select-all-and-retype over a good `#0a0a0a` left `'#'` with no control to repair it. The shipped
+tests missed it because they pass `onChange={() => {}}` and **never re-render**, so the component
+never saw its own committed value return. A reviewer caught it with a **stateful parent**.
+**That is the test shape to reach for**: the three earlier instances of this class (the inspector
+coercing an unrecognised kind to `{kind:'cut'}`, `sepia: 1` stripped by a neutral-drop rule, the
+`from` alias displaying as unset) would all have failed it too.
+
+### The pixel harness took three rounds, and the shape repeated each time
+
+Removing a kind was the **first time anything asked the harness to delete goldens**, and
+`--allow-shrink` turned out to be barely built. Each round closed the loud failure and left the
+quiet one: *missing composition* → *manifest present but payloadless* (`?? []` ran before the
+`Array.isArray` guard, so an empty catalog authorised pruning everything) → *the `mode` and
+`progress` axes had no shrink guard at all*, so narrowing `PROGRESS` under a **plain
+`--update-goldens`** deleted 120 cells, de-listed 10 attractors for surviving kinds, and passed
+the follow-up strict run because the axis rewrote itself. All three are closed, each with
+reproduced adversarial pins. A cell has exactly three coordinates — kind, mode, progress — and
+all three are now guarded, which is the reason to believe the class is closed; the pins are the
+evidence, not that sentence. **`PROBE GEOMETRY CHANGED` is still update-path-blind** (it changes
+cell *content*, not the cell *set*) and was decided by reasoning, not measurement.
+
+### Open, and not this work's to fix
+
+- **The pin bump added +15 type errors in web-program-intro** — 3 each in all five WPI projects
+  (`TS2339`/`TS2345`, `frames` missing on the `cut` variant), plus pre-existing `TS2322`
+  "audioMode missing" in 3 of 5, confirmed by A/B against the old pin. **`phase4-migrations.md`
+  § 1.3-b currently grades WPI "no action / cannot be discovered by compiling", which is now
+  false**, and the template carries it so new WPI projects inherit it. Needs a migration item.
+- **PP's `buildVideoNodes` call still passes no `palette`**, so any accent-typed transition param
+  at that site is silently inert. Fixed here by using a hex; the underlying gap remains.
+- **Three PP projects have no local `typescript`** — their `tsc` is *unverified*, not clean.
+- `pp-mov-koalice` renders differently from its old pin (mean delta ~1.1). **Expected** — the
+  `glitch` clock rebase from Task 1.3, already graded at `phase4-migrations.md` § "One baked cut
+  IS affected".
+
 ### Carried out of Phase 4
 
 **Not started — read the plan, `docs/superpowers/plans/2026-07-26-phase4-node-contract.md`:**
