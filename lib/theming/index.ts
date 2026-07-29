@@ -65,7 +65,9 @@ export { isTransitionNode } from './transitions';
 export {
   resolveEffectRenderer,
   effectConfig,
+  effectScope,
   applyEffects,
+  collectMediaEffects,
   kenBurnsStyle,
   findKenBurns,
   GrainEffect,
@@ -76,8 +78,14 @@ export {
   type EffectRenderProps,
   type EffectRenderer,
   type EffectRegistration,
+  type MediaEffectEntry,
   type KenBurnsEffect,
 } from './effects';
+export {
+  MediaEffectsContext,
+  MediaEffectsBoundary,
+  useMediaEffects,
+} from './effects/media-effects-context';
 export { SegmentMedia } from './segment/SegmentMedia';
 export { GenericTextOverlay } from './generic/GenericTextOverlay';
 export {

@@ -7,6 +7,7 @@ import type { Crop, Grade } from '../../reel-config-base/base-types';
 import type { VideoRenderProps } from '../types';
 import { kenBurnsStyle, findKenBurns, type KenBurnsEffect } from '../effects/ken-burns';
 import { applyStyleEffects, composeMediaStyle, type MediaStyleFragment } from '../effects/style-effect';
+import { useMediaEffects } from '../effects/media-effects-context';
 import { resolveMediaSource, type MediaRole, type MediaSourceResolver } from '../media-source';
 
 const VIDEO_EXT_RE = /\.(mp4|mov|webm)$/i;
@@ -47,6 +48,12 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
 }) => {
   const { fps } = useVideoConfig();
   const frame = useCurrentFrame();
+  // Phase 4 Task 3.3 — read BEFORE the early return below so the hook order
+  // never depends on `item.kind` (rules of hooks). Empty `[]` outside any
+  // `MediaEffectsContext.Provider` (every existing SegmentMedia test, and the
+  // Task 3.1 merge baseline), so `applyMediaEffects` below is a no-op there —
+  // parity is automatic, not asserted.
+  const mediaEffects = useMediaEffects();
 
   if (item.kind !== 'clip' && item.kind !== 'broll' && item.kind !== 'photo') return null;
 
@@ -119,14 +126,32 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
     ...(merged.opacity !== undefined ? { opacity: merged.opacity } : {}),
   };
 
+  // Applies this item's MEDIA-scope effects (Phase 4 Task 3.3) around the
+  // media element, innermost-first like `applyEffects` — the first entry ends
+  // up closest to the media, the last outermost. `mediaStyle` hands each
+  // effect the EXACT style this element renders with (crop + style-effects +
+  // grade, already merged), so a media-scope effect building a second media
+  // source (PP's `blend`) can match it without recomputing the transform.
+  // Returns `node` REFERENTIALLY UNCHANGED when `mediaEffects` is empty — no
+  // wrapper allocated, so an item with none renders byte-identically to
+  // before this axis existed (see the merge baseline test, unmodified).
+  const applyMediaEffects = (node: React.ReactNode): React.ReactNode => {
+    let out = node;
+    for (const { effect, index, Renderer, config } of mediaEffects) {
+      out = React.createElement(Renderer, { effect, index, item, handles, config, mediaStyle: style, children: out });
+    }
+    return out;
+  };
+
   if (useImg) {
+    const mediaNode = applyMediaEffects(<Img src={src} style={style} />);
     return wbDef ? (
       <>
         {wbDef}
-        <Img src={src} style={style} />
+        {mediaNode}
       </>
     ) : (
-      <Img src={src} style={style} />
+      mediaNode
     );
   }
 
@@ -145,12 +170,13 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
   const endAt = item.kind === 'photo' ? undefined : Math.round((item.sourceOutMs / 1000) * fps) + handles.outHalf;
 
   const video = <OffthreadVideo src={src} muted startFrom={startFrom} endAt={endAt} style={style} />;
+  const mediaNode = applyMediaEffects(video);
   return wbDef ? (
     <>
       {wbDef}
-      {video}
+      {mediaNode}
     </>
   ) : (
-    video
+    mediaNode
   );
 };

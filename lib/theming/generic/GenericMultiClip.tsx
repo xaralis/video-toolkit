@@ -4,6 +4,7 @@ import type { VideoItem } from '../../reel-config-base/layered-schema';
 import type { VideoRenderProps } from '../types';
 import type { MultiClipTokens } from '../tokens';
 import { SegmentMedia } from '../segment/SegmentMedia';
+import { MediaEffectsBoundary } from '../effects/media-effects-context';
 
 // ---- defaults --------------------------------------------------------------
 // Every value here is a default for a token in ../tokens.ts, so a brand can
@@ -198,8 +199,17 @@ export const GenericMultiClip: React.FC<VideoRenderProps> = ({ item, tokens, res
   }
 
   return (
-    <div data-multiclip-root="" style={{ ...fillStyle, backgroundColor: t.background ?? DEFAULT_BACKGROUND }}>
-      {layout}
-    </div>
+    // Phase 4 Task 3.3 — resets media-scope effect delivery for every pane's
+    // SegmentMedia call below. Without this, a media-scope effect on the
+    // MULTI-CLIP item itself (delivered via MediaEffectsContext one level up,
+    // in renderVideoItemNode) would leak onto every synthetic sub-item's own
+    // SegmentMedia call — applying it once per pane instead of once, which is
+    // not "wrap the media element" but "wrap every media element", a
+    // different and unrequested thing. See ../effects/media-effects-context.tsx.
+    <MediaEffectsBoundary>
+      <div data-multiclip-root="" style={{ ...fillStyle, backgroundColor: t.background ?? DEFAULT_BACKGROUND }}>
+        {layout}
+      </div>
+    </MediaEffectsBoundary>
   );
 };

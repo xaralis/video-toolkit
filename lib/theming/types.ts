@@ -2,7 +2,7 @@ import type React from 'react';
 import type { Registration, Registry } from './registry';
 // Type-only import — erased at runtime, so this does NOT create a module cycle
 // with effects/index.ts (which imports BrandTheme back, also type-only).
-import type { EffectRenderProps } from './effects';
+import type { EffectRenderProps, EffectRegistration } from './effects';
 import type { StyleEffectRenderProps, StyleEffectRenderer } from './effects/style-effect';
 import type { AccentSlot } from './palette';
 import type { ThemeTokens } from './tokens';
@@ -57,8 +57,12 @@ export interface BrandTheme {
   video?: Partial<Record<VideoKind, VideoRegistration>>;
   /** ONE open-keyed effect registry. Effect types are OPEN — a brand names
    *  them, core never enumerates them. Absent type → core generic primitive
-   *  (grain/scanlines/vignette/grade/transform) → silently skipped. */
-  effects?: Registry<EffectRenderProps>;
+   *  (grain/scanlines/vignette/grade/transform) → silently skipped.
+   *
+   *  Typed on `EffectRegistration` rather than the bare `Registry<>` alias
+   *  (like `overlays`/`video`/`brand` below) so the `scope` field (Phase 4
+   *  Task 3.3) is visible here — see ./effects/index.ts. */
+  effects?: Record<string, EffectRegistration>;
   /** ONE open-keyed STYLE-effect registry (Phase 4 Task 3.2) — a SEPARATE axis
    *  from `effects` above, for effect types that compose into the media
    *  element's own style rather than wrapping it (today: `ken-burns`, core's

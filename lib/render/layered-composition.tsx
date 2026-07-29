@@ -15,6 +15,8 @@ import {
   videoConfig,
   DEFAULT_PLACEMENT,
   applyEffects,
+  collectMediaEffects,
+  MediaEffectsContext,
   defaultRenderBrandTrack,
   resolveGenericSource,
 } from '../theming';
@@ -72,7 +74,17 @@ const CORE_OVERLAY_GENERICS: Record<string, React.FC<{ item: OverlayItem; theme:
  *  renderer returns one opaque node — and per-layer scoping would need the
  *  effect entry to name a target layer. A brand porting an effect that used to
  *  wrap only its media should expect this difference and, if it matters, keep
- *  the effect inside its own renderer where it can choose the scope. */
+ *  the effect inside its own renderer where it can choose the scope.
+ *
+ *  MEDIA-scope effects (Phase 4 Task 3.3, `scope: 'media'` on a registration)
+ *  are the escape from that last paragraph: `collectMediaEffects` resolves
+ *  them here (where the theme lives) and `MediaEffectsContext.Provider`
+ *  carries them down to `SegmentMedia` (or a brand's own hand-rolled media
+ *  element via `useMediaEffects`) — a component core owns but which sits
+ *  INSIDE the brand's own renderer, so a new prop would be dropped by every
+ *  existing call site (see ../theming/effects/media-effects-context.tsx for
+ *  the verified brand call sites this rests on). `applyEffects` skips
+ *  media-scope types entirely, so nothing double-applies. */
 export function renderVideoItemNode(
   theme: CompositionTheme,
   item: VideoItem,
@@ -82,24 +94,26 @@ export function renderVideoItemNode(
   const Renderer = resolveVideoRenderer(theme, item.kind);
   if (!Renderer) return null; // a kind this brand didn't register a renderer for
   const media = (
-    <Renderer
-      item={item}
-      handles={handles}
-      config={videoConfig(theme, item.kind)}
-      anchoredOverlays={extras.anchoredOverlays ?? []}
-      boundAudio={extras.boundAudio}
-      // The theme's look constants for core's GENERIC renderers (tokens.ts).
-      // Threaded here because this is where the theme lives — VideoRenderProps
-      // still carries no CompositionTheme, only this one narrow typed field.
-      tokens={theme.tokens}
-      // Same narrow threading for the media-path rule: the brand's wholesale
-      // override, or `undefined` → the renderer uses core's resolveMediaSource.
-      resolveMediaSource={theme.resolveMediaSource}
-      // Same narrow threading for the STYLE-effect registry (Phase 4 Task
-      // 3.2) — lets SegmentMedia resolve a brand's own `ken-burns` (or any
-      // other style-effect type) without holding the whole theme.
-      styleEffects={theme.styleEffects}
-    />
+    <MediaEffectsContext.Provider value={collectMediaEffects(theme, item)}>
+      <Renderer
+        item={item}
+        handles={handles}
+        config={videoConfig(theme, item.kind)}
+        anchoredOverlays={extras.anchoredOverlays ?? []}
+        boundAudio={extras.boundAudio}
+        // The theme's look constants for core's GENERIC renderers (tokens.ts).
+        // Threaded here because this is where the theme lives — VideoRenderProps
+        // still carries no CompositionTheme, only this one narrow typed field.
+        tokens={theme.tokens}
+        // Same narrow threading for the media-path rule: the brand's wholesale
+        // override, or `undefined` → the renderer uses core's resolveMediaSource.
+        resolveMediaSource={theme.resolveMediaSource}
+        // Same narrow threading for the STYLE-effect registry (Phase 4 Task
+        // 3.2) — lets SegmentMedia resolve a brand's own `ken-burns` (or any
+        // other style-effect type) without holding the whole theme.
+        styleEffects={theme.styleEffects}
+      />
+    </MediaEffectsContext.Provider>
   );
   return applyEffects(theme, item, handles, media);
 }
