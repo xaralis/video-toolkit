@@ -364,14 +364,22 @@ enable check. A second reserved type would need one too.
 > **CLOSED 2026-07-29, Task 4.4.** `editorMetaFromTheme` now also derives from
 > `theme.styleEffects` (`styleEffectsFromTheme`, `lib/editor/app/editor-meta.ts`), using the
 > SAME `registrationParams` accessor the transition axis uses — everything registered there
-> except core's own two reserved types (`ken-burns`, `grade`, which keep their static
-> `CORE_EFFECTS` entries and bespoke inspector panels) is now offerable in "+ Add effect"
-> with its declared `params` editable, exactly like a WRAPPER-axis registration. A brand
-> gets this by registering on `theme.styleEffects` alone — no second `theme.effects`
-> declaration, no workaround needed. **"Same contract as grain/grade" is true on both the
-> render and the editor contract now.** The statement this correction replaces —
-> "renderable, not yet authorable or editable in the reel editor — owned by Task 4.4" — is
-> corrected, not still open.
+> **with a resolvable `renderer`** (fix round 1: `Registration.renderer` is optional, so a
+> renderer-less registration is excluded — offering it would advertise a control that
+> `applyStyleEffects` silently skips at render time, the exact failure this axis exists to
+> prevent) except core's own two reserved types (`ken-burns`, `grade`, which keep their
+> static `CORE_EFFECTS` entries and bespoke inspector panels) is now offerable in
+> "+ Add effect" with its declared `params` editable, exactly like a WRAPPER-axis
+> registration. A brand registers on `theme.styleEffects` with a renderer — no second
+> `theme.effects` declaration, no workaround needed — **and its `.editor/main.tsx` mount
+> must pass `meta: editorMetaFromTheme(brandTheme)` to `mountEditorHost`** for any of this to
+> surface; that precondition is not new (the removed `theme.effects` workaround needed the
+> identical wiring), and `git grep editorMetaFromTheme` across core, PP, and roost currently
+> returns no non-test caller, so this capability is unreached by every host that exists
+> today until one adopts it. **"Same contract as grain/grade" is true on both the render and
+> the editor contract now.** The statement this correction replaces — "renderable, not yet
+> authorable or editable in the reel editor — owned by Task 4.4" — is corrected, not still
+> open.
 >
 > The fact that made this load-bearing rather than cosmetic, for the historical record: Task
 > 3.2 **removed a workaround that used to exist**. Before it, a brand wanting an editor entry

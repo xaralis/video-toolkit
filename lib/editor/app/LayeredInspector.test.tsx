@@ -5,6 +5,13 @@ import { LayeredInspector } from './LayeredInspector';
 import { editorMetaFromTheme, type EditorMeta } from './editor-meta';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import type { CompositionTheme } from '../../theming/types';
+import type { StyleEffectRenderer } from '../../theming/effects';
+
+// A real, resolvable renderer — fix round 1 (review Important): a
+// renderer-less styleEffects registration is not offered by
+// styleEffectsFromTheme, so this fixture must have one to exercise the
+// ADVERTISED-AND-RENDERS case, not the now-excluded renderer-less one.
+const dummyStyleRenderer: StyleEffectRenderer = () => ({});
 
 const base: LayeredReel = {
   version: 'layered-1', meta: { topic: 't', totalDurationMs: 2000 },
@@ -598,8 +605,8 @@ describe('LayeredInspector style-effect catalog (Task 4.4, Gap 1)', () => {
     background: '#000',
     accentSlots: [],
     styleEffects: {
-      'vignette-pulse': { params: [{ prop: 'intensity', type: 'number' }] },
-    } as never,
+      'vignette-pulse': { renderer: dummyStyleRenderer, params: [{ prop: 'intensity', type: 'number' }] },
+    },
   };
   const meta = editorMetaFromTheme(themeWithStyleEffect);
 

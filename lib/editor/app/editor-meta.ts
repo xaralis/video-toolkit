@@ -15,7 +15,7 @@
 
 import type { CompositionTheme } from '../../theming/types';
 import { overlayRegistry } from '../../theming/brand-theme';
-import { isReservedEffectType, CORE_STYLE_EFFECT_TYPES } from '../../theming/effects';
+import { isReservedEffectType, CORE_STYLE_EFFECT_TYPES, resolveStyleEffectRenderer } from '../../theming/effects';
 import { registrationParams, type ParamField } from '../../theming/registry';
 
 /** One declared, editable parameter inside an opaque bag (`props`, effect
@@ -163,11 +163,23 @@ function effectsFromTheme(theme: CompositionTheme): EffectDefinition[] {
  *  Uses `registrationParams` (`lib/theming/registry.ts`) — the SAME accessor
  *  the transition axis uses — rather than reaching into
  *  `theme.styleEffects[type].params` by hand, so a third axis cannot drift
- *  from how the other two read a registration's declared fields. */
+ *  from how the other two read a registration's declared fields.
+ *
+ *  REQUIRES a resolvable renderer (`resolveStyleEffectRenderer`), fix round 1:
+ *  `Registration.renderer` is OPTIONAL (`lib/theming/registry.ts` — "Absent =
+ *  routing-only"), so a `theme.styleEffects` entry can declare `params` with
+ *  no `renderer` at all. Without this check such an entry was offerable and
+ *  editable while `applyStyleEffects` (`style-effect.ts`) silently skipped it
+ *  (`if (!Renderer) continue`) — advertising a control that renders NOTHING,
+ *  exactly the failure the docblock above forbids for the reserved set,
+ *  reproduced on this axis. The predicate below is now symmetric with
+ *  `isReservedEffectType`: offerable ⇔ reserved (resolves on the style axis)
+ *  AND not core's own. */
 function styleEffectsFromTheme(theme: CompositionTheme): EffectDefinition[] {
   const out: EffectDefinition[] = [];
   for (const type of Object.keys(theme.styleEffects ?? {})) {
     if (CORE_STYLE_EFFECT_TYPES.includes(type)) continue;
+    if (!resolveStyleEffectRenderer(theme.styleEffects, type)) continue;
     const params = registrationParams(theme.styleEffects, type);
     out.push(params?.length ? { type, params } : { type });
   }

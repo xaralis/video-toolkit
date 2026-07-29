@@ -9,6 +9,13 @@ import {
   type EditorMeta,
 } from './editor-meta';
 import type { CompositionTheme } from '../../theming/types';
+import type { StyleEffectRenderer } from '../../theming/effects';
+
+// A real, resolvable renderer — fix round 1: a renderer-less styleEffects
+// entry must NOT be offered (see editor-meta.ts's styleEffectsFromTheme), so
+// every fixture below needs one to test the ADVERTISED-AND-RENDERS case
+// rather than accidentally re-testing the now-excluded renderer-less one.
+const dummyStyleRenderer: StyleEffectRenderer = () => ({});
 
 describe('effectCatalog', () => {
   it('is core-only (Ken Burns and grade — the two effects core itself renders) with no meta', () => {
@@ -170,7 +177,9 @@ describe('editorMetaFromTheme', () => {
   it('derives a brand STYLE-axis registration into the effect catalog, with its params', () => {
     const theme: CompositionTheme = {
       ...bare,
-      styleEffects: { 'vignette-pulse': { params: [{ prop: 'intensity', type: 'number' }] } } as never,
+      styleEffects: {
+        'vignette-pulse': { renderer: dummyStyleRenderer, params: [{ prop: 'intensity', type: 'number' }] },
+      },
     };
     const meta = editorMetaFromTheme(theme);
     expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns', 'grade', 'vignette-pulse']);
@@ -178,10 +187,27 @@ describe('editorMetaFromTheme', () => {
   });
 
   it('derives a param-less brand STYLE-axis registration too — registering it is what makes it addable', () => {
-    const theme: CompositionTheme = { ...bare, styleEffects: { 'light-sweep': {} } as never };
+    const theme: CompositionTheme = { ...bare, styleEffects: { 'light-sweep': { renderer: dummyStyleRenderer } } };
     const meta = editorMetaFromTheme(theme);
     expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns', 'grade', 'light-sweep']);
     expect(effectDefinition(meta, 'light-sweep')?.params).toBeUndefined();
+  });
+
+  // Fix round 1 (review Important): `Registration.renderer` is OPTIONAL, so a
+  // `theme.styleEffects` entry can declare `params` with no renderer at all.
+  // Before this pin, such an entry was offered and editable while
+  // `applyStyleEffects` silently rendered nothing for it — a control the
+  // author can set with no effect and no signal. Verified with a throwaway
+  // probe before the fix (catalog contained the entry, `applyStyleEffects`
+  // returned `{}`); this pin is that probe's assertion, permanently.
+  it('does NOT offer a renderer-less styleEffects registration — it cannot render', () => {
+    const theme: CompositionTheme = {
+      ...bare,
+      styleEffects: { 'film-burn': { params: [{ prop: 'amount', type: 'number' }] } }, // no renderer
+    };
+    const meta = editorMetaFromTheme(theme);
+    expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns', 'grade']);
+    expect(effectDefinition(meta, 'film-burn')).toBeUndefined();
   });
 
   it('does NOT re-derive core\'s own reserved style types (ken-burns, grade) from theme.styleEffects', () => {
