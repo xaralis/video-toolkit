@@ -1005,16 +1005,59 @@ projects *do* have local `typescript` (nothing was unverified), and the pre-exis
 `glitch` clock rebase from Task 1.3, graded at `phase4-migrations.md` § "One baked cut IS
 affected".
 
+### `palette` is now required — and roost is on Phase 4
+
+The user's call, and the ordering was deliberate: **consumers first, contract second.**
+
+**roost is bumped** (`~/Workspace/roost/video-toolkit`, `main` @ **`ffca36d`**, local, **not
+pushed**). It started **already broken** — `projects/roost-reel-01` sat at `tsc` **2 / exit 2**
+(`TS2604`/`TS2786`), un-migrated **Phase 3.5** residue, while its own template had already moved
+to the thin wrapper. Now **0 / exit 0**. **Phase 4 itself added zero new type errors**; both
+starting errors were Phase 3.5's. One `buildVideoNodes` call site, now threading `palette` /
+`transitions` / `background`. `templates/roost-reels` needed no edit. `vintage` was **not**
+promoted — `phase3-migrations.md` § 4 stands.
+
+**`palette` is now a required option** (`62d0541`). Omitting it is a compile error
+(`Property 'palette' is missing … but required`), verified by construction; reverting the field to
+optional turns the pin red. The runtime fallback **stays defensive on purpose** — a hand-edited
+`Root.tsx` is not type-checked at render time, which is the same reason `getTransitionRecord` is
+documented as "the last line before the renderer". **All 12 brand call sites pass it**, verified
+read-only by a reviewer: 11 in PP, 1 in roost, none in either `templates/`.
+
+**A methodological finding worth more than the change itself.** roost's render comparison recorded
+several frames as "byte-identical" from a single sample each. A reviewer re-rendered the report's
+own *control* frame three times at a fixed pin and found it **nondeterministic, whole-frame Δ25**.
+So **a single-sample byte-identity cell is a lucky draw, not evidence** — bimodality is not
+confined to the rightmost-8-columns cases the harness catalogues, and any parity claim resting on
+one render per frame is unfounded. roost's parity conclusion survives anyway, on an a-priori
+argument that needs no renders at all: it authors neither accent-keyed kind, registers no
+transition, and has no reel edge.
+
+A 12×12 artefact in roost's outro **disappeared** across the bump and could not be attributed to
+any documented change. It was ruled acceptable to ship: established as real and reproducible on
+both sides, deterministic afterwards, an improvement to a pre-existing defect in a path Phase 4
+does not touch — and **written down rather than rationalised**. If that region ever yields a hole
+instead of a fill, this entry is what distinguishes it from a regression.
+
 ### Still open
 
-- **`palette` is optional on `buildVideoNodes`, and that is why this happened.** Making it
-  **required** is one line and kills the class — but it is a contract change that would break
-  roost until it threads it too. A decision, not an oversight.
+- **⚠️ Push core before anyone else touches a brand repo.** Both brand pins point at
+  `refactor/phase4-node-contract` commits that are reachable from **no remote branch**, so
+  `git submodule update` fails for anyone but us until core is pushed.
+- **`background` is still optional on `buildVideoNodes`**, and omitting it fails the *same silent
+  way* — a reel-edge transition resolves to nothing instead of the brand background. The defect
+  class is closed on one axis only.
+- **`roost-reel-01` is a vendored hand-roll** of what the template gets free from core's
+  `LayeredReelComposition`. That is why it silently missed all of Phase 3.5 and sat broken for a
+  phase. **Every future contract change re-breaks this one file** until it adopts the wrapper.
 - **Three PP projects had stale lockfiles** and needed `npm install` before `tsc` would run —
-  meaning their "green" state had **never actually been observed**. That is the same blind spot
-  that let the pin bump ship +15 errors unnoticed.
-- **Task 2.1's `presentationFor` hazard is untouched** and lives in the same six WPI files.
-  Still latent: none of the six authors a `transitionOut` at all.
+  their "green" state had **never actually been observed**. Same blind spot that let the pin bump
+  ship +15 errors unnoticed. (Churn stashed in PP as `stash@{0}`, not committed.)
+- **Task 2.1's `presentationFor` hazard is untouched**, in the same six WPI files. Still latent:
+  none of the six authors a `transitionOut` at all.
+- `lib/editor/src/fade-to-color-edge.test.tsx:299`'s `@ts-expect-error` pin suppresses **any**
+  error on that line, so an unrelated type break in the same literal would keep it green while
+  `palette` silently reverted to optional.
 
 ### Carried out of Phase 4
 
