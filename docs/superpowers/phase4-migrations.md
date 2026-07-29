@@ -242,9 +242,17 @@ returning `{component, props}` — is still assignable, and core lifts it into t
 two-input form with `fromRemotionPresentation`. Neither brand repo registers a
 transition today; when one does, the 1.2 shape remains valid.
 
-### 1.3-b `presentationFor` is unchanged, and `WebProgramIntro` is safe
+### 1.3-b `presentationFor`'s signature is unchanged by Task 1.3 — but `WebProgramIntro` was NOT safe
 
-**Grade: parity-preserving. No action.**
+**Grade: CORRECTED — was "parity-preserving, no action", is actually a required
+WPI fix (applied 2026-07-29).** The original claim conflated two different
+things: `presentationFor`'s own signature (Task 1.3's business, genuinely
+untouched) and whether the SIX call sites below still compile (not Task 1.3's
+business at all — they broke from **Task 1.0**, one task earlier, and nobody
+had run `tsc` against WPI with a Phase-4 pin to notice). "Cannot be discovered
+by compiling", below, describes the *separate*, still-open Task 2.1 hazard —
+this defect was the opposite: discoverable by compiling, the moment anyone
+actually did.
 
 **SIX call sites, not two.** `grep -rln presentationFor` over the PP repo's
 `projects/` AND `templates/` (roost has none — its only mentions are comments in
@@ -264,6 +272,48 @@ Each calls `presentationFor(t, {width, height, palette})` and feeds the result t
 its `{component, props}` return for every core kind, so all six are
 untouched **by Task 1.3**. It returns `null` for a kind that resolves to a natively two-input
 node — no core kind does yet.
+
+**What actually broke, and why it's WPI's bug, not core's.** All six sites fed
+`presentationFor` a raw `t: Transition` and hand-rolled the "is this a cut?"
+gate with `if (t.kind === 'cut') return null;`, then read `t.frames`. That
+compiled fine before Phase 4, when `Transition` was `CoreTransitionSchema`'s
+closed discriminated union. **Task 1.0** (`062b4f2`) widened it to
+`WithTiming<CoreTransition | BrandTransition>`
+(`lib/reel-config-base/transition-schema.ts:649`) so a brand can register a
+kind without editing core — and `BrandTransition`'s `kind` is `z.string()`, not
+a literal. A plain union with one non-literal-`kind` member is not a
+discriminated union any more, so `t.kind === 'cut'` stops narrowing anything,
+and every site downstream that read `.frames` after the guard now sees the
+full union, `cut` member included, which has no `frames`. Task 1.0's own report
+named this exact hazard in the same commit and said so explicitly: *"Anything
+in 1.1-1.6 that needs to narrow to a core member must say `CoreTransition`, not
+`Transition`"* — and separately, that neither brand repo hit it *"today"*,
+because WPI was out of scope for the check (it doesn't use the layered schema)
+and nobody ran `tsc` against it with the new pin until this defect surfaced.
+So: **core's widening was deliberate, reviewed, and documented at the time it
+landed; WPI's code simply kept an assumption (`Transition` narrows like a
+closed union) that the widening had already invalidated, and the break was
+latent until the submodule pin was actually bumped.** `frames` was never
+carried by `cut` even before Phase 4 (`cut` has no `frames` in the catalog); no
+data was lost, only compile-time narrowing.
+
+**Fix applied, in all six files** (2026-07-29): swapped the hand-rolled
+`t.kind === 'cut'` guard for the existing shared gate,
+`getTransitionRecord(seg.transitionOut)`
+(`lib/render/transition-record.ts`, re-exported from
+`lib/render/at-cut-transitions.tsx`) — the same helper `buildVideoNodes`
+already uses for this. It returns `TransitionRecord | undefined`
+(`= Exclude<Transition, {kind:'cut'}> | undefined`), which `Exclude` computes
+structurally rather than by control-flow narrowing, so it isn't affected by
+`BrandTransition`'s open `kind`. `renderTransition` now takes a
+`TransitionRecord`, not a `Transition`. Type-level only — `getTransitionRecord`
+additionally honours `enabled: false` and warns (dev-only) on an unrecognised
+kind, neither of which any baked WPI literal uses today, so no render output
+changed. Verified per-project with `npx tsc --noEmit`: the three `frames`/`cut`
+errors are gone in all five projects and the template; the pre-existing,
+unrelated `audioMode` `TS2322`s (`bydleni`: 1, `klima`: 9, `mobilita`: 7,
+`obvody`/`verejny-prostor`: 0 — 17 total) are unchanged, A/B-confirmed against
+the pre-Phase-4 pin (`9202e79`).
 
 > ### ⚠ HAZARD FOR TASK 2.1 — silent degradation to hard cuts
 >
