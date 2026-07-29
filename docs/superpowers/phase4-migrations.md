@@ -1658,3 +1658,42 @@ gradient-mask cross-blend). No PP file changes as a result of this task; PP's ow
 `brand-lib/segments/FootageSegment.tsx:122-188` implementation is untouched and keeps
 rendering exactly as it does today, `blend` read as an item-level effect by PP's OWN video
 renderer, same as before this task.
+
+## Task 4.1 — `anchoredOverlays` actually render
+
+### 4.1-a `routing: 'anchored'` sweep — PP sets it, roost does not; PARITY-PRESERVING for both
+
+Before this task, `anchoredOverlays` was routed and delivered onto `VideoRenderProps` but
+consumed by ZERO core renderer — a write-only prop. Any brand setting `routing: 'anchored'`
+on an overlay kind whose owning video item fell through to a CORE generic
+(`SegmentMedia`/`GenericMultiClip`/`GenericCard`/`GenericOutro`) would have had that overlay
+silently deleted, with no error and no type change.
+
+Swept both repos (printed every hit, inspected each — not filtered to a subdirectory, which
+is what undercounted a similar sweep before):
+```
+grep -rn "routing" /Users/xaralis/Workspace/progpce/video-toolkit 2>/dev/null | grep -v node_modules
+grep -rn "routing" /Users/xaralis/Workspace/roost/video-toolkit --exclude-dir=toolkit --exclude-dir=node_modules 2>/dev/null
+```
+
+**PP DOES set it** — `templates/campaign-reels/src/config/composition-theme.tsx:77`,
+`title: { routing: 'anchored' }`. **But PP was never actually hit by the bug**: campaign-reels
+registers its own renderer for ALL SIX video kinds
+(`composition-theme.tsx:165-172` — `clip`/`broll`/`multi-clip`/`photo`/`card`/`outro` all
+resolve to `ClipItem`/`BrollItem`/`MultiClipItem`/`PhotoItem`/`CardItem`/`OutroItem`, never to
+a core generic), and each of those (`templates/campaign-reels/src/config/video-item-renderers.tsx`)
+reads `anchoredOverlays` directly via `pickTitleOverlay(anchoredOverlays)`, feeding a
+`titleOverlaySpec` into the reused `FootageSegment` body itself. Core's generics — the only
+place this task's fix landed — are never invoked for PP's video track, so PP's title overlay
+was rendering correctly the whole time and this task changes nothing observable for PP.
+
+**roost does NOT set it anywhere outside its own `toolkit/` submodule** (the only hits there
+are core's own source + core's own test suite, vendored in).
+
+**Grade: PARITY-PRESERVING for both repos, no brand file changes required.** This was close,
+though: PP escaped the bug only because it happens to override every video kind. Any brand
+that set `routing: 'anchored'` on a kind AND left even one video kind on a core generic would
+have silently lost that overlay before this task landed. Worth remembering the NEXT time a
+brand adds an item-level effect axis or routing-style hook: "delivered to a prop" is not
+"rendered" until something is verified to read that prop through the REAL composition path,
+not just through a brand's own hand-rolled renderer that happens to duplicate the reading.
