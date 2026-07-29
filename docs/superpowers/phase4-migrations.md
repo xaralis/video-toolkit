@@ -977,54 +977,79 @@ presentation, so a `fade-to-color` **with a resolved colour** is a native
 two-input node; with no colour it stays one-sided. `presentationFor()` returns
 `null` for the node form and warns HARD CUT. See § 2.3-d.
 
-#### The rewrite — ONE edit, superseding the two-edit shape below
+#### The rewrite — PP's CURRENT state, verified read-only, not the state below
 
-> **Superseded again, by the `color` literal-widening.** The two-edit shape
-> originally written here (rewrite the kind, THEN declare a `coal` accent slot
-> just to give the new `color` parameter something to resolve) is no longer
-> what a migrator should do. `fade-to-color.color` and `wipe.color` both
-> widened from `AccentKey`-only to `AccentOrColorHex` — an accent-slot key OR
-> a literal colour (hex) — specifically because this migration exposed the
-> defect in the two-edit shape: PP's `coal` is a **background colour in PP's
-> own model, not an accent**, and declaring it as an accent slot only to
-> satisfy core's field type was misrepresenting the brand's own palette to
-> work around a core limitation. (It also turned out to be broken in a second,
-> independent way — see the diagnosis at
+> **Superseded twice, and re-verified against PP's actual files (not assumed) for
+> the `color` literal-widening.** The original two-edit shape below (rewrite
+> `fade-coal` → `fade-to-color`, THEN declare a `coal` accent slot just to give
+> the new `color` parameter something to resolve) **is already applied in PP**.
+> Read read-only at `/Users/xaralis/Workspace/progpce/video-toolkit`:
+>
+> - `projects/pp-namesti-republiky/src/Root.tsx:154-158` is already
+>   `transitionOut: { kind: 'fade-to-color', frames: 30, color: 'coal' }` — the
+>   kind rewrite (Edit 1 below) is DONE.
+> - `projects/pp-namesti-republiky/src/config/theme.ts:5` already declares
+>   `{ key: 'coal', label: 'Coal', color: '#0a0a0a' }` in `accentSlots` — the
+>   slot declaration (Edit 2 below) is DONE too.
+>
+> So the two-edit migration this section originally described is **not** the
+> remaining work. What IS remaining, now that `color` accepts a literal
+> (`AccentOrColorHex`, this task): write the hex directly and remove the
+> `coal` accent slot the old shape required, since PP's `coal` is a
+> **background colour in PP's own model, not an accent**, and declaring it as
+> one only to satisfy core's field type was misrepresenting the brand's own
+> palette to work around a core limitation. (It also turned out to be broken
+> in a second, independent way — see the diagnosis at
 > `.superpowers/sdd/2026-07-26-phase4-node-contract/fade-to-color-edge-fix-report.md`:
 > PP's vendored `LayeredCampaignReel.tsx:407` calls `buildVideoNodes` without
-> `palette` at all, so an accent-slot key can **never** resolve at that call
-> site regardless of what the theme declares — a second, independent reason
-> the accent-slot detour was the wrong fix.)
->
-> The rewrite is now ONE edit, and it needs no theme change at all.
+> `palette` at all, so `color: 'coal'` **never actually resolves at render
+> time today**, regardless of what `accentSlots` declares — this project's
+> trailing edge is CURRENTLY a plain crossfade, not the dip its author
+> intended, exactly the silent failure this whole document chain traces.)
 
-PP's one authored use is `projects/pp-namesti-republiky/src/Root.tsx:155` (the
-`transitionOut` on `seg-008`, the outro — i.e. the reel's trailing edge).
-
-**The literal** (`projects/pp-namesti-republiky/src/Root.tsx`, ~line 154):
+**Edit 1 — the literal** (`projects/pp-namesti-republiky/src/Root.tsx:154-158`,
+PP's current state, verified above):
 
 ```diff
                  transitionOut: {
--                  kind: 'fade-coal',
-+                  kind: 'fade-to-color',
+                   kind: 'fade-to-color',
                    frames: 30,
+-                  color: 'coal',
 +                  color: '#0a0a0a',
                  },
 ```
 
-That is the whole migration. `color` now accepts the hex directly — PP's
-`coal` token (`colors.*` in its own theme, not `accentSlots`) is written as
-its literal value, resolved with **no palette lookup at all** (see
-`resolveAccentOrColor`, `lib/theming/palette.ts`), so it is immune to the
-`buildVideoNodes`-without-`palette` bug that made the accent-slot version of
-this rewrite silently crossfade regardless of what the theme declared. No
-`accentSlots` edit is needed or wanted — `coal` is not an accent slot in PP's
-model, and this rewrite no longer asks PP to pretend it is one.
+**Edit 2 — remove the now-pointless accent slot**
+(`projects/pp-namesti-republiky/src/config/theme.ts:5`). Verified this is the
+slot's ONLY use anywhere in the project (`grep -rn "key: 'coal'"` and
+`grep -rn "'coal'"` across `projects/pp-namesti-republiky/src/`, both
+read-only): the one authored reference is exactly the `color: 'coal'` Edit 1
+just replaced.
 
-**Doing nothing is no longer valid.** Once the brand repo bumps its `toolkit/`
-submodule past this change, an unmigrated literal fails to parse. The literal
-edit is what produces the intended look change: the trailing edge now dips
-through `#0a0a0a` where it previously crossfaded.
+```diff
+   accentSlots: [
+     { key: 'lime', label: 'Lime', color: '#c6f432' },
+     { key: 'teal', label: 'Teal', color: '#2ad4c5' },
+-    { key: 'coal', label: 'Coal', color: '#0a0a0a' },
+   ],
+```
+
+**Leave `colors.coal` alone** (`theme.ts:8`, in a SEPARATE `colors` map, not
+`accentSlots`) — out of scope for this migration regardless of whether anything
+currently reads it (checked: no direct `.coal` reference found elsewhere in
+`projects/pp-namesti-republiky/src/`, but that map is PP's own general-purpose
+token table and this migration's job is only the `accentSlots` entry it made
+redundant, not an audit of `colors`). Only `accentSlots`' `coal` ENTRY — a
+duplicate declared solely to give the pre-widening `color` field an accent key
+to resolve — is what Edit 2 removes.
+
+Both edits land in the same commit. The look change this produces: PP's
+trailing edge starts ACTUALLY dipping through `#0a0a0a` for the first time —
+today, with `buildVideoNodes` called without `palette`, it renders as a plain
+crossfade regardless of the accent slot's presence (see the note above), so
+this is not a regression risk from removing the slot; it is the fix finally
+taking effect, using a code path (`resolveAccentOrColor`'s literal branch) that
+needs no `palette` at all and so cannot be starved by that same omission.
 
 **One more hit, and it is NOT an authored transition:**
 `projects/pp-05-zastupitelsky-klub/src/config/types.ts:14` is a hand-written
