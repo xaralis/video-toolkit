@@ -82,7 +82,7 @@ what the composite does, which is what a reel actually renders.
 | `cut` | n/a | n/a | **correct** — no transition; the switch lands on the authored frame |
 | `dissolve` | **correct** — fades up from the background | **no-op** (see "the trailing-edge caveat") | **correct** crossfade |
 | `fade` | **correct** | **no-op** | **correct** crossfade |
-| `fade-coal` | **correct** | **no-op** | **correct** crossfade — but see "fade-coal does not dip to black" |
+| `fade-coal` | **correct** | **no-op** | **correct** crossfade — *as measured in this audit*; it now DIPS to black, see "fade-coal does not dip to black" |
 | `glitch` | **correct** — fades in with block/shear artifacts | **correct** — fades out with artifacts | **correct** glitchy crossfade |
 | `rgb-split` | **correct** — chromatic ghosts pull apart, fades in | **correct** | **correct** |
 | `scanline-glitch` | **DEFECTIVE** — never transparent | **ambiguous** — scanline/RGB shimmer, but no fade-out | **DEFECTIVE** — hard cut, landing early |
@@ -238,16 +238,26 @@ Not a defect in any presentation; a mismatch between that comment and what
 renders. Recorded here rather than changed, because "should a reel fade out at
 the end" is a look decision too.
 
-### `fade-coal` does not dip to black — ANSWERED by Phase 4 Task 2.3
+### `fade-coal` does not dip to black — FIXED by Phase 4 Task 2.3 (as corrected 2026-07-29)
 
-> **Resolved, and NOT by making it dip.** The finding below stands as a
-> description of what `fade-coal` renders — that has not changed, and its 15
-> golden cells are byte-identical through the change, which is the point. What
-> changed is the vocabulary: the missing thing was never a black tint, it was an
-> exposed **colour parameter**. `fade-to-color` now carries one (a brand
-> accent-slot key, so core still names no colour), `fade-coal` is its
-> **deprecated alias with no colour** — hence the identical pixels — and warns
-> once in dev. Its editor label no longer promises a black it does not deliver.
+> **Resolved BY MAKING IT DIP.** The finding below is now history: `fade-coal`
+> dips through a neutral black at the midpoint, measured at the probe's centre
+> pixel (`fade-coal__cut__p05` = `#000000`), and 10 of its 15 golden cells moved
+> to record it. **That look change is the point** — the missing dip was the
+> defect, not the name.
+>
+> Two things landed together. The missing thing was *also* an exposed **colour
+> parameter**: `fade-to-color` carries one (a brand accent-slot key, so core
+> names no brand colour), and `fade-coal` is its **deprecated alias fixed at a
+> neutral `#000000`**, warning once in dev. Core's black is neutral on purpose —
+> a brand's own near-black is a hex core must never carry, because such a hex
+> passes the brand-leak grep and is still a leak.
+>
+> A first pass of this task read "keep existing literals' pixels" as the goal and
+> shipped the alias with *no* colour, i.e. the same crossfade. That was corrected
+> on 2026-07-29. Consequence recorded: a dip cannot be expressed as a one-sided
+> presentation, so `fade-coal` is now a **native two-input node** and
+> `presentationFor()` returns `null` for it with a HARD CUT warning.
 > `fade` and `dissolve` both still mean crossfade; `dissolve` is the canonical
 > name and the migration is written up, not applied
 > (`docs/superpowers/phase4-migrations.md` § 2.3).

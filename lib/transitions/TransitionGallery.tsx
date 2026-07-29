@@ -75,7 +75,7 @@ const DEMO_TRANSITION_FRAMES = 45;
 const TRANSITION_NOTES: Partial<Record<TransitionKind, string>> = {
   'dissolve': 'A→B crossfade — the canonical name',
   'fade': 'Crossfade; a synonym of dissolve, rendered identically',
-  'fade-coal': 'DEPRECATED alias of fade-to-color: a plain crossfade, despite the name',
+  'fade-coal': 'DEPRECATED alias of fade-to-color, fixed at a neutral black',
   'fade-to-color': 'Dips through a brand accent colour — with none set, a crossfade',
   'glitch': 'Digital distortion with RGB shift',
   'rgb-split': 'Chromatic aberration effect',

@@ -252,11 +252,13 @@ const CATALOG = catalog(
   // same plain crossfade as `fade`, under a label that read "Fade to black".
   //
   // The successor is `fade-to-color` below, which is what it always should have
-  // been: a fade whose COLOUR is a parameter. `fade-coal` renders as that kind
-  // with NO colour, which is exactly the crossfade it always drew — so every
-  // baked literal keeps its pixels — and warns once in dev
-  // (lib/render/at-cut-transitions.tsx). Its label says so rather than
-  // continuing to promise a black it never delivered.
+  // been: a fade whose COLOUR is a parameter. `fade-coal` now renders as that
+  // kind with a NEUTRAL `#000000` — so it finally draws the dip its label
+  // promises — and warns once in dev (lib/render/at-cut-transitions.tsx). THAT
+  // MOVES PIXELS on every baked literal, deliberately: the missing dip was the
+  // defect, not the name. See docs/superpowers/phase4-migrations.md § 2.3-a.
+  // Core's black is neutral and NOT any brand's near-black; a brand declares its
+  // own in `accentSlots` and writes `fade-to-color` with that key.
   { schema: z.object({ kind: z.literal('fade-coal'), frames: TransitionFrames }), label: 'Fade to black (deprecated — use Fade to colour)' },
   {
     // THE MISSING PARAMETER, exposed. `color` is a brand ACCENT-SLOT KEY, not a
@@ -264,10 +266,11 @@ const CATALOG = catalog(
     // NAMED `color`: `ACCENT_FIELDS` (below) is what gives it a palette picker
     // in the editor, and core cannot enumerate a vocabulary the brand owns.
     //
-    // OPTIONAL, with no seed, and that is the whole compatibility story: with
-    // no colour there is nothing to dip through, so the renderer falls back to
-    // the plain crossfade — which is what `fade-coal` is. Core has no black to
-    // default to; a brand that wants one declares it in its own palette.
+    // OPTIONAL, with no seed: with no colour there is nothing to dip through,
+    // so the renderer falls back to the plain crossfade. Core has no colour
+    // vocabulary to seed this from; a brand that wants a specific dip declares
+    // the slot in its own palette. (The deprecated `fade-coal` above is the one
+    // place core names a colour, and it names a neutral black.)
     schema: z.object({
       kind: z.literal('fade-to-color'),
       frames: TransitionFrames,

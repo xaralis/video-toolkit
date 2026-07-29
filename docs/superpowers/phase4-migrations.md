@@ -887,6 +887,11 @@ would be `pp-namesti-republiky` gaining a real fade-to-coal at its end, which is
 what its author wrote `transitionOut: { kind: 'fade-coal' }` on the last item
 intending to get.
 
+> **Updated 2026-07-29 (§ 2.3-a).** `fade-coal` now dips to a neutral black on
+> its own, background or no background, so that end-of-reel beat no longer waits
+> on threading `background`. What `background` still buys that project is the
+> colour the dip *resolves into* after the black.
+
 ### 2.2-e `presentationFor`'s blast radius did NOT widen
 
 **Grade: no action.**
@@ -898,6 +903,11 @@ exactly `checkerboard`, `pixelate`, `scanline-glitch`, `wipe`. Re-measured: PP
 still has exactly 6 `presentationFor` call sites (the five
 `projects/*/src/WebProgramIntro.tsx` plus `templates/web-program-intro/`), roost
 0.
+
+> **Superseded by § 2.3-d (2026-07-29), for one kind only.** `fade-coal` became a
+> node when it started actually dipping, so `NODE_KINDS` is now five. The count
+> of `presentationFor` call sites (6 in PP, 0 in roost) is unchanged and still
+> correct, and none of the six authors a transition.
 
 The consequence that IS worth writing down: those six drive `TransitionSeries`,
 which has no concept of a reel edge and never passes a null input, so **they get
@@ -920,45 +930,61 @@ background plate.
 
 ## Task 2.3 — honest vocabulary, via parameters not renames
 
-Core gained ONE kind, `fade-to-color`, and deprecated one, `fade-coal`. **No
-brand repo has to do anything**, and nothing changes on the submodule bump: the
-whole point of the design is that every baked literal keeps its pixels. The
-entries below are the migrations a brand *may* choose, each graded.
+Core gained ONE kind, `fade-to-color`, and deprecated one, `fade-coal` — **which
+now actually dips to black.** That is a **deliberate look change** on every baked
+`fade-coal` literal, and it is the point of the task rather than a cost of it.
+`fade`, `dissolve` and every other kind are untouched.
 
-### 2.3-a `fade-coal` → `fade-to-color` — PARITY-PRESERVING, and MEASURED
+### 2.3-a `fade-coal` now DIPS — DELIBERATE LOOK CHANGE, and MEASURED
 
-**Grade: parity-preserving.** Verified with the pixel harness rather than
-argued, because this is the claim most worth checking:
+**Grade: deliberate look change.** *(Re-graded 2026-07-29. The first pass of this
+task graded it parity-preserving and shipped the alias with no colour; the user
+corrected the goal. The label promised "Fade to black" and never drew one — the
+**missing dip was the defect**, and making it dip is the fix.)*
+
+`fade-coal` is now `fade-to-color` fixed at a **neutral `#000000`**. Measured, not
+argued:
 
 ```bash
-cd examples/layered-minimal && npm run pixel-gate     # against the UNCHANGED 300 goldens
-# → 300 accepted, 0 same-picture-different-bytes, 0 drifted, 15 missing
-#   (the 15 are the NEW fade-to-color cells; not one existing cell moved,
-#    fade-coal's 15 included)
+cd examples/layered-minimal && node scripts/render-transition-matrix.mjs --update-goldens --repeat=8 fade-coal
+# → +0 added, -0 removed, ~10 changed   (of fade-coal's 15 cells; p0/p1 are the
+#   transition's own inputs and cannot move)
+# centre pixel of fade-coal__cut__p05 : #000000   — the dip, in pixels
 ```
 
-`fade-coal` is now implemented **as** `fade-to-color` with no colour, and
-"no colour" resolves to the very same `fade()` presentation it always used —
-not to a node imitating it. Core has no black to default to (it owns no colour
-vocabulary), and defaulting to one WOULD have moved pixels: today's `fade-coal`
-does not dip to anything, so a black dip is a look change, not parity. The
-brief's "colour defaults to black, so existing literals keep their pixels
-exactly" cannot be true of both halves at once; parity won, because
-reinterpreting a baked literal is the risk this task exists to avoid.
+**Core's black is neutral and is NOT any brand's near-black.** A brand hex baked
+into `lib/` would pass the brand-leak grep and still be a leak — the plan's own
+worked example. PP's `coal` is a token in *its* theme
+(`projects/pp-namesti-republiky/src/config/theme.ts:7`), and PP is where it stays.
 
-Migrating a literal:
+**Consequence, and it is real:** a dip cannot be expressed as a one-sided
+presentation, so `fade-coal` is now a **native two-input node**.
+`presentationFor()` returns `null` for it and warns HARD CUT. See § 2.3-d.
+
+Migrating a literal (PP's one authored use):
 
 ```diff
 - transitionOut: { kind: 'fade-coal', frames: 30 }
-+ transitionOut: { kind: 'fade-to-color', frames: 30 }                    // identical pixels
-+ transitionOut: { kind: 'fade-to-color', frames: 30, color: 'coal' }     // the dip it was named for
++ transitionOut: { kind: 'fade-to-color', frames: 30, color: 'coal' }   // PP's OWN #0a0a0a
 ```
 
-The second form is a **deliberate look change** and needs a brand accent slot
-called `coal` (or whatever the brand names it) in `theme.accentSlots` — which is
-the entire point: the colour word belongs to the brand, not to core's public
-vocabulary. An unresolvable key renders the plain crossfade; core never invents a
-colour.
+**PP must also declare the slot.** `projects/pp-namesti-republiky/src/config/theme.ts`
+has `accentSlots: [lime, teal]` and `colors.coal: '#0a0a0a'` — `coal` is a colour
+token but **not** an accent slot, so `color: 'coal'` resolves to nothing today and
+would render the plain crossfade. Add it:
+
+```diff
+  accentSlots: [
+    { key: 'lime', label: 'Lime', color: '#c6f432' },
+    { key: 'teal', label: 'Teal', color: '#2ad4c5' },
++   { key: 'coal', label: 'Coal', color: '#0a0a0a' },
+  ],
+```
+
+Doing nothing is also valid: `{ kind: 'fade-coal' }` keeps rendering, now with a
+neutral-black dip and one dev warning. The migration buys PP its own near-black
+and silences the warning. An unresolvable key renders the plain crossfade; core
+never invents a colour.
 
 **Affected projects — verified, not assumed** (both repos read-only, at PP
 `5a9cc1e` / roost `c498f8c`, exclusions anchored):
@@ -1002,31 +1028,33 @@ has never existed. Retiring `fade` is a **Phase 5** decision.
 
 ### 2.3-c `fade-coal` now warns once in dev
 
-**Grade: no action; visible, not fatal.** Rendering is unchanged. A dev build
-emits one `warnOnce` per process naming the kind, why it is deprecated (it never
-dipped to black), and what to use instead. No schema rejection — a deprecation
-that stops a render is a worse trade than the one it fixes.
+**Grade: no action; visible, not fatal.** A dev build emits one `warnOnce` per
+process naming the kind, saying that its pixels have CHANGED (it now dips to a
+neutral black), and what to use instead. No schema rejection — a deprecation that
+stops a render is a worse trade than the one it fixes.
 
-### 2.3-d `presentationFor`'s blast radius — RE-GRADED, and it does NOT widen today
+### 2.3-d `presentationFor`'s blast radius — WIDENED BY ONE KIND
 
-**Grade: latent, unchanged.** `fade-to-color` resolves to a **native two-input
-node only when a colour actually resolves**; with no colour it is still a
-one-sided presentation. So:
+**Grade: latent, but no longer unchanged.** *(Re-graded 2026-07-29 with 2.3-a.)*
 
-- `fade`, `dissolve` and `fade-coal` all still return a presentation from
-  `presentationFor` — the six PP `WebProgramIntro.tsx` call sites are unaffected,
-  and `NODE_KINDS` is still exactly `checkerboard`, `pixelate`,
-  `scanline-glitch`, `wipe` (pinned by test);
-- a WPI reel that authors `{kind:'fade-to-color', color:'…'}` **with** a colour
-  WOULD get `null` — a silent hard cut — and the Task 2.1 `warnOnce` fires,
-  naming the kind. None of the six authors any transition at all today
-  (measured in 2.1-e), so this is latent.
+- `fade-coal` is now a **native two-input node** (a dip has no one-sided form),
+  so `presentationFor` returns `null` for it and the Task 2.1 `warnOnce` fires
+  naming the kind. `NODE_KINDS` is now exactly `checkerboard`, **`fade-coal`**,
+  `pixelate`, `scanline-glitch`, `wipe` — pinned by test.
+- **Who this reaches today: nobody, measured.** PP's one authored `fade-coal`
+  (`projects/pp-namesti-republiky/src/Root.tsx:155`) is in a **layered** reel,
+  which drives `transitionNodeFor` / `buildVideoNodes`, not `presentationFor`.
+  The six `presentationFor` call sites are PP's `WebProgramIntro.tsx`, and none
+  of the six authors any transition at all (measured in 2.1-e). A WPI reel that
+  later authors `fade-coal` — or `fade-to-color` **with** a colour — gets a hard
+  cut plus the warning.
+- `fade` and `dissolve` still return a presentation, unchanged.
 
 ### 2.3-e Editor: the "Fade to black" label changed, and a palette picker appeared
 
 **Grade: editor-only.** `fade-coal`'s label is now
-`Fade to black (deprecated — use Fade to colour)` — it stopped promising a black
-it never delivered. `fade-to-color` appears in the Kind dropdown as
+`Fade to black (deprecated — use Fade to colour)` — and since the 2026-07-29
+correction the "Fade to black" half of that is finally true. `fade-to-color` appears in the Kind dropdown as
 `Fade to colour`, with ONE control: an accent-slot picker filled from the brand's
 own palette. That control comes from `ACCENT_FIELDS` — the field is named
 `color`, exactly like `wipe.color`, and Task 1.6's mark is by NAME. `fade-coal`

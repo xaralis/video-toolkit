@@ -88,10 +88,11 @@ directly confirm or refute.
 | `burn()` | `burn` | At-cut | Cloud-masked burn-through with a hot edge | Organic reveals, warm brand moments |
 | `fadeToColor()` | `fade-to-color` | **Two-input node** (with a colour) | Dip to a colour the BRAND names; with no colour, the plain crossfade | Section breaks, a beat of brand colour between clips |
 
-**Four kinds are ALWAYS NATIVE TWO-INPUT NODES** (`wipe`, `checkerboard`, `pixelate`,
-`scanline-glitch`), marked above; `fade-to-color` is one only when a colour actually
-resolves — with none it hands back Remotion's own `fade()`, which is what keeps every baked
-`fade-coal` literal byte-identical (Task 2.3). Their factories return a `TransitionNode` —
+**Five kinds are ALWAYS NATIVE TWO-INPUT NODES** (`wipe`, `checkerboard`, `pixelate`,
+`scanline-glitch`, and the deprecated `fade-coal`), marked above; `fade-to-color` is one
+only when a colour actually resolves — with none it hands back Remotion's own `fade()`.
+`fade-coal` is `fade-to-color` fixed at a neutral `#000000`, so it always dips and is
+always a node (Task 2.3, as corrected 2026-07-29). Their factories return a `TransitionNode` —
 `{ composite }`, one component invoked ONCE per boundary with `(from, to, progress)` —
 not a `TransitionPresentation`. They cannot be used with `TransitionSeries`, which hands a
 presentation one clip at a time; drive them through `transitionNodeFor()` +

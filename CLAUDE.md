@@ -307,7 +307,7 @@ Docker images, cuts releases, and syncs the Remotion skill from upstream).
 
 | Gate | Command | Covers | Baseline (measured 2026-07-28) |
 |---|---|---|---|
-| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **91 files / 1263 tests** — 1259 passed, **4 skipped**, ~43 s |
+| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **91 files / 1264 tests** — 1259 passed, **5 skipped**, ~43 s |
 | Editor types | `cd lib/editor && npx tsc --noEmit` | Same surface as above, plus all of `lib/render` (declared directly in `lib/editor/tsconfig.json`'s `include`, or reached transitively) and **all 16** of `lib/transitions`' files — `index.ts`, `edge-plate.tsx`, all 13 presentations, **and `TransitionGallery.tsx`**, which arrives through `src/transition-gallery*.test.tsx` (it used to be reachable only from `examples/layered-minimal`; that stopped being true at Phase 4 Task 2.5 and this row was stale for a round). Verify with `npx tsc --noEmit --listFiles`; the counts grow as presentations are added — re-derive, do not trust | **3** pre-existing errors, **exit code 2** |
 | Render/transitions types | `cd examples/layered-minimal && npm run typecheck` | `lib/render` and `lib/transitions` (including their `.tsx` components), via the example that actually imports them — see `docs/superpowers/core-typecheck-gate.md` | **0**, plus a coverage guard |
 | Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` | Every at-cut transition kind × mode × progress — 315 stills, hash-compared against committed goldens | **PASS**, ~48 s: `315 accepted, 0 same-picture-different-bytes, 0 drifted, 0 missing`, **zero** semantic xfails, `knownDefective` and `semanticXfail` both **empty** |
@@ -334,7 +334,10 @@ the kind twice, catalog default vs an in-bounds probe value for that one param, 
 progress points, and requires the rendered output to differ. All **11** tunable params are
 covered (`pixelate` ×5, `checkerboard` ×4, `scanline-glitch.rgbShiftPx`, `wipe.direction`;
 `wipe.color` and `fade-to-color.color` by the accent tests — an `accent`-typed param has no
-in-bounds probe value to invent, so it gets a differential test of its own instead), it is derived so a new param is covered the day it is
+in-bounds probe value to invent, so it gets a differential test of its own instead). The
+deprecated `fade-coal` is a node with **no** tunable param at all, which the block asserts
+explicitly rather than skipping — its fixed black is pinned by DOM assertion, and its
+successor `fade-to-color` is where the knob lives. It is derived so a new param is covered the day it is
 added, and it fails whether the value is dropped at the forwarding table in
 `lib/render/at-cut-transitions.tsx` or ignored inside the node. **This hole was real:**
 deleting `scanlines: t.scanlines` from that table previously passed every gate, because

@@ -19,10 +19,17 @@
 //
 // NO COLOUR MEANS NO DIP, and that is load-bearing rather than defensive: the
 // renderer only builds this node when a colour actually resolved, and falls
-// back to the plain `fade()` presentation otherwise. That is what lets
-// `fade-coal` be implemented AS this kind — with its colour unset — while every
-// baked `{kind:'fade-coal'}` literal in every brand repo keeps its pixels
-// EXACTLY. Core owns no colour vocabulary, so it has no black to default to.
+// back to the plain `fade()` presentation otherwise. Core inventing a colour for
+// a key the brand never declared is the brand leak this programme exists to
+// remove.
+//
+// The DEPRECATED `fade-coal` alias is the one exception, and it is the reason
+// this file exists: it is built from this node with a NEUTRAL `#000000`, so it
+// finally draws the dip its "Fade to black" label always promised. That moves
+// pixels on every baked literal, deliberately — see
+// docs/superpowers/phase4-migrations.md § 2.3-a. A NEUTRAL black, and not the
+// `coal` near-black one brand calls this: a hardcoded brand hex passes the
+// brand-leak grep while still being a leak.
 import React from 'react';
 import { AbsoluteFill } from 'remotion';
 import type { TransitionNode, TransitionNodeProps } from '../../theming/transitions';
