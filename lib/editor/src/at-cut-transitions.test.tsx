@@ -387,6 +387,21 @@ describe.each(KINDS)('transition kind %s', (kind) => {
 describe.each(NODE_KINDS)('two-input node %s delivers every authored param', (kind) => {
   const PROBE_PROGRESS = [0.2, 0.5, 0.8];
 
+  // `checkerboard` (Task 0.1) and `scanline-glitch` (Task 0.2) each mint an
+  // unseeded `random(null)`-derived SVG `id` on every mount (see
+  // lib/render/README.md's "FOUR unseeded random SVG element ids" paragraph).
+  // Two renders of the SAME config therefore NEVER produce equal `innerHTML`
+  // regardless of any param — which silently made this differential check
+  // vacuous for every kind carrying such an id (proof: with `rgbShiftPx`
+  // fully dropped from scanline-glitch's forwarding, or `stagger` hard-coded
+  // for checkerboard, the block still passed, because the two HTML strings
+  // already differed on the id alone). Both `id="…"` attributes and the
+  // `url(#…)` references to them are stripped to a fixed placeholder before
+  // comparing, so the check goes back to comparing what a param actually
+  // changes about the picture, not which random id got minted this render.
+  const stripGeneratedIds = (html: string) =>
+    html.replace(/id="[^"]*"/g, 'id="ID"').replace(/url\(#[^)]*\)/g, 'url(#ID)');
+
   const renderedFor = (t: Record<string, unknown>) =>
     PROBE_PROGRESS.map((progress) => {
       const Composite = transitionNodeFor(t as TransitionRecord, { ...DIMS, palette: PALETTE })!.composite;
@@ -403,7 +418,7 @@ describe.each(NODE_KINDS)('two-input node %s delivers every authored param', (ki
           background="transparent"
         />,
       );
-      const html = container.innerHTML;
+      const html = stripGeneratedIds(container.innerHTML);
       unmount();
       return html;
     }).join('\n');

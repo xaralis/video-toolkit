@@ -151,6 +151,28 @@ describe('scanline-glitch the filter primitives are genuinely driven by peak / x
     };
     expect(dxAt(40)).not.toEqual(dxAt(16));
   });
+
+  // ISOLATES xJitter specifically. The test above ("dx values move as
+  // progress moves") varies `progress`, which moves `peak` too — `peak` alone
+  // is sufficient to move `dx` (via `shift * peak`), so that test cannot tell
+  // whether `xJitter` itself is wired in at all. Reviewer's deletion sweep:
+  // setting `xJitter = 0` at scanline-glitch.tsx left the ENTIRE suite green,
+  // including that test. This one holds `progress` fixed (so `peak` and
+  // `shift * peak` are constant) and varies only `clock.frame` — the one
+  // input `xJitter` reads that nothing else in `dx` depends on.
+  it('the two feOffset dx values move as the frame moves, progress held fixed (xJitter)', () => {
+    const dxAtFrame = (frame: number) => {
+      clock.frame = frame;
+      const { container, unmount } = mount({ kind: 'scanline-glitch', frames: 15 }, 0.5);
+      const dx = feOffsetEls(container).map((el) => Number(el.getAttribute('dx')));
+      unmount();
+      return dx;
+    };
+    const atFrame1 = dxAtFrame(1);
+    const atFrame4 = dxAtFrame(4); // (4*31)%7=5 vs (1*31)%7=3 — distinct jitter buckets
+    clock.frame = 0;
+    expect(atFrame4).not.toEqual(atFrame1);
+  });
 });
 
 describe('scanline-glitch element count is progress-invariant', () => {

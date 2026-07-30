@@ -312,15 +312,15 @@ ever added, it should run the full matrix on merge/release, not replace this per
 `.github/workflows/` today only builds Docker images, cuts releases, and syncs the Remotion skill
 from upstream — it does not and should not run these six.
 
-| Gate | Command | Covers | Baseline (measured 2026-07-30, HEAD `deb9efb`) |
+| Gate | Command | Covers | Baseline (measured 2026-07-30, Phase 5 Task 0.2 fix round 1) |
 |---|---|---|---|
-| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **103 files / 1464 tests** — 1460 passed, **4 skipped**, ~71 s this run (has read anywhere from 45-75s across the phase; the machine, not the suite, drives the variance). **A kind, task or warning added/removed moves this number — re-derive it per file, never carry a prior count forward.** |
+| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **105 files / 1500 tests** — 1496 passed, **4 skipped**, ~57 s this run (has read anywhere from 45-75s across the phase; the machine, not the suite, drives the variance). **A kind, task or warning added/removed moves this number — re-derive it per file, never carry a prior count forward.** |
 | Editor types | `cd lib/editor && npx tsc --noEmit ; echo "exit=$?"` | Same surface as above, plus all of `lib/render` and all of `lib/transitions` (incl. `TransitionGallery.tsx`, reached via `src/transition-gallery*.test.tsx`) | **3** pre-existing errors (`LayeredInspector.tsx:1052` `hide`, `derive-layered.test.ts:277`, `../theming/envelope.test.ts:1` — no `vitest` types), **exit code 2**. **Trap:** `npx tsc --noEmit \| grep -c 'error TS'` prints `0` when `tsc` itself crashes — always read the exit code separately, never the grep count alone. |
 | Render/transitions types | `cd examples/layered-minimal && npm run typecheck` | `lib/render` and `lib/transitions` (including their `.tsx` components), via the example that actually imports them — see `docs/superpowers/core-typecheck-gate.md` | **0** errors, coverage guard holds at render 12 / transitions 16 / theming 26 / reel-config-base 10 / transcripts 1 files |
 | Brand-leak grep | `grep -riE 'lime\|teal\|roost\|progresivn\|sand-brown' lib/ --exclude-dir=node_modules --exclude='*.test.*'` | Any brand vocabulary leaking into shared `lib/` | exactly **2** hits, both comments naming the brand they were generalised from (`lib/theming/effects/ken-burns.ts`, `lib/transitions/presentations/burn.tsx`). Free — run it every time. |
 | `it.fails` guard | `grep -n 'it\.fails' lib/editor/src/at-cut-transitions.test.tsx` (the **escaped** dot — an unescaped `it.fails` also matches prose describing the pins historically and has produced a false positive twice) | Known-defect transition kinds shipped without a real fix | **zero** — all four historical pins (`checkerboard`, `pixelate`, `scanline-glitch`, `wipe`) were converted to real fixes in Task 2.1; **"all tests passed" was never proof of this on its own** — a passing `it.fails` counts as a pass, so this grep is the gate that actually says so. Re-derive; do not copy "zero" forward without running it, in case a future defect reintroduces a pin. |
 | Python — `sync_template` | `./.venv/bin/python -m pytest video_toolkit/tests/test_sync_template.py -q` | Template-scaffolding correctness; essentially never touched by render/transitions/editor work | **36 passed**. System `python3` has no `pytest` — use `./.venv/bin/python`. |
-| Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` — **while iterating, filter to the kinds you touched** (see below); this full form is for the gate itself | Every at-cut transition kind × mode × progress — one still per cell, hash-compared against committed goldens | **PASS** in **59 s** (301 stills — one cell needed its documented one-shot retry): `300 accepted (12 on a bimodal cell's second recorded hash), 0 same-picture-different-bytes, 0 drifted, 0 missing`. `bimodalCells` is **24** (`clock-wipe` 9, `iris` 7, `light-leak` 8) — see the caveats immediately below before treating this as a plain pass/fail. |
+| Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` — **while iterating, filter to the kinds you touched** (see below); this full form is for the gate itself | Every at-cut transition kind × mode × progress — one still per cell, hash-compared against committed goldens | **PASS** in **53 s** (300 stills, 0 retried): `300 accepted (13 on a bimodal cell's second recorded hash), 0 same-picture-different-bytes, 0 drifted, 0 missing`. `bimodalCells` is **24** (`clock-wipe` 9, `iris` 7, `light-leak` 8) — see the caveats immediately below before treating this as a plain pass/fail. |
 
 **`--strict` is the mode a parity claim must use — the plain `pixel-gate` is for day-to-day
 iteration only.** The lenient default treats a near-miss (8×8 mean delta within tolerance) as a
@@ -428,6 +428,19 @@ added, and it fails whether the value is dropped at the forwarding table in
 deleting `scanlines: t.scanlines` from that table previously passed every gate, because
 the editor suite skipped the kind and the pixel harness only ever renders catalog
 defaults.
+
+**The differential block went vacuous for 5 of the 11 params, silently, and was fixed in
+Phase 5 Task 0.2's fix round.** It compares two renders' `container.innerHTML`. Once
+`checkerboard` (Task 0.1) and `scanline-glitch` (Task 0.2) each started minting an unseeded
+`random(null)`-derived SVG `id` on every mount, the two HTML strings could never be equal
+regardless of any param — proven by hard-coding `checkerboard`'s `gridSize`/`pattern`/
+`stagger`/`squareAnimation` and `scanline-glitch`'s `rgbShiftPx` in turn and confirming the
+block still passed every time. The helper (`stripGeneratedIds`, same file) now normalises
+`id="…"` and `url(#…)` to a fixed placeholder before comparing, restoring the guarantee — and
+that fix was itself proven by re-running the same 5 hard-coded-param mutations and confirming
+each now goes red. **Any future kind minting a fresh per-mount id needs no new test** — the
+normalisation is generic — but a kind whose differential test still passes with a param
+hard-coded should raise the same suspicion the "9 of 11" DOM-assertion claim above should have.
 
 The pixel harness has **24** known-**bimodal** cells with two accepted hashes each (18 until
 Phase 4 Task 2.3 confirmed six more at 24 samples each — one `iris` and five `light-leak`

@@ -34,12 +34,17 @@
 // saturate, then an alpha-scale by `peak` so the shifted contribution is zero
 // at both ends) → `feBlend mode="screen"`, applied twice (once per shifted
 // copy) against the one `SourceGraphic`. This is exactly `glitch.tsx`'s own
-// `filter: url(#id)`-on-an-`AbsoluteFill` technique (`glitch.tsx:78-83`), not a
+// `filter: url(#id)`-on-an-`AbsoluteFill` technique (`glitch.tsx:77-84`), not a
 // new one. The filter is always applied (never conditionally mounted) so
 // element count stays invariant across progress; when `peak` is 0 the
 // alpha-scaled shifted layers contribute nothing to the screen blend, so the
-// composite reduces to the plain plate exactly as the CSS-duplication version
-// did at its own ends.
+// composite is MEASURED to match the CSS-duplication version's own ends —
+// 5 of the 6 end cells (enter/exit/cut × progress 0/1) are byte-identical to
+// the pre-Task-0.2 goldens; `exit`'s progress-1 cell differs by 1 pixel-delta
+// unit at the frame's rightmost edge, attributed to the `<svg>`/`<filter>`
+// subtree forcing its own rasterisation surface even at filter-graph
+// identity, not to a colour wash (see Task 0.2's report for the pixel
+// evidence). Do not read "exactly" into this — it wasn't measured that way.
 import React, { useState } from 'react';
 import { AbsoluteFill, interpolate, random, useCurrentFrame } from 'remotion';
 import type { TransitionNode, TransitionNodeProps } from '../../theming/transitions';
