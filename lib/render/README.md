@@ -25,6 +25,43 @@ The same split applies to brand font loading: `fonts.ts` is the pure side — `F
 
 **The spread must be written inline.** The editor's surgical reader/writer (`lib/editor/src/default-props-writer.ts`) resolves a `<Composition>`'s `id` through a `{...layeredCompositionProps({ id: '…', … })}` spread by reading the `id:` property straight out of the call's first-argument object literal — it does not evaluate the call. `{...layeredCompositionProps(OPTS)}` with a hoisted `OPTS` const has no literal to read and fails loudly instead of guessing. Always write the options object inline on `<Composition>`, as every current `Root.tsx` does.
 
+## Preview vs. render, and what is actually preview-gated
+
+Studio/the editor `<Player>` ("preview") and a headless render extract frames differently — a
+preview keeps a live DOM across frames and reconciles it the way any React app does, while a
+render calls Remotion's frame-extraction independently per frame with no persistent DOM. That gap
+is real and has produced a real regression: Phase 4 Task R1 found that `buildVideoNodes`
+(`video-track.tsx`) mounts an item's media at two different POSITIONS in the React tree across a
+transition boundary's frames, which React reconciles by tree position — so the element unmounted
+and remounted twice per boundary in a live preview, visible as a colour flash. A render is
+unaffected regardless, because there is no persistent DOM to flash.
+
+**Not everything R1 shipped is preview-gated, and that distinction matters for anyone changing
+this file.** Three fixes landed:
+
+1. Hiding instead of unmounting a blanked frame (`video-track.tsx` ~`:81`) — gated on
+   `isPreviewEnvironment()` (`preview-environment.ts`). Outside preview this branch never runs.
+2. Premounting the boundary's rebased copy (`video-track.tsx` ~`:182`) — also gated on
+   `isPreviewEnvironment()`.
+3. **The `transitionNodeFor` memoization cache** (`at-cut-transitions.tsx` ~`:449`) — **universal,
+   not preview-gated**. It runs unconditionally, preview or render, because it is pure caching of
+   a pure function's result: it changes nothing about what a given (transition record, palette,
+   size) resolves to, only whether two calls with the same inputs get back the identical node
+   reference or two equivalent-but-distinct ones.
+
+Calling all three "preview-gated, so the render path is unchanged by construction" — which this
+programme's own review told reviewers more than once — overstates the guarantee for #3
+specifically: it was never gated OUT of the render path, because it never entered it in a way
+that could change output in the first place. The reasoning that makes it safe is an ARGUMENT, not
+a structural guarantee: every current transition presentation's own per-mount state is limited to
+two unseeded random SVG element `id`s (see the module comment above `TRANSITION_NODE_CACHE_LIMIT`)
+— no presentation holds `useState` across frames or runs a `useEffect` — so handing back a cached
+node instead of a freshly-constructed one changes nothing a render (or a preview, past the R1/R2
+fixes) can observe. **The first transition presentation that accumulates frame state in
+`useState` breaks that argument**, not the cache's own correctness, and would need this section
+re-read before assuming the cache is still inert for it. See `docs/superpowers/HANDOFF.md`'s Task
+R1/R2 entry for the fuller account and the corrected framing.
+
 ## Consumption requirement (webpack `resolve.modules`)
 
 `at-cut-transitions.tsx` does a **runtime** import of `@remotion/transitions/*`. When a project imports it via the `@video-toolkit/lib` alias, the importing file resolves to `toolkit/lib/render/…`, which lives **outside** the project's own directory tree — so webpack's default module resolution (walking up from the importing file's ancestors) never reaches the project's `node_modules`, where `@remotion/transitions` is actually installed. Any consuming project's `remotion.config.ts` must therefore add its own `node_modules` to `resolve.modules`:
@@ -46,7 +83,7 @@ The **test runner needs the same class of workaround**, for the same reason, and
 
 ## Type-check gate
 
-`lib/editor`'s tsconfig `include` names `src`/`app`/`host`/`../theming` **and, explicitly, five files from this directory** — `at-cut-transitions.tsx`, `audio-track.tsx`, `layered-composition.tsx`, `video-track.tsx` and `load-fonts.ts`. They are *declared* rather than left to arrive through `src/at-cut-transitions.test.tsx`'s and `load-fonts.test.ts`'s imports, so deleting a test can't silently shrink the gate. The rest of this directory and all of `lib/transitions` still ride in transitively from those entry points — which is why `lib/editor/tsconfig.json` gained the same `@remotion/transitions*` and `react`/`react/jsx-runtime` `paths` that `examples/layered-minimal` carries. In total that program pulls in **11** `lib/render` files and **13** `lib/transitions` files (`index.ts` + 12 presentations; not `TransitionGallery.tsx`) — check with `npx tsc --noEmit --listFiles`. (Side effect worth knowing: those mappings also resolved 25 of `lib/editor`'s 29 pre-existing errors, which were unresolved-`react`/`remotion` noise in the out-of-tree `../theming` files. Its baseline is now **3**.)
+`lib/editor`'s tsconfig `include` names `src`/`app`/`host`/`../theming` **and, explicitly, five files from this directory** — `at-cut-transitions.tsx`, `audio-track.tsx`, `layered-composition.tsx`, `video-track.tsx` and `load-fonts.ts`. They are *declared* rather than left to arrive through `src/at-cut-transitions.test.tsx`'s and `load-fonts.test.ts`'s imports, so deleting a test can't silently shrink the gate. The rest of this directory and all of `lib/transitions` still ride in transitively from those entry points — which is why `lib/editor/tsconfig.json` gained the same `@remotion/transitions*` and `react`/`react/jsx-runtime` `paths` that `examples/layered-minimal` carries. In total that program pulls in **14** `lib/render` files (the five named directly above, plus `audio-gain.ts`, `fonts.ts`, `layered-composition-props.ts`, `overlay-anchor.ts`, `overlay-routing.ts`, `preview-environment.ts`, `transition-record.ts`, `video-track-layout.ts`, `warn-once.ts`, riding in transitively) and **16** `lib/transitions` files (`index.ts`, `edge-plate.tsx`, all 13 presentations, **and `TransitionGallery.tsx`** — it arrives through `lib/editor/src/transition-gallery*.test.tsx`, not the other way round) — check with `npx tsc --noEmit --listFiles`; the counts grow as presentations are added, re-derive rather than trust this line. (Side effect worth knowing: those mappings also resolved 25 of `lib/editor`'s 29 pre-existing errors, which were unresolved-`react`/`remotion` noise in the out-of-tree `../theming` files. Its baseline is now **3**.)
 
 The authoritative surface for the render/transitions **`.tsx` components** is still **`examples/layered-minimal`**, core's only real Remotion install — it is the one that also enforces file-count coverage. (It does not reach every file in `lib/render/`: `load-fonts.ts` and `fonts.ts` are not in that program at all — `load-fonts.ts` is checked only by `lib/editor`'s `tsc` gate, where it is named directly in that tsconfig's `include` — precisely so it no longer depends on `load-fonts.test.ts`'s import surviving; see `docs/superpowers/HANDOFF.md`'s Minor-4 note.)
 
