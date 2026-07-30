@@ -601,6 +601,64 @@ only exercises a mid-reel cut. Impact today is zero (nothing writes `alignment`)
 editor-cosmetic — but it will surface the moment `alignment` gets an editor control, which is
 itself pending work.
 
+### The final whole-branch review, and the closing fix wave (2026-07-30)
+
+**Verdict: mergeable with fixes, no Critical.** Run on the most capable model over
+`9202e79..a7bcd5a` (123 commits, 1.7 MB — too large to read whole, and it was told to
+prioritise rather than try). Every finding was drift between code and a **tracked
+description** of it, plus documentation that would have been lost. All code gates were green,
+the render path intact, and the architecture the plan promised genuinely in place.
+
+**It found the third cross-task drift** — the class no per-task review can see, and the third
+time this programme has been bitten by it (Workstream 1's timeline lane, Workstream 2's
+registry JSON, now this):
+
+> **`styleEffects` is a live SEVENTH extension axis that three places called the sixth.**
+> Task 3.2 added `BrandTheme.styleEffects`; Task 6.2 then built the conformance example whose
+> entire stated purpose is "every extension axis in one theme" — and it contained **zero**
+> `styleEffects`, while `docs/creating-brands.md` promised it registered "all six, each
+> pinned". Same shape every time: two places hold one fact, and the unwatched one goes stale.
+> A brand author following the docs would have found no style-effect precedent, registered on
+> `effects` by analogy, and got silently-skipped dead code that no core test notices.
+
+It also **corrected a claim the controller had repeated to every reviewer**: "R1 is
+preview-gated behind one predicate, so the render path is unchanged **by construction**" is
+false for one third of R1 — `transitionNodeFor`'s memo cache is **universal**, and the code
+says so. Its render-path neutrality is an **argument**, not a construction: the cache key is
+complete, and the only per-mount state in any presentation is two unseeded SVG `id`s with no
+`useEffect` or setter anywhere. That argument holds for **today's presentation set** and
+breaks on the first presentation with frame-accumulating `useState`. Recorded here and in
+`lib/render/README.md` rather than left in a reviewer's head.
+
+**The closing fix wave** (`a7bcd5a..4e1f13f`, 5 commits) closed all eight must-fix items —
+the seventh axis wired into the conformance example **and pinned against the shipped theme**
+(mutation-verified red), `creating-templates.md`'s references to the deleted
+`RESERVED_EFFECT_TYPES` API, two exhaustive-enumeration miscounts in `phase4-migrations.md`,
+stale counts in two "keep in sync" documents, the preview/render divergence, and the
+deferred-minor sweep. Its scoped re-review verdicted all eight ADDRESSED with no new breakage.
+
+**One method note worth more than the fix:** the wave's own report claimed the pytest gate
+baseline "36 was stale, actual 105". It was not — it ran `video_toolkit/tests/` (the whole
+suite, 105) instead of `video_toolkit/tests/test_sync_template.py` (the gate, 36) and
+concluded the gate was wrong. **A report's claim is not evidence, and that applies to a fix
+wave's report as much as to a task's.** The false number was caught before it reached any
+tracked file; every tracked file still correctly says 36. If you see 105 anywhere, it is wrong.
+
+### Final gates, at the true branch HEAD `4e1f13f`
+
+These supersede the Task 6.4 table above, which was measured at `deb9efb` — before the fix
+wave added two tests.
+
+| Gate | Value |
+|---|---|
+| Editor tests | **103 files / 1466** — 1462 passed, **4 skipped** (+2 from the seventh axis's pins) |
+| Editor types | **3** errors, **exit 2** — the same three, and their *identity* was checked against the merge base, not just their count |
+| Render/transition types | **0**, coverage guard 12 / 16 / 26 / 10 / 1 |
+| Pixel harness | **PASS** — 300 accepted (13 on a bimodal second hash, 1 documented one-shot retry), 0 drifted, 0 missing |
+| Brand leak | exactly **2**, both comments |
+| `it.fails` | **zero** (escaped grep) |
+| Python — `sync_template` | **36** — the gate is that **file**, not the suite |
+
 ### What landed — Workstream 1, the node contract
 
 A brand can now add a transition kind in **~5 lines** of theme (`transitions: { 'sand-sweep':
