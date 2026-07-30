@@ -189,9 +189,24 @@ export interface BrandRenderProps {
 
 export type BrandRenderer = React.FC<BrandRenderProps>;
 
-/** Brand-layer kinds are OPEN, like overlay kinds and effect types — the
- *  schema names two today ('watermark' | 'disclaimer'), and core has a generic
- *  for exactly those two. A brand may register more. */
+/** Brand-layer kinds are OPEN AT THIS TYPE — like overlay kinds and effect
+ *  types — and core has a generic for exactly two ('watermark' |
+ *  'disclaimer').
+ *
+ *  BUT (Phase 4 Task 6.2 finding, unlike the overlay/effect/transition axes):
+ *  `BrandLayerItemSchema.kind` (lib/reel-config-base/layered-schema.ts) is
+ *  CLOSED to those same two literals (`z.enum(['watermark','disclaimer'])`),
+ *  so a schema-valid, literal-JSON `tracks.brand` item cannot actually name a
+ *  THIRD kind today — doing so does not typecheck against `LayeredReel`, with
+ *  no runtime signal at all (a compile error on the literal, nothing more).
+ *  Registering a NEW renderer for `'watermark'`/`'disclaimer'` here works
+ *  exactly as this type promises; naming a brand-new kind needs
+ *  `BrandLayerItemSchema.kind` widened to `z.string()` first — a real core
+ *  schema change (with its own editor/migration surface for both brand
+ *  repos), not something a brand can work around from its own theme file. See
+ *  `examples/layered-minimal/src/conformance-theme.tsx`'s own "CONTRACT
+ *  FINDING" comment and `.superpowers/sdd/2026-07-26-phase4-node-contract/
+ *  task-6.2-report.md` for the full account. */
 export type BrandKind = string;
 
 /** One brand-layer kind's registration. Built on the shared `Registration`

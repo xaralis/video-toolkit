@@ -93,7 +93,12 @@ export { brand };
 The one thing core reads from a brand is its **accent slots** — the `{key, label, color}` list the
 theme exposes as `accentSlots`. Accent markup in overlay text and any transition that takes a
 colour names one of those keys, never a hex. See `docs/creating-templates.md` and
-`examples/layered-minimal/src/theme.tsx`.
+`examples/layered-minimal/src/theme.tsx` for the smallest possible theme. If you're adding a NEW
+extension axis — a video kind, a non-`text` overlay, an effect, a brand-layer kind, a
+brand-authored transition, or a media-source override — copy the registration shape from
+`examples/layered-minimal/src/conformance-theme.tsx` instead: it registers all six, each pinned by
+`lib/editor/src/conformance-example.test.tsx`, so its shapes are kept honest by a test rather than
+by a comment going stale.
 
 ## Brand Properties
 

@@ -106,17 +106,26 @@ const GhostEchoEffect: EffectRenderer = ({ children, mediaStyle, config }) => {
   return (
     <>
       {children}
+      {/* Re-mounts `children` itself (the media element this effect wraps),
+          not an empty styled div — a visible magenta-shifted ghost of the
+          SAME image, not just a faint blend nobody can see (fix round 1,
+          Minor 7: the first version rendered an empty div and contributed no
+          visible content to a real frame). This is the shape a media-scope
+          effect actually earns (Task 3.3's `blend`): a SECOND media element
+          carrying the first one's own merged style. */}
       <div
         data-conformance-ghost-echo=""
         style={{
-          ...mediaStyle,
           position: 'absolute',
           inset: 0,
-          opacity: 0.35,
+          opacity: 0.55,
           mixBlendMode: 'screen',
+          filter: 'hue-rotate(280deg) saturate(3)',
           transform: `${mediaStyle?.transform ?? ''} translateX(${offsetPx}px)`.trim(),
         }}
-      />
+      >
+        {children}
+      </div>
     </>
   );
 };
@@ -208,7 +217,12 @@ export const conformanceTheme: CompositionTheme = {
   // is itself the point (params are OPTIONAL — see registry.ts).
   effects: {
     'glitch-frame': { renderer: GlitchFrameEffect },
-    'ghost-echo': { renderer: GhostEchoEffect, scope: 'media', config: { offsetPx: 18 } },
+    // 24, deliberately DIFFERENT from GhostEchoEffect's own `?? 18` default —
+    // a config-key typo (reading `.offset` instead of `.offsetPx`) would fall
+    // through to that default and still render SOMETHING, so the two values
+    // must differ for a test to tell "read from config" apart from "fell
+    // back to the default that happens to match".
+    'ghost-echo': { renderer: GhostEchoEffect, scope: 'media', config: { offsetPx: 24 } },
   },
 
   // AXIS 4 — brand-layer. 'disclaimer' — see the CONTRACT FINDING above.

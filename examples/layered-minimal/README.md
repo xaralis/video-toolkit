@@ -16,13 +16,14 @@ npm run still    # one PNG → out/frame.png
 npm run render   # 6s MP4 → out/reel.mp4
 ```
 
-## The four files
+## The files
 
 | File | What it teaches |
 |------|-----------------|
-| `src/Root.tsx` | The `Composition` **and the reel data**, inline in `defaultProps`. Video / audio / music / overlays / brand tracks on one absolute-millisecond timeline; composition length derived from `meta.totalDurationMs` via the `calculateMetadata` that `layeredCompositionProps` (`lib/render/layered-composition-props.ts`) supplies, so editing the timeline moves it. |
+| `src/Root.tsx` | The `Composition` **and the reel data**, inline in `defaultProps`, for BOTH compositions below. Video / audio / music / overlays / brand tracks on one absolute-millisecond timeline; composition length derived from `meta.totalDurationMs` via the `calculateMetadata` that `layeredCompositionProps` (`lib/render/layered-composition-props.ts`) supplies, so editing the timeline moves it. |
 | `src/MinimalReel.tsx` | The wrapper that binds the theme. `defaultProps` must stay JSON-serializable (Studio and the toolkit editor read and rewrite them), so components and functions are bound in code and only DATA travels through props. |
-| `src/theme.tsx` | The brand: `accentSlots`, `background`, `tokens`, and one custom text renderer. Everything except the first two is optional — drop the text renderer and core's `GenericTextOverlay` draws the overlays instead; this theme declares no brand-layer code at all, and core paints `tracks.brand` itself through its generics. |
+| `src/theme.tsx` | The **minimal** brand: `accentSlots`, `background`, `tokens`, and one custom text renderer — most of the extension surface is left at its core default. Everything except the first two is optional — drop the text renderer and core's `GenericTextOverlay` draws the overlays instead; this theme declares no brand-layer code at all, and core paints `tracks.brand` itself through its generics. |
+| `src/conformance-theme.tsx` + `src/ConformanceReel.tsx` | **The worked example — every extension axis, in one theme.** A SECOND composition (`ConformanceReel`, alongside `MinimalReel` in `Root.tsx`) whose theme registers all six axes a brand can extend — a video kind, a non-`text` anchored overlay, both effect scopes (`clip`/`media`), a brand-layer kind, a brand-authored transition (with `params`), and a wholesale media-source override — each with a deliberately non-core look, so you can tell at a glance which renderer actually ran. Copy registrations FROM here, not from `theme.tsx`, when adding a NEW axis rather than recolouring an existing one. Pinned end-to-end by `lib/editor/src/conformance-example.test.tsx`, including two mutations per registration and the negative rules (a `config`-only registration never masks the core generic beneath it; an unknown kind/type is silently skipped, never thrown) — see `.superpowers/sdd/2026-07-26-phase4-node-contract/task-6.2-report.md` for the full account, including one contract finding (`BrandKind` is documented as open but the schema currently closes brand-layer `kind` to two literals — see `lib/theming/types.ts`). |
 | `remotion.config.ts` | The `@video-toolkit/lib` alias **and the `resolve.modules` line every consuming project needs** (see `lib/render/README.md`). |
 
 ## What the render proves
@@ -46,8 +47,12 @@ npm run render   # 6s MP4 → out/reel.mp4
 - Add a `clip` item with `source`/`sourceInMs`/`sourceOutMs` and drop an MP4 into
   `public/`.
 - Add an audio item and link it to a clip with `followsVideoId`.
-- Register a `card` or `outro` renderer under `theme.video` — non-footage kinds
-  render only when the brand supplies one.
+- Register a `card` or `outro` renderer under `theme.video` to REPLACE core's
+  own look for that kind — every video kind already has a core generic
+  renderer (`SegmentMedia` for footage, `GenericMultiClip`/`GenericCard`/
+  `GenericOutro` for the rest), so a brand that registers nothing still
+  renders a whole reel; see `src/conformance-theme.tsx` for a worked `card`
+  override.
 - To build a full project rather than read one, run `/toolkit:video` in a brand
   repo; templates live there, not in core.
 

@@ -8,8 +8,14 @@ whatever custom renderers that theme registers.
 
 Templates live in a **brand repo**, never in core (core ships no brand identity).
 The reference implementation of the contract is `examples/layered-minimal` —
-four small files that render end to end. Read it first; this document is the
-narration around it.
+a few small files that render end to end. Read it first; this document is the
+narration around it. Its `theme.tsx`/`MinimalReel` composition is the SMALLEST
+theme (a text renderer, some tokens); its `conformance-theme.tsx`/
+`ConformanceReel` composition (a second, separate composition in the same
+`Root.tsx`) is the OTHER end — every extension axis registered at once, each
+with a deliberately non-core look and pinned by
+`lib/editor/src/conformance-example.test.tsx`. Copy a registration's SHAPE
+from whichever one actually shows the axis you're adding.
 
 ## The contract in one picture
 
