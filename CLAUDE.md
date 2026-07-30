@@ -301,16 +301,46 @@ Consider how visual intensity builds across scenes:
 
 ## Quality Gates
 
-Run these before considering `lib/` or `examples/` work done. All are manual —
-there is no CI in this repo that runs them (`.github/workflows/` only builds
-Docker images, cuts releases, and syncs the Remotion skill from upstream).
+Run these before considering `lib/` or `examples/` work done. **All are manual, and that is a
+deliberate choice, not an oversight to "fix" by wiring up CI.** Phase 4 considered CI and rejected
+it: the pixel harness alone is ~60 s and several gates need a real browser / `remotion still`
+render, so the gate economy that makes six-task days possible (run only what the diff can move,
+skip with a stated reason, one full matrix at the end) works because a human decides what to run
+each time. A CI job would either run everything on every commit (killing the speed this workflow
+depends on) or reinvent the same conditional logic in YAML with none of the judgement. If CI is
+ever added, it should run the full matrix on merge/release, not replace this per-task discipline.
+`.github/workflows/` today only builds Docker images, cuts releases, and syncs the Remotion skill
+from upstream — it does not and should not run these six.
 
-| Gate | Command | Covers | Baseline (measured 2026-07-29) |
+| Gate | Command | Covers | Baseline (measured 2026-07-30, HEAD `deb9efb`) |
 |---|---|---|---|
-| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **92 files / 1265 tests** — 1261 passed, **4 skipped**, ~45-55 s. Was 91/1257/1253 until `fade-to-color-edge.test.tsx` added its 8 (the edge-capability pins + the unresolved-colour warning). Was 1264/1259/5 until `fade-coal` was removed from the catalog: −3 from `describe.each(KINDS)` (3 tests per kind, one of them the `it.skipIf` — that is the whole −1 skipped), −2 from the *derived* `transition-gallery.test.tsx` (two tables × one entry each), −2 net from the kind's own pins. **A kind added or removed moves this number; re-derive it per file rather than reading a delta as a regression.** |
-| Editor types | `cd lib/editor && npx tsc --noEmit` | Same surface as above, plus all of `lib/render` (declared directly in `lib/editor/tsconfig.json`'s `include`, or reached transitively) and **all 16** of `lib/transitions`' files — `index.ts`, `edge-plate.tsx`, all 13 presentations, **and `TransitionGallery.tsx`**, which arrives through `src/transition-gallery*.test.tsx` (it used to be reachable only from `examples/layered-minimal`; that stopped being true at Phase 4 Task 2.5 and this row was stale for a round). Verify with `npx tsc --noEmit --listFiles`; the counts grow as presentations are added — re-derive, do not trust | **3** pre-existing errors, **exit code 2** |
-| Render/transitions types | `cd examples/layered-minimal && npm run typecheck` | `lib/render` and `lib/transitions` (including their `.tsx` components), via the example that actually imports them — see `docs/superpowers/core-typecheck-gate.md` | **0**, plus a coverage guard |
-| Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` — **while iterating, filter to the kinds you touched** (see below); this full form is for the gate itself | Every at-cut transition kind × mode × progress — one still per cell, hash-compared against committed goldens | **PASS**, ~47 s: `300 accepted, 0 same-picture-different-bytes, 0 drifted, 0 missing`, **zero** semantic xfails, `knownDefective` and `semanticXfail` both **empty** |
+| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **103 files / 1464 tests** — 1460 passed, **4 skipped**, ~71 s this run (has read anywhere from 45-75s across the phase; the machine, not the suite, drives the variance). **A kind, task or warning added/removed moves this number — re-derive it per file, never carry a prior count forward.** |
+| Editor types | `cd lib/editor && npx tsc --noEmit ; echo "exit=$?"` | Same surface as above, plus all of `lib/render` and all of `lib/transitions` (incl. `TransitionGallery.tsx`, reached via `src/transition-gallery*.test.tsx`) | **3** pre-existing errors (`LayeredInspector.tsx:1052` `hide`, `derive-layered.test.ts:277`, `../theming/envelope.test.ts:1` — no `vitest` types), **exit code 2**. **Trap:** `npx tsc --noEmit \| grep -c 'error TS'` prints `0` when `tsc` itself crashes — always read the exit code separately, never the grep count alone. |
+| Render/transitions types | `cd examples/layered-minimal && npm run typecheck` | `lib/render` and `lib/transitions` (including their `.tsx` components), via the example that actually imports them — see `docs/superpowers/core-typecheck-gate.md` | **0** errors, coverage guard holds at render 12 / transitions 16 / theming 26 / reel-config-base 10 / transcripts 1 files |
+| Brand-leak grep | `grep -riE 'lime\|teal\|roost\|progresivn\|sand-brown' lib/ --exclude-dir=node_modules --exclude='*.test.*'` | Any brand vocabulary leaking into shared `lib/` | exactly **2** hits, both comments naming the brand they were generalised from (`lib/theming/effects/ken-burns.ts`, `lib/transitions/presentations/burn.tsx`). Free — run it every time. |
+| `it.fails` guard | `grep -n 'it\.fails' lib/editor/src/at-cut-transitions.test.tsx` (the **escaped** dot — an unescaped `it.fails` also matches prose describing the pins historically and has produced a false positive twice) | Known-defect transition kinds shipped without a real fix | **zero** — all four historical pins (`checkerboard`, `pixelate`, `scanline-glitch`, `wipe`) were converted to real fixes in Task 2.1; **"all tests passed" was never proof of this on its own** — a passing `it.fails` counts as a pass, so this grep is the gate that actually says so. Re-derive; do not copy "zero" forward without running it, in case a future defect reintroduces a pin. |
+| Python — `sync_template` | `./.venv/bin/python -m pytest video_toolkit/tests/test_sync_template.py -q` | Template-scaffolding correctness; essentially never touched by render/transitions/editor work | **36 passed**. System `python3` has no `pytest` — use `./.venv/bin/python`. |
+| Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` — **while iterating, filter to the kinds you touched** (see below); this full form is for the gate itself | Every at-cut transition kind × mode × progress — one still per cell, hash-compared against committed goldens | **PASS** in **59 s** (301 stills — one cell needed its documented one-shot retry): `300 accepted (12 on a bimodal cell's second recorded hash), 0 same-picture-different-bytes, 0 drifted, 0 missing`. `bimodalCells` is **24** (`clock-wipe` 9, `iris` 7, `light-leak` 8) — see the caveats immediately below before treating this as a plain pass/fail. |
+
+**`--strict` is the mode a parity claim must use — the plain `pixel-gate` is for day-to-day
+iteration only.** The lenient default treats a near-miss (8×8 mean delta within tolerance) as a
+warning; `--strict` makes it fatal. Renders here are **not byte-deterministic**: a per-render coin
+flip (9-50% depending on the cell) produces one of two *stable, recorded* attractor hashes on 24
+cells, concentrated in the rightmost 8 columns of the frame — this is renderer nondeterminism,
+reproduced in fresh processes, not harness state leakage. `--strict` still passes reliably on an
+unchanged tree because both attractors are accepted goldens; a hash that is neither is a real
+`drifted`. Read `docs/superpowers/transition-pixel-harness.md` for the full mechanism (union rule
+for re-seeding, `--audit-bimodal`, why the scope is a cell and never a kind) — it has changed more
+than once this phase and a stale paraphrase here would be worse than a pointer to it.
+
+**What the pixel harness cannot see, at all, in either direction: the editor-mount-lifecycle
+defect class.** It renders 300 fully independent stills, so it never exercises a component
+persisting or remounting *across frames* — the exact shape of the Task R1/R2 preview-only
+transition-remount regression (media elements destroyed and recreated at a boundary, causing a
+colour flash / stagger in the Player). That class is pinned by
+`lib/editor/src/video-track-remount.test.tsx`'s DOM-identity assertions, a completely different
+gate. A gate table that implies the pixel harness covers "transitions" end to end would be wrong;
+it covers *what a single frame looks like*, not *whether the same DOM node persists across frames*.
 
 ### ALWAYS filter the pixel harness while iterating — this is an instruction, not a tip
 

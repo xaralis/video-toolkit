@@ -509,59 +509,74 @@ especially, against the branch you are actually on before applying it.**
 
 ---
 
-## 🟡 Phase 4 outcome — Workstreams 1 and 2 are complete; three workstreams are untouched
+## ✅ Phase 4 outcome — the node contract is open, every kind behaves as its name promises, and the phase is COMPLETE
 
-**Branch:** `refactor/phase4-node-contract`, merge base `9202e79`. **Not merged.**
+**Branch:** `refactor/phase4-node-contract`, merge base `9202e79`. **Not merged, not pushed.**
 
-**Status, plainly: this is a deliberate hand-off at a clean seam, not an abandoned branch.**
-Workstream 1 — the node contract itself — is **complete and reviewed**, and **Workstream 2 —
-every kind behaves as its name promises — is complete and reviewed on top of it** (see
-"Workstream 2 outcome" below, which carries its own gate numbers and findings; the numbers in
-*this* section are Workstream 1's and are superseded where the two disagree). Everything below
-the line "Carried out of Phase 4" is *not started*, not *in flight*.
+**Status: all six workstreams plus two unplanned tasks are done and reviewed.** Workstream 1 (the
+node contract), Workstream 2 (every kind behaves as its name promises — see "Workstream 2 outcome"
+below), Workstream 3 (effects: one contract, no exceptions), Workstream 4 (closing the write-only
+props), Workstream 5 (geometry tokens), and Workstream 6 (conformance example, dev warnings, this
+gate documentation) are **all complete**. Two unplanned tasks were added mid-phase with the user's
+authorisation: **Task R1** (an editor-only transition-remount regression a user caught mid-run,
+confirmed fixed in a real browser) and **Task R2** (a partial improvement to the same class, which
+surfaced that the real fix is architectural and produced
+`docs/superpowers/phase5-single-mount-design.md` — Phase 4's successor; see below). This section
+and "Workstream 2 outcome" carry the two workstreams' own numbers; where they disagree, the later
+one (this section) supersedes.
 
-**Tasks landed:** 1.0, 1.1, 1.2, **1.2b** (added mid-phase, not in the plan, user-approved),
-1.3, 1.4, 1.5, 1.6, **2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7**, 3.1, 6.1.
-**Tasks not started:** 3.2–3.4, 4.1–4.3, all of Workstream 5, and 6.2–6.4.
+**Tasks landed:** 1.0, 1.1, 1.2, **1.2b** (added mid-phase, not in the plan, user-approved), 1.3,
+1.4, 1.5, 1.6, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 3.1, 3.2, 3.3, 3.4, 4.1, 4.2, 4.3, **4.4**
+(controller-added, user-mandated — the editor surface Important 3 of Task 3.2's review deferred),
+5.1, 6.1, 6.2, 6.3, 6.4 (this task), plus the user-directed removal of `fade-coal` from core
+(replaced by the generic `fade-to-color`) and making `buildVideoNodes`' `palette` a required
+option. **Nothing from the plan is left not-started.** Task R2's wall investigation is what
+produced the Phase 5 design; R2 itself shipped a real, partial, user-confirmed improvement (see
+"Task R1/R2" below) — the full architectural fix is Phase 5's, by design, not a Phase 4 gap.
 
-Re-derived from `git log` / `git diff --stat` against the merge base, never carried forward from
-a running total: **44 commits**, **55 files, +7926 / −553**. Excluding the 676-line plan document
-(`docs/superpowers/plans/2026-07-26-phase4-node-contract.md`, committed at `9dfd51d` on the
-branch): 54 files, **+7250 / −553**.
+Re-derive branch totals rather than trust any figure carried forward — they moved repeatedly
+during this session:
+```bash
+git log --oneline $(git merge-base main HEAD)..HEAD | wc -l
+git diff --stat $(git merge-base main HEAD)..HEAD | tail -1
+```
+Measured 2026-07-30 at HEAD `deb9efb` (the commit before this task's own): **122 commits**,
+**120 files changed, +21931 / −1709**. As in Phase 3, **the range cannot include the commit that
+carries this text** — a commit cannot state its own diffstat, so re-run the commands above after
+this commit lands rather than trusting the numbers above as still current.
 
-> **As in Phase 3, the range cannot include the commit that carries this text** — a commit
-> cannot state its own diffstat. Re-derive rather than trust the figures above after any
-> further commit:
-> ```bash
-> git log --oneline $(git merge-base main HEAD)..HEAD | wc -l
-> git diff --stat $(git merge-base main HEAD)..HEAD | tail -1
-> ```
+### Gates, measured fresh at the Task 6.4 hand-off (2026-07-30, HEAD `deb9efb`)
 
-### Gates, measured fresh at the hand-off (2026-07-28)
-
-Every figure recorded for Phase 3 is now stale; these replace them. Exit codes were captured
-**separately** from error counts, because `grep -c 'error TS'` reports 0 when tsc *crashes*.
+Every figure recorded earlier in this section (and in `CLAUDE.md` before this task) is now stale;
+these replace them. Exit codes were captured **separately** from error counts, because
+`grep -c 'error TS'` reports 0 when tsc *crashes*.
 
 | Gate | Command | Value |
 |---|---|---|
-| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | **86 files / 1113 tests** green, 53 s — **4** are `it.fails` known-defect pins, so "all passed" is *not* full green |
-| Editor types | `cd lib/editor && npx tsc --noEmit` | **3** errors, **exit 2** (tsc ran; it did not crash) |
-| Render/transition types | `cd examples/layered-minimal && npm run typecheck` | **0**, coverage guard ok (render 10 / transitions 14 / theming 24 / reel-config-base 10 / transcripts 1 — each at or above its recorded floor) |
-| **Pixel harness (NEW in Phase 4)** | `cd examples/layered-minimal && npm run pixel-gate:strict` | **PASS**, 300 stills in **52 s** (~55 s wall). `300 accepted (8 on a bimodal cell's second recorded hash), 0 same-picture-different-bytes, 0 drifted, 0 missing`, plus **3 expected semantic xfails** (`scanline-glitch`, `wipe`, `pixelate` — all `cut@p0-shows-outgoing`) |
-| Brand leak | the `grep -riE` under Working conventions | exactly **2** known hits |
-| Python — `sync_template` | `./.venv/bin/python -m pytest video_toolkit/tests/test_sync_template.py -q` | **36 passed**, 0.42 s. **Use the venv** — the system `python3` has no `pytest` |
+| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | **103 files / 1464 tests** — 1460 passed, **4 skipped**, 71 s this run. **A kind, task or warning added/removed moves this number** — re-derive per file, never carry forward |
+| Editor types | `cd lib/editor && npx tsc --noEmit ; echo "exit=$?"` | **3** errors, **exit 2** — `LayeredInspector.tsx:1052` (`hide`), `derive-layered.test.ts:277`, `../theming/envelope.test.ts:1` (`Cannot find module 'vitest'`) |
+| Render/transition types | `cd examples/layered-minimal && npm run typecheck` | **0**, coverage guard ok (render 12 / transitions 16 / theming 26 / reel-config-base 10 / transcripts 1 — each at or above its recorded floor) |
+| Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` | **PASS**, 301 stills (one cell needed its documented one-shot retry) in **59 s**. `300 accepted (12 on a bimodal cell's second recorded hash), 0 same-picture-different-bytes, 0 drifted, 0 missing`. **Zero** `knownDefective`/`semanticXfail` entries (both empty since Task 2.1). `bimodalCells` is **24** (`clock-wipe` 9, `iris` 7, `light-leak` 8) |
+| Brand leak | `grep -riE 'lime\|teal\|roost\|progresivn\|sand-brown' lib/ --exclude-dir=node_modules --exclude='*.test.*'` | exactly **2** known hits (`lib/theming/effects/ken-burns.ts`, `lib/transitions/presentations/burn.tsx`) |
+| `it.fails` guard | `grep -n 'it\.fails' lib/editor/src/at-cut-transitions.test.tsx` | **zero** — all four historical pins (`checkerboard`, `pixelate`, `scanline-glitch`, `wipe`) were converted to real fixes in Task 2.1. Use the **escaped** dot; the unescaped grep has produced a false positive twice from prose describing the old pins |
+| Python — `sync_template` | `./.venv/bin/python -m pytest video_toolkit/tests/test_sync_template.py -q` | **36 passed**. System `python3` has no `pytest` — use `./.venv/bin/python` |
 
-The editor `tsc` baseline is still **3**, but two of the three moved line: they are now
-`app/LayeredInspector.tsx:791` (`hide`), `src/derive-layered.test.ts:277`, and
-`../theming/envelope.test.ts:1` (`Cannot find module 'vitest'`). The four `it.fails` pins are at
-`lib/editor/src/at-cut-transitions.test.tsx:323,350,404,422` — **re-derive with
-`grep -n 'it.fails' lib/editor/src/at-cut-transitions.test.tsx`**, never hardcode; they shifted
-twice within Phase 4 alone.
+**The pixel harness cannot see the editor-mount-lifecycle defect class, in either direction** —
+it renders 300 fully independent stills, so cross-frame mount reuse (the Task R1/R2 territory) is
+structurally invisible to it. That class is pinned separately by
+`lib/editor/src/video-track-remount.test.tsx`'s DOM-identity assertions. A gate table that implies
+the pixel harness covers transitions end-to-end would be wrong; see
+`docs/superpowers/transition-pixel-harness.md` for the full mechanism (bimodal cells, the union
+re-seeding rule, why `--strict` and not the lenient default is the mode a parity claim must use).
 
-> `CLAUDE.md`'s Quality Gates table was updated by the final fix wave (2026-07-28): it now carries
-> **87 files / 1126 tests** — the numbers above plus that wave's own 13 new tests — the pixel
-> harness as a fourth gate, the tsc exit code, and an instruction to re-derive the `it.fails` count
-> rather than trust a written one.
+**Gates are, and remain, entirely MANUAL — this was a deliberate choice for Phase 4, not an
+oversight.** CI was considered and rejected: the full matrix above is roughly 2.5 minutes serially,
+and the gate-economy discipline that made this phase's pace possible (run only what a diff can
+move, state a skip's reason, one unconditional full matrix at the end of each task and at the
+final review) depends on a human judgement call per diff. A future CI job should run the complete
+matrix on merge/release; it should not try to replace the per-task conditional logic, which would
+either re-run everything every time or reimplement the same judgement in pipeline config with none
+of the context. Do not read the absence of CI here as something to "fix".
 
 **The final whole-branch review verdict: mergeable as a partial Phase 4, no Critical findings.** It
 raised eight items (one cross-task Important, three must-fix-before-merge, four minor); all eight
@@ -1043,7 +1058,13 @@ instead of a fill, this entry is what distinguishes it from a regression.
 
 - **⚠️ Push core before anyone else touches a brand repo.** Both brand pins point at
   `refactor/phase4-node-contract` commits that are reachable from **no remote branch**, so
-  `git submodule update` fails for anyone but us until core is pushed.
+  `git submodule update` fails for anyone but us until core is pushed. **This got worse, not
+  better, during Task R1's follow-up**: with the user's explicit authorisation, roost's submodule
+  was bumped again to core `d5582a8` (deliberately the last **fully reviewed** commit — all of
+  Workstream 3, Workstream 4, and R1, excluding Task 5.1 whose findings were still open at the
+  time) so the user could retest R1 in a real browser (roost `main` @ `f71b85d`). That retest is
+  what produced the "works better now, acceptable" verdict above. Both brand repos still pin
+  commits reachable from no remote branch; core is still not pushed.
 - **`background` is still optional on `buildVideoNodes`**, and omitting it fails the *same silent
   way* — a reel-edge transition resolves to nothing instead of the brand background. The defect
   class is closed on one axis only.
@@ -1059,23 +1080,136 @@ instead of a fill, this entry is what distinguishes it from a regression.
   error on that line, so an unrelated type break in the same literal would keep it green while
   `palette` silently reverted to optional.
 
+### Workstreams 3–6, plus Task R1/R2 — how the rest of Phase 4 landed
+
+**Workstream 3 (3.1–3.4) — effects: one contract, no exceptions.** Style effects
+(`lib/theming/effects/style-effect.ts`) give crop/ken-burns/grade ONE shared style object across
+both the `Img` and `OffthreadVideo` branches, closing the pinning gap Task 3.1 had flagged by
+construction. A media-scope effect axis (React context, `MediaEffectsContext`) lets a brand
+registration wrap the actual media element (e.g. PP's `blend`), not just style it. `item.grade` was
+re-expressed as a synthetic style effect evaluated first, with two new editor guards. Both Task 3.2
+and 3.3 each shipped a capability that was **deletable in one line with the whole suite green** on
+first review (`styleEffects={theme.styleEffects}` and the `MediaEffectsContext` provider,
+respectively) — the same class Workstream 1/2 kept finding, now confirmed a structural pattern (see
+"PIN THE WIRING" below).
+
+**Workstream 4 (4.1–4.4) — closing the write-only props.** `anchoredOverlays` now actually renders
+(a real overlay-anchor math module, per-endpoint rounding); the overlay axis (`tokens`,
+`overlayConfig`) reached full parity with the video axis; captions got a real mount, routed through
+Task 4.1's existing dispatcher, with a units bug (composition-relative vs. segment-relative) fixed
+along the way; and **Task 4.4** — added mid-phase, user-mandated, not optional — closed the
+editor-surface debt Task 3.2 admitted it owed (`theme.styleEffects` now has its own catalog
+source). Every task in this workstream had at least one capability that was silently
+undefended end-to-end on first review; every one was fixed and re-pinned by rendering through the
+real composition, not a bare unit test.
+
+**Workstream 5 (5.1) — geometry tokens.** Card pattern/stagger tokens and caption word-fade timing
+now route through the theme rather than hardcoded literals; one genuinely unpinned capability
+(`wordFadeMs` in pop-focus caption mode) was found and fixed in review, alongside a deliberate look
+change (`highlight.wordGap` 0.45em → 0.4em) written up in `phase4-migrations.md` — including that
+**PP does not consume core's `GenericCaptions` at all**, and carries an identical fork of the same
+bug in its own `CaptionStrip.tsx`, which is now a documented migration target.
+
+**Workstream 6 (6.1–6.4) — closing the loop.** 6.1 built the pixel-regression harness (see the gate
+table above and `docs/superpowers/transition-pixel-harness.md`); 6.2 built a conformance example
+registering all six extension axes in one non-core theme, and its own review found the example was
+initially **pinned by nothing** (its test defined a private fixture rather than importing the
+shipped one) — fixed, and the fix is itself now the strongest illustration of "pin the wiring, not
+just the pure function" this phase produced; 6.3 added eight dev-only warnings for silent
+extension-contract gaps (see the invariant below — it cost two fix rounds on the same defect
+class); 6.4 is this task.
+
+**Task R1/R2 — the editor-only transition-remount regression, and what comes after it.** A user
+reported a colour flash / stagger at cuts in the Player mid-run. R1 diagnosed the cause precisely:
+Task 1.3's two-input rewrite renders an item's media at **two different positions** in the React
+tree across the frames a boundary owns (once under the item's own `Sequence`, once under the
+boundary's rebased copy), and React reconciles by tree position, so the element is destroyed and
+recreated twice per boundary — preview-only, because render extracts frames independently of any
+DOM. R1 shipped a **preview-gated** mitigation (hide instead of unmount; premount the rebased copy;
+memoize the transition-node type so it isn't a fresh component on every render) that left **all 300
+pixel goldens and both brand repos byte-identical by construction**. **The pixel harness cannot see
+this defect class at all** — it renders 300 independent stills and never exercises cross-frame
+mount reuse; the dedicated gate is `lib/editor/src/video-track-remount.test.tsx`'s DOM-identity
+test. **User verdict on R1, 2026-07-30: "Yeah, it works better now, still not ideal, but
+acceptable. Schedule follow-up task to make this even better as the final step."** — R1 is
+confirmed working in a real browser, not merely by test. R2 shipped one further, real improvement
+(preview 4 → 3 media elements at an interior cut) and then investigated whether the remaining
+architecture was a hard wall. **It was not, self-inflicted**: `@remotion/transitions`'
+`TransitionSeries` nests both presentations around a shared item rather than relocating it, so a
+single-mount design is possible without reverting the two-input authoring contract Task 1.3 bought
+(arity 2, one progress value, one parameter set — all preserved). That investigation produced
+`docs/superpowers/phase5-single-mount-design.md`, now committed as **Phase 4's successor**: an
+11-task, staged plan, stoppable at every stage, with a **Stage 0** (checkerboard 66→3 elements,
+scanline-glitch 7→3) that needs **no contract change** at all. R2 itself is `DONE_WITH_CONCERNS`,
+accepted as an incremental, real win — the architecture is Phase 5's, by design, not a gap left
+here. **Measured per-kind media-element counts at an interior cut, worth recording because nobody
+would guess them:** `wipe` 2, `fade`/`pixelate`/`fade-to-color` 3, `scanline-glitch` 7,
+**`checkerboard` 66**.
+
+### Two laws added to CONSTRAINTS.md mid-session, and why they earned their place
+
+**PIN THE WIRING, NOT JUST THE PURE FUNCTION.** Recurred **four times** across this phase: Task 3.2
+(`styleEffects={theme.styleEffects}`), Task 3.3 (`applyMediaEffects(video)` → `video`), Task 4.2
+(the overlay `tokens={theme.tokens}` line), and Task 6.2 one level up — its own conformance
+example's ten tests pinned a **private copy** of the fixture rather than the shipped one, so
+deleting the shipped theme/composition files together left every gate green. The mechanism is
+always the same: new tests exercise the pure function in isolation, nothing renders through the
+real composition path, so the prop that *carries* the new capability is free to vanish. The
+counter-measure that actually works: for every capability a task claims to add, name the file:line
+that delivers it (not computes it) and delete *that* line before calling the task done.
+
+**USE `git grep` FROM INSIDE THE REPO.** A text filter manufacturing a false result recurred **six
+times** in this programme, two of them inside `phase4-migrations.md` itself, one reappearing one
+task after that same doc was corrected for exactly it (`grep -vE 'toolkit/'` against a repo named
+`video-toolkit` eats every one of its own hits — anchor to `/toolkit/` or run from inside the repo
+so tracking, not a text filter, does the exclusion). The fifth and sixth occurrences both landed in
+Task 4.2's own migration doc, the same document that had already been corrected for it once.
+
+### The gate-economy policy, and why it exists
+
+Mid-session (2026-07-29, the user: *"it's still going extremely slowly"*), the full gate matrix was
+measured at **~2.5 minutes serially**, and it was being run **three times per task** — implementer,
+first reviewer, re-reviewer — on diffs that could not move most of it. The fix, now in
+`CONSTRAINTS.md`: (1) **conditional gates** — the pixel harness, example typecheck and pytest run
+only if the diff touches a path that can move them, stated with a reason when skipped; (2) **no
+duplicate full runs** — the implementer runs the full matrix once before reporting done, reviewers
+run only what their findings depend on plus one full editor suite; (3) **parallel, not serial** —
+independent gates in one message, several concurrent Bash calls; (4) fix rounds run covering files
+only, with one full suite at the round's end. **The exit gate is unchanged**: the final
+whole-workstream (and now whole-phase) review runs the complete matrix unconditionally, on every
+path, no skips permitted — this is an optimisation of the loop's interior, never its exit, and
+nothing ships on a skipped gate.
+
+### Task 6.3's design invariant, which cost two fix rounds
+
+**THE AUDIT AND THE RENDERER MUST TRAVEL TOGETHER.** Task 6.3's dev-warning audits started as
+siblings of the thing they audited rather than wrapped around it, so any conditional between the
+audit and the real render path (a `Sequence` window excluding the current frame; a wrapper effect
+that conditionally drops its children) could make the audit warn falsely or stay silently blind —
+and because the shared `warnOnce` helper is permanent per key, one false positive on the first
+qualifying frame poisons the warning for the entire session. Round 1 fixed the `Sequence`-window
+case (mount the audit *inside* the item's own window); round 2, found by the same reviewer one
+layer inward, fixed the wrapper-conditional case (mount the audits *inside* `applyEffects`' own
+wrapper, after the real `<Renderer>`, so any conditional above them nulls both the audit and the
+render together). Any future warning that observes "did X happen" rather than "is X wired" needs
+this same placement, checked explicitly, not assumed.
+
+### The `BrandKind` / `BrandLayerItemSchema` contradiction — doc fixed, schema deliberately not
+
+Task 6.2's conformance example found that `lib/theming/types.ts:192-195` documents brand-layer
+kinds as **open**, while `layered-schema.ts:109`'s `BrandLayerItemSchema.kind` is a **closed**
+`z.enum(['watermark','disclaimer'])` — a schema-valid literal reel cannot author a novel
+brand-layer kind, contradicting the doc. **The doc half is fixed** (it no longer claims something
+false). **Widening the enum is deliberately deferred and unowned** — it touches the schema, the
+editor, and both brand repos' revalidation surface, and nobody has picked it up. Say so plainly to
+the next reader rather than letting the "OPEN" doc line send them into a type error with no
+explanation.
+
 ### Carried out of Phase 4
 
-**Not started — read the plan, `docs/superpowers/plans/2026-07-26-phase4-node-contract.md`:**
-
-- **Workstream 3** (3.2–3.4) — effects: one contract, no exceptions. **3.1 is done** and is the
-  merge baseline 3.2 must not break; carry its four deferred minors into the 3.2 brief, notably
-  that the video/`OffthreadVideo` branch is pinned on `filter` **only** (the matrix reads
-  `img[0].style`), and Workstream 3 rebuilds exactly that construction.
-- **Workstream 4** (4.1–4.3) — close the write-only props.
-- **Workstream 5** — tokens cover proportion, not just paint.
-- **6.2–6.4** — conformance example, theme validation + dev warnings, gate documentation.
-  **6.3 has two concrete inputs already:** it must reuse `lib/render/warn-once.ts` rather than
-  duplicate it, and it needs an **eighth** warning — a config-only registration for a
-  **brand-only** kind renders nothing, silently: it declares the kind (so `brandKinds` silences
-  the typo warning) but has no renderer and no core generic beneath, so the boundary is a hard
-  cut. "Declared" ≠ "handled". The fix is 2 lines at `lib/render/video-track.tsx:44`.
-- **The overlapping-boundary fix** — its own task, as argued above.
+**Everything the plan named is done.** What is genuinely carried forward is: the Phase 5
+single-mount design (`docs/superpowers/phase5-single-mount-design.md`, already described above),
+its own R2-follow-up UX tweaks the user has flagged as coming, and the items below.
 
 **Two brand-repo findings from the pin bump that opened this phase** (both repos read-only for
 Phase 4, both bumped to core `9202e79`, both **committed and NOT pushed**):

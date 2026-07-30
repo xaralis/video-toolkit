@@ -9,12 +9,26 @@ cd examples/layered-minimal && npm run typecheck    # tsc --noEmit, then a cover
 **Baseline: 0 errors.** Any error is a regression — there is no pre-existing
 noise to filter out. (Established 2026-07-26, on branch `fix/core-has-remotion`.)
 
-**Nothing runs this automatically.** There is no CI in this repo — `.github/workflows/`
-only builds Docker images, cuts releases, and syncs the Remotion skill from upstream — and no
-root-level script. This gate, `lib/editor`'s `vitest`/`tsc`, and the brand-leak grep are all
-manual; run them yourself before calling render/transitions work done. They're listed together
-in `CLAUDE.md`'s "Quality Gates" section and `docs/superpowers/HANDOFF.md`'s "Working
-conventions established".
+**Nothing runs this automatically, and that is deliberate — not an oversight.** There is no CI in
+this repo — `.github/workflows/` only builds Docker images, cuts releases, and syncs the Remotion
+skill from upstream — and no root-level script. Phase 4 considered wiring these gates into CI and
+chose not to: the full matrix (this gate, `lib/editor`'s `vitest`/`tsc`, the brand-leak grep, the
+`it.fails` guard, `pytest test_sync_template.py`, and the pixel harness below) runs in roughly
+2.5 minutes serially, and the per-task workflow that makes rapid iteration possible depends on
+running only the subset a given diff can actually move — a judgement call, not something CI can
+make for you without either running everything every time (defeating the point) or reimplementing
+the same conditional logic as pipeline config. This gate, `lib/editor`'s `vitest`/`tsc`, the
+brand-leak grep, and **the pixel harness** (`docs/superpowers/transition-pixel-harness.md`) are all
+manual; run them yourself before calling render/transitions work done. They're listed together in
+`CLAUDE.md`'s "Quality Gates" section and `docs/superpowers/HANDOFF.md`'s "Working conventions
+established".
+
+**This gate and the pixel harness are complementary, not overlapping.** This one asks "does
+`lib/render`/`lib/transitions` type-check through the code path that actually renders them"; the
+harness asks "does a rendered frame match its committed golden, pixel for pixel". A change can
+break either without the other noticing — a type-safe transition can still render the wrong
+picture, and a pixel-identical render can still be typed unsafely if nothing imports the changed
+file. Run both.
 
 ## Why this gate exists
 
