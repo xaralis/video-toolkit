@@ -137,7 +137,17 @@ const TrackCaptionsOverlay: React.FC<{ item: OverlayItem; theme: CompositionThem
  *  simply never runs — it cannot warn about a frame nothing was asked to draw
  *  on. When the Sequence is open, the ordering guarantee above still holds:
  *  this component is a LATER sibling of `<Renderer>` in the same array, so its
- *  body runs only after the Renderer's (and everything it nests) already has. */
+ *  body runs only after the Renderer's (and everything it nests) already has.
+ *
+ *  REVIEW ROUND 2, RESIDUAL ON CRITICAL 1 — the SAME invariant has a second
+ *  conditional to travel with: a WRAPPER-axis effect (`applyEffects`, one
+ *  level further out) is free to return something OTHER than `{children}` on
+ *  some frames (a plate instead of the media, say), and this component used
+ *  to be mounted as a sibling of the WHOLE effect-wrapped tree, i.e. OUTSIDE
+ *  that conditional. `renderVideoItemNode` now mounts it as a later sibling of
+ *  `<Renderer>` itself, BEFORE `applyEffects` ever sees either of them — so a
+ *  wrapper effect that drops its children drops the audit too, exactly as a
+ *  closed `<Sequence>` does. */
 const ItemConsumptionAudit: React.FC<{ get: () => boolean; warn: () => void }> = ({ get, warn }) => {
   if (!get()) warn();
   return null;
@@ -250,77 +260,96 @@ export function renderVideoItemNode(
   // "this item's Sequence just was not open this frame").
   const consumed = { anchored: false, media: false };
 
+  const rendererNode = (
+    <Renderer
+      item={item}
+      handles={handles}
+      config={videoConfig(theme, item.kind)}
+      anchoredOverlays={anchoredOverlays}
+      renderAnchoredOverlay={
+        extras.renderAnchoredOverlay
+          ? (overlayItem: OverlayItem) => {
+              consumed.anchored = true;
+              return extras.renderAnchoredOverlay!(overlayItem);
+            }
+          : undefined
+      }
+      boundAudio={extras.boundAudio}
+      // The theme's look constants for core's GENERIC renderers (tokens.ts).
+      // Threaded here because this is where the theme lives — VideoRenderProps
+      // still carries no CompositionTheme, only this one narrow typed field.
+      tokens={theme.tokens}
+      // Same narrow threading for the media-path rule: the brand's wholesale
+      // override, or `undefined` → the renderer uses core's resolveMediaSource.
+      resolveMediaSource={theme.resolveMediaSource}
+      // Same narrow threading for the STYLE-effect registry (Phase 4 Task
+      // 3.2) — lets SegmentMedia resolve a brand's own `ken-burns` (or any
+      // other style-effect type) without holding the whole theme.
+      styleEffects={theme.styleEffects}
+    />
+  );
+
+  // Review round 2, IMPORTANT (residual on Critical 1, one layer inward) — the
+  // audits must be mounted INSIDE `applyEffects`' wrapping, as later siblings
+  // of `rendererNode` itself, not appended after `applyEffects` has already
+  // run. `applyEffects` wraps the WHOLE of `media` in every WRAPPER-axis
+  // effect the item authors, and a wrapper effect is free to return something
+  // OTHER than `{children}` on some frames (a plate instead of the media, say)
+  // — exactly the same shape as a closed `<Sequence>`: a conditional sits
+  // BETWEEN the audit and the renderer it audits. Mounting the audits as
+  // later siblings of `rendererNode`, before `applyEffects` ever sees them,
+  // means that conditional now sits ABOVE both — so it nulls the audit
+  // exactly when it nulls the renderer, restoring the "travel together"
+  // invariant Critical 1 established for Sequence windowing and extending it
+  // to wrapper-effect conditionals too.
+  //
+  // Zero-case parity: when neither axis applies, `audited` is `rendererNode`
+  // itself — no Fragment, no extra children — so `media`/`withEffects` below
+  // are exactly what this function built before Task 6.3 ever added an axis.
+  const audited =
+    anchoredOverlays.length === 0 && mediaEffects.length === 0 ? (
+      rendererNode
+    ) : (
+      <>
+        {rendererNode}
+        {anchoredOverlays.length > 0 && (
+          <ItemConsumptionAudit
+            get={() => consumed.anchored}
+            warn={() =>
+              warnOnce(`anchored-overlay-unconsumed:${item.id}`, () =>
+                `[video-toolkit] Video item "${item.id}" was handed one or more anchored overlays, but its ` +
+                'resolved renderer never called `renderAnchoredOverlay` for any of them. If this renderer ' +
+                'draws them itself through its own dispatch (bypassing `renderAnchoredOverlay`), core cannot ' +
+                'tell that apart from a renderer that drops them — call `renderAnchoredOverlay(item)` too, so ' +
+                'this warning can tell the difference. (Warning only; nothing is blocked, and this is reported ' +
+                'once per item.)')
+            }
+          />
+        )}
+        {mediaEffects.length > 0 && (
+          <ItemConsumptionAudit
+            get={() => consumed.media}
+            warn={() =>
+              warnOnce(`media-effects-unconsumed:${item.id}`, () =>
+                `[video-toolkit] Video item "${item.id}" has one or more media-scope ("scope: 'media'") effects, ` +
+                'but nothing in its resolved renderer ever called `useMediaEffects()` — the effect(s) never ' +
+                'applied. A renderer that owns a media element must call `useMediaEffects()` (or use ' +
+                '`SegmentMedia`, which already does) and wrap that element with the resolved entries. ' +
+                '(Warning only; nothing is blocked, and this is reported once per item.)')
+            }
+          />
+        )}
+      </>
+    );
+
   const media = (
     <MediaEffectsConsumptionContext.Provider value={() => { consumed.media = true; }}>
       <MediaEffectsContext.Provider value={mediaEffects}>
-        <Renderer
-          item={item}
-          handles={handles}
-          config={videoConfig(theme, item.kind)}
-          anchoredOverlays={anchoredOverlays}
-          renderAnchoredOverlay={
-            extras.renderAnchoredOverlay
-              ? (overlayItem: OverlayItem) => {
-                  consumed.anchored = true;
-                  return extras.renderAnchoredOverlay!(overlayItem);
-                }
-              : undefined
-          }
-          boundAudio={extras.boundAudio}
-          // The theme's look constants for core's GENERIC renderers (tokens.ts).
-          // Threaded here because this is where the theme lives — VideoRenderProps
-          // still carries no CompositionTheme, only this one narrow typed field.
-          tokens={theme.tokens}
-          // Same narrow threading for the media-path rule: the brand's wholesale
-          // override, or `undefined` → the renderer uses core's resolveMediaSource.
-          resolveMediaSource={theme.resolveMediaSource}
-          // Same narrow threading for the STYLE-effect registry (Phase 4 Task
-          // 3.2) — lets SegmentMedia resolve a brand's own `ken-burns` (or any
-          // other style-effect type) without holding the whole theme.
-          styleEffects={theme.styleEffects}
-        />
+        {audited}
       </MediaEffectsContext.Provider>
     </MediaEffectsConsumptionContext.Provider>
   );
-  const withEffects = applyEffects(theme, item, handles, media);
-
-  // Zero-case parity: an item with neither an anchored overlay nor a
-  // media-scope effect returns `withEffects` UNCHANGED — no Fragment, no new
-  // allocation — exactly what this function returned before Task 6.3, which
-  // is every item in every reel that uses neither axis.
-  if (anchoredOverlays.length === 0 && mediaEffects.length === 0) return withEffects;
-  return (
-    <>
-      {withEffects}
-      {anchoredOverlays.length > 0 && (
-        <ItemConsumptionAudit
-          get={() => consumed.anchored}
-          warn={() =>
-            warnOnce(`anchored-overlay-unconsumed:${item.id}`, () =>
-              `[video-toolkit] Video item "${item.id}" was handed one or more anchored overlays, but its ` +
-              'resolved renderer never called `renderAnchoredOverlay` for any of them. If this renderer ' +
-              'draws them itself through its own dispatch (bypassing `renderAnchoredOverlay`), core cannot ' +
-              'tell that apart from a renderer that drops them — call `renderAnchoredOverlay(item)` too, so ' +
-              'this warning can tell the difference. (Warning only; nothing is blocked, and this is reported ' +
-              'once per item.)')
-          }
-        />
-      )}
-      {mediaEffects.length > 0 && (
-        <ItemConsumptionAudit
-          get={() => consumed.media}
-          warn={() =>
-            warnOnce(`media-effects-unconsumed:${item.id}`, () =>
-              `[video-toolkit] Video item "${item.id}" has one or more media-scope ("scope: 'media'") effects, ` +
-              'but nothing in its resolved renderer ever called `useMediaEffects()` — the effect(s) never ' +
-              'applied. A renderer that owns a media element must call `useMediaEffects()` (or use ' +
-              '`SegmentMedia`, which already does) and wrap that element with the resolved entries. ' +
-              '(Warning only; nothing is blocked, and this is reported once per item.)')
-          }
-        />
-      )}
-    </>
-  );
+  return applyEffects(theme, item, handles, media);
 }
 
 export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: CompositionTheme }> = ({ reel, theme }) => {

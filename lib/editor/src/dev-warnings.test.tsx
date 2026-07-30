@@ -28,6 +28,16 @@ import { resetWarnOnce } from '@video-toolkit/lib/render/warn-once';
 // describes below structurally invisible to this file's own suite. Fixed: a
 // mutable `clock` (the same hoisted-object pattern `transition-registry.test.tsx`
 // already uses) and a `Sequence` mock that actually honours the window.
+//
+// REVIEW ROUND 2, RECORDED NOT FIXED — this mock does NOT rebase
+// `useCurrentFrame()` for a mounted Sequence's subtree the way real Remotion
+// does (real Remotion subtracts `from`, so nested content sees a LOCAL frame
+// number). Harmless for every warning pinned in this file — the
+// anchored-overlay and media-effects pings both fire at element-creation /
+// hook-call time, never from a frame-derived calculation — but it means the
+// specific frame NUMBERS asserted here are not what the same configuration
+// would see inside real Remotion. Trust "inside vs. outside this window",
+// not the literal numbers, if extending this file.
 const clock = vi.hoisted(() => ({ frame: 0 }));
 
 vi.mock('remotion', async () => {
@@ -427,6 +437,69 @@ describe('warning 7 — a media-scope effect delivered to a renderer that never 
     render(<LayeredReelComposition reel={reelWith([multiClip])} theme={theme} />);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0][0])).toContain('"v-multi"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review round 2, RESIDUAL ON CRITICAL 1 — a WRAPPER-axis effect (scope:
+// 'clip', the default — applied by `applyEffects`, one level OUTSIDE the
+// media Providers) that conditionally returns something OTHER than
+// `{children}` is the SAME class of conditional as a closed `<Sequence>`: it
+// sits between the audit and the renderer it audits, unless the audit is
+// mounted INSIDE that wrapping too.
+// ---------------------------------------------------------------------------
+describe("review round 2 — a wrapper effect that drops `children` must not false-warn the audit beneath it", () => {
+  // Always drops — deterministic, so this test cannot pass by landing on the
+  // "renders children" branch of a frame-conditional by accident.
+  const DropsChildren: React.FC<{ children?: React.ReactNode }> = () => <div data-testid="plate" />;
+
+  it('no false warning: a CORRECTLY-consuming media renderer (core SegmentMedia) wrapped by an effect that drops it entirely', () => {
+    const theme: CompositionTheme = {
+      ...bareTheme,
+      effects: {
+        ghost: { renderer: () => <div />, scope: 'media' },
+        // scope: 'clip' (default, unset) — applied by `applyEffects`, wrapping
+        // the WHOLE item output (Renderer + audits) from OUTSIDE.
+        blink: { renderer: DropsChildren },
+      },
+    };
+    // 'clip' is left UNREGISTERED, so this resolves to core's own
+    // SegmentMedia — which DOES call `useMediaEffects()` unconditionally, a
+    // genuinely correct renderer. If `blink` drops it, nothing rendered this
+    // frame at all, so nothing should be audited either.
+    const item: VideoItem = {
+      id: 'v-blink', kind: 'clip', startMs: 0, endMs: 1000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 1000,
+      effects: [{ type: 'ghost' }, { type: 'blink' }],
+    };
+    const { container } = render(<LayeredReelComposition reel={reelWith([item])} theme={theme} />);
+    // Confirms `blink` really did drop the media (this test cannot pass
+    // vacuously because nothing in the tree ever touched the media at all).
+    expect(container.querySelector('[data-testid="plate"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="core-video"]')).toBeNull();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('but STILL warns when children are NOT dropped and the renderer beneath genuinely never consumes', () => {
+    const IgnorantClip: React.FC<VideoRenderProps> = ({ item: it2 }) => <div data-testid={`node-${it2.id}`} />;
+    const PassThrough: React.FC<{ children?: React.ReactNode }> = ({ children }) => (
+      // eslint-disable-next-line react/jsx-no-useless-fragment
+      <>{children}</>
+    );
+    const theme: CompositionTheme = {
+      ...bareTheme,
+      video: { clip: { renderer: IgnorantClip } },
+      effects: {
+        ghost: { renderer: () => <div />, scope: 'media' },
+        blink: { renderer: PassThrough },
+      },
+    };
+    const item: VideoItem = {
+      id: 'v-blink-2', kind: 'clip', startMs: 0, endMs: 1000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 1000,
+      effects: [{ type: 'ghost' }, { type: 'blink' }],
+    };
+    render(<LayeredReelComposition reel={reelWith([item])} theme={theme} />);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('"v-blink-2"');
   });
 });
 
