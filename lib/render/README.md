@@ -54,10 +54,11 @@ programme's own review told reviewers more than once — overstates the guarante
 specifically: it was never gated OUT of the render path, because it never entered it in a way
 that could change output in the first place. The reasoning that makes it safe is an ARGUMENT, not
 a structural guarantee: every current transition presentation's own per-mount state is limited to
-THREE unseeded random SVG element `id`s — `burn.tsx` and `glitch.tsx` (`useState(() =>
-String(random(null))...)`, one mask/filter id each), and, since Phase 5 Task 0.1,
-`checkerboard.tsx`'s default `squareAnimation: 'fade'` path (same pattern, one mask id, reused
-verbatim from `burn.tsx` rather than a fourth technique) — no presentation holds any OTHER
+FOUR unseeded random SVG element `id`s — `burn.tsx` and `glitch.tsx` (`useState(() =>
+String(random(null))...)`, one mask/filter id each), and, since Phase 5, `checkerboard.tsx`'s
+default `squareAnimation: 'fade'` path (Task 0.1) and `scanline-glitch.tsx` (Task 0.2) — both the
+identical `random(null)`-derived pattern reused verbatim from `burn.tsx`/`glitch.tsx` rather than a
+new technique each time — no presentation holds any OTHER
 `useState` across frames, and none runs a `useEffect`, so handing back a cached node instead of a
 freshly-constructed one changes nothing a render (or a preview, past the R1/R2 fixes) can observe:
 the cached node still re-derives a fresh random id on its own next mount, exactly as an uncached

@@ -690,25 +690,40 @@ describe('the four two-input nodes render what their name promises', () => {
   });
 
   // ---- scanline-glitch ----------------------------------------------------
-  // WAS: never touched opacity and never read `presentationDirection`, so at a
-  // cut the incoming clip was simply THERE from the transition's first frame
-  // and the cut effectively landed half a window early. Its jittered RGB copies
-  // were invisible too, buried under an opaque third `AbsoluteFill`.
-  // IS: an explicit blend — B fades in over A — with the RGB-split copies
-  // ramped by the transition's own peak, so they are visible mid-cut and gone
-  // at both ends.
+  // WAS (Task 2.1): never touched opacity and never read `presentationDirection`,
+  // so at a cut the incoming clip was simply THERE from the transition's first
+  // frame and the cut effectively landed half a window early. Its jittered RGB
+  // copies were invisible too, buried under an opaque third `AbsoluteFill`.
+  // IS (Task 2.1): an explicit blend — B fades in over A — with the RGB-split
+  // copies ramped by the transition's own peak, so they are visible mid-cut and
+  // gone at both ends.
+  // EDITED (Phase 5 Task 0.2): the RGB split used to be two more DOM mounts of
+  // the same `from`/`to` pair (6 media mounts total). It is now a single SVG
+  // filter (`feOffset` → `feColorMatrix` ×3 → `feBlend`) applied once to the
+  // one mounted blend, so there is no DOM div carrying `mixBlendMode: 'screen'`
+  // any more — the "glitch" assertion below now reads the filter's own
+  // alpha-scale primitives instead, and `incoming`/`outgoing` drop from
+  // three mounts to one. See `checkerboard-single-mount.test.tsx`'s sibling
+  // file, `scanline-glitch-single-mount.test.tsx`, for the dedicated wiring
+  // coverage (mount counts, filter application, mutation-tested primitives).
   it('scanline-glitch blends the incoming clip in over the outgoing one and ramps its glitch layers', () => {
     const node = nodeFor({ kind: 'scanline-glitch', frames: 15 });
     const sample = (progress: number) => {
       const { container, unmount } = mountNode(node, progress);
+      // The alpha-scale row of each `feColorMatrix[type="matrix"]` ends
+      // `<peak> 0` — reading it back is how this test observes `peak` without
+      // reaching into module internals.
+      const alphaScales = [...container.querySelectorAll('feColorMatrix[type="matrix"]')].map((el) => {
+        const values = el.getAttribute('values') ?? '';
+        const parts = values.trim().split(/\s+/);
+        return parts[parts.length - 2];
+      });
       const out = {
         progress,
         incoming: [...container.querySelectorAll('[data-testid="b"]')].map(
           (el) => (el.parentElement as HTMLElement).style.opacity,
         ),
-        glitch: [...container.querySelectorAll('div')]
-          .filter((d) => d.style.mixBlendMode === 'screen')
-          .map((d) => d.style.opacity),
+        glitch: alphaScales,
         outgoing: count(container, 'a'),
       };
       unmount();
@@ -716,10 +731,10 @@ describe('the four two-input nodes render what their name promises', () => {
     };
     expect([0, 0.5, 1].map(sample)).toEqual([
       // Progress 0 is the outgoing clip, clean: B fully transparent, both RGB
-      // copies invisible.
-      { progress: 0, incoming: ['0', '0', '0'], glitch: ['0', '0'], outgoing: 3 },
-      { progress: 0.5, incoming: ['0.5', '0.5', '0.5'], glitch: ['1', '1'], outgoing: 3 },
-      { progress: 1, incoming: ['1', '1', '1'], glitch: ['0', '0'], outgoing: 3 },
+      // copies' alpha-scale (peak) at 0.
+      { progress: 0, incoming: ['0'], glitch: ['0', '0'], outgoing: 1 },
+      { progress: 0.5, incoming: ['0.5'], glitch: ['1', '1'], outgoing: 1 },
+      { progress: 1, incoming: ['1'], glitch: ['0', '0'], outgoing: 1 },
     ]);
   });
 });
