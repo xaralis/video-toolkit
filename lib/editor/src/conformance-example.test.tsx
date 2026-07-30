@@ -4,7 +4,7 @@
 // + the new `ConformanceReel` composition in `Root.tsx` are the worked example
 // a new brand copies registrations FROM — see task-6.2-report.md for why each
 // registration is shaped the way it is. This file is what makes that example a
-// PIN rather than decoration: it renders an theme registering all SIX
+// PIN rather than decoration: it renders an theme registering all SEVEN
 // extension axes through the REAL `LayeredReelComposition` (not a stub for any
 // one axis) and asserts, per axis, that the BRAND's registration is what
 // rendered — never core's generic. It then pins the two NEGATIVE rules that
@@ -57,7 +57,13 @@ vi.mock('remotion', async () => {
 });
 
 import { LayeredReelComposition } from '@video-toolkit/lib/render/layered-composition';
-import type { CompositionTheme, EffectRenderer, VideoRenderProps, BrandRenderer } from '@video-toolkit/lib/theming';
+import type {
+  CompositionTheme,
+  EffectRenderer,
+  VideoRenderProps,
+  BrandRenderer,
+  StyleEffectRenderer,
+} from '@video-toolkit/lib/theming';
 import type { LayeredReel, OverlayItem, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 // The SHIPPED fixture theme (fix round 1, Important 1 — see the describe
 // block near the bottom of this file for why this import exists at all).
@@ -70,7 +76,7 @@ import type { LayeredReel, OverlayItem, VideoItem } from '@video-toolkit/lib/ree
 import { conformanceTheme } from '../../../examples/layered-minimal/src/conformance-theme';
 
 // ---------------------------------------------------------------------------
-// The fixture theme: all six axes, non-core markers.
+// The fixture theme: all seven axes, non-core markers.
 // ---------------------------------------------------------------------------
 
 // AXIS 1 — video: a registered kind ('card').
@@ -119,6 +125,15 @@ const ConformanceWipe: React.FC<{ passedProps: { teeth: number }; children: Reac
   </div>
 );
 
+// AXIS 7 — style effect (`theme.styleEffects`, Task 3.2): a pure function of
+// the authored effect entry to a `MediaStyleFragment`, merged onto the media
+// element's OWN style rather than wrapping it (see conformance-theme.tsx's
+// `InkWashStyleEffect` for the shipped equivalent this one mirrors).
+const StyleMarkEffect: StyleEffectRenderer = ({ effect }) => {
+  const strength = (effect as { strength?: number }).strength ?? 1;
+  return { filter: `grayscale(${strength})` };
+};
+
 function makeTheme(): CompositionTheme {
   return {
     accentSlots: [],
@@ -129,6 +144,7 @@ function makeTheme(): CompositionTheme {
       'clip-mark': { renderer: ClipMarkEffect },
       'media-mark': { renderer: MediaMarkEffect, scope: 'media', config: { offsetPx: 12 } },
     },
+    styleEffects: { 'style-mark': { renderer: StyleMarkEffect } },
     brand: { disclaimer: { renderer: BrandDisclaimer } },
     transitions: {
       'conformance-wipe': {
@@ -168,7 +184,14 @@ const photo: VideoItem = {
   // round 1: a photo with no ken-burns/crop leaves `mediaStyle.transform`
   // empty, so the assertion never distinguished mediaStyle arriving from
   // mediaStyle being dropped).
-  effects: [{ type: 'clip-mark' }, { type: 'ken-burns', fromScale: 1.0, toScale: 1.2 }, { type: 'media-mark' }],
+  // AXIS 7 — 'style-mark', a STYLE-axis effect, merges its `filter` onto the
+  // SAME media element ken-burns' own transform lands on.
+  effects: [
+    { type: 'clip-mark' },
+    { type: 'ken-burns', fromScale: 1.0, toScale: 1.2 },
+    { type: 'media-mark' },
+    { type: 'style-mark', strength: 0.6 },
+  ],
 };
 
 const card: VideoItem = { id: 'v-card', kind: 'card', startMs: 3000, endMs: 6000, cardKind: 'claim-plate' };
@@ -210,7 +233,7 @@ function makeReel(video: VideoItem[] = [photo, card], overlays: OverlayItem[] = 
   };
 }
 
-describe('Task 6.2 — conformance example: all six axes, brand wins', () => {
+describe('Task 6.2 — conformance example: all seven axes, brand wins', () => {
   it('AXIS video — a registered kind (card) renders the BRAND renderer, not GenericCard', () => {
     const { getByTestId, container } = render(<LayeredReelComposition reel={makeReel()} theme={makeTheme()} />);
     expect(getByTestId('brand-card')).not.toBeNull();
@@ -242,6 +265,18 @@ describe('Task 6.2 — conformance example: all six axes, brand wins', () => {
     // a correctly-threaded one are indistinguishable (Minor 4, fix round 1).
     expect(echo.style.transform).toContain('scale(');
     expect(getByTestId('core-img').style.transform).toContain('scale(');
+  });
+
+  it("AXIS style effect — 'style-mark' merges its OWN filter onto the media element's style, alongside ken-burns", () => {
+    const { getByTestId } = render(<LayeredReelComposition reel={makeReel()} theme={makeTheme()} />);
+    const img = getByTestId('core-img');
+    // Its own authored `strength` (0.6, off the effect entry itself — a style
+    // effect has no registration-level `config` the way a wrapper effect
+    // does) reached the renderer...
+    expect(img.style.filter).toContain('grayscale(0.6)');
+    // ...composed onto the SAME element ken-burns' own transform lands on,
+    // not a separate wrapper div — a style effect never gets `children`.
+    expect(img.style.transform).toContain('scale(');
   });
 
   it('AXIS brand-layer — a registered kind renders the BRAND renderer, not GenericDisclaimer', () => {
@@ -310,7 +345,13 @@ describe('Task 6.2 fix round 1 — the SHIPPED conformance-theme.tsx, not a priv
     startMs: 0,
     endMs: 3000,
     source: 'dawn.jpg', // bare — resolved only by the theme's OWN resolveMediaSource
-    effects: [{ type: 'glitch-frame' }, { type: 'ken-burns', fromScale: 1.0, toScale: 1.2 }, { type: 'ghost-echo' }],
+    // AXIS 7 — 'ink-wash', the shipped theme's STYLE-axis effect.
+    effects: [
+      { type: 'glitch-frame' },
+      { type: 'ken-burns', fromScale: 1.0, toScale: 1.2 },
+      { type: 'ghost-echo' },
+      { type: 'ink-wash', strength: 0.7 },
+    ],
   };
   const realCard: VideoItem = { id: 'v-card', kind: 'card', startMs: 3000, endMs: 6000, cardKind: 'claim-plate', cardProps: { lines: ['a', 'b'] } };
   const realBadge: OverlayItem = {
@@ -356,6 +397,22 @@ describe('Task 6.2 fix round 1 — the SHIPPED conformance-theme.tsx, not a priv
     // reading `config.offset` instead (Minor 4's failure scenario) would fall
     // through to the default and render `18px`, not `24px`.
     expect(echo!.style.transform).toContain('translateX(24px)');
+  });
+
+  it("style effect axis — InkWashStyleEffect merges its OWN filter onto the media element for the shipped theme", () => {
+    const { getAllByTestId } = render(
+      <LayeredReelComposition reel={makeRealReel([realPhoto, realCard])} theme={conformanceTheme} />,
+    );
+    // getAllByTestId (not getByTestId): GhostEchoEffect re-mounts `children`
+    // (the media element) a second time — see Minor 7 — so the merged style
+    // legitimately appears twice; both must carry it.
+    for (const img of getAllByTestId('core-img')) {
+      // Its OWN `strength` (0.7, authored on the item's effect entry, read
+      // directly rather than off a registration `config`) reached the
+      // renderer — a prop-name typo (e.g. reading `.amount`) would fall
+      // through to the default (`?? 1`) and render `grayscale(1)` instead.
+      expect(img.style.filter).toContain('grayscale(0.7)');
+    }
   });
 
   it('brand-layer axis — ConformanceSticker (not GenericDisclaimer) renders for the shipped theme', () => {

@@ -2,11 +2,12 @@
 //
 // `theme.tsx` (MinimalReel's own theme) shows a brand that registers almost
 // nothing: one overlay renderer, some tokens. That is the common case, but it
-// proves nothing about the SIX extension axes Phase 3/4 built — nothing here
-// exercises a registered video kind, a non-text overlay, an anchored overlay,
-// a clip- or media-scope effect, a brand-layer kind, a brand-authored
-// transition, or a media-source override. This theme registers all six, each
-// with a look UNMISTAKABLY different from the core generic it replaces —
+// proves nothing about the SEVEN extension axes Phase 3/4 built — nothing
+// here exercises a registered video kind, a non-text overlay, an anchored
+// overlay, a clip- or media-scope effect, a STYLE-axis effect
+// (`theme.styleEffects`, Task 3.2), a brand-layer kind, a brand-authored
+// transition, or a media-source override. This theme registers all seven,
+// each with a look UNMISTAKABLY different from the core generic it replaces —
 // magenta-on-ink, monospace, hard angles — so a test asserting "the brand
 // renderer won" cannot be satisfied by a brand renderer that happens to look
 // like core's own.
@@ -20,6 +21,7 @@ import type {
   VideoRenderProps,
   EffectRenderer,
   BrandRenderer,
+  StyleEffectRenderer,
 } from '@video-toolkit/lib/theming';
 import { resolveMediaSource as coreResolveMediaSource } from '@video-toolkit/lib/theming';
 import type { OverlayItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
@@ -200,6 +202,24 @@ const ShardCut: React.FC<{
   );
 };
 
+// ---------------------------------------------------------------------------
+// AXIS 7 — style effect (`theme.styleEffects`, Task 3.2). Unlike a WRAPPER
+// effect (axis 3 above), a style effect never sees `children` — it is a pure
+// function of the item/frame to a `MediaStyleFragment` that gets MERGED onto
+// the media element's own style, the same element the crop/ken-burns/grade
+// fragments already write onto (see lib/theming/effects/style-effect.ts). An
+// `ink-wash` desaturation is a legible, unmistakably non-core look for this:
+// core's own two style types (`ken-burns`, `grade`) move/tint the image, they
+// never flatten it to grayscale.
+// ---------------------------------------------------------------------------
+const InkWashStyleEffect: StyleEffectRenderer = ({ effect }) => {
+  // Reads straight off the authored effect entry — a style effect has no
+  // registration-level `config` the way a wrapper effect does (there is no
+  // `EffectRenderProps.config` equivalent here); see StyleEffectRenderProps.
+  const strength = (effect as { strength?: number }).strength ?? 1;
+  return { filter: `grayscale(${strength}) contrast(1.35)` };
+};
+
 export const conformanceTheme: CompositionTheme = {
   accentSlots: [{ key: 'accent', label: 'Accent', color: MAGENTA }],
   background: INK,
@@ -227,6 +247,10 @@ export const conformanceTheme: CompositionTheme = {
 
   // AXIS 4 — brand-layer. 'disclaimer' — see the CONTRACT FINDING above.
   brand: { disclaimer: { renderer: ConformanceSticker } },
+
+  // AXIS 7 — style effect. Composes onto the SAME media element ken-burns'
+  // own style fragment lands on — see `InkWashStyleEffect` above.
+  styleEffects: { 'ink-wash': { renderer: InkWashStyleEffect } },
 
   // AXIS 5 — transition, WITH params (the schema-driven inspector path).
   transitions: {

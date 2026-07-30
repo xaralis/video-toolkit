@@ -179,8 +179,9 @@ export const RemotionRoot: React.FC = () => (
   <TransitionProbeCompositions />
   {/* Phase 4 Task 6.2 — the CONFORMANCE fixture: a SEPARATE composition, its
       own theme (./conformance-theme.tsx) and its own reel literal, exercising
-      all six extension axes with a deliberately non-core look. Additive only
-      — MinimalReel above and the pixel harness's own inputs are untouched. */}
+      all seven extension axes with a deliberately non-core look. Additive
+      only — MinimalReel above and the pixel harness's own inputs are
+      untouched. */}
   <Composition
     {...layeredCompositionProps({
       id: 'ConformanceReel',
@@ -209,8 +210,10 @@ export const RemotionRoot: React.FC = () => (
               source: 'dawn.jpg',
               // AXIS 3 — both effect scopes on the same item: 'glitch-frame'
               // (scope: 'clip', wraps the whole item) and 'ghost-echo'
-              // (scope: 'media', builds a second media element).
-              effects: [{ type: 'glitch-frame' }, { type: 'ghost-echo' }],
+              // (scope: 'media', builds a second media element). AXIS 7 —
+              // 'ink-wash', a STYLE-axis effect merged onto the same media
+              // element's style ken-burns/grade would compose onto.
+              effects: [{ type: 'glitch-frame' }, { type: 'ghost-echo' }, { type: 'ink-wash', strength: 0.7 }],
               // AXIS 5 — the brand-authored transition kind, WITH its
               // registered param ('teeth') authored to a non-default value.
               transitionOut: { kind: 'shard-cut', frames: 18, teeth: 9 },
@@ -223,7 +226,7 @@ export const RemotionRoot: React.FC = () => (
               // AXIS 1 — a registered video kind: this renders through
               // ConformanceCard, never core's GenericCard.
               cardKind: 'claim-plate',
-              cardProps: { lines: ['Six axes.', 'One theme.'] },
+              cardProps: { lines: ['Seven axes.', 'One theme.'] },
             },
           ],
           audio: [],
