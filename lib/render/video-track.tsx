@@ -25,6 +25,38 @@
 // inside a transition sees exactly the frame numbers it would have seen in its
 // own Sequence — and a clip whose range has ENDED renders nothing, which is how
 // the last frame of a cut still shows only the incoming clip.
+//
+// WHY THE RE-BASED COPIES CANNOT BE ELIMINATED (Task R2, recorded so the next
+// reader does not re-derive it). React reconciles by POSITION, so an item whose
+// content is rendered inside the boundary for some frames and under its own
+// Sequence for the rest has two instances, not one moved instance — that is the
+// remount Task R1 mitigated. The obvious wish is "mount each item's media once
+// and let the boundary composite the mount that already exists". It is not
+// reachable, and the obstruction is the node CONTRACT, not this file:
+//
+//   1. A `TransitionNode` RENDERS its two inputs — it receives them as
+//      `React.ReactNode` children and decides where, and how many times, they
+//      appear (`wipe` swaps `from`/`to` behind its sheet; `checkerboard` clips
+//      `to` into gridSize² cells over an intact `from`). "Composite the mount
+//      that already exists" would mean the node styles a subtree it does not
+//      own, which cannot express either of those two. Giving that up is giving
+//      up exactly what Task 1.3 bought.
+//   2. A node is therefore mounted only for its window. It cannot be mounted
+//      for an item's whole life instead: `checkerboard` at progress 1 renders
+//      `to` 64 times, so an always-mounted node would cost 64 permanent copies
+//      of every clip, and switching to a pass-through at progress 1 is itself a
+//      tree-position change — i.e. the same remount, relocated.
+//   3. An item is the `to` of the boundary before it and the `from` of the
+//      boundary after it, so it cannot be a CHILD of the boundary that
+//      composites it either: React gives a subtree one parent.
+//
+// So an input that outlives its boundary window is necessarily rendered in two
+// places, and the floor is THREE media elements around an interior footage cut
+// in preview: the boundary's two copies, plus the INCOMING clip's own copy
+// (kept warm by Fix 1 because it is shown again the frame the window closes).
+// The OUTGOING clip's own copy is the fourth, and it is pure waste — its blank
+// window runs to the end of its Sequence, so it is never shown again. Task R2
+// releases it; see `ItemBody`'s `drawnThrough`.
 import React from 'react';
 import { Sequence, useCurrentFrame } from 'remotion';
 import { AtCutTransition, transitionNodeFor } from './at-cut-transitions';
@@ -84,8 +116,44 @@ type Range = readonly [number, number];
  *  PREVIEW ONLY (outside preview there is no wrapper at all) — precisely the
  *  preview/render divergence this whole gate exists to avoid. Filling the
  *  wrapper explicitly removes that dependency on every current renderer's
- *  shape. */
-const ItemBody: React.FC<{ blank: readonly Range[]; children: React.ReactNode }> = ({ blank, children }) => {
+ *  shape.
+ *
+ *  TASK R2 — `drawnThrough`: HIDING IS ONLY WORTH IT IF THE ITEM COMES BACK.
+ *  Fix 1 keeps a blanked item's media alive so that when the boundary hands
+ *  the frames back, the element is already warm. At the item's LAST boundary
+ *  there are no frames to hand back: `computeVideoLayout` gives the outgoing
+ *  side of a cut exactly `outHalf` frames of handle and the boundary claims
+ *  all of them, so an item's final blank window runs to the end of its own
+ *  Sequence (verified: a 3s clip with a 20-frame centred `fade` out has
+ *  `seqDuration` 100 and a blank range of [80, 100] — see
+ *  `video-track-remount.test.tsx`'s geometry). Keeping THAT copy mounted buys
+ *  nothing and costs a second `<video>` decoding the same frames of the same
+ *  file as the boundary's own copy, at the one moment in the reel when the
+ *  decoder is busiest. `drawnThrough` is the item's last frame that is NOT
+ *  claimed by any boundary (-1 if a boundary claims all of them), so a blanked
+ *  frame past it is provably never followed by a drawn one and the media is
+ *  released instead of hidden.
+ *
+ *  This is where the four media elements alive around a footage cut become
+ *  three, and three is the FLOOR under Task 1.3's contract (a node owns its
+ *  two inputs as children it renders, so an input that outlives the boundary
+ *  must exist both inside the node and in its own Sequence — see this module's
+ *  docblock).
+ *
+ *  The div→null step happens at most once per mount and is never reversed
+ *  during forward playback, so it is not the wrapper-type toggle the paragraph
+ *  above warns about. A BACKWARD scrub can reverse it, remounting a cold copy
+ *  where Fix 1 alone would have had a hidden warm one — accepted deliberately:
+ *  a backward scrub across a cut forces a seek on that element either way, and
+ *  during a scrub from any distance the "warm" copy was not continuously
+ *  mounted to begin with. */
+const ItemBody: React.FC<{
+  blank: readonly Range[];
+  /** The last item-relative frame this item is drawn on itself, or -1 if a
+   *  boundary claims every frame it has. */
+  drawnThrough: number;
+  children: React.ReactNode;
+}> = ({ blank, drawnThrough, children }) => {
   const frame = useCurrentFrame();
   const blanked = blank.some(([a, b]) => frame >= a && frame <= b);
   if (!isPreviewEnvironment()) {
@@ -93,6 +161,7 @@ const ItemBody: React.FC<{ blank: readonly Range[]; children: React.ReactNode }>
     // eslint-disable-next-line react/jsx-no-useless-fragment
     return <>{children}</>;
   }
+  if (blanked && frame > drawnThrough) return null;
   return (
     <div style={blanked ? { display: 'none' } : { position: 'absolute', inset: 0 }}>
       {children}
@@ -292,6 +361,28 @@ export function buildVideoNodes(
     }
   }
 
+  // TASK R2 — the last frame each item DRAWS ITSELF on, i.e. the last frame of
+  // its own Sequence that no boundary has claimed (-1 when every frame it has
+  // is claimed). `ItemBody` needs it to tell "hidden, and coming back" from
+  // "hidden, and never coming back" — see its docblock for why the difference
+  // is a whole media element per cut.
+  //
+  // Walked by JUMPING to just before each covering range rather than
+  // decrementing frame by frame: this runs on every frame of every render (via
+  // buildVideoNodes), and a long item wholly claimed by boundaries would
+  // otherwise cost one step per frame of its duration. Ranges are few (one per
+  // boundary touching the item), so this is O(ranges²) at worst.
+  const lastDrawnFrame = (i: number): number => {
+    const ranges = blanked.get(i) ?? [];
+    let last = layout[i].seqDuration - 1;
+    for (;;) {
+      const covering = ranges.find(([lo, hi]) => last >= lo && last <= hi);
+      if (!covering) return last;
+      last = covering[0] - 1;
+      if (last < 0) return -1;
+    }
+  };
+
   /** An item's content re-based into the boundary's coordinates. `layout="none"`
    *  because this Sequence exists only to carry a time origin and a range — it
    *  is not a layer, and adding one would change what a transition composites
@@ -312,7 +403,7 @@ export function buildVideoNodes(
       const entry = layout[i];
       nodes.push(
         <Sequence key={item.id} from={entry.seqFrom} durationInFrames={entry.seqDuration} name={item.id}>
-          <ItemBody blank={blanked.get(i) ?? []}>{content(i)}</ItemBody>
+          <ItemBody blank={blanked.get(i) ?? []} drawnThrough={lastDrawnFrame(i)}>{content(i)}</ItemBody>
         </Sequence>,
       );
     }

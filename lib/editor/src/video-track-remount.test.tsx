@@ -177,6 +177,54 @@ describe('preview gate — the render path takes neither fix (parity statement)'
   });
 });
 
+// TASK R2 — THE RESIDUAL COST, PINNED. R1 removed every remount of a SHOWN
+// media element, but left up to FOUR alive around one cut in preview (item a's
+// own copy, item b's own copy, and the boundary's two re-based copies), two of
+// them decoding the same frames of the same file at the same time. Nothing
+// asserted that count, so nothing could tell an improvement from a regression.
+//
+// Three is the FLOOR under Task 1.3's contract, and the argument is structural,
+// not empirical: a node RENDERS its two inputs as children, so an input that
+// outlives the boundary window has to exist inside the node AND in its own
+// Sequence. The one copy that is neither of those — the OUTGOING clip's own
+// copy, hidden for a window that runs to the end of its Sequence and therefore
+// never shown again — is what Task R2 releases.
+describe('media elements alive around a footage cut (Task R2)', () => {
+  it('preview: exactly three — the incoming clip keeps its own copy, the outgoing clip does not', () => {
+    clock.preview = true;
+    clock.frame = 85; // mid-window
+    const { container } = render(tree());
+    // a: only the boundary's re-based copy. Its own copy is blanked from frame
+    // 80 to the end of its Sequence (frame 99), so it can never be shown again.
+    expect(container.querySelectorAll('[data-testid="vid-a"]').length).toBe(1);
+    // b: its own copy (hidden, warm, and it IS shown again at frame 101) plus
+    // the boundary's re-based copy.
+    expect(container.querySelectorAll('[data-testid="vid-b"]').length).toBe(2);
+    expect(container.querySelectorAll('video').length).toBe(3);
+  });
+
+  it('render path: exactly two — the boundary\'s own two copies, unchanged since Task 1.3', () => {
+    clock.preview = false;
+    clock.frame = 85;
+    const { container } = render(tree());
+    expect(container.querySelectorAll('[data-testid="vid-a"]').length).toBe(1);
+    expect(container.querySelectorAll('[data-testid="vid-b"]').length).toBe(1);
+    expect(container.querySelectorAll('video').length).toBe(2);
+  });
+
+  it('releases the outgoing clip\'s own copy on the FIRST frame the boundary claims, not one before it', () => {
+    clock.preview = true;
+    clock.frame = 79; // a's last unclaimed frame — it is still DRAWN here
+    const { container, rerender } = render(tree());
+    // a's own (visible) copy + the boundary's premounted re-based one.
+    expect(container.querySelectorAll('[data-testid="vid-a"]').length).toBe(2);
+
+    clock.frame = 80; // the boundary's first frame
+    rerender(tree());
+    expect(container.querySelectorAll('[data-testid="vid-a"]').length).toBe(1);
+  });
+});
+
 describe('the amplifier — a boundary keeps its node identity across an unrelated re-render (Fix 3)', () => {
   it('does not remount the boundary contents when buildVideoNodes is called again with unchanged config', () => {
     clock.frame = 85; // inside the window, independent of the preview gate
