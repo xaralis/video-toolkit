@@ -22,6 +22,18 @@
  * Task 2.2 gives it one: a missing input IS the composition background
  * (`edgeInput`), so the grid checkers OUT to the brand's background exactly as
  * it checkers IN from it at the leading edge. No null case survives here.
+ *
+ * SINGLE MOUNT FOR THE DEFAULT PATH (Phase 5 Task 0.1). The default
+ * `squareAnimation: 'fade'` used to mount `to` once PER CELL — `gridSize²`
+ * times, 64 at the default 8×8 grid, by far the worst mount count in the
+ * catalog. `'fade'`'s only per-cell effect is alpha with an identity
+ * transform, which an SVG `<mask>` expresses directly: one mounted `to`,
+ * masked by a `<mask>` holding `gridSize²` `<rect>`s whose `fillOpacity`
+ * carries the same per-cell eased progress the cell path always computed.
+ * `'scale'` and `'flip'` apply a GEOMETRIC transform per cell (not just
+ * alpha), which a mask cannot reproduce — they keep the original clipped-copy
+ * path unchanged. The per-cell ordering/stagger/easing arithmetic is shared
+ * between both paths via `cellEasedProgress` below, so they cannot drift.
  */
 import React, { useMemo } from 'react';
 import { AbsoluteFill, interpolate, Easing } from 'remotion';
@@ -128,6 +140,27 @@ const generateOrder = (
 // between frames of one transition.
 const SEED = 12345;
 
+/** ONE cell's eased progress — the shared arithmetic both the mask path
+ *  (`fillOpacity`) and the clipped-copy path (`opacity`/`scale`/`rotateY`)
+ *  derive their per-cell value from. Extracted so the two paths cannot drift:
+ *  a stagger or easing change here reaches both at once. Depends only on the
+ *  cell's own `order` (its position in the reveal sequence), not its row/col —
+ *  those already fed into computing `order`. */
+function cellEasedProgress(
+  order: number,
+  progress: number,
+  stagger: number,
+  easing: (t: number) => number,
+): number {
+  const cellStart = order * stagger;
+  const cellEnd = cellStart + (1 - stagger);
+  const cellProgress = interpolate(progress, [cellStart, cellEnd], [0, 1], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+  return easing(cellProgress);
+}
+
 export const checkerboard = (props: CheckerboardProps = {}): TransitionNode => {
   const {
     gridSize = 8,
@@ -137,7 +170,7 @@ export const checkerboard = (props: CheckerboardProps = {}): TransitionNode => {
     easing = Easing.out(Easing.cubic),
   } = props;
 
-  const composite: React.FC<TransitionNodeProps> = ({ from, to, progress, background }) => {
+  const composite: React.FC<TransitionNodeProps> = ({ from, to, progress, background, width, height }) => {
     // Generate grid cells
     const cells = useMemo(() => {
       const result: Array<{
@@ -162,12 +195,79 @@ export const checkerboard = (props: CheckerboardProps = {}): TransitionNode => {
     // Calculate cell size as percentage
     const cellSize = 100 / gridSize;
 
+    // Stable across this instance's whole mounted lifetime (every frame of the
+    // one boundary), unique per instance — two concurrent checkerboards must
+    // not collide. Colons stripped: an id embedded in a CSS `url(#…)` should
+    // not carry them, and React's `useId()` format includes them.
+    const maskId = `checkerboard-mask-${React.useId().replace(/:/g, '')}`;
+
+    // The OUTGOING clip, drawn once and whole, beneath the grid/mask in both
+    // paths below. At the reel's LEADING edge there is none, and it resolves
+    // to the composition background (Task 2.2).
+    const fromLayer = <AbsoluteFill>{edgeInput(from, background)}</AbsoluteFill>;
+
+    if (squareAnimation === 'fade') {
+      // SINGLE MOUNT: one `to`, masked by an SVG `<mask>` whose `gridSize²`
+      // `<rect>`s carry the same per-cell eased progress the clipped-copy path
+      // computes, via the shared `cellEasedProgress` helper. AT THE REEL'S
+      // TRAILING EDGE `to` is the composition background (Task 2.2's fix,
+      // preserved exactly): the masked layer is that plate, so the grid still
+      // checkers OUT to it.
+      //
+      // A CSS `mask: url(#id)` applied directly to the HTML layer (percentage
+      // rect geometry, no `maskUnits`/`maskContentUnits`) was tried first and
+      // measured BROKEN under the real renderer — `to` came out fully
+      // invisible at every progress, not just drifted (see task-0.1-report.md
+      // for the pixel evidence). `burn.tsx` already solves "mask arbitrary
+      // HTML content" correctly in this exact pipeline via an SVG-native
+      // `<foreignObject mask="url(#…)">` with `maskUnits="userSpaceOnUse"`
+      // and pixel geometry — reused verbatim here rather than re-deriving a
+      // second working technique.
+      return (
+        <AbsoluteFill>
+          {fromLayer}
+          <svg
+            width={width}
+            height={height}
+            viewBox={`0 0 ${width} ${height}`}
+            style={{ position: 'absolute', inset: 0 }}
+          >
+            <defs>
+              <mask id={maskId} maskUnits="userSpaceOnUse">
+                {/* No conditional mounting on progress: every cell stays in the
+                    mask regardless of its `fillOpacity`, so element count is
+                    progress-invariant — the structural-constancy discipline
+                    Phase 5 depends on. */}
+                {cells.map(({ row, col, order }) => (
+                  <rect
+                    key={`${row}-${col}`}
+                    x={(col * cellSize * width) / 100}
+                    y={(row * cellSize * height) / 100}
+                    width={(cellSize * width) / 100}
+                    height={(cellSize * height) / 100}
+                    fill="white"
+                    fillOpacity={cellEasedProgress(order, progress, stagger, easing)}
+                  />
+                ))}
+              </mask>
+            </defs>
+            <foreignObject x={0} y={0} width={width} height={height} mask={`url(#${maskId})`}>
+              <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+                {edgeInput(to, background)}
+              </div>
+            </foreignObject>
+          </svg>
+        </AbsoluteFill>
+      );
+    }
+
+    // `'scale'` and `'flip'` — THE ONE CARVE-OUT. Both apply a geometric
+    // transform to the media pixels per cell, not just alpha; a mask changes
+    // alpha, not geometry, so they are not reproducible by masking and keep
+    // the original per-cell clipped-copy path, unchanged in shape.
     return (
       <AbsoluteFill>
-        {/* The OUTGOING clip, drawn once and whole, beneath the grid. At the
-            reel's LEADING edge there is none, and it resolves to the
-            composition background (Task 2.2). */}
-        <AbsoluteFill>{edgeInput(from, background)}</AbsoluteFill>
+        {fromLayer}
 
         {/* Grid layer — each cell carries the INCOMING clip, clipped to itself.
             AT THE REEL'S TRAILING EDGE that clip is the composition background:
@@ -177,24 +277,7 @@ export const checkerboard = (props: CheckerboardProps = {}): TransitionNode => {
             so there is no direction branch and no null case left here. */}
         <AbsoluteFill style={{ overflow: 'hidden' }}>
           {cells.map(({ row, col, order }) => {
-            // Calculate when this cell should animate
-            // With stagger, cells animate in sequence
-            // stagger=0 means all at once, stagger=1 means fully sequential
-            const cellStart = order * stagger;
-            const cellEnd = cellStart + (1 - stagger);
-
-            // Individual cell progress
-            const cellProgress = interpolate(
-              progress,
-              [cellStart, cellEnd],
-              [0, 1],
-              {
-                extrapolateLeft: 'clamp',
-                extrapolateRight: 'clamp',
-              }
-            );
-
-            const easedProgress = easing(cellProgress);
+            const easedProgress = cellEasedProgress(order, progress, stagger, easing);
 
             // Calculate animation values based on type
             let opacity = 1;
@@ -202,9 +285,6 @@ export const checkerboard = (props: CheckerboardProps = {}): TransitionNode => {
             let rotateY = 0;
 
             switch (squareAnimation) {
-              case 'fade':
-                opacity = easedProgress;
-                break;
               case 'scale':
                 scale = easedProgress;
                 opacity = easedProgress > 0 ? 1 : 0;

@@ -619,8 +619,15 @@ describe('the four two-input nodes render what their name promises', () => {
   // exiting drew the cells EMPTY over an untouched base layer, so a
   // `checkerboard` transitionOut had no visible effect at all.
   // IS: ONE implementation — B clipped into cells, over an intact A.
+  //
+  // Phase 5 Task 0.1 moved the DEFAULT `squareAnimation: 'fade'` onto a
+  // single-mount SVG-mask path (pinned separately in
+  // checkerboard-single-mount.test.tsx), so this clipped-copy assertion now
+  // names `squareAnimation: 'scale'` explicitly — the one carve-out that
+  // keeps a real per-cell geometric transform and therefore keeps the
+  // original per-cell mount shape this test pins.
   it('checkerboard clips the INCOMING clip into every cell over an intact outgoing clip', () => {
-    const node = nodeFor({ kind: 'checkerboard', frames: 15, gridSize: 3 });
+    const node = nodeFor({ kind: 'checkerboard', frames: 15, gridSize: 3, squareAnimation: 'scale' });
     const { container, unmount } = mountNode(node, 0.5);
     expect({ cells: cellsOf(container).length, b: count(container, 'b'), a: count(container, 'a') }).toEqual({
       cells: 9,
@@ -641,8 +648,11 @@ describe('the four two-input nodes render what their name promises', () => {
   // and the empty-cell artefact 2.1 actually removed (a cell drawn with no
   // content AND no background) stays impossible, because there is no longer a
   // code path that puts nothing inside a cell.
+  // Same carve-out redirection as the pin above — the default `'fade'` path
+  // has no cell divs to inspect any more (see checkerboard-single-mount.test.tsx
+  // for its equivalent "never an empty mask cell" coverage).
   it('checkerboard never draws a cell with nothing in it', () => {
-    const node = nodeFor({ kind: 'checkerboard', frames: 15, gridSize: 3 });
+    const node = nodeFor({ kind: 'checkerboard', frames: 15, gridSize: 3, squareAnimation: 'scale' });
     const { container, unmount } = mountNode(node, 0.5, { to: null });
     const cells = cellsOf(container);
     expect({
@@ -1216,23 +1226,32 @@ describe('a reel edge resolves the missing input to the theme background', () =>
   // 2.1 made `checkerboard` draw NO grid when `to === null`, explicitly
   // deferring "what should a checkerboard to nowhere look like?" here. It is
   // cells of background: the same answer the other seven get.
+  //
+  // Phase 5 Task 0.1 moved the DEFAULT `squareAnimation: 'fade'` path onto a
+  // single SVG-masked `to` mount, so "cells of background" now lives in the
+  // mask's `<rect>`s (`fillOpacity`), not in 64 separate background-plate
+  // divs — there is exactly ONE plate (the masked layer itself). The mask's
+  // rect count/alpha is the structural equivalent of the old `plates`/`lit`
+  // pin, and is asserted here directly rather than moved to the new file: it
+  // IS the trailing-edge case this describe block exists for.
   it('checkerboard reveals the theme background cell by cell at the trailing edge', () => {
     const cellsAt = (p: number) => {
       const { container, unmount } = mount('checkerboard', { to: null }, p);
       const plates = platesOf(container);
-      const lit = plates.filter((d) => {
-        const cell = d.parentElement?.parentElement;
-        return cell !== null && cell !== undefined && cell.style.opacity !== '0';
-      }).length;
+      const rects = [...container.querySelectorAll('mask rect')];
+      const lit = rects.filter((r) => Number(r.getAttribute('fill-opacity')) > 0).length;
       unmount();
-      return { plates: plates.length, lit };
+      return { plates: plates.length, cells: rects.length, lit };
     };
     const early = cellsAt(0.25);
     const late = cellsAt(0.9);
-    // The default 8x8 grid, every cell carrying the background plate, and more
-    // of them lit late than early.
-    expect(early.plates).toBe(64);
-    expect(late.plates).toBe(64);
+    // ONE masked background plate (not 64 — Task 0.1's single mount), the
+    // default 8x8 grid of alpha values living in the mask, and more of them
+    // lit late than early.
+    expect(early.plates).toBe(1);
+    expect(late.plates).toBe(1);
+    expect(early.cells).toBe(64);
+    expect(late.cells).toBe(64);
     expect(late.lit).toBeGreaterThan(early.lit);
   });
 
@@ -1250,11 +1269,14 @@ describe('a reel edge resolves the missing input to the theme background', () =>
     },
   );
 
+  // Task 0.1: the default `'fade'` path mounts the incoming clip ONCE, masked
+  // — not once per cell. "the cells carry the real incoming clip" is now true
+  // via the mask's alpha, not via 64 separate clipped copies of it.
   it('checkerboard draws the theme background beneath its cells at the leading edge', () => {
     const { container } = mount('checkerboard', { from: null }, 0.5);
-    // One beneath the grid; the cells carry the real incoming clip.
+    // One beneath the grid; the (single, masked) incoming clip is the other.
     expect(platesOf(container)).toHaveLength(1);
-    expect(container.querySelectorAll('[data-testid="clip"]')).toHaveLength(64);
+    expect(container.querySelectorAll('[data-testid="clip"]')).toHaveLength(1);
   });
 
   // ---- the colour FOLLOWS THE THEME ---------------------------------------
