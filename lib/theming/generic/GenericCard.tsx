@@ -24,6 +24,17 @@ const DEFAULT_PATTERN = { color: '#ffffff', accentColor: '#ffffff', opacity: 0.3
 // type size the way the caption padding is to fontSize), so they stay
 // absolute px/deg rather than an em ratio. Promoted to tokens at Task 5.1 so a
 // brand CAN move them; defaults are campaign-reels' tuned literals, verbatim.
+// NOTE (Task 5.1 review, Minor 3): for `pixels`/`dots`/`grid`, the gradient's
+// centre offset (`circle at Xpx Xpx`) is DERIVED as `radiusPx * 2` below, not
+// an independent literal — pre-Task-5.1 the two were separate hardcoded
+// numbers (e.g. `3px` centre vs `1.5px` radius) that happened to satisfy this
+// same 2:1 ratio. Defaults are unaffected (the ratio holds exactly for both),
+// but a brand that sets `radiusPx` to something not intended to also move the
+// dot's positioning within its cell cannot decouple the two. Accepted as-is:
+// the 2:1 relationship keeps each dot's edge tangent to a corner of its own
+// pitch cell at any radius, which is the geometry that makes the pattern tile
+// seamlessly — an independent centre-offset field would let a brand break
+// that tiling, so coupling it to the radius is the safer default, not a gap.
 const DEFAULT_PIXELS_GEOMETRY = { radiusPx: 1.5, pitchPx: 36 };
 const DEFAULT_DOTS_GEOMETRY = { radiusPx: 1, pitchPx: 60 };
 const DEFAULT_GRID_GEOMETRY = { radiusPx: 1, pitchPx: 60 };

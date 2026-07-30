@@ -511,11 +511,11 @@ describe('GenericCaptions — the rest of the promoted geometry is token-driven,
 
   // MUTATION PIN — this is the caption-lines.ts constant the brief calls out
   // by name (`DEFAULT_CAPTION_WORD_FADE_MS`, "has no token field while its
-  // four siblings do"). Breaking the `wordFadeMs` thread (e.g. calling
-  // `activeAmount(w.startMs, w.endMs, ms)` without the 4th argument, as the
-  // code did before this task) turns this red: "two" would stay fully
-  // inactive (opacity 0.55) at frame 28 regardless of the token.
-  it('wordFadeMs threads through to BOTH modes\' activeAmount call — widening it activates a word earlier', () => {
+  // four siblings do"). Breaking the `wordFadeMs` thread in HIGHLIGHT mode
+  // (e.g. calling `activeAmount(w.startMs, w.endMs, ms)` without the 4th
+  // argument at GenericCaptions.tsx:246) turns this red: "two" would stay
+  // fully inactive (opacity 0.55) at frame 28 regardless of the token.
+  it("wordFadeMs threads through to highlight mode's activeAmount call — widening it activates a word earlier", () => {
     frameState.frame = 28; // ≈933.33ms — 66.67ms before "two" (1000-2000ms) starts.
     // Default 30ms ramp: 933ms is fully outside it → "two" untouched (0.55).
     const narrow = draw({ tokens: { mode: 'highlight' } });
@@ -523,6 +523,25 @@ describe('GenericCaptions — the rest of the promoted geometry is token-driven,
     // A 200ms ramp reaches back to 800ms, so 933ms is INSIDE it (partial).
     const wide = draw({ tokens: { mode: 'highlight', wordFadeMs: 200 } });
     expect(Number(spans(wide.container)[1].style.opacity)).toBeGreaterThan(0.55);
+  });
+
+  // MUTATION PIN — the POP-FOCUS half of the same thread, at
+  // GenericCaptions.tsx:217 (`activeAmount(w.startMs, w.endMs, ms,
+  // wordFadeMs) > 0 ? activeColor : color`). This is a boolean gate rather
+  // than a continuous envelope, but it is observable the same way: "two"'s
+  // colour flips to `activeColor` only once `activeAmount(...) > 0`, so
+  // widening `wordFadeMs` flips it earlier. Dropping the 4th argument here
+  // (the exact bug the highlight-mode pin above does NOT catch, because it
+  // never renders pop-focus) leaves this fully green were it absent — that
+  // gap is why this test exists.
+  it("wordFadeMs also threads through to pop-focus mode's activeAmount call — widening it colours a word active earlier", () => {
+    frameState.frame = 28; // ≈933.33ms — 66.67ms before "two" (1000-2000ms) starts.
+    // Default 30ms ramp: 933ms is fully outside it → "two" stays `color`, not `activeColor`.
+    const narrow = draw();
+    expect(spans(narrow.container)[1].style.color).toBe('rgb(255, 255, 255)'); // default `color`
+    // A 200ms ramp reaches back to 800ms, so 933ms is INSIDE it → "two" flips to `activeColor`.
+    const wide = draw({ tokens: { wordFadeMs: 200 } });
+    expect(spans(wide.container)[1].style.color).toBe('rgb(255, 255, 0)'); // default `activeColor`
   });
 });
 

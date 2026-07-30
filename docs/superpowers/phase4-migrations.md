@@ -1956,3 +1956,97 @@ PP is unaffected and its own doc was already right: `CaptionStrip.tsx:25` says
 sides. **Grade: PARITY-PRESERVING, documentation-only for both repos.** The only party the
 old wording could have misled is a brand porting to core's mount after this task, which is
 why it is recorded here rather than only in the code.
+
+---
+
+## Task 5.1 — tokens cover proportion, not just paint
+
+### 5.1-a Caption/card/multiclip geometry promoted to tokens — PARITY-PRESERVING
+
+**What changed in core.** `GenericCaptions`' pop-focus pill padding and highlight halo used
+to be flat px against a token-driven `fontSize` (`POP_PAD_X = 22`, `POP_PAD_Y = 10`,
+`HIGHLIGHT_HALO_MAX_PX = 10` — all against a default `fontSize` of 52) — so a brand raising
+`fontSize` got padding/halo proportionally smaller instead of scaling with it. These, plus
+`GenericCaptions`' remaining pop-focus/highlight typography knobs, `GenericCard`'s pattern
+radii/pitch/angle, and `GenericMultiClip`'s split ratio and quad grid template, are now
+`CaptionTokens`/`CardTokens`/`MultiClipTokens` fields. Every new default reproduces the
+pre-Task-5.1 rendered geometry exactly (verified: `pixel-gate:strict` 300/300 accepted,
+`MinimalReel`'s 5 reference frames byte-identical, and the ratio-based defaults — e.g.
+`popPadXEm = 22/52` — checked to multiply back out to the exact original px literal at
+the default `fontSize`, not merely close).
+
+**Grade: PARITY-PRESERVING for both repos, no brand file changes required.** Verified from
+inside each repo with `git grep` (submodule excluded by tracking, not by a text filter),
+every promoted field name searched, every hit printed and inspected:
+
+```bash
+# PP @ 0e2dfb9 — /Users/xaralis/Workspace/progpce/video-toolkit
+git grep -nE 'popPadXEm|popPadYEm|popFontMultiplier|popTailMs|popLetterSpacing|popLineHeight|wordGap|highlightOpacityInactive|highlightScaleBump|highlightHaloMaxEm|highlightHaloAlpha|highlightLetterSpacing|highlightLineHeight|wordFadeMs|splitRatio|quadColumns|quadRows|radiusPx|pitchPx|angleDeg' -- .
+echo "hit count: $(git grep -nE 'popPadXEm|popPadYEm|popFontMultiplier|popTailMs|popLetterSpacing|popLineHeight|wordGap|highlightOpacityInactive|highlightScaleBump|highlightHaloMaxEm|highlightHaloAlpha|highlightLetterSpacing|highlightLineHeight|wordFadeMs|splitRatio|quadColumns|quadRows|radiusPx|pitchPx|angleDeg' -- . | wc -l | tr -d ' ')"
+# → no hits printed, hit count: 0
+
+# roost @ ffca36d — /Users/xaralis/Workspace/roost/video-toolkit
+git grep -nE 'popPadXEm|popPadYEm|popFontMultiplier|popTailMs|popLetterSpacing|popLineHeight|wordGap|highlightOpacityInactive|highlightScaleBump|highlightHaloMaxEm|highlightHaloAlpha|highlightLetterSpacing|highlightLineHeight|wordFadeMs|splitRatio|quadColumns|quadRows|radiusPx|pitchPx|angleDeg' -- .
+echo "hit count: $(git grep -nE 'popPadXEm|popPadYEm|popFontMultiplier|popTailMs|popLetterSpacing|popLineHeight|wordGap|highlightOpacityInactive|highlightScaleBump|highlightHaloMaxEm|highlightHaloAlpha|highlightLetterSpacing|highlightLineHeight|wordFadeMs|splitRatio|quadColumns|quadRows|radiusPx|pitchPx|angleDeg' -- . | wc -l | tr -d ' ')"
+# → no hits printed, hit count: 0
+```
+
+**Why this is inert for PP specifically, and the one thing worth flagging.** PP does not
+consume core's `GenericCaptions` at all — its live captions come from a structurally
+different, forked component, `brand-lib/overlays/CaptionStrip.tsx` (mounted by
+`FootageSegment.tsx:241`, per Task 4.3's migration note). That fork **carries the identical
+bug this task fixes**: `CaptionStrip.tsx` hardcodes `const FONT_SIZE = 52;` (line 14) and,
+inside its own pop-focus branch, `const POP_PAD_X = 22;` / `const POP_PAD_Y = 10;` (lines
+144-145) against that same fixed `FONT_SIZE` — plus `CAPTION_MODE: 'highlight' | 'pop-focus'
+= 'pop-focus'` hardcoded at line 116, so its `highlight` branch is unreachable dead code in
+that brand's shipping build, same as core's was before Task 4.3 gave `GenericCaptions` a
+mount. **A brand wanting the scaling fix must adopt core's `captions` overlay kind (Task
+4.3's two-sided move: author the kind, fill `tokens.caption`, delete `CaptionStrip.tsx`) —
+promoting core's tokens alone changes nothing for PP's actual rendered video**, because
+nothing in PP's tree reads them. This is the single most useful fact this entry can carry
+forward: the bug this task fixes still ships live, in the fork, until that adoption happens.
+
+roost has no caption mount at all (confirmed at Task 4.3: 4 hits, all inert — a font name,
+a dead JSON block, and prose) and does not exercise `GenericCard`'s `pattern` field beyond
+its own already-promoted card tokens, so it is unaffected in the same way, for the same
+underlying reason (it does not set any of these fields, so it inherits whichever default
+core ships).
+
+### 5.1-b `highlight.wordGap` 0.45em → 0.4em — DELIBERATE LOOK CHANGE, unrendered by both brands today
+
+Pre-Task-5.1, `GenericCaptions`' pop-focus mode used a `0.4em` inter-word margin and its
+`highlight` mode used `0.45em` — two literals for the same "space between words" concept,
+with no shared token. Task 5.1 reconciles them to one `CaptionTokens.wordGap` field,
+defaulting to `0.4em` (pop-focus's value, on the grounds that pop-focus is the brand's
+shipping live mode per `GenericCaptions`' own docblock). **This is a genuine pixel change
+for `highlight` mode** (0.45em → 0.4em) should any brand render it.
+
+**Grade: DELIBERATE LOOK CHANGE, but inert for both brands as things stand today.** Neither
+repo sets `mode: 'highlight'` anywhere:
+
+```bash
+# PP @ 0e2dfb9
+git grep -nE "mode:\s*['\"]highlight['\"]" -- .
+echo "hit count: $(git grep -nE "mode:\s*['\"]highlight['\"]" -- . | wc -l | tr -d ' ')"
+# → no hits printed, hit count: 0
+
+# roost @ ffca36d
+git grep -nE "mode:\s*['\"]highlight['\"]" -- .
+echo "hit count: $(git grep -nE "mode:\s*['\"]highlight['\"]" -- . | wc -l | tr -d ' ')"
+# → no hits printed, hit count: 0
+```
+
+PP's fork hardcodes `CAPTION_MODE = 'pop-focus'` (`CaptionStrip.tsx:116`), so its own
+`highlight` branch is dead code regardless of this change. **The action item for any brand
+adopting `highlight` mode after a future submodule bump: read `wordGap` off the brand's own
+`tokens.caption` if the pre-Task-5.1 0.45em spacing matters to that brand's design, rather
+than assuming the shared default matches what `highlight` used to render.**
+
+### 5.1-c `CardTokens.stagger` — was already wired, prior to this task's own base
+
+The brief for this task assumed `CardTokens.stagger` was "declared but never read" and asked
+that it be wired or deleted. **That premise was stale by the time this task started**:
+`git log -S"tokens.stagger" --oneline` finds `c8f32f4`, a commit well before this task's base
+`d5582a8`, already reading `tokens.stagger` in `GenericCard.tsx` to drive the staggered
+line-reveal `interpolate()` calls. No change was made to it in this task, and none was
+needed — recorded here only so a future reader does not re-open a non-issue.
