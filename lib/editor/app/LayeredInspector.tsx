@@ -18,6 +18,7 @@ import { parseActionId, type LaneId } from '../src/timeline/layered-adapter';
 import type { AccentSlot } from '../../theming/palette';
 import { PLACEMENTS } from '../../theming/placement';
 import { effectCatalog, effectDefinition, humanizeKey, paramChoices, type EditorMeta, type ParamField } from './editor-meta';
+import { warnOnce } from '../../render/warn-once';
 
 // Routes the selected timeline item (by lane) to its editable properties,
 // reusing the existing content editors. Edits produce a new LayeredReel via
@@ -374,6 +375,21 @@ function renderParamControl({
   // type a field whose key the item does not carry yet. Without it an absent
   // numeric prop falls through to TextField and commits a string ("0.5") into
   // the bag; the renderer coerces, but the saved config goes type-dirty.
+  //
+  // Task 6.3, warning 4 — a `ParamField` that declares NEITHER `type` NOR
+  // `options` falls all the way through to this value-presence fallback,
+  // which is exactly the "writes a string into what might be a numeric
+  // field" hazard the comment above names. Core itself never produces such a
+  // field (every core-derived descriptor sets `type` — see
+  // `subOptionForField`); this can only be a brand's own hand-declared
+  // `ParamField` literal.
+  if (field.type === undefined && !field.options) {
+    warnOnce(`param-field-untyped:${field.prop}`, () =>
+      `[video-toolkit] ParamField "${field.prop}" declares neither \`type\` nor \`options\`, so its control ` +
+      'is chosen from whatever value happens to be present right now (or a plain text box, if none is). ' +
+      `Declare \`type\` on "${field.prop}" so its control (and the value it commits) does not depend on ` +
+      'what the field currently holds. (Warning only; nothing is blocked, and this is reported once per field.)');
+  }
   const t = field.type ?? typeof value;
 
   if (t === 'number' || t === 'percent' || t === 'angle') {

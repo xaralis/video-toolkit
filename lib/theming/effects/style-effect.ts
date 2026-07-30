@@ -32,6 +32,9 @@ import { kenBurnsStyle, type KenBurnsEffect } from './ken-burns';
 // `applyEffects` or `applyStyleEffects` as of this task — see index.ts.
 import { gradeFilter, gradeNeedsWb, gradeWbMatrixValues } from '../../reel-config-base/grade';
 import type { Grade } from '../../reel-config-base/base-types';
+// Cross-layer import, same precedent as index.ts's (Task 4.1's `anchorTiming`
+// already crosses lib/theming -> lib/render at runtime; see that file).
+import { warnOnce } from '../../render/warn-once';
 
 /** A CLOSED bag, deliberately — NOT `CSSProperties`. An open bag would let two
  *  effects fight over `inset`/`position` with no rule to settle it; a
@@ -246,6 +249,21 @@ export function applyStyleEffects(
 ): MediaStyleFragment {
   let frag: MediaStyleFragment = {};
   const applied = new Set<string>();
+
+  // Task 6.3, warning 6 — a hand-edited item can carry BOTH `item.grade` and
+  // an authored `type: 'grade'` effect (the schema does not reject it, and
+  // the editor's own guards — Task 3.4 — only stop this being AUTHORED
+  // through the UI, not a hand-edited literal). The render below already
+  // dedups it correctly (`item.grade` is applied first and marked, so the
+  // array entry is silently skipped) — this warns about the REDUNDANT
+  // authoring itself, which the dedup's silence would otherwise hide forever.
+  if (item.grade && item.effects?.some((e) => e.type === 'grade')) {
+    warnOnce(`item-grade-and-grade-effect:${item.id}`, () =>
+      `[video-toolkit] Video item "${item.id}" carries both \`item.grade\` and an authored \`type: 'grade'\` ` +
+      'effect. This never doubles the render — `item.grade` wins and the effect entry is silently skipped — ' +
+      'but the two are redundant and the effect entry\'s own params are dead. Remove one of them. ' +
+      '(Warning only; nothing is blocked, and this is reported once per item.)');
+  }
 
   const synthetic = syntheticGradeEffect(item);
   if (synthetic) {

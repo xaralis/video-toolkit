@@ -25,6 +25,21 @@ import type { VideoItem } from '../../reel-config-base/layered-schema';
  *  stays green and unmodified. */
 export const MediaEffectsContext = createContext<readonly MediaEffectEntry[]>([]);
 
+/** Phase 4 Task 6.3, warning 7 — a side channel PARALLEL to
+ *  `MediaEffectsContext`, carrying nothing but a "something read this" ping.
+ *  `renderVideoItemNode` provides one bound to the CURRENT video item;
+ *  `useMediaEffects()` pings it on every call. `LayeredReelComposition` uses
+ *  that ping (checked by a later sibling in the SAME render pass — see
+ *  `ConsumptionAudit` in ./lib/render/layered-composition.tsx) to tell "a
+ *  media-scope effect was delivered AND something called useMediaEffects()"
+ *  from "delivered, and nothing in this item's renderer ever reads it" — the
+ *  write-only-prop failure Task 3.3's context sidesteps for a PROP, returning
+ *  here for a renderer that never calls the hook at all. Default `undefined`
+ *  (a no-op ping) so every pre-6.3 call site — including every existing
+ *  `useMediaEffects()` test that renders outside a Provider — is unaffected. */
+const MediaEffectsConsumptionContext = createContext<(() => void) | undefined>(undefined);
+export { MediaEffectsConsumptionContext };
+
 /** Resets media-effect delivery to empty for a subtree. Mounted by
  *  `GenericMultiClip` around its synthetic per-pane `SegmentMedia` calls: a
  *  multi-clip's OWN item may carry a media-scope effect (delivered to
@@ -34,9 +49,18 @@ export const MediaEffectsContext = createContext<readonly MediaEffectEntry[]>([]
  *  parent-level effect was never asked to treat, which is not "apply it to
  *  the media element" but "apply it to every media element", a different and
  *  unrequested thing. Resetting to `[]` here is what keeps a multi-clip pane
- *  identical to before this axis existed. */
+ *  identical to before this axis existed.
+ *
+ *  ALSO resets the consumption ping (Task 6.3) to `undefined` — a pane's OWN
+ *  `SegmentMedia` calls `useMediaEffects()` unconditionally, and without this
+ *  second reset that call would ping the OUTER multi-clip item's tracker even
+ *  though the pane received `[]`, an empty delivery it did nothing with —
+ *  which would make the multi-clip item's own (unrelated, unconsumed) media
+ *  effect look consumed by accident. */
 export const MediaEffectsBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <MediaEffectsContext.Provider value={[]}>{children}</MediaEffectsContext.Provider>
+  <MediaEffectsContext.Provider value={[]}>
+    <MediaEffectsConsumptionContext.Provider value={undefined}>{children}</MediaEffectsConsumptionContext.Provider>
+  </MediaEffectsContext.Provider>
 );
 
 /** For a brand that hand-rolls its own media element instead of using
@@ -45,7 +69,13 @@ export const MediaEffectsBoundary: React.FC<{ children: React.ReactNode }> = ({ 
  *  it builds itself, using the exact style it computed for that element as
  *  each effect's `mediaStyle` (see `EffectRenderProps.mediaStyle`). */
 export function useMediaEffects(): readonly MediaEffectEntry[] {
-  return useContext(MediaEffectsContext);
+  const entries = useContext(MediaEffectsContext);
+  // Task 6.3, warning 7 — pings the consumption tracker unconditionally (not
+  // only when `entries.length > 0`): "consumed" means "something called this
+  // hook for this item", which is the fact the audit needs regardless of
+  // whether this particular delivery happened to be empty.
+  useContext(MediaEffectsConsumptionContext)?.();
+  return entries;
 }
 
 /** Applies a list of resolved media-scope entries around `node`,

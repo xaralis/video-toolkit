@@ -23,6 +23,12 @@ import {
   TransformEffect,
 } from './primitives';
 import { isReservedEffectType } from './style-effect';
+// Cross-layer import, precedent already set by Task 4.1's `anchorTiming`
+// (`lib/theming/segment/SegmentMedia.tsx` etc. import from `lib/render`):
+// `warn-once.ts` lives in `lib/render` because that directory is inside all
+// three typecheck gates (see its own docblock) — Task 6.3 reuses it rather
+// than duplicating the de-duplication bookkeeping in `lib/theming`.
+import { warnOnce } from '../../render/warn-once';
 
 export interface EffectRenderProps {
   /** The effect entry off the item's `effects[]`, minus nothing — `type` included. */
@@ -175,7 +181,27 @@ export function applyEffects(
     // — the thing that actually renders every reserved type — applies the
     // SAME generic `isNodeEnabled` test to every style-axis type uniformly,
     // so a second reserved type gets `enabled: false` support for free.
-    if (isReservedEffectType(theme, effect.type)) continue;
+    if (isReservedEffectType(theme, effect.type)) {
+      // Task 6.3, warning 3 — a WRAPPER-axis registration for a type that is
+      // reserved (resolves on the STYLE axis instead — core's own `ken-burns`/
+      // `grade`, or a brand's own style-effect registration under this same
+      // type name) is dead: this `continue` skips it before it is ever
+      // resolved through `resolveEffectRenderer`. Warn only when the theme
+      // ACTUALLY carries a `theme.effects[type]` registration — a reserved
+      // type with no wrapper-axis registration at all is the ordinary,
+      // unremarkable case (every reel with a `ken-burns`/`grade` item hits
+      // this line and must not warn).
+      if (theme.effects?.[effect.type] !== undefined) {
+        warnOnce(`effect-reserved-type-registered:${effect.type}`, () =>
+          `[video-toolkit] Effect type "${effect.type}" is registered on \`theme.effects\` (the WRAPPER ` +
+          'axis), but it is RESERVED — it resolves on the STYLE axis instead (core\'s own `ken-burns`/`grade`, ' +
+          'or a brand style-effect registration under this same type name) — so this registration is dead: ' +
+          '`applyEffects` skips a reserved type before ever resolving it. Register the effect on ' +
+          '`theme.styleEffects` instead, or pick a different type name. (Warning only; nothing is blocked, ' +
+          'and this is reported once per type.)');
+      }
+      continue;
+    }
     // MEDIA-scope types (Phase 4 Task 3.3) are applied elsewhere too — inside
     // SegmentMedia (or a brand's hand-rolled media element), via
     // MediaEffectsContext, not wrapped around the WHOLE item renderer here.

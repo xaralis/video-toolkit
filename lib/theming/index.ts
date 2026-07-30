@@ -83,6 +83,7 @@ export {
 } from './effects';
 export {
   MediaEffectsContext,
+  MediaEffectsConsumptionContext,
   MediaEffectsBoundary,
   useMediaEffects,
   applyMediaEffects,

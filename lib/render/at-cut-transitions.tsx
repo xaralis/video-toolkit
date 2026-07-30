@@ -304,7 +304,24 @@ export function resolveTransition(t: TransitionRecord | undefined, dims: Dims): 
     (registry !== undefined && Object.prototype.hasOwnProperty.call(registry, kind));
   if (!known) return null;
   const render = resolveRegistered(registry, kind, CORE_TRANSITIONS);
-  if (!render) return null;
+  if (!render) {
+    // Task 6.3, warning 8. `known` is true here, so this branch is reached
+    // ONLY when the registry (not core) declares `kind` and that registration
+    // has no `renderer` — i.e. the exact "config-only registration for a
+    // BRAND-ONLY kind" case. If `kind` were core's own, `CORE_TRANSITIONS[kind]`
+    // would always be defined and `render` could not be falsy — so this can
+    // never fire for a config-only registration of a CORE kind (that case is
+    // CORRECT: it falls through to core's generic, per Task 6.2's negative
+    // pin). Unlike the video/overlay/effect/brand axes, the transition axis
+    // has no generic beneath a kind core never heard of — there is nothing to
+    // fall through to, so "declared" degrades straight to a silent hard cut.
+    warnOnce(`transition-config-only:${kind}`, () =>
+      `[video-toolkit] Transition kind "${kind}" is registered on the brand theme with \`config\` (and/or ` +
+      'params) but no `renderer`, and core has no generic for this kind — "declared" is not "handled". ' +
+      'This boundary renders as a hard cut. Add a `renderer` to the registration (or remove it if the ' +
+      'kind was never meant to render). (Warning only; nothing is blocked, and this is reported once per kind.)');
+    return null;
+  }
   return render({
     transition: t,
     width: dims.width,

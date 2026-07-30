@@ -17,6 +17,7 @@ import {
   applyEffects,
   collectMediaEffects,
   MediaEffectsContext,
+  MediaEffectsConsumptionContext,
   defaultRenderBrandTrack,
   resolveGenericSource,
   GenericCaptions,
@@ -28,6 +29,7 @@ import {
 import { buildVideoNodes } from './video-track';
 import { buildAudioNodes } from './audio-track';
 import { routeOverlays, overlayKind } from './overlay-routing';
+import { warnOnce } from './warn-once';
 
 // The default renderer for 'text' (and its legacy 'quote-pull' alias): adapts
 // the raw OverlayItem to the theming module's text contract, so brands keep
@@ -112,6 +114,30 @@ const TrackCaptionsOverlay: React.FC<{ item: OverlayItem; theme: CompositionThem
   );
 };
 
+/** Task 6.3, warnings 2 and 7 — "was this delivered payload actually drawn".
+ *
+ *  Mounted as the LAST child of the root `<AbsoluteFill>`, after every video
+ *  item's node — which matters, because React's reconciler processes a
+ *  fragment/element's children depth-first, left to right, and each earlier
+ *  sibling's WHOLE subtree (every nested function component's body) finishes
+ *  before the next sibling's body runs. So by the time THIS component's body
+ *  runs, every video renderer that was going to call
+ *  `renderAnchoredOverlay`/`useMediaEffects()` this render already has — the
+ *  `consumed` set passed in is complete, not a snapshot mid-render. This is
+ *  what lets a DELIVERY-SIDE tracker (a plain `Set`, mutated synchronously by
+ *  the wrapped callback/context ping) answer "did anything downstream read
+ *  this" without an effect (which would run after commit, on a cadence this
+ *  module cannot rely on across every render environment this composition
+ *  runs in — Studio, the reel editor, a still, a full render). */
+const ConsumptionAudit: React.FC<{ targets: readonly string[]; consumed: ReadonlySet<string>; warn: (id: string) => void }> = ({
+  targets,
+  consumed,
+  warn,
+}) => {
+  for (const id of targets) if (!consumed.has(id)) warn(id);
+  return null;
+};
+
 // Core's item-level generics: the kinds core can draw without any brand
 // registration. 'text'/'quote-pull' are the text adapter — 'quote-pull' is the
 // legacy alias of 'text' and deliberately resolves the SAME 'text'
@@ -129,8 +155,26 @@ const CORE_OVERLAY_GENERICS: Record<string, React.FC<{ item: OverlayItem; theme:
  *  anchored-routed overlay of the SAME kind call the exact same function, so
  *  they cannot render differently — there is only one place this dispatch is
  *  written. */
+// Task 6.3, warning 1 — `renderer` on a non-core overlay kind is silently
+// ignored: `BrandTheme.overlays`' own doc comment names this exact caveat
+// (`renderer` is consumed only by the core text adapter, for 'text'/
+// 'quote-pull'; any other kind needs `render`, the item-level escape hatch).
+// Checked once per registry (not per item), against the merged registry
+// `makeOverlayRenderer` already builds, so a brand theme with the mistake
+// warns exactly once per misregistered kind, however many items use it.
+function warnOnUselessOverlayRenderer(kind: string, reg: { renderer?: unknown; render?: unknown }): void {
+  if (kind === 'text' || kind === 'quote-pull') return; // the only kinds `renderer` is consumed for
+  if (reg.renderer === undefined) return;
+  warnOnce(`overlay-renderer-ignored:${kind}`, () =>
+    `[video-toolkit] Overlay kind "${kind}" has a \`renderer\`, which is only consumed for the core ` +
+    'text adapter (\'text\'/\'quote-pull\') — it is silently ignored for any other kind. Register ' +
+    `"${kind}" with \`render\` (the item-level escape hatch: \`(item) => ReactNode\`) instead. ` +
+    '(Warning only; nothing is blocked, and this is reported once per kind.)');
+}
+
 export function makeOverlayRenderer(theme: CompositionTheme): (item: OverlayItem) => React.ReactNode {
   const registry = overlayRegistry(theme);
+  for (const [kind, reg] of Object.entries(registry)) warnOnUselessOverlayRenderer(kind, reg);
   return (item: OverlayItem) => {
     const kind = overlayKind(item);
     const reg = registry[kind];
@@ -183,32 +227,48 @@ export function renderVideoItemNode(
      *  ONCE via `makeOverlayRenderer(theme)` and passes the SAME function to
      *  every item, so it is threaded here rather than rebuilt per item. */
     renderAnchoredOverlay?: (item: OverlayItem) => React.ReactNode;
+    /** Task 6.3, warning 2 — called the first time the resolved renderer
+     *  actually invokes `renderAnchoredOverlay`, so `LayeredReelComposition`
+     *  can tell a renderer that drew at least one anchored overlay from one
+     *  that received some and never called it at all. */
+    markAnchoredOverlayConsumed?: () => void;
+    /** Task 6.3, warning 7 — the SAME idea, for `useMediaEffects()`. */
+    markMediaEffectsConsumed?: () => void;
   } = {},
 ): React.ReactNode {
   const Renderer = resolveVideoRenderer(theme, item.kind);
   if (!Renderer) return null; // a kind this brand didn't register a renderer for
   const media = (
-    <MediaEffectsContext.Provider value={collectMediaEffects(theme, item)}>
-      <Renderer
-        item={item}
-        handles={handles}
-        config={videoConfig(theme, item.kind)}
-        anchoredOverlays={extras.anchoredOverlays ?? []}
-        renderAnchoredOverlay={extras.renderAnchoredOverlay}
-        boundAudio={extras.boundAudio}
-        // The theme's look constants for core's GENERIC renderers (tokens.ts).
-        // Threaded here because this is where the theme lives — VideoRenderProps
-        // still carries no CompositionTheme, only this one narrow typed field.
-        tokens={theme.tokens}
-        // Same narrow threading for the media-path rule: the brand's wholesale
-        // override, or `undefined` → the renderer uses core's resolveMediaSource.
-        resolveMediaSource={theme.resolveMediaSource}
-        // Same narrow threading for the STYLE-effect registry (Phase 4 Task
-        // 3.2) — lets SegmentMedia resolve a brand's own `ken-burns` (or any
-        // other style-effect type) without holding the whole theme.
-        styleEffects={theme.styleEffects}
-      />
-    </MediaEffectsContext.Provider>
+    <MediaEffectsConsumptionContext.Provider value={extras.markMediaEffectsConsumed}>
+      <MediaEffectsContext.Provider value={collectMediaEffects(theme, item)}>
+        <Renderer
+          item={item}
+          handles={handles}
+          config={videoConfig(theme, item.kind)}
+          anchoredOverlays={extras.anchoredOverlays ?? []}
+          renderAnchoredOverlay={
+            extras.renderAnchoredOverlay
+              ? (overlayItem: OverlayItem) => {
+                  extras.markAnchoredOverlayConsumed?.();
+                  return extras.renderAnchoredOverlay!(overlayItem);
+                }
+              : undefined
+          }
+          boundAudio={extras.boundAudio}
+          // The theme's look constants for core's GENERIC renderers (tokens.ts).
+          // Threaded here because this is where the theme lives — VideoRenderProps
+          // still carries no CompositionTheme, only this one narrow typed field.
+          tokens={theme.tokens}
+          // Same narrow threading for the media-path rule: the brand's wholesale
+          // override, or `undefined` → the renderer uses core's resolveMediaSource.
+          resolveMediaSource={theme.resolveMediaSource}
+          // Same narrow threading for the STYLE-effect registry (Phase 4 Task
+          // 3.2) — lets SegmentMedia resolve a brand's own `ken-burns` (or any
+          // other style-effect type) without holding the whole theme.
+          styleEffects={theme.styleEffects}
+        />
+      </MediaEffectsContext.Provider>
+    </MediaEffectsConsumptionContext.Provider>
   );
   return applyEffects(theme, item, handles, media);
 }
@@ -230,6 +290,22 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
 
   // ---- video ----------------------------------------------------------------
   const videoItems = theme.prepareVideoTrack ? theme.prepareVideoTrack(reel.tracks.video) : reel.tracks.video;
+
+  // Task 6.3, warnings 2 and 7 — fresh per render (this whole function body
+  // re-runs every render, so there is nothing to reset between frames): which
+  // item ids actually had a payload delivered, and which ids a downstream
+  // renderer actually consumed. See `ConsumptionAudit` above for why checking
+  // these AFTER `videoNodes` (as a later sibling), rather than here, is what
+  // makes the check honest.
+  const anchoredOverlayTargets = videoItems
+    .filter((item) => (anchored.get(item.id)?.length ?? 0) > 0)
+    .map((item) => item.id);
+  const mediaEffectTargets = videoItems
+    .filter((item) => collectMediaEffects(theme, item).length > 0)
+    .map((item) => item.id);
+  const consumedAnchoredOverlays = new Set<string>();
+  const consumedMediaEffects = new Set<string>();
+
   const videoNodes = buildVideoNodes(videoItems, {
     width,
     height,
@@ -251,6 +327,8 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
         anchoredOverlays: anchored.get(item.id) ?? [],
         boundAudio: reel.tracks.audio.find((a) => a.followsVideoId === item.id),
         renderAnchoredOverlay: renderOverlayItem,
+        markAnchoredOverlayConsumed: () => consumedAnchoredOverlays.add(item.id),
+        markMediaEffectsConsumed: () => consumedMediaEffects.add(item.id),
       }),
   });
 
@@ -299,6 +377,34 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
       {theme.renderBrandTrack
         ? theme.renderBrandTrack(reel.tracks.brand)
         : defaultRenderBrandTrack(reel.tracks.brand, theme, fps)}
+      {/* Task 6.3, warnings 2 and 7 — see `ConsumptionAudit`'s own docblock for
+          why this MUST be the last child: every video node above (and
+          everything it nests) has already had its render-phase body run by
+          the time this one's does. */}
+      <ConsumptionAudit
+        targets={anchoredOverlayTargets}
+        consumed={consumedAnchoredOverlays}
+        warn={(id) =>
+          warnOnce(`anchored-overlay-unconsumed:${id}`, () =>
+            `[video-toolkit] Video item "${id}" was handed one or more anchored overlays, but its ` +
+            'resolved renderer never called `renderAnchoredOverlay` — the overlay(s) never drew. If ' +
+            'this is a brand-registered `theme.video` renderer, it must call `renderAnchoredOverlay(item)` ' +
+            'for each entry in `anchoredOverlays` (see any of core\'s own generics for the shape). ' +
+            '(Warning only; nothing is blocked, and this is reported once per item.)')
+        }
+      />
+      <ConsumptionAudit
+        targets={mediaEffectTargets}
+        consumed={consumedMediaEffects}
+        warn={(id) =>
+          warnOnce(`media-effects-unconsumed:${id}`, () =>
+            `[video-toolkit] Video item "${id}" has one or more media-scope ("scope: 'media'") effects, ` +
+            'but nothing in its resolved renderer ever called `useMediaEffects()` — the effect(s) never ' +
+            'applied. A renderer that owns a media element must call `useMediaEffects()` (or use ' +
+            '`SegmentMedia`, which already does) and wrap that element with the resolved entries. ' +
+            '(Warning only; nothing is blocked, and this is reported once per item.)')
+        }
+      />
     </AbsoluteFill>
   );
 };

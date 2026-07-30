@@ -208,9 +208,19 @@ describe('buildVideoNodes threads the registry', () => {
     expect(warned).toEqual([]);
   });
 
-  it('declaring the kind with config ONLY is enough to silence the warning', () => {
+  // Phase 4 Task 6.3 — this test's assertion changed on purpose, and says so:
+  // declaring the kind with `config` only DOES silence the UNRECOGNISED-KIND
+  // warning (warning 5 — `getTransitionRecord`'s typo guarantee; `brandKinds`
+  // still has "sand-sweep"), but it now trips a DIFFERENT, new warning:
+  // warning 8, "config-only registration for a brand-only kind renders
+  // nothing, silently" — because there is no core generic for a brand-only
+  // kind to fall through to, "declared" is not "handled" and the boundary
+  // still hard-cuts. Both are true at once; this test pins that they are NOT
+  // the same warning.
+  it('declaring the kind with config ONLY silences the unrecognised-kind warning, but trips the NEW config-only warning instead (Task 6.3)', () => {
     const { warned } = build({ 'sand-sweep': { config: {} } });
-    expect(warned).toEqual([]);
+    expect(warned.some((w) => w.includes('Unrecognised transition kind'))).toBe(false);
+    expect(warned.some((w) => w.includes('no `renderer`'))).toBe(true);
   });
 
   it('still warns — once — about a kind nobody declared', () => {
