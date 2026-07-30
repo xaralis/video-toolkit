@@ -90,6 +90,63 @@ describe('checkerboard default (fade) path mounts `to` once, not gridSize² time
   });
 });
 
+// THE WIRING PIN (Task 0.1 fix round 1, I-1). The earlier suite pinned the
+// per-cell ARITHMETIC (`cellEasedProgress`) and the STRUCTURE (mount counts,
+// rect counts) but never asserted the mask is actually CONNECTED to anything
+// — a deletion sweep found two lines that could be removed with the whole
+// suite (both files) staying green: the `<foreignObject>`'s `mask={...}`
+// attribute, and the rects' real `x`/`y` geometry (collapsing every rect to
+// the origin). Removing either turns the transition into a de facto hard cut
+// (foreignObject unmasked) or a single stacked square (rects at 0,0) while
+// every prior assertion — mount counts, rect counts, fillOpacity values,
+// even the "checkers OUT to the background" trailing-edge pin, which only
+// ever read fillOpacity — kept passing. These two close that gap by reading
+// the ACTUAL wiring, not just values that happen to live near it.
+describe('checkerboard the mask is actually wired to the masked layer, not just present nearby', () => {
+  it.each([
+    ['a live `to`', {}],
+    ['the trailing edge (`to: null`)', { to: null }],
+  ] as const)("the foreignObject's mask attribute references the real <mask> id — %s", (_label, inputs) => {
+    const { container, unmount } = mount({ kind: 'checkerboard', frames: 15 }, 0.5, inputs);
+    const maskEl = container.querySelector('mask');
+    const foreignObject = container.querySelector('foreignObject');
+    expect(maskEl).not.toBeNull();
+    expect(foreignObject).not.toBeNull();
+    // Read the id OFF THE ACTUAL <mask> element, not a value this test
+    // invents — a hardcoded string here would pass even if the two drifted.
+    expect(foreignObject!.getAttribute('mask')).toBe(`url(#${maskEl!.id})`);
+    unmount();
+  });
+
+  it("each mask rect's x/y/width/height tiles the frame in real pixel geometry, not stacked at the origin", () => {
+    const width = 1080;
+    const height = 1920;
+    const gridSize = 4;
+    const { container, unmount } = mount({ kind: 'checkerboard', frames: 15, gridSize }, 0.5);
+    const rects = maskRectsOf(container);
+    const cellW = width / gridSize;
+    const cellH = height / gridSize;
+    const expected: Array<{ x: number; y: number; width: number; height: number }> = [];
+    for (let row = 0; row < gridSize; row++) {
+      for (let col = 0; col < gridSize; col++) {
+        expected.push({ x: col * cellW, y: row * cellH, width: cellW, height: cellH });
+      }
+    }
+    const got = rects.map((r) => ({
+      x: Number(r.getAttribute('x')),
+      y: Number(r.getAttribute('y')),
+      width: Number(r.getAttribute('width')),
+      height: Number(r.getAttribute('height')),
+    }));
+    expect(got).toEqual(expected);
+    // Guard the guard: every rect landing at the origin would also produce a
+    // fixed-length array the naive version of this test could satisfy by
+    // accident if `expected` were built wrong — assert real spread too.
+    expect(new Set(got.map((r) => `${r.x},${r.y}`)).size).toBe(gridSize * gridSize);
+    unmount();
+  });
+});
+
 describe('checkerboard the mask id is stable across frames and unique per instance', () => {
   it('the same instance keeps the same mask id across re-renders (progress changes)', () => {
     const Composite = transitionNodeFor({ kind: 'checkerboard', frames: 15 } as TransitionRecord, DIMS)!.composite;
@@ -105,6 +162,16 @@ describe('checkerboard the mask id is stable across frames and unique per instan
     unmount();
   });
 
+  // The id is `random(null)`-derived (burn.tsx's/glitch.tsx's pattern), NOT
+  // `React.useId()` — `useId()` numbers from zero PER REACT ROOT, so two
+  // roots on one document (two Player instances, or Studio's editor root
+  // beside a preview root) could each mint `checkerboard-mask-r0` and
+  // collide. This test's two `render()` calls share ONE root, so it does not
+  // probe that specific root-partitioning axis — it only re-confirms two
+  // instances get different ids, which the random-id scheme guarantees
+  // regardless of how many roots are involved (unlike `useId()`, whose
+  // uniqueness guarantee is root-scoped). That is why the fix is on the
+  // production code, not on reaching for a second root in this test.
   it('two concurrent instances (two live boundaries) get different mask ids', () => {
     const node = transitionNodeFor({ kind: 'checkerboard', frames: 15 } as TransitionRecord, DIMS)!;
     const Composite = node.composite;

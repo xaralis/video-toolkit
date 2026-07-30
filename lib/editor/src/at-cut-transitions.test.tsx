@@ -1234,25 +1234,43 @@ describe('a reel edge resolves the missing input to the theme background', () =>
   // rect count/alpha is the structural equivalent of the old `plates`/`lit`
   // pin, and is asserted here directly rather than moved to the new file: it
   // IS the trailing-edge case this describe block exists for.
+  //
+  // Fix round 1 (I-1): the `plates`/`lit` counts above read `fillOpacity`
+  // values but never checked those values are attached to anything — a
+  // deletion sweep found the `<foreignObject>`'s `mask={...}` attribute could
+  // be removed with `plates`/`lit` both still passing (a de facto hard cut
+  // with the background plate not masked at all reads identically to them).
+  // `wired` closes that: the single plate must live INSIDE a foreignObject
+  // whose `mask` attribute names the real `<mask>` element's id.
   it('checkerboard reveals the theme background cell by cell at the trailing edge', () => {
     const cellsAt = (p: number) => {
       const { container, unmount } = mount('checkerboard', { to: null }, p);
       const plates = platesOf(container);
       const rects = [...container.querySelectorAll('mask rect')];
       const lit = rects.filter((r) => Number(r.getAttribute('fill-opacity')) > 0).length;
+      const maskEl = container.querySelector('mask');
+      const foreignObject = container.querySelector('foreignObject');
+      const wired =
+        maskEl !== null &&
+        foreignObject !== null &&
+        foreignObject.getAttribute('mask') === `url(#${maskEl.id})` &&
+        foreignObject.contains(plates[0] ?? null);
       unmount();
-      return { plates: plates.length, cells: rects.length, lit };
+      return { plates: plates.length, cells: rects.length, lit, wired };
     };
     const early = cellsAt(0.25);
     const late = cellsAt(0.9);
     // ONE masked background plate (not 64 — Task 0.1's single mount), the
-    // default 8x8 grid of alpha values living in the mask, and more of them
-    // lit late than early.
+    // default 8x8 grid of alpha values living in the mask, more of them lit
+    // late than early, and the plate ACTUALLY inside the masked foreignObject
+    // — not just a fillOpacity value sitting nearby.
     expect(early.plates).toBe(1);
     expect(late.plates).toBe(1);
     expect(early.cells).toBe(64);
     expect(late.cells).toBe(64);
     expect(late.lit).toBeGreaterThan(early.lit);
+    expect(early.wired).toBe(true);
+    expect(late.wired).toBe(true);
   });
 
   // ---- the LEADING edge, the mirror case ----------------------------------

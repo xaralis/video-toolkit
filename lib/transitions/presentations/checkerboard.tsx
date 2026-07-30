@@ -35,8 +35,8 @@
  * path unchanged. The per-cell ordering/stagger/easing arithmetic is shared
  * between both paths via `cellEasedProgress` below, so they cannot drift.
  */
-import React, { useMemo } from 'react';
-import { AbsoluteFill, interpolate, Easing } from 'remotion';
+import React, { useMemo, useState } from 'react';
+import { AbsoluteFill, interpolate, Easing, random } from 'remotion';
 import type { TransitionNode, TransitionNodeProps } from '../../theming/transitions';
 import { edgeInput } from '../edge-plate';
 
@@ -197,9 +197,18 @@ export const checkerboard = (props: CheckerboardProps = {}): TransitionNode => {
 
     // Stable across this instance's whole mounted lifetime (every frame of the
     // one boundary), unique per instance — two concurrent checkerboards must
-    // not collide. Colons stripped: an id embedded in a CSS `url(#…)` should
-    // not carry them, and React's `useId()` format includes them.
-    const maskId = `checkerboard-mask-${React.useId().replace(/:/g, '')}`;
+    // not collide. NOT `React.useId()`: it is unique only WITHIN one React
+    // root (absent an `identifierPrefix`), so two roots on the same document
+    // — e.g. two Player instances, or Studio's editor root alongside a
+    // preview root — both start numbering from zero and can mint the same
+    // `checkerboard-mask-r0`, which `url(#…)` then resolves to whichever
+    // copy is first in document order: the WRONG mask. That collision is
+    // exactly the defect class requirement 3 exists to prevent. `burn.tsx`
+    // and `glitch.tsx` already solve "one random id per mounted instance,
+    // stable across that instance's frames" for this same job — reused
+    // verbatim rather than a third pattern.
+    const [uid] = useState(() => String(random(null)).slice(2, 10));
+    const maskId = `checkerboard-mask-${uid}`;
 
     // The OUTGOING clip, drawn once and whole, beneath the grid/mask in both
     // paths below. At the reel's LEADING edge there is none, and it resolves
