@@ -19,6 +19,18 @@ import { anchorTiming } from '../../render/overlay-anchor';
 //    nothing — a second brand overrides them through tokens.card.
 const DEFAULT_BACKGROUND = '#000000';
 const DEFAULT_PATTERN = { color: '#ffffff', accentColor: '#ffffff', opacity: 0.36 };
+// Pattern radii, pitches and angle are the pattern's own density — they do not
+// scale against any other exposed token (a pattern's grain is not tied to
+// type size the way the caption padding is to fontSize), so they stay
+// absolute px/deg rather than an em ratio. Promoted to tokens at Task 5.1 so a
+// brand CAN move them; defaults are campaign-reels' tuned literals, verbatim.
+const DEFAULT_PIXELS_GEOMETRY = { radiusPx: 1.5, pitchPx: 36 };
+const DEFAULT_DOTS_GEOMETRY = { radiusPx: 1, pitchPx: 60 };
+const DEFAULT_GRID_GEOMETRY = { radiusPx: 1, pitchPx: 60 };
+const DEFAULT_DIAGONALS_GEOMETRY = { angleDeg: 135, pitchPx: 24 };
+// The diagonals' rule THICKNESS (not its pitch) is a hairline stroke width —
+// genuinely absolute per CONSTRAINTS' own example, so it is not a token.
+const DIAGONAL_LINE_WIDTH_PX = 1;
 const DEFAULT_TEXT = {
   fontFamily: 'sans-serif',
   fontWeight: 700,
@@ -40,21 +52,29 @@ function patternLayer(name: string | undefined, t: CardTokens['pattern']): React
   let backgroundImage: string | undefined;
   let backgroundSize: string | undefined;
   switch (name) {
-    case 'pixels':
-      backgroundImage = `radial-gradient(circle at 3px 3px, ${p.accentColor} 1.5px, transparent 1.5px)`;
-      backgroundSize = '36px 36px';
+    case 'pixels': {
+      const g = { ...DEFAULT_PIXELS_GEOMETRY, ...(t?.pixels ?? {}) };
+      backgroundImage = `radial-gradient(circle at ${g.radiusPx * 2}px ${g.radiusPx * 2}px, ${p.accentColor} ${g.radiusPx}px, transparent ${g.radiusPx}px)`;
+      backgroundSize = `${g.pitchPx}px ${g.pitchPx}px`;
       break;
-    case 'dots':
-      backgroundImage = `radial-gradient(circle at 2px 2px, ${p.accentColor} 1px, transparent 1px)`;
-      backgroundSize = '60px 60px';
+    }
+    case 'dots': {
+      const g = { ...DEFAULT_DOTS_GEOMETRY, ...(t?.dots ?? {}) };
+      backgroundImage = `radial-gradient(circle at ${g.radiusPx * 2}px ${g.radiusPx * 2}px, ${p.accentColor} ${g.radiusPx}px, transparent ${g.radiusPx}px)`;
+      backgroundSize = `${g.pitchPx}px ${g.pitchPx}px`;
       break;
-    case 'grid':
-      backgroundImage = `radial-gradient(circle at 2px 2px, ${p.color} 1px, transparent 1px)`;
-      backgroundSize = '60px 60px';
+    }
+    case 'grid': {
+      const g = { ...DEFAULT_GRID_GEOMETRY, ...(t?.grid ?? {}) };
+      backgroundImage = `radial-gradient(circle at ${g.radiusPx * 2}px ${g.radiusPx * 2}px, ${p.color} ${g.radiusPx}px, transparent ${g.radiusPx}px)`;
+      backgroundSize = `${g.pitchPx}px ${g.pitchPx}px`;
       break;
-    case 'diagonals':
-      backgroundImage = `repeating-linear-gradient(135deg, ${p.color} 0 1px, transparent 1px 24px)`;
+    }
+    case 'diagonals': {
+      const g = { ...DEFAULT_DIAGONALS_GEOMETRY, ...(t?.diagonals ?? {}) };
+      backgroundImage = `repeating-linear-gradient(${g.angleDeg}deg, ${p.color} 0 ${DIAGONAL_LINE_WIDTH_PX}px, transparent ${DIAGONAL_LINE_WIDTH_PX}px ${g.pitchPx}px)`;
       break;
+    }
     default:
       return null;
   }

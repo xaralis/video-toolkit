@@ -377,6 +377,187 @@ describe('GenericCaptions — pop-focus mode (the default)', () => {
   });
 });
 
+// ─────────────── Task 5.1: geometry tokens, proportional not absolute ───────────────
+//
+// The failure mode this task exists to fix: POP_PAD_X/POP_PAD_Y (and the
+// highlight halo) used to be flat px against a token-driven `fontSize`, so
+// raising `fontSize` shrank them proportionally instead of scaling them. The
+// two tests marked MUTATION PIN below are the ones that actually defend that
+// — a test that only sets the padding token directly would pass against the
+// broken px version too (CONSTRAINTS.md's own warning).
+describe('GenericCaptions — pop-focus pill padding is a RATIO of fontSize (Task 5.1)', () => {
+  it('defaults to 10px/22px at fontSize 52 — the pre-Task-5.1 literal, exactly', () => {
+    frameState.frame = 45;
+    const pill = draw().container.querySelector('[data-caption-pill]') as HTMLElement;
+    expect(pill.style.padding).toBe('10px 22px');
+  });
+
+  // MUTATION PIN #1 (CONSTRAINTS.md "pin the wiring"): a non-default token
+  // value must change the rendered geometry. Breaking the line that reads
+  // `t.popPadXEm`/`t.popPadYEm` (e.g. reverting to the DEFAULT_* constant
+  // unconditionally) turns this red.
+  it('honours popPadXEm / popPadYEm overrides directly', () => {
+    frameState.frame = 45;
+    const pill = draw({ tokens: { popPadXEm: 1, popPadYEm: 0.5 } }).container.querySelector(
+      '[data-caption-pill]',
+    ) as HTMLElement;
+    // fontSize 52 (default) * 1 = 52, * 0.5 = 26.
+    expect(pill.style.padding).toBe('26px 52px');
+  });
+
+  // MUTATION PIN #2, the one that matters (CONSTRAINTS.md + the brief: "change
+  // fontSize and assert the padding scales with it" — this is the actual bug
+  // being fixed). Reverting `popPadXPx`/`popPadYPx` in GenericCaptions.tsx back
+  // to a flat `POP_PAD_X`/`POP_PAD_Y` px constant (ignoring `fontSize`) turns
+  // this red: the padding would stay 22px/10px instead of doubling.
+  it('SCALES the padding with fontSize — doubling fontSize doubles the padding', () => {
+    frameState.frame = 45;
+    const pill = draw({ tokens: { fontSize: 104 } }).container.querySelector(
+      '[data-caption-pill]',
+    ) as HTMLElement;
+    expect(pill.style.padding).toBe('20px 44px'); // 10*2 / 22*2
+  });
+
+  it('at a THIRD fontSize the ratio still holds (not a fontSize=104 special case)', () => {
+    frameState.frame = 45;
+    const pill = draw({ tokens: { fontSize: 26 } }).container.querySelector(
+      '[data-caption-pill]',
+    ) as HTMLElement;
+    expect(pill.style.padding).toBe('5px 11px'); // 10/2, 22/2
+  });
+});
+
+describe('GenericCaptions — highlight halo is a RATIO of fontSize (Task 5.1)', () => {
+  it('defaults to a 10px halo at fontSize 52 (the pre-Task-5.1 literal)', () => {
+    frameState.frame = 45;
+    const { container } = draw({ tokens: { mode: 'highlight' } });
+    expect(spans(container)[1].style.textShadow).toContain('0 0 10px');
+  });
+
+  // MUTATION PIN: scaling proof, same shape as the padding pin above. Reverting
+  // `highlightHaloMaxPx` to the flat `HIGHLIGHT_HALO_MAX_EM * fontSize` — i.e.
+  // dropping the fontSize factor back to a constant 10 — turns this red.
+  it('SCALES the halo with fontSize', () => {
+    frameState.frame = 45;
+    const { container } = draw({ tokens: { mode: 'highlight', fontSize: 104 } });
+    expect(spans(container)[1].style.textShadow).toContain('0 0 20px');
+  });
+
+  it('honours a highlightHaloMaxEm override directly', () => {
+    frameState.frame = 45;
+    const { container } = draw({ tokens: { mode: 'highlight', highlightHaloMaxEm: 1 } });
+    // fontSize 52 (default) * 1 = 52.
+    expect(spans(container)[1].style.textShadow).toContain('0 0 52px');
+  });
+});
+
+describe('GenericCaptions — the rest of the promoted geometry is token-driven, not constant', () => {
+  it('pop-focus: popFontMultiplier, popTailMs, popLetterSpacing, popLineHeight all come from tokens', () => {
+    frameState.frame = 45;
+    const pill = draw({
+      tokens: {
+        popFontMultiplier: 2,
+        popLetterSpacing: '0.5em',
+        popLineHeight: 3,
+      },
+    }).container.querySelector('[data-caption-pill]') as HTMLElement;
+    expect(pill.style.fontSize).toBe('104px'); // 52 * 2
+    expect(pill.style.letterSpacing).toBe('0.5em');
+    expect(pill.style.lineHeight).toBe('3');
+  });
+
+  it('popTailMs extends (or shortens) how long a chunk stays mounted past its last word', () => {
+    // A single explicit line, generously long so the OUTER line-active window
+    // (governed by lastLineGraceMs, a different token) never gates this —
+    // isolating the chunk-level popTailMs boundary being tested.
+    const explicitLine = {
+      startMs: 0,
+      endMs: 10000,
+      text: 'a b',
+      words: [
+        { startMs: 0, endMs: 1000, word: 'a' },
+        { startMs: 1000, endMs: 2000, word: 'b' },
+      ],
+    };
+    frameState.frame = 62; // ≈2066.67ms — 66.67ms past word "b"'s 2000ms end.
+    // Default 30ms tail: cutoff at 2030ms, which 2066.67ms is past → hidden.
+    const short = draw({ lines: [explicitLine] });
+    expect(short.container.querySelector('[data-caption-pill]')).toBeNull();
+    // A 100ms tail: cutoff at 2100ms, which 2066.67ms is still inside → shown.
+    const long = draw({ lines: [explicitLine], tokens: { popTailMs: 100 } });
+    expect(long.container.querySelector('[data-caption-pill]')).not.toBeNull();
+  });
+
+  it('highlight: highlightOpacityInactive / highlightScaleBump / highlightHaloAlpha / highlightLetterSpacing / highlightLineHeight all come from tokens', () => {
+    frameState.frame = 45; // "two" active
+    const { container } = draw({
+      tokens: {
+        mode: 'highlight',
+        highlightOpacityInactive: 0.2,
+        highlightScaleBump: 1,
+        highlightHaloAlpha: 1,
+        highlightLetterSpacing: '0.9em',
+        highlightLineHeight: 5,
+        activeColor: '#00ff00',
+      },
+    });
+    expect(spans(container)[0].style.opacity).toBe('0.2'); // inactive word
+    expect(spans(container)[1].style.transform).toBe('scale(2)'); // 1 + 1*1
+    expect(spans(container)[1].style.textShadow).toContain('0 0 10px #00ff00ff'); // alpha 1 -> ff
+    const line = container.querySelector('[data-caption-line]') as HTMLElement;
+    expect(line.style.letterSpacing).toBe('0.9em');
+    expect(line.style.lineHeight).toBe('5');
+  });
+
+  // MUTATION PIN — this is the caption-lines.ts constant the brief calls out
+  // by name (`DEFAULT_CAPTION_WORD_FADE_MS`, "has no token field while its
+  // four siblings do"). Breaking the `wordFadeMs` thread (e.g. calling
+  // `activeAmount(w.startMs, w.endMs, ms)` without the 4th argument, as the
+  // code did before this task) turns this red: "two" would stay fully
+  // inactive (opacity 0.55) at frame 28 regardless of the token.
+  it('wordFadeMs threads through to BOTH modes\' activeAmount call — widening it activates a word earlier', () => {
+    frameState.frame = 28; // ≈933.33ms — 66.67ms before "two" (1000-2000ms) starts.
+    // Default 30ms ramp: 933ms is fully outside it → "two" untouched (0.55).
+    const narrow = draw({ tokens: { mode: 'highlight' } });
+    expect(spans(narrow.container)[1].style.opacity).toBe('0.55');
+    // A 200ms ramp reaches back to 800ms, so 933ms is INSIDE it (partial).
+    const wide = draw({ tokens: { mode: 'highlight', wordFadeMs: 200 } });
+    expect(Number(spans(wide.container)[1].style.opacity)).toBeGreaterThan(0.55);
+  });
+});
+
+// wordGap: reconciled to ONE value shared by both modes (Task 5.1) — pop-focus
+// kept its 0.4em ('the shipping brand's LIVE mode'); highlight's former
+// 0.45em is the pixel change this reconciliation makes, and it is unrendered
+// today (highlight mode is "dead in that brand's code").
+describe('GenericCaptions — wordGap is ONE token shared by pop-focus and highlight (Task 5.1 reconciliation)', () => {
+  it('pop-focus defaults its inter-word margin to 0.4em, unchanged from before', () => {
+    frameState.frame = 45;
+    const { container } = draw();
+    // 3-word chunk: first two spans get the gap, the last gets 0.
+    const words = spans(container);
+    expect(words[0].style.marginRight).toBe('0.4em');
+    expect(words[1].style.marginRight).toBe('0.4em');
+    expect(words[2].style.marginRight).toBe('0px');
+  });
+
+  it("highlight now defaults its inter-word margin to 0.4em too (was 0.45em — the reconciliation's pixel change)", () => {
+    frameState.frame = 45;
+    const { container } = draw({ tokens: { mode: 'highlight' } });
+    const words = spans(container);
+    expect(words[0].style.marginRight).toBe('0.4em');
+    expect(words[words.length - 1].style.marginRight).toBe('0px');
+  });
+
+  it('a wordGap override moves BOTH modes together, proving it is one token not two', () => {
+    frameState.frame = 45;
+    const pop = draw({ tokens: { wordGap: '2em' } });
+    expect(spans(pop.container)[0].style.marginRight).toBe('2em');
+    const hl = draw({ tokens: { mode: 'highlight', wordGap: '2em' } });
+    expect(spans(hl.container)[0].style.marginRight).toBe('2em');
+  });
+});
+
 describe('GenericCaptions — highlight mode', () => {
   const highlight = (over: CaptionTokens = {}) =>
     draw({ tokens: { mode: 'highlight', ...over } });

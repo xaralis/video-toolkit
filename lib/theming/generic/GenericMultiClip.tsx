@@ -23,6 +23,16 @@ const DEFAULT_BORDER_PX = 4;
 const DEFAULT_BORDER_COLOR = '#000000';
 const DEFAULT_BACKGROUND = '#000000';
 const DEFAULT_QUAD_GAP_PX = 4;
+// Split ratio and quad template are proportions, not px — CSS flex-grow and
+// grid `fr` units are already scale-free, so no unit conversion is needed to
+// keep them token-driven. Defaults reproduce campaign-reels' only split (an
+// even one): `flex: 0.5` on both split panes is visually identical to the
+// former hardcoded `flex: 1` on both (flex-grow only distributes surplus
+// space in PROPORTION, so 0.5:0.5 splits exactly like 1:1), and `1fr 1fr` is
+// unchanged from the former literal grid-template string.
+const DEFAULT_SPLIT_RATIO = 0.5;
+const DEFAULT_QUAD_COLUMNS: [number, number] = [1, 1];
+const DEFAULT_QUAD_ROWS: [number, number] = [1, 1];
 // PIP geometry defaults are sized for the 1080x1920 vertical frame the reel
 // templates use; any other frame overrides them via tokens.multiClip.pip.
 const DEFAULT_PIP = { width: 360, height: 480, right: 60, bottom: 280, borderPx: 4, borderColor: '#ffffff' };
@@ -92,6 +102,9 @@ export const GenericMultiClip: React.FC<VideoRenderProps> = ({
   const divider = `${borderPx}px solid ${borderColor}`;
   const pip = { ...DEFAULT_PIP, ...(t.pip ?? {}) };
   const label = { ...DEFAULT_LABEL, ...(t.label ?? {}) };
+  const splitRatio = t.splitRatio ?? DEFAULT_SPLIT_RATIO;
+  const [quadCol0, quadCol1] = t.quadColumns ?? DEFAULT_QUAD_COLUMNS;
+  const [quadRow0, quadRow1] = t.quadRows ?? DEFAULT_QUAD_ROWS;
 
   /** One pane's media: a SYNTHETIC VideoItem with a 0-BASED span whose length
    *  is the sub-source's own trim span, and `handles {0,0}` — sub-clips never
@@ -156,15 +169,15 @@ export const GenericMultiClip: React.FC<VideoRenderProps> = ({
   if (layoutKey === 'split-h') {
     layout = (
       <div data-multiclip-layout="" style={{ ...fillStyle, display: 'flex', flexDirection: 'column' }}>
-        {pane(0, { flex: 1, borderBottom: divider })}
-        {pane(1, { flex: 1 })}
+        {pane(0, { flex: splitRatio, borderBottom: divider })}
+        {pane(1, { flex: 1 - splitRatio })}
       </div>
     );
   } else if (layoutKey === 'split-v') {
     layout = (
       <div data-multiclip-layout="" style={{ ...fillStyle, display: 'flex', flexDirection: 'row' }}>
-        {pane(0, { flex: 1, borderRight: divider })}
-        {pane(1, { flex: 1 })}
+        {pane(0, { flex: splitRatio, borderRight: divider })}
+        {pane(1, { flex: 1 - splitRatio })}
       </div>
     );
   } else if (layoutKey === 'pip') {
@@ -199,8 +212,8 @@ export const GenericMultiClip: React.FC<VideoRenderProps> = ({
         style={{
           ...fillStyle,
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gridTemplateRows: '1fr 1fr',
+          gridTemplateColumns: `${quadCol0}fr ${quadCol1}fr`,
+          gridTemplateRows: `${quadRow0}fr ${quadRow1}fr`,
           gap: t.quadGapPx ?? DEFAULT_QUAD_GAP_PX,
         }}
       >

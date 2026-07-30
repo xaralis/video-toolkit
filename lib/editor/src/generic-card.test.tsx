@@ -75,6 +75,59 @@ describe('GenericCard background', () => {
   });
 });
 
+// ─────────────── Task 5.1: pattern radii, pitches and angle are tokens ───────────────
+describe('GenericCard pattern geometry (Task 5.1)', () => {
+  it('defaults pixels to radius 1.5 / pitch 36 — the pre-Task-5.1 literal, exactly', () => {
+    const { container } = draw(card({ pattern: 'pixels' }));
+    const pat = container.querySelector('[data-card-pattern]') as HTMLElement;
+    expect(pat.style.backgroundImage).toContain('circle at 3px 3px');
+    expect(pat.style.backgroundImage).toContain('1.5px');
+    expect(pat.style.backgroundSize).toBe('36px 36px');
+  });
+
+  it('defaults diagonals to angle 135deg / pitch 24', () => {
+    const { container } = draw(card({ pattern: 'diagonals' }));
+    const pat = container.querySelector('[data-card-pattern]') as HTMLElement;
+    expect(pat.style.backgroundImage).toContain('repeating-linear-gradient(135deg');
+    expect(pat.style.backgroundImage).toContain('1px 24px');
+  });
+
+  // MUTATION PIN: a non-default token must move the rendered pattern.
+  // Breaking the line that reads `t?.pixels`/`t?.dots`/`t?.grid`/`t?.diagonals`
+  // (reverting patternLayer to the hardcoded 3px/1.5px/36px literals) turns
+  // this red.
+  it('honours pixels.radiusPx / pixels.pitchPx overrides', () => {
+    const tokens: ThemeTokens = { card: { pattern: { pixels: { radiusPx: 10, pitchPx: 100 } } } };
+    const { container } = draw(card({ pattern: 'pixels' }), tokens);
+    const pat = container.querySelector('[data-card-pattern]') as HTMLElement;
+    expect(pat.style.backgroundImage).toContain('circle at 20px 20px');
+    expect(pat.style.backgroundImage).toContain('10px');
+    expect(pat.style.backgroundSize).toBe('100px 100px');
+  });
+
+  it('honours dots.radiusPx / dots.pitchPx overrides, independently of pixels/grid', () => {
+    const tokens: ThemeTokens = { card: { pattern: { dots: { radiusPx: 5, pitchPx: 80 } } } };
+    const { container } = draw(card({ pattern: 'dots' }), tokens);
+    const pat = container.querySelector('[data-card-pattern]') as HTMLElement;
+    expect(pat.style.backgroundSize).toBe('80px 80px');
+  });
+
+  it('honours grid.radiusPx / grid.pitchPx overrides', () => {
+    const tokens: ThemeTokens = { card: { pattern: { grid: { radiusPx: 3, pitchPx: 90 } } } };
+    const { container } = draw(card({ pattern: 'grid' }), tokens);
+    const pat = container.querySelector('[data-card-pattern]') as HTMLElement;
+    expect(pat.style.backgroundSize).toBe('90px 90px');
+  });
+
+  it('honours diagonals.angleDeg / diagonals.pitchPx overrides', () => {
+    const tokens: ThemeTokens = { card: { pattern: { diagonals: { angleDeg: 45, pitchPx: 12 } } } };
+    const { container } = draw(card({ pattern: 'diagonals' }), tokens);
+    const pat = container.querySelector('[data-card-pattern]') as HTMLElement;
+    expect(pat.style.backgroundImage).toContain('repeating-linear-gradient(45deg');
+    expect(pat.style.backgroundImage).toContain('1px 12px'); // the 1px line width stays absolute (a hairline)
+  });
+});
+
 describe('GenericCard cardKind dispatch stays OPEN', () => {
   it('renders the background and NOTHING else for an unregistered cardKind', () => {
     const { container } = draw(card({ cardKind: 'stats-plate', pattern: 'dots' }));

@@ -204,3 +204,45 @@ describe('GenericMultiClip tokens', () => {
     expect(container.querySelector('[data-pane-label]')).toBeNull();
   });
 });
+
+// ─────── Task 5.1: split ratio and quad template are tokens, not fixed 50/50 ───────
+describe('GenericMultiClip split ratio / quad template (Task 5.1)', () => {
+  it('defaults split-h to an even flex split (0.5 / 0.5) — visually identical to the old flex:1/flex:1', () => {
+    const { container } = draw(item('split-h', [src(0), src(1)]));
+    expect(panes(container)[0].style.flex).toBe('0.5 1 0%');
+    expect(panes(container)[1].style.flex).toBe('0.5 1 0%');
+  });
+
+  // MUTATION PIN: a non-default splitRatio must move the flex ratio. Breaking
+  // the line that reads `t.splitRatio` (hardcoding `flex: 1` again) turns
+  // this red.
+  it('honours a splitRatio override on split-h', () => {
+    const { container } = draw(item('split-h', [src(0), src(1)]), { multiClip: { splitRatio: 0.75 } });
+    expect(panes(container)[0].style.flex).toBe('0.75 1 0%');
+    expect(panes(container)[1].style.flex).toBe('0.25 1 0%');
+  });
+
+  it('honours a splitRatio override on split-v too', () => {
+    const { container } = draw(item('split-v', [src(0), src(1)]), { multiClip: { splitRatio: 0.3 } });
+    expect(panes(container)[0].style.flex).toBe('0.3 1 0%');
+    expect(panes(container)[1].style.flex).toBe('0.7 1 0%');
+  });
+
+  it('defaults quad to 1fr 1fr columns and rows — unchanged from the old literal', () => {
+    const { container } = draw(item('quad', [src(0), src(1), src(2), src(3)]));
+    const root = container.querySelector('[data-multiclip-layout]') as HTMLElement;
+    expect(root.style.gridTemplateColumns).toBe('1fr 1fr');
+    expect(root.style.gridTemplateRows).toBe('1fr 1fr');
+  });
+
+  // MUTATION PIN: breaking the lines that read `t.quadColumns`/`t.quadRows`
+  // (hardcoding the '1fr 1fr' template string again) turns this red.
+  it('honours quadColumns / quadRows overrides', () => {
+    const { container } = draw(item('quad', [src(0), src(1), src(2), src(3)]), {
+      multiClip: { quadColumns: [2, 1], quadRows: [1, 3] },
+    });
+    const root = container.querySelector('[data-multiclip-layout]') as HTMLElement;
+    expect(root.style.gridTemplateColumns).toBe('2fr 1fr');
+    expect(root.style.gridTemplateRows).toBe('1fr 3fr');
+  });
+});
