@@ -814,6 +814,13 @@ the list is:
 | `gradient-wipe` | NO-OP |
 | **`checkerboard`** | **NO-OP** — Task 2.1 made it draw no grid there, deliberately deferring the look decision to this task |
 
+> **Now SEVEN, not eight — `fade-coal` is gone.** This table is the measurement
+> as taken at the time (post-1.3, post-2.1), before § 2.3-a removed `fade-coal`
+> from core's catalog entirely. The `fade-coal` row above is kept for the
+> historical record, not re-derived; a fresh mount-every-kind-and-compare today
+> finds seven no-op kinds, not eight. Re-derive from the current
+> `TRANSITION_CATALOG` rather than trusting either number as arithmetic.
+
 The other twelve kinds animate at the trailing edge and were never in the
 family. The LEADING edge (`from === null`) was a no-op for **no** kind: the
 entering branch always had its input.
@@ -832,7 +839,10 @@ side the whole boundary was inert.
 `AtCutTransition` → the node. `edgeInput(input, background)`
 (`lib/transitions/edge-plate.tsx`) turns a null input into a full-frame plate of
 that colour. It is used in exactly two places: `fromRemotionPresentation` (which
-covers all 16 lifted one-sided kinds) and `checkerboard`.
+covers all 15 lifted one-sided kinds — 20 total catalog kinds, minus `cut`,
+minus the four native two-input kinds `checkerboard`/`pixelate`/
+`scanline-glitch`/`wipe`; re-derive from `TRANSITION_CATALOG` rather than
+trusting this arithmetic, it has drifted before) and `checkerboard`.
 
 **The colour is never chosen by core.** A literal `#000` here would be the exact
 brand-leak class this programme exists to remove; a caller with no background in
@@ -1658,6 +1668,38 @@ gradient-mask cross-blend). No PP file changes as a result of this task; PP's ow
 `brand-lib/segments/FootageSegment.tsx:122-188` implementation is untouched and keeps
 rendering exactly as it does today, `blend` read as an item-level effect by PP's OWN video
 renderer, same as before this task.
+
+## Task 3.4 — `grade` unified onto the STYLE axis — one filter-order change, brief-mandated
+
+**Grade: deliberate look change, zero live impact today.** Before this task, `item.grade`
+merged inline in `SegmentMedia` and an authored `type: 'grade'` effect applied separately
+through `primitives.tsx`'s `GradeEffect` (a wrapper div) — two mechanisms that could double a
+grade if an item somehow carried both. Task 3.4 collapsed both onto the one `gradeStyleEffect`
+(`lib/theming/effects/style-effect.ts`), and `applyStyleEffects` composes `item.grade` **FIRST**,
+then `item.effects[]` in array order (see that file's module comment on `applyStyleEffects` for
+the full reasoning: grade is the base colour treatment other style effects, ken-burns' movement
+or a brand's own, compose ONTO).
+
+**The consequence: `grade` now composes FIRST in the merged `filter` string, not last.** CSS
+`filter` is order-sensitive — `filter: a b` and `filter: b a` are not the same rendered result
+whenever `a` and `b` are both non-trivial (e.g. a `blur` before a `contrast` softens differently
+than the reverse). Any brand that registers its OWN `theme.styleEffects` entry producing a
+`filter` fragment now composes AFTER `grade` unconditionally, where before this task a
+wrapper-axis `grade` effect could land anywhere in `item.effects[]`'s own array order relative
+to another wrapper effect.
+
+**Verified zero live impact**: no brand repo registers `theme.styleEffects` today —
+```
+grep -rn "styleEffects" /Users/xaralis/Workspace/progpce/video-toolkit 2>/dev/null | grep -v node_modules
+grep -rn "styleEffects" /Users/xaralis/Workspace/roost/video-toolkit --exclude-dir=toolkit --exclude-dir=node_modules 2>/dev/null
+```
+both print nothing, so no live project's rendered look changes as a result of this reordering.
+This is a **forward-looking migration note**, not a today-fix: the first brand to register a
+style effect that produces a `filter` fragment (or the reference `ink-wash` example this
+programme's Task 6.2/final-fix-wave added at
+`examples/layered-minimal/src/conformance-theme.tsx`) composes onto a grade that is now always
+the base layer, and should read this section before assuming a filter fragment's position in
+`item.effects[]` controls where it lands relative to `grade`.
 
 ## Task 4.1 — `anchoredOverlays` actually render
 
