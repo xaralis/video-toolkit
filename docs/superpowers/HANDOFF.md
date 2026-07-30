@@ -1125,9 +1125,22 @@ Task 1.3's two-input rewrite renders an item's media at **two different position
 tree across the frames a boundary owns (once under the item's own `Sequence`, once under the
 boundary's rebased copy), and React reconciles by tree position, so the element is destroyed and
 recreated twice per boundary — preview-only, because render extracts frames independently of any
-DOM. R1 shipped a **preview-gated** mitigation (hide instead of unmount; premount the rebased copy;
-memoize the transition-node type so it isn't a fresh component on every render) that left **all 300
-pixel goldens and both brand repos byte-identical by construction**. **The pixel harness cannot see
+DOM. R1 shipped **three fixes, two of them preview-gated behind `isPreviewEnvironment()`** (hide
+instead of unmount; premount the rebased copy) **and one — the `transitionNodeFor` memoization
+cache, `lib/render/at-cut-transitions.tsx` ~line 449 — that is UNIVERSAL, not preview-gated**: it
+runs on every call, preview or render. Calling all three "preview-gated… so the render path is
+unchanged by construction" (as an earlier draft of this section did, and as this reviewer told
+the final-review pass repeatedly) overstates the guarantee for the cache specifically — it is not
+gated out of the render path, it never enters it in a way that could change output. The argument
+for why the render path is unaffected anyway is a property of TODAY's presentation set, not a
+structural guarantee: the cache is pure memoization of a pure function's result (same inputs →
+returned the SAME reference, not merely an equivalent one), and every current presentation's own
+per-mount state is limited to two unseeded random SVG element `id`s — no presentation reads
+`useEffect` or holds `useState` across frames — so reusing a cached node changes nothing a render
+observes. The first presentation that accumulates frame state in `useState` breaks that argument,
+not the cache's correctness; see `lib/render/README.md`'s own preview-vs-render section, added at
+the same time as this correction, for where a maintainer should actually find this. This left
+**all 300 pixel goldens and both brand repos byte-identical by construction**. **The pixel harness cannot see
 this defect class at all** — it renders 300 independent stills and never exercises cross-frame
 mount reuse; the dedicated gate is `lib/editor/src/video-track-remount.test.tsx`'s DOM-identity
 test. **User verdict on R1, 2026-07-30: "Yeah, it works better now, still not ideal, but
@@ -1224,18 +1237,29 @@ Phase 4, both bumped to core `9202e79`, both **committed and NOT pushed**):
   while its own template already moved to the thin wrapper. A Phase 3.5 item, **not a core
   defect**.
 
-**Deferred minors, carried across from the gitignored ledger — this is their only durable
-record:**
+**Deferred minors, carried across from the gitignored ledger (`progress.md`) — this is their
+only durable record.** The final-review fix wave (see its report,
+`.superpowers/sdd/2026-07-26-phase4-node-contract/final-fix-wave-report.md`) swept every
+`minor (deferred)` / `minor (in fix round)` / `parked` line in that ledger — about 43 total —
+and reconciled them here, grouped by area. Each either survives below, was already fixed and
+is dropped with a one-line reason, or was explicitly triaged out of the final wave (recorded
+anyway, so it isn't lost a second time).
 
-- `param-field.ts:68-72` documents precedence as "options first, else type", but the code checks
-  **accent first** (`LayeredInspector.tsx:241`) and options second (`:259`). A field declared
-  `{type:'accent', options:[…]}` silently ignores its options. No such field exists today, but
-  this file is what brands read.
+### Editor param/inspector contract
+
+- ~~`param-field.ts` documented precedence as "options first, else type"~~ — **RESOLVED**,
+  already fixed on this branch (commit `dff67b8`, before the final review): the doc now
+  correctly states accent wins, options second, matching `LayeredInspector.tsx`. Left here only
+  so a reader of the OLD bullet below doesn't reopen it: the code was always right, only the doc
+  was wrong, and it no longer is.
 - `subOptionForField` emits `min`/`max` but never `step`, so `light-leak.intensity` arrives
   bounded 0..1 with step 1 — the spinner can only produce 0 or 1, and a typed `0.5` is
-  `:invalid`.
+  `:invalid`. Still open.
 - `at-cut-transitions.test.tsx:129` skips string/color sub-options, so nothing pins that an edited
-  `glowColor` reaches `burn`'s presentation. `'#ff8800'` would be a fine probe.
+  `glowColor` reaches `burn`'s presentation. `'#ff8800'` would be a fine probe. Still open.
+- `Animatable` (Task 1.1) ships entirely dead — zero references outside its own module and test
+  (~92 lines + 11 tests). Brief-mandated, so not a spec violation; if the ken-burns migration it
+  anticipated slips past Phase 4 it stays dead code.
 - `lib/theming/transitions.ts`'s `TransitionRegistration` redundantly re-declares
   `renderer?: TransitionRenderer` that its own `extends` clause already supplies.
 - A brand kind's editor label is `humanizeKey(kind)` — `TransitionRegistration` has no `label`
@@ -1243,7 +1267,148 @@ record:**
   markers do not consult `transitionProps` (cosmetic). `TRANSITION_KINDS` in
   `lib/editor/app/transitions.ts` now has no non-test consumer.
 - Two non-null assertions at `layered-adapter.ts:66,74` — `!isCut(x)` implies a truthy kind, but a
-  predicate over `unknown` cannot narrow. Verified sound.
+  predicate over `unknown` cannot narrow. **Verified sound** — triaged out of the final wave
+  explicitly, recorded so it isn't re-litigated.
+- `enabled` has no editor control on either axis (Task 1.5) — authorable in `defaultProps` only,
+  contract delivered, UI not.
+- The editor's transitions lane draws a disabled transition identically to an enabled one (Task
+  1.5) — render path is correct; the UI treatment needs a design decision, not a code fix.
+
+### SegmentMedia / crop-style matrix (Task 3.1)
+
+- The `video`/`OffthreadVideo` branch of the crop matrix is pinned on `filter` only — the matrix
+  reads `img[0].style`, so the video branch's own transform/objectPosition/transformOrigin are
+  unasserted. Nil risk today (one shared style object), but Workstream 3's later style-effect work
+  rebuilds exactly that construction.
+- The crop+direction pairing test duplicates a matrix cell and stays green under all five
+  mutations — it is documentation, not a second guard. Do not count it as coverage.
+- No guard that the matrix's `EXPECTED` table has exactly 18 keys — a stale or extra key is
+  invisible.
+- Only `direction: 'left'` is exercised; `'in'` emits no translate, so a transform-order
+  regression on that branch would be invisible. Spec-compliant, but noted.
+
+### Transitions catalog, gallery, and pins
+
+- The differential param test (Task 2.1) asserts `tunable.length > 0` per kind, not the total of
+  11 — a `subOptionsFor` shrink from 4 to 3 sub-options for one kind would iterate less and stay
+  green. Only shrinkage to exactly 0 is caught.
+- `scanline-glitch` mounts 6 clip subtrees per boundary (highest in the catalog) because a
+  CSS-only RGB split needs the composited content re-rendered per layer. Recorded as a cost, not
+  a defect.
+- `TransitionGallery` lost 5 entries when `TransitionSeries` (structurally unable to drive a
+  two-input node) was retired from it — nobody has yet decided on replacement coverage for the
+  gallery view.
+- At-cut-transitions.test.tsx's "exactly four core kinds are native two-input nodes" pin (Task
+  2.3) is true only of catalog DEFAULTS — a coloured `fade-to-color` is a fifth node invisible to
+  that pin.
+- `phase4-migrations.md` § 2.3-a records the parity proof as the lenient `npm run pixel-gate`
+  while the harness's own doc requires `--strict` for any parity claim. The conclusion stands
+  (0 NEAR at the time), but the copied recipe teaches the weaker gate to the next reader.
+- Six task-unrelated bimodal cells rode along in one feature commit (Task 2.3) — legitimate under
+  the union rule and declared at the time, but it relaxed byte-exactness inside a change whose
+  headline claim was byte-exactness.
+- `lib/editor/app/transitions.test.ts:177`'s exact-match `options` pin (Task 2.4) covers only the
+  six Task-1.1-era kinds, so `glitch`/`whip-pan`/`zoom-through`'s registry.json options entries
+  can silently drift on a future field add.
+- `TransitionGallery.tsx`'s three `Sequence` offsets (Task 2.5) are unasserted — they live in the
+  returned element tree and need no clock to test, so this is a closable gap, not a jsdom limit.
+- `derive-montage.ts:37`'s zoom-through joining `FramesOnlyTransition` is a disclosed type-level
+  side effect (Task 2.5), flagged for that file's owner rather than fixed inline.
+- `transition-gallery.test.tsx:117`'s `claimed`'s `kind !== undefined` filter (Task 2.6) is
+  vestigial — an empty table would make the `it.each` vacuous rather than fail loudly.
+- `TransitionGallery.tsx:484`'s `TRANSITION_NOTES` (Task 2.6) still lists every catalog kind by
+  hand — the last hand-maintained per-kind table in the file, and now additionally stale: the
+  catalog's actual kind count has moved twice since that table was written (see
+  `phase4-migrations.md`'s Task 2.2/2.3 sections for the current derivation). Re-derive before
+  trusting the table's completeness.
+- `phase4-extension-contract.md:274` (Task 2.7) cites `primitives.tsx:147` for the `gradeFilter`
+  call; it is at `:149` after the same commit's own comment shifted it. Cosmetic line-number drift.
+- `primitives.tsx:100`'s `lineColor` (Task 2.7) takes any string unvalidated while `lineWidthPx`
+  one line above got a defensive clamp; a malformed value invalidates the whole gradient, so the
+  browser silently drops `backgroundImage` and the scanlines vanish with no error.
+- **Dropped, verified already resolved, not carried forward:** Task 2.3's "`fade-to-color` has
+  two arities" (adjudicated sound and documented in three committed places — nothing further to
+  track); Task 2.5's "`transition-schema.ts:396`'s required→optional was presented as
+  unavoidable" (adjudicated correct on its own terms, not the failure mode it was compared
+  against); Task 2.6's "`fade-coal`'s deprecation warning fires on `TransitionGallery` import"
+  (moot — `fade-coal` was later removed from core's catalog entirely by § 2.3-a, so the kind this
+  warning was about no longer exists); Task 2.4's "report diffstat says 10 +++- vs. actual 13
+  ++++--" (a self-reported number inside a gitignored, already-superseded report file — no code
+  or committed-doc impact); `lib/render/README.md`'s Task-2.3-era "still says four known defects
+  / all 20 kinds" (superseded in place — that section now carries its own `⚠ HISTORICAL` callout
+  correcting both counts, see the file itself).
+- **Task 6.2's five "in fix round" minors** (vacuous `core-card-bg` query, an overclaimed
+  mediaStyle test title, an unnecessary `as never` cast, `examples/layered-minimal/README.md`
+  contradicting its own negative pin, `GhostEchoEffect` being visually inert) **were all fixed
+  within Task 6.2's own fix round** — verified against the current tree: `core-card-bg`/
+  `data-card-bg` is GenericCard's real marker and is asserted correctly; the README already
+  states every video kind has a core generic (not "only when a brand registers one"); no `as
+  never` remains in `conformance-example.test.tsx`; `GhostEchoEffect` re-mounts its `children` for
+  a visible ghost, not an empty div. Not carried forward.
+- **Task 6.3's two "in fix round" minors** (`collectMediaEffects` computed twice per item per
+  frame; warning 8's comment glossing `resolveRegistered`'s unguarded `generics[kind]`) —
+  `collectMediaEffects` has exactly one production call site today
+  (`lib/render/layered-composition.tsx:251`), consistent with the double-computation having been
+  fixed; the comment issue is a wording precision nit with no behavioural effect. Not carried
+  forward as open items.
+
+### Style/grade axis (Task 3.4)
+
+See `phase4-migrations.md`'s new Task 3.4 section for the filter-order-flip migration note
+itself — carried there, not repeated here.
+
+- `hasGradeEffect` (`LayeredInspector.tsx:817`) ignores `enabled: false`, so an item with
+  `item.grade` plus a DISABLED `type: 'grade'` effect greys the Color panel while `item.grade` is
+  what actually renders — locking the author out of the live field. Hand-edited configs only (the
+  inspector exposes no per-effect enable toggle for this). **Triaged out of the final wave,
+  record only** — fix: `.some(e => e.type === 'grade' && isNodeEnabled(e))`.
+- `item.grade` is now BRAND-OVERRIDABLE and unpinned in either direction — it resolves via
+  `resolveStyleEffectRenderer(registry, 'grade')`, so a brand registering `styleEffects.grade`
+  silently takes over rendering of the FIELD, not just an authored effect entry. Plausibly a
+  feature; no test asserts it either way, in either direction.
+- `grade: {}` permanently blocks "+ Add effect → Grade" in the inspector (truthiness check at
+  `LayeredInspector.tsx:896`) — `patchGrade` writes `undefined` when neutral so the editor itself
+  never produces this shape, so it is hand-edited-literal only. **Triaged out of the final wave,
+  record only** — cosmetic.
+
+### Cross-axis wiring
+
+- The Task 4.1 doc omits that PP's 11 live campaign projects bypass `LayeredReelComposition`
+  entirely (they call `buildVideoNodes` directly) — this STRENGTHENS the parity conclusion it was
+  attached to, but reads as though those projects were in the analysed render path when they are
+  not.
+- A cross-layer import, `lib/theming` → `lib/render` (`anchorTiming`, Task 4.1). **No import
+  cycle** — `overlay-anchor.ts`'s only import back is an erased `import type` — but `lib/render`
+  already has RUNTIME imports into `lib/theming` in six files, so the two directories are now
+  mutually dependent at the directory level regardless. The brief prescribed this location;
+  `lib/reel-config-base/` would have been the tension-free home for a pure function, but that is
+  a Phase 5-scale relocation, not a Phase 4 fix.
+- Task 4.2's report and doc claimed PP registers "four `overlayItems` kinds that all use the
+  item-level render escape hatch." **Six are registered** (`title`, `chevron`, `stat-callout`,
+  `source-tag`, `update-badge`, `party-logos`), and `title` has NO `render` at all (`routing:
+  'anchored'`) — wrong on both the count and the "all use render" claim. The task's own
+  conclusion is unaffected; only the write-up undercounted.
+- `quote-pull`'s renderer resolution stays hardcoded to `'text'` (Task 4.2, `:37`) while its
+  config became per-kind (`:47`) — deliberate and correct for the alias case, but a brand
+  registering `'quote-pull': { renderer: X, config: Y }` gets `Y` delivered to the TEXT renderer,
+  not to `X`. Config and renderer can silently target different code for this one kind.
+- The `editorMetaFromTheme` capability (Task 4.4) is unreachable in every host that exists today
+  — `git grep editorMetaFromTheme` finds zero non-test callers in core, PP, or roost; PP's own
+  `.editor/main.tsx` mounts `EditorHost` with no meta at all. **Not a regression** (the workaround
+  it replaced had the identical precondition, so parity is exact), but the doc reads as though
+  registering a theme's editor meta suffices on its own, with no host wiring needed.
+  **Triaged out of the final wave, record only.**
+
+### Outside this task's file set, recorded so they aren't lost
+
+- The registry's 17 dead `tools/<x>.py` paths in `_internal/toolkit-registry.json` are
+  pre-existing and from a different phase entirely — **triaged out of the final wave on
+  purpose**. Flagging this explicitly as its own follow-up task: a registry sweep to either
+  restore or retire each of the 17 paths.
+- Two unpinned edges found by the final review's deletion sweep, both opportunistic rather than
+  blocking: `video-track.tsx`'s `{ position: 'absolute', inset: 0 }` preview-hardening style, and
+  `key={b.key}` on the boundary `Sequence`. Neither got a dedicated pin in the final wave: cheap
+  to add, but not done here — worth a pin next time either file is touched for another reason.
 - `ClipSegmentBaseSchema` carries `TransitionSchema.optional()`, and live PP projects pass that
   tree to `<Composition schema={…}>`; **Remotion's zod sidebar has no `z.intersection` support**.
   Likely not a regression (Task 1.0 already moved it off `discriminatedUnion`), but worth **one
