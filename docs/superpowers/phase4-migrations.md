@@ -2050,3 +2050,57 @@ that it be wired or deleted. **That premise was stale by the time this task star
 `d5582a8`, already reading `tokens.stagger` in `GenericCard.tsx` to drive the staggered
 line-reveal `interpolate()` calls. No change was made to it in this task, and none was
 needed — recorded here only so a future reader does not re-open a non-issue.
+
+## Task 6.3
+
+### 6.3-a `renderAnchoredOverlay` unconsumed — LIVE risk for PP's `campaign-reels` template, not yet tripped by any live project
+
+Task 6.3 added warning 2: an item handed one or more anchored overlays whose resolved
+renderer never calls `renderAnchoredOverlay` for any of them. Verified against PP (`main` @
+`0e2dfb9`), fresh, from inside the repo:
+
+```bash
+git grep -n "renderAnchoredOverlay" -- '*.ts' '*.tsx' | grep -v '^toolkit/'
+# → 0 hits
+git grep -n "pickTitleOverlay" -- '*.ts' '*.tsx' | grep -v '^toolkit/'
+# → 7 hits, all in templates/campaign-reels/src/config/video-item-renderers.tsx
+git grep -n "routing.*anchored" -- '*.ts' '*.tsx' | grep -v '^toolkit/'
+# → composition-theme.tsx:77  title: { routing: 'anchored' },
+git grep -n "LayeredReelComposition" templates/campaign-reels/src/LayeredCampaignReel.tsx
+# → imported (line 14) and rendered (line 31)
+```
+
+PP's four consuming video-item renderers (`ClipItem`/`BrollItem`/`MultiClipItem`/`PhotoItem`)
+read `anchoredOverlays` through their own `pickTitleOverlay(anchoredOverlays)` array
+lookup — a legitimate way to consume the array — but never call `renderAnchoredOverlay`
+itself, which is the only signal warning 2's detector can observe (see task-6.3-report.md,
+Important 3, for why the message is deliberately worded to not claim the overlay "never
+drew" — only that this one specific signal was never seen).
+
+**Grade: parity-preserving LOOK, but a NEW dev-console line.** Nothing renders differently —
+PP's title overlay draws correctly today, exactly as Task 4.1 established. The gap is purely
+diagnostic: the TEMPLATE (as opposed to any of PP's 11 already-scaffolded live projects,
+each of which vendors its own `LayeredCampaignReel.tsx` calling `buildVideoNodes` directly
+and never reaches `LayeredReelComposition` at all) renders through
+`LayeredReelComposition`, so **the next project scaffolded from `campaign-reels`, the first
+time it previews or renders a title overlay anchored to a video item — before that project
+forks its own `LayeredCampaignReel.tsx` away from the template shape, which is the norm —
+will emit warning 2's console line.** No live project trips it today; this is a forward-
+looking item for whoever next touches the template, not a regression in anything that
+exists. No brand-repo file was changed (read-only).
+
+### 6.3-b The other seven warnings — no live or forward-looking risk identified
+
+Checked directly (not inferred from an earlier task's report) against both repos' current
+pins (PP `main` @ `0e2dfb9`, roost `main` @ `f71b85d` — one submodule-bump commit ahead of
+the `ffca36d` CONSTRAINTS.md names, confirmed via `git log --oneline -1` rather than
+trusted): neither repo registers a `renderer` on a non-text/quote-pull overlay kind
+(warning 1); neither registers a wrapper-axis effect for a reserved (style-axis) type
+(warning 3); neither declares a bare `{ prop }` registration param anywhere (`git grep -n
+"params:"` → 0 hits outside `toolkit/`, both repos — warning 4); neither carries a live
+`item.grade` + authored `type:'grade'` effect on the same item (warning 6, per Task 3.4);
+neither registers a `scope: 'media'` effect (warning 7); neither registers `theme.transitions`
+with a config-only, renderer-less kind (warning 8 — PP has zero `transitions:` hits at all;
+roost's `LayeredRoostReel.tsx:146` forwards `brandTheme.transitions`, but `brandTheme`
+declares no `transitions` key, so that resolves to `undefined`). No brand-repo file was
+changed for any of these (read-only).

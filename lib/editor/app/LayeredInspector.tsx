@@ -320,12 +320,35 @@ function renderParamControl({
   onCommit,
   accentSlots,
   numberStep = 1,
+  declared = true,
+  axis,
+  kind,
 }: {
   field: ParamField;
   value: unknown;
   onCommit: (v: unknown) => void;
   accentSlots?: readonly AccentSlot[];
   numberStep?: number;
+  /** Review round 1, CRITICAL 2 — `false` for a SYNTHESIZED single-field
+   *  descriptor (`ParamFields`'s "every remaining undeclared key" fallback,
+   *  `{ prop: p }` with no `type`/`options` by construction), as opposed to a
+   *  genuine registration/schema declaration. Warning 4 below must fire only
+   *  for the latter: a rest field has no `type`/`options` BY DESIGN (that is
+   *  the whole point of the fallback — "a host that supplies no metadata
+   *  still reaches every value"), and the hazard the warning names ("writes a
+   *  string into what might be a numeric field") cannot occur on that path —
+   *  a rest field's value is read off `typeof value`, which is accurate
+   *  because the value already exists. Defaults to `true` so the two
+   *  genuinely-declared call sites (below, and `TransitionFields`) need no
+   *  change; the ONE rest-field call site passes `false` explicitly. */
+  declared?: boolean;
+  /** Naming for warning 4's key/message (review round 1, IMPORTANT 2) — which
+   *  AXIS ('overlay' | 'video' | 'effect' | 'transition') and which KIND/TYPE
+   *  this field's registration belongs to, so two different registrations
+   *  that happen to declare the same `prop` are distinguishable in both the
+   *  de-duplication key and the message. Only meaningful when `declared`. */
+  axis?: string;
+  kind?: string;
 }): ReactNode {
   const lbl = field.label ?? humanizeKey(field.prop);
   const asString = typeof value === 'string' ? value : undefined;
@@ -376,19 +399,24 @@ function renderParamControl({
   // numeric prop falls through to TextField and commits a string ("0.5") into
   // the bag; the renderer coerces, but the saved config goes type-dirty.
   //
-  // Task 6.3, warning 4 — a `ParamField` that declares NEITHER `type` NOR
-  // `options` falls all the way through to this value-presence fallback,
-  // which is exactly the "writes a string into what might be a numeric
-  // field" hazard the comment above names. Core itself never produces such a
-  // field (every core-derived descriptor sets `type` — see
-  // `subOptionForField`); this can only be a brand's own hand-declared
-  // `ParamField` literal.
-  if (field.type === undefined && !field.options) {
-    warnOnce(`param-field-untyped:${field.prop}`, () =>
-      `[video-toolkit] ParamField "${field.prop}" declares neither \`type\` nor \`options\`, so its control ` +
-      'is chosen from whatever value happens to be present right now (or a plain text box, if none is). ' +
-      `Declare \`type\` on "${field.prop}" so its control (and the value it commits) does not depend on ` +
-      'what the field currently holds. (Warning only; nothing is blocked, and this is reported once per field.)');
+  // Task 6.3, warning 4 — a GENUINELY DECLARED `ParamField` (a registration's
+  // own `params`, or a transition's schema-derived sub-option — never the
+  // synthesized `{ prop }` rest-field fallback, which has no `type`/`options`
+  // BY DESIGN and is excluded via `declared` above — review round 1, CRITICAL
+  // 2) that declares NEITHER `type` NOR `options` falls all the way through
+  // to this value-presence fallback, which is exactly the "writes a string
+  // into what might be a numeric field" hazard the comment above names. Core
+  // itself never produces such a field (every core-derived descriptor sets
+  // `type` — see `subOptionForField`); this can only be a brand's own
+  // hand-declared `ParamField` literal.
+  if (declared && field.type === undefined && !field.options) {
+    const where = axis && kind ? `${axis} "${kind}"` : axis ? `a ${axis} registration` : 'a registration';
+    warnOnce(`param-field-untyped:${axis ?? '?'}:${kind ?? '?'}:${field.prop}`, () =>
+      `[video-toolkit] ParamField "${field.prop}" on ${where} declares neither \`type\` nor \`options\`, so its ` +
+      'control is chosen from whatever value happens to be present right now (or a plain text box, if none ' +
+      `is). Declare \`type\` on "${field.prop}" so its control (and the value it commits) does not depend on ` +
+      'what the field currently holds. (Warning only; nothing is blocked, and this is reported once per field ' +
+      'per registration.)');
   }
   const t = field.type ?? typeof value;
 
@@ -432,26 +460,42 @@ function ParamFields({
   fields,
   onPatch,
   accentSlots,
+  axis,
+  kind,
 }: {
   values: Record<string, unknown>;
   fields?: readonly ParamField[];
   onPatch: (patch: Record<string, unknown>) => void;
   accentSlots?: readonly AccentSlot[];
+  /** Naming for warning 4 (review round 1, IMPORTANT 2) — threaded straight
+   *  through to `renderParamControl` for every DECLARED field below. Not
+   *  used for rest fields, which never trip that warning at all. */
+  axis?: string;
+  kind?: string;
 }) {
   const declared = fields ?? [];
   const declaredProps = new Set(declared.map((f) => f.prop));
   const rest = Object.keys(values).filter((k) => !declaredProps.has(k));
 
-  const renderOne = (f: ParamField) =>
+  const renderOne = (f: ParamField, isDeclared: boolean) =>
     renderParamControl({
       field: f,
       value: values[f.prop],
       onCommit: (v) => onPatch({ [f.prop]: v }),
       accentSlots,
       numberStep: 0.1,
+      declared: isDeclared,
+      axis,
+      kind,
     });
 
-  const nodes = [...declared.map(renderOne), ...rest.map((p) => renderOne({ prop: p }))].filter(Boolean);
+  // `declared: true` for a real registration entry, `declared: false` for a
+  // synthesized rest-field descriptor (review round 1, CRITICAL 2 — a rest
+  // field has no `type`/`options` BY DESIGN and must never trip warning 4).
+  const nodes = [
+    ...declared.map((f) => renderOne(f, true)),
+    ...rest.map((p) => renderOne({ prop: p }, false)),
+  ].filter(Boolean);
   if (!nodes.length) return <div style={{ fontSize: 11, color: '#7a7d85', padding: '3px 0' }}>No editable params.</div>;
   return <>{nodes}</>;
 }
@@ -523,6 +567,9 @@ export function TransitionFields({
           value: transitionFieldValue(t, opt.prop),
           onCommit: (v) => onChange(withTransitionField(t, opt.prop, v)),
           accentSlots,
+          declared: true,
+          axis: 'transition',
+          kind,
         }),
       )}
       {kindNeedsFrames(kind) && (
@@ -656,7 +703,7 @@ function EffectEditor({
     );
   }
   const { type: _t, ...params } = eff;
-  return <ParamFields values={params} fields={fields} onPatch={onPatch} accentSlots={accentSlots} />;
+  return <ParamFields values={params} fields={fields} onPatch={onPatch} accentSlots={accentSlots} axis="effect" kind={type} />;
 }
 
 const seekBtn: React.CSSProperties = { ...input, cursor: 'pointer', marginBottom: 10, width: 'auto', padding: '4px 10px' };
@@ -864,6 +911,8 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                 fields={declared}
                 onPatch={(patch) => patchItem('video', id, { props: { ...props, ...patch } })}
                 accentSlots={accentSlots}
+                axis="video"
+                kind={v.kind}
               />
             </>
           );
@@ -1011,7 +1060,9 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
               )}
               {/* Undeclared leftovers surface only once something IS declared —
                   a kind with no declaration keeps exactly today's inspector. */}
-              {declared.length > 0 && <ParamFields values={values} fields={declared} onPatch={patchContent} accentSlots={accentSlots} />}
+              {declared.length > 0 && (
+                <ParamFields values={values} fields={declared} onPatch={patchContent} accentSlots={accentSlots} axis="overlay" kind={content.kind} />
+              )}
             </>
           );
         })()}

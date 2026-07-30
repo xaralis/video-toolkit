@@ -116,25 +116,30 @@ const TrackCaptionsOverlay: React.FC<{ item: OverlayItem; theme: CompositionThem
 
 /** Task 6.3, warnings 2 and 7 — "was this delivered payload actually drawn".
  *
- *  Mounted as the LAST child of the root `<AbsoluteFill>`, after every video
- *  item's node — which matters, because React's reconciler processes a
- *  fragment/element's children depth-first, left to right, and each earlier
- *  sibling's WHOLE subtree (every nested function component's body) finishes
- *  before the next sibling's body runs. So by the time THIS component's body
- *  runs, every video renderer that was going to call
- *  `renderAnchoredOverlay`/`useMediaEffects()` this render already has — the
- *  `consumed` set passed in is complete, not a snapshot mid-render. This is
- *  what lets a DELIVERY-SIDE tracker (a plain `Set`, mutated synchronously by
- *  the wrapped callback/context ping) answer "did anything downstream read
- *  this" without an effect (which would run after commit, on a cadence this
- *  module cannot rely on across every render environment this composition
- *  runs in — Studio, the reel editor, a still, a full render). */
-const ConsumptionAudit: React.FC<{ targets: readonly string[]; consumed: ReadonlySet<string>; warn: (id: string) => void }> = ({
-  targets,
-  consumed,
-  warn,
-}) => {
-  for (const id of targets) if (!consumed.has(id)) warn(id);
+ *  REVIEW ROUND 1, CRITICAL 1 — the original shape of this component mounted
+ *  ONCE, as the last child of the root `<AbsoluteFill>`, and audited EVERY
+ *  video item regardless of whether that item's own `<Sequence>` was actually
+ *  open this frame. React's depth-first, left-to-right child ordering is real
+ *  (an earlier sibling's whole subtree finishes before the next sibling's body
+ *  runs) — but a `<Sequence>` OUTSIDE its `[from, from+durationInFrames)`
+ *  window sets `content = null` (Remotion's own behaviour), so an off-window
+ *  item's renderer body never runs AT ALL this frame, never pings the marker,
+ *  and the old shape warned — falsely — for every item that simply was not
+ *  on screen yet. Because `warnOnce` is permanent per key, ONE such frame
+ *  poisons the key for the whole session.
+ *
+ *  Fixed by mounting a SEPARATE instance of this component PER ITEM, PER
+ *  MOUNT, as a sibling of `<Renderer>` INSIDE `renderVideoItemNode`'s own
+ *  returned tree — i.e. inside the exact same conditional `<Sequence>` (the
+ *  item's own, or a boundary's re-based copy — see video-track.tsx) that
+ *  gates the `<Renderer>` it audits. When that Sequence is closed this frame,
+ *  BOTH children (the Renderer and this audit) render as `null`, so the audit
+ *  simply never runs — it cannot warn about a frame nothing was asked to draw
+ *  on. When the Sequence is open, the ordering guarantee above still holds:
+ *  this component is a LATER sibling of `<Renderer>` in the same array, so its
+ *  body runs only after the Renderer's (and everything it nests) already has. */
+const ItemConsumptionAudit: React.FC<{ get: () => boolean; warn: () => void }> = ({ get, warn }) => {
+  if (!get()) warn();
   return null;
 };
 
@@ -227,29 +232,36 @@ export function renderVideoItemNode(
      *  ONCE via `makeOverlayRenderer(theme)` and passes the SAME function to
      *  every item, so it is threaded here rather than rebuilt per item. */
     renderAnchoredOverlay?: (item: OverlayItem) => React.ReactNode;
-    /** Task 6.3, warning 2 — called the first time the resolved renderer
-     *  actually invokes `renderAnchoredOverlay`, so `LayeredReelComposition`
-     *  can tell a renderer that drew at least one anchored overlay from one
-     *  that received some and never called it at all. */
-    markAnchoredOverlayConsumed?: () => void;
-    /** Task 6.3, warning 7 — the SAME idea, for `useMediaEffects()`. */
-    markMediaEffectsConsumed?: () => void;
   } = {},
 ): React.ReactNode {
   const Renderer = resolveVideoRenderer(theme, item.kind);
   if (!Renderer) return null; // a kind this brand didn't register a renderer for
+
+  const anchoredOverlays = extras.anchoredOverlays ?? [];
+  const mediaEffects = collectMediaEffects(theme, item);
+
+  // Task 6.3, warnings 2 and 7 — LOCAL to this call. `renderVideoItemNode` is
+  // invoked fresh for every `<Sequence>` this item appears in this render —
+  // its own, and again per re-based copy inside a transition boundary (see
+  // video-track.tsx) — so each mount gets its OWN flags, checked by an audit
+  // mounted INSIDE the same conditional Sequence (see `ItemConsumptionAudit`'s
+  // docblock — this is the review round 1 Critical 1 fix: a global,
+  // once-per-composition-render Set could not tell "never consumed" from
+  // "this item's Sequence just was not open this frame").
+  const consumed = { anchored: false, media: false };
+
   const media = (
-    <MediaEffectsConsumptionContext.Provider value={extras.markMediaEffectsConsumed}>
-      <MediaEffectsContext.Provider value={collectMediaEffects(theme, item)}>
+    <MediaEffectsConsumptionContext.Provider value={() => { consumed.media = true; }}>
+      <MediaEffectsContext.Provider value={mediaEffects}>
         <Renderer
           item={item}
           handles={handles}
           config={videoConfig(theme, item.kind)}
-          anchoredOverlays={extras.anchoredOverlays ?? []}
+          anchoredOverlays={anchoredOverlays}
           renderAnchoredOverlay={
             extras.renderAnchoredOverlay
               ? (overlayItem: OverlayItem) => {
-                  extras.markAnchoredOverlayConsumed?.();
+                  consumed.anchored = true;
                   return extras.renderAnchoredOverlay!(overlayItem);
                 }
               : undefined
@@ -270,7 +282,45 @@ export function renderVideoItemNode(
       </MediaEffectsContext.Provider>
     </MediaEffectsConsumptionContext.Provider>
   );
-  return applyEffects(theme, item, handles, media);
+  const withEffects = applyEffects(theme, item, handles, media);
+
+  // Zero-case parity: an item with neither an anchored overlay nor a
+  // media-scope effect returns `withEffects` UNCHANGED — no Fragment, no new
+  // allocation — exactly what this function returned before Task 6.3, which
+  // is every item in every reel that uses neither axis.
+  if (anchoredOverlays.length === 0 && mediaEffects.length === 0) return withEffects;
+  return (
+    <>
+      {withEffects}
+      {anchoredOverlays.length > 0 && (
+        <ItemConsumptionAudit
+          get={() => consumed.anchored}
+          warn={() =>
+            warnOnce(`anchored-overlay-unconsumed:${item.id}`, () =>
+              `[video-toolkit] Video item "${item.id}" was handed one or more anchored overlays, but its ` +
+              'resolved renderer never called `renderAnchoredOverlay` for any of them. If this renderer ' +
+              'draws them itself through its own dispatch (bypassing `renderAnchoredOverlay`), core cannot ' +
+              'tell that apart from a renderer that drops them — call `renderAnchoredOverlay(item)` too, so ' +
+              'this warning can tell the difference. (Warning only; nothing is blocked, and this is reported ' +
+              'once per item.)')
+          }
+        />
+      )}
+      {mediaEffects.length > 0 && (
+        <ItemConsumptionAudit
+          get={() => consumed.media}
+          warn={() =>
+            warnOnce(`media-effects-unconsumed:${item.id}`, () =>
+              `[video-toolkit] Video item "${item.id}" has one or more media-scope ("scope: 'media'") effects, ` +
+              'but nothing in its resolved renderer ever called `useMediaEffects()` — the effect(s) never ' +
+              'applied. A renderer that owns a media element must call `useMediaEffects()` (or use ' +
+              '`SegmentMedia`, which already does) and wrap that element with the resolved entries. ' +
+              '(Warning only; nothing is blocked, and this is reported once per item.)')
+          }
+        />
+      )}
+    </>
+  );
 }
 
 export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: CompositionTheme }> = ({ reel, theme }) => {
@@ -290,21 +340,6 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
 
   // ---- video ----------------------------------------------------------------
   const videoItems = theme.prepareVideoTrack ? theme.prepareVideoTrack(reel.tracks.video) : reel.tracks.video;
-
-  // Task 6.3, warnings 2 and 7 — fresh per render (this whole function body
-  // re-runs every render, so there is nothing to reset between frames): which
-  // item ids actually had a payload delivered, and which ids a downstream
-  // renderer actually consumed. See `ConsumptionAudit` above for why checking
-  // these AFTER `videoNodes` (as a later sibling), rather than here, is what
-  // makes the check honest.
-  const anchoredOverlayTargets = videoItems
-    .filter((item) => (anchored.get(item.id)?.length ?? 0) > 0)
-    .map((item) => item.id);
-  const mediaEffectTargets = videoItems
-    .filter((item) => collectMediaEffects(theme, item).length > 0)
-    .map((item) => item.id);
-  const consumedAnchoredOverlays = new Set<string>();
-  const consumedMediaEffects = new Set<string>();
 
   const videoNodes = buildVideoNodes(videoItems, {
     width,
@@ -327,8 +362,6 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
         anchoredOverlays: anchored.get(item.id) ?? [],
         boundAudio: reel.tracks.audio.find((a) => a.followsVideoId === item.id),
         renderAnchoredOverlay: renderOverlayItem,
-        markAnchoredOverlayConsumed: () => consumedAnchoredOverlays.add(item.id),
-        markMediaEffectsConsumed: () => consumedMediaEffects.add(item.id),
       }),
   });
 
@@ -377,34 +410,6 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
       {theme.renderBrandTrack
         ? theme.renderBrandTrack(reel.tracks.brand)
         : defaultRenderBrandTrack(reel.tracks.brand, theme, fps)}
-      {/* Task 6.3, warnings 2 and 7 — see `ConsumptionAudit`'s own docblock for
-          why this MUST be the last child: every video node above (and
-          everything it nests) has already had its render-phase body run by
-          the time this one's does. */}
-      <ConsumptionAudit
-        targets={anchoredOverlayTargets}
-        consumed={consumedAnchoredOverlays}
-        warn={(id) =>
-          warnOnce(`anchored-overlay-unconsumed:${id}`, () =>
-            `[video-toolkit] Video item "${id}" was handed one or more anchored overlays, but its ` +
-            'resolved renderer never called `renderAnchoredOverlay` — the overlay(s) never drew. If ' +
-            'this is a brand-registered `theme.video` renderer, it must call `renderAnchoredOverlay(item)` ' +
-            'for each entry in `anchoredOverlays` (see any of core\'s own generics for the shape). ' +
-            '(Warning only; nothing is blocked, and this is reported once per item.)')
-        }
-      />
-      <ConsumptionAudit
-        targets={mediaEffectTargets}
-        consumed={consumedMediaEffects}
-        warn={(id) =>
-          warnOnce(`media-effects-unconsumed:${id}`, () =>
-            `[video-toolkit] Video item "${id}" has one or more media-scope ("scope: 'media'") effects, ` +
-            'but nothing in its resolved renderer ever called `useMediaEffects()` — the effect(s) never ' +
-            'applied. A renderer that owns a media element must call `useMediaEffects()` (or use ' +
-            '`SegmentMedia`, which already does) and wrap that element with the resolved entries. ' +
-            '(Warning only; nothing is blocked, and this is reported once per item.)')
-        }
-      />
     </AbsoluteFill>
   );
 };

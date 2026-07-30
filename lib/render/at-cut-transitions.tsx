@@ -308,13 +308,27 @@ export function resolveTransition(t: TransitionRecord | undefined, dims: Dims): 
     // Task 6.3, warning 8. `known` is true here, so this branch is reached
     // ONLY when the registry (not core) declares `kind` and that registration
     // has no `renderer` — i.e. the exact "config-only registration for a
-    // BRAND-ONLY kind" case. If `kind` were core's own, `CORE_TRANSITIONS[kind]`
-    // would always be defined and `render` could not be falsy — so this can
-    // never fire for a config-only registration of a CORE kind (that case is
-    // CORRECT: it falls through to core's generic, per Task 6.2's negative
-    // pin). Unlike the video/overlay/effect/brand axes, the transition axis
-    // has no generic beneath a kind core never heard of — there is nothing to
-    // fall through to, so "declared" degrades straight to a silent hard cut.
+    // BRAND-ONLY kind" case. For a GENUINE core kind, `CORE_TRANSITIONS[kind]`
+    // is always defined and `render` cannot be falsy, so this never fires for
+    // a config-only registration of a real core kind (that case is CORRECT:
+    // it falls through to core's generic, per Task 6.2's negative pin).
+    //
+    // Review round 1, MINOR — left AS-IS, not fixed, but not glossed over
+    // either: `resolveRegistered`'s `generics[kind]` is an UNGUARDED bracket
+    // read (registry.ts:63), so `kind: 'constructor'` resolves the inherited
+    // `Object.prototype.constructor` function via the prototype chain even
+    // though `CORE_TRANSITIONS` does not OWN that key — making `render`
+    // truthy and this warning silently NOT fire for that one specific string,
+    // despite 'constructor' having no real core generic either. This is a
+    // pre-existing property of the shared resolver (not introduced here), the
+    // render path itself already guards the ACTUAL invocation against it (the
+    // `known` check above uses `hasOwnProperty`, precisely because
+    // `{kind:'constructor'}` must not resolve to a callable renderer) — only
+    // THIS diagnostic's precision is affected, not correctness of what
+    // renders. Unlike the video/overlay/effect/brand axes, the transition
+    // axis has no generic beneath a kind core never heard of — there is
+    // nothing to fall through to, so "declared" degrades straight to a
+    // silent hard cut.
     warnOnce(`transition-config-only:${kind}`, () =>
       `[video-toolkit] Transition kind "${kind}" is registered on the brand theme with \`config\` (and/or ` +
       'params) but no `renderer`, and core has no generic for this kind — "declared" is not "handled". ' +

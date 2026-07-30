@@ -27,16 +27,19 @@ export const MediaEffectsContext = createContext<readonly MediaEffectEntry[]>([]
 
 /** Phase 4 Task 6.3, warning 7 — a side channel PARALLEL to
  *  `MediaEffectsContext`, carrying nothing but a "something read this" ping.
- *  `renderVideoItemNode` provides one bound to the CURRENT video item;
- *  `useMediaEffects()` pings it on every call. `LayeredReelComposition` uses
- *  that ping (checked by a later sibling in the SAME render pass — see
- *  `ConsumptionAudit` in ./lib/render/layered-composition.tsx) to tell "a
- *  media-scope effect was delivered AND something called useMediaEffects()"
- *  from "delivered, and nothing in this item's renderer ever reads it" — the
- *  write-only-prop failure Task 3.3's context sidesteps for a PROP, returning
- *  here for a renderer that never calls the hook at all. Default `undefined`
- *  (a no-op ping) so every pre-6.3 call site — including every existing
- *  `useMediaEffects()` test that renders outside a Provider — is unaffected. */
+ *  `renderVideoItemNode` provides one bound to a LOCAL flag for the CURRENT
+ *  call (review round 1, CRITICAL 1 — this used to be a shared, once-per-
+ *  composition-render `Set`; it is now recreated per mount so an
+ *  `ItemConsumptionAudit` sibling INSIDE the same conditional `<Sequence>`
+ *  can check it honestly — see that component's own docblock in
+ *  lib/render/layered-composition.tsx). `useMediaEffects()` pings it on every
+ *  call, to tell "a media-scope effect was delivered AND something called
+ *  useMediaEffects()" from "delivered, and nothing in this item's renderer
+ *  ever reads it" — the write-only-prop failure Task 3.3's context sidesteps
+ *  for a PROP, returning here for a renderer that never calls the hook at
+ *  all. Default `undefined` (a no-op ping) so every pre-6.3 call site —
+ *  including every existing `useMediaEffects()` test that renders outside a
+ *  Provider — is unaffected. */
 const MediaEffectsConsumptionContext = createContext<(() => void) | undefined>(undefined);
 export { MediaEffectsConsumptionContext };
 
