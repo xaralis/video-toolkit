@@ -254,19 +254,37 @@ describe('the gallery shows what reels render', () => {
 // actual gap, which is about the GALLERY'S OWN RENDER PATH, not the node's
 // picture.
 describe('the gallery composition renders every catalog kind through its OWN render path (fix round 1, Important 1)', () => {
-  it('never emits the plan-arm-wrong-entry-point warning, for any TRANSITIONS entry', () => {
+  // FIX ROUND 2 (Important 1's own pin was vacuous). The first version of
+  // this test sampled ONE hand-picked frame (`entry.sceneA`) on the theory
+  // that it sat "inside the boundary window under any alignment" — false: it
+  // sits exactly on the CLOSING edge of the OLD, pre-fix demo's window
+  // (`[cutAt, sceneA)`, i.e. `[sceneA - duration, sceneA)`, HALF-OPEN), so
+  // under the old code that frame is already past the boundary and into
+  // "scene B alone" — no `AtCutTransition`, no warning, a false green. The
+  // re-reviewer reconstructed the pre-fix file (`git show
+  // 9884e98:lib/transitions/TransitionGallery.tsx`) and ran this exact test
+  // file against it: 42/42 green, zero warnings, for every kind — the pin
+  // could not have caught the regression it was written for.
+  //
+  // FIXED by making the assertion FRAME-INDEPENDENT instead of frame-lucky:
+  // sweep EVERY frame of the segment's own duration (`sceneA + sceneB -
+  // duration`, the exact span `TransitionGallery`'s own per-entry `Sequence`
+  // gives it — see `getSegmentDuration` in the production file), for every
+  // entry. Whatever frame either implementation's boundary window occupies,
+  // a full sweep is inside it — there is no longer a "did I guess the right
+  // frame" question for a reviewer (or the next task) to re-ask.
+  it('never emits the plan-arm-wrong-entry-point warning, for any TRANSITIONS entry, at ANY frame across its full segment', () => {
     expect.hasAssertions();
     resetWarnOnce();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       for (const entry of TRANSITIONS) {
-        // `entry.sceneA` (90 frames, the demo's own default) is the cut point
-        // every entry shares — inside the boundary window under any
-        // alignment, so a live plan OR composite boundary is guaranteed to be
-        // mounted, not merely scene A or B playing alone either side of it.
-        clock.frame = entry.sceneA;
-        const { unmount } = render(<>{entry.render()}</>);
-        unmount();
+        const segmentFrames = entry.sceneA + entry.sceneB - entry.duration;
+        for (let frame = 0; frame < segmentFrames; frame += 1) {
+          clock.frame = frame;
+          const { unmount } = render(<>{entry.render()}</>);
+          unmount();
+        }
       }
       const wrongEntryPoint = warn.mock.calls.filter(([m]) => String(m).includes('supplied `plan` instead of `composite`'));
       expect(wrongEntryPoint).toEqual([]);
