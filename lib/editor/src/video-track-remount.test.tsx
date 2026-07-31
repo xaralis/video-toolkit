@@ -83,7 +83,7 @@ vi.mock('remotion', async () => {
   };
 });
 
-import { buildVideoNodes } from '@video-toolkit/lib/render/video-track';
+import { buildVideoNodes, computeVideoLayout } from '@video-toolkit/lib/render/video-track';
 import type { VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
 const clip = (id: string, startMs: number, endMs: number, extra: Record<string, unknown> = {}): VideoItem =>
@@ -282,5 +282,356 @@ describe('the amplifier — a boundary keeps its node identity across an unrelat
     // that actually pins "no remount happened".
     expect(second.length).toBe(first.length);
     second.forEach((el, i) => expect(el).toBe(first[i]));
+  });
+});
+
+// =============================================================================
+// PHASE 5 TASK 1.3 — THE DERIVED IDENTITY RATCHET.
+//
+// Everything above is HAND-WRITTEN, over one kind (`fade`) and one geometry.
+// This section is DERIVED over the whole catalog (`TRANSITION_CATALOG`), so a
+// kind is covered the day it migrates from the `composite` arm to the `plan`
+// arm, not the day someone remembers to add a case for it.
+//
+// THE INSTRUMENT. The pixel harness renders 300 fully independent stills, so
+// it structurally cannot see a component persisting or remounting ACROSS
+// frames. The only thing that can is DOM element identity, re-queried every
+// frame — which is exactly what this section builds, generatively.
+//
+// THE PARTITION. `typeof node.plan === 'function'` (never `'plan' in node` —
+// see `TransitionNode`'s own doc comment in lib/theming/transitions.ts) is the
+// one decider, applied here through `transitionNodeFor` — the SAME function
+// `buildVideoNodes` calls, not a re-derivation of its logic. Two buckets fall
+// out of it:
+//
+//   PLAN kinds MUST pass the identity assertion — the whole point of Stage 2.
+//   COMPOSITE kinds are EXPECTED TO FAIL it TODAY, and the failure is
+//   asserted, not skipped — a composite kind that starts passing before it
+//   migrates means this instrument is vacuous or the assembly is doing
+//   something nobody understands (see the task brief).
+//
+// `cut` is excluded from both buckets: it is the "no transition" literal
+// (`isCut`), not a transition kind — it resolves no `TransitionNode` at all
+// (`PRESENTATIONS[CUT_KIND] = () => null`), so there is no boundary, no
+// window, and nothing to sweep. Same exclusion `transition-gallery-catalog
+// .test.tsx`'s `DEMONSTRABLE` already makes, for the same reason.
+import {
+  TRANSITION_CATALOG, TRANSITION_ALIGNMENTS, defaultTransition, isCut,
+  type TransitionAlignment,
+} from '@video-toolkit/lib/reel-config-base/transition-schema';
+import { transitionNodeFor, resetTransitionNodeCache, type TransitionRecord } from '@video-toolkit/lib/render/at-cut-transitions';
+import { resetWarnOnce } from '@video-toolkit/lib/render/warn-once';
+import type { TransitionComposite, TransitionPlanProps, TransitionRegistry } from '@video-toolkit/lib/theming/transitions';
+
+const IDENTITY_FRAMES = 20;
+const IDENTITY_FPS = 30;
+const RESOLVE_DIMS = { width: 540, height: 960 };
+
+const CATALOG_KINDS = TRANSITION_CATALOG.map((e) => e.kind).filter((k) => !isCut(k));
+
+/** THE PARTITION RULE — a function, not a list, so it re-derives on every run
+ *  rather than going stale the way a hand-maintained set of kind names would
+ *  (this programme has been bitten by exactly that shape four times in its own
+ *  docs, per the task brief). Reads the resolved node through the identical
+ *  entry point `buildVideoNodes` uses (`transitionNodeFor`), with no brand
+ *  `transitions` registry — this is the CATALOG's own partition, independent
+ *  of what any one brand registers. */
+function armOf(kind: string): 'plan' | 'composite' {
+  const record = defaultTransition(kind, { frames: IDENTITY_FRAMES }) as unknown as TransitionRecord;
+  const node = transitionNodeFor(record, RESOLVE_DIMS);
+  return typeof node?.plan === 'function' ? 'plan' : 'composite';
+}
+
+resetTransitionNodeCache();
+const PLAN_KINDS = CATALOG_KINDS.filter((k) => armOf(k) === 'plan');
+const COMPOSITE_KINDS = CATALOG_KINDS.filter((k) => armOf(k) !== 'plan');
+
+describe('DERIVED — the plan/composite partition over the catalog is pinned', () => {
+  it('excludes exactly the cut literal — "no transition" is not a transition kind', () => {
+    expect.hasAssertions();
+    expect(TRANSITION_CATALOG.map((e) => e.kind)).toContain('cut');
+    expect(CATALOG_KINDS.length).toBe(TRANSITION_CATALOG.length - 1);
+  });
+
+  // THE PIN ITSELF. Deliberately `toEqual([])`, not `toHaveLength(0)`: a
+  // failure here prints the offending kind NAMES, which is what a Stage 2
+  // migration needs to see to update this line deliberately, rather than a
+  // bare count telling it only that something moved.
+  it('is EMPTY today — zero catalog kinds resolve to a plan node (re-derive; do not carry forward)', () => {
+    expect.hasAssertions();
+    expect(PLAN_KINDS).toEqual([]);
+    expect(COMPOSITE_KINDS.length).toBe(CATALOG_KINDS.length);
+  });
+});
+
+const identityTree = (
+  items: VideoItem[],
+  registry?: TransitionRegistry,
+) => (
+  <>
+    {buildVideoNodes(items, {
+      renderItem: (item) => <video data-testid={`vid-${item.id}`} />,
+      width: 540,
+      height: 960,
+      fps: IDENTITY_FPS,
+      palette: undefined,
+      transitions: registry,
+    })}
+  </>
+);
+
+/** Every DOM element currently matching `testid`, re-queried fresh — never
+ *  cached — which is the difference between an identity check and a `toBe`
+ *  comparing a captured reference to itself (Task R1's own trap, restated in
+ *  the task brief). Deliberately NOT filtered by CSS visibility: this file's
+ *  `Sequence` mock implements the FRAME-GATING half of `premountFor` (a
+ *  premounting subtree renders) but not Remotion's own `display:none`
+ *  styling of it (`use-premounting.js`'s `hideWhilePremounted`, real-DOM-only
+ *  machinery this mock has no reason to reproduce — see the mock's own
+ *  docblock at the top of this file). A visibility filter would therefore
+ *  under-count on this mock, not over-count: it would let a genuinely SEPARATE
+ *  premounted element pass as "not there yet" for kinds not yet audited to
+ *  confirm it stays hidden. Counting every MATCHED element, hidden or not, is
+ *  the stricter and more honest reading of "does a second DOM node exist for
+ *  this item at all" — which is also the literal cost Task R2's docblock
+ *  measures ("two of them decoding the same frames of the same file at the
+ *  same time"). */
+function instancesOf(container: HTMLElement, testid: string): Element[] {
+  return Array.from(container.querySelectorAll(`[data-testid="${testid}"]`));
+}
+
+/** Sweeps EVERY frame in `[window.start - PAD, window.start + window.frames +
+ *  PAD]` (clamped at 0) — not spot samples — and returns how many DISTINCT
+ *  element references ever answered to `testid` across the whole sweep, plus
+ *  how many of those samples matched at least one element. `observed` is the
+ *  VACUITY GUARD every caller must check before trusting `distinct`: a query
+ *  that matches nothing makes `distinct === 0`, and a query that only ever
+ *  matches on ONE frame makes `distinct === 1` — indistinguishable from
+ *  "genuinely never remounted" — which is exactly Task R1's "compare a
+ *  captured reference to itself" trap, one level up.
+ *
+ *  `distinct === 1` for a whole crossing means the SAME element answered for
+ *  this item at every sampled frame — before the window, through it, and
+ *  after — i.e. it was mounted once and never relocated in the tree.
+ *  `distinct > 1` means at least one second (or third) element existed at
+ *  some point: the `composite` arm's rebased copy (see
+ *  `video-track.tsx`'s module docblock, point 1) is exactly that second
+ *  element, and it is structurally unavoidable on that arm — not a
+ *  per-kind accident, which is why every composite kind fails this
+ *  identically. */
+const IDENTITY_PAD = 5;
+function sweepIdentity(
+  items: VideoItem[],
+  testid: string,
+  window: { start: number; frames: number },
+  registry?: TransitionRegistry,
+  preview = true,
+): { distinct: number; observed: number } {
+  clock.preview = preview;
+  const from = Math.max(0, window.start - IDENTITY_PAD);
+  const to = window.start + window.frames + IDENTITY_PAD;
+  clock.frame = from;
+  const { container, rerender } = render(identityTree(items, registry));
+  const seen = new Set<Element>();
+  let observed = 0;
+  for (let f = from; f <= to; f += 1) {
+    clock.frame = f;
+    rerender(identityTree(items, registry));
+    const matches = instancesOf(container, testid);
+    if (matches.length > 0) observed += 1;
+    for (const el of matches) seen.add(el);
+  }
+  return { distinct: seen.size, observed };
+}
+
+interface IdentityCase {
+  label: string;
+  items: VideoItem[];
+  testid: string;
+  window: { start: number; frames: number };
+}
+
+// Three axes, crossed generatively rather than hand-enumerated: INTERIOR (both
+// sides, all three `TRANSITION_ALIGNMENTS`), LEADING (the reel's own edge,
+// `from === null`), TRAILING (the reel's own edge, `to === null`). Task 1.2
+// shipped a Critical defect precisely because a sweep covered one edge and not
+// its twin — leading and trailing are both here, and so are the incoming and
+// outgoing side of the interior cut.
+//
+// Alignment does not vary the LEADING/TRAILING geometry: `computeVideoLayout`
+// only lends a handle FROM a neighbour, and a reel edge has none — `inHalf`/
+// `outHalf` are forced to 0 by the `!isFirst`/`!isLast` guards regardless of
+// the authored alignment (verified against `video-track-layout.ts:87-88`), so
+// the window is always exactly `frames` long, flush with the edge. That is why
+// only the interior axis is crossed with `TRANSITION_ALIGNMENTS` below.
+function interiorCases(kind: string): IdentityCase[] {
+  return TRANSITION_ALIGNMENTS.flatMap((alignment: TransitionAlignment) => {
+    const items: VideoItem[] = [
+      clip('a', 0, 3000, { transitionOut: defaultTransition(kind, { frames: IDENTITY_FRAMES, alignment }) }),
+      clip('b', 3000, 6000),
+    ];
+    const layout = computeVideoLayout(items, IDENTITY_FPS);
+    const outWindow = {
+      start: layout[0].seqFrom + layout[0].seqDuration - layout[0].outFrames,
+      frames: layout[0].outFrames,
+    };
+    const inWindow = { start: layout[1].seqFrom, frames: layout[1].inFrames };
+    return [
+      { label: `interior/${alignment}/outgoing(a, from-side)`, items, testid: 'vid-a', window: outWindow },
+      { label: `interior/${alignment}/incoming(b, to-side)`, items, testid: 'vid-b', window: inWindow },
+    ];
+  });
+}
+
+function leadingCase(kind: string): IdentityCase {
+  const items: VideoItem[] = [
+    clip('solo', 0, 3000, { transitionIn: defaultTransition(kind, { frames: IDENTITY_FRAMES }) }),
+  ];
+  const layout = computeVideoLayout(items, IDENTITY_FPS);
+  return {
+    label: 'leading-edge/incoming(solo, from===null)',
+    items,
+    testid: 'vid-solo',
+    window: { start: layout[0].seqFrom, frames: layout[0].inFrames },
+  };
+}
+
+function trailingCase(kind: string): IdentityCase {
+  const items: VideoItem[] = [
+    clip('solo', 0, 3000, { transitionOut: defaultTransition(kind, { frames: IDENTITY_FRAMES }) }),
+  ];
+  const layout = computeVideoLayout(items, IDENTITY_FPS);
+  return {
+    label: 'trailing-edge/outgoing(solo, to===null)',
+    items,
+    testid: 'vid-solo',
+    window: {
+      start: layout[0].seqFrom + layout[0].seqDuration - layout[0].outFrames,
+      frames: layout[0].outFrames,
+    },
+  };
+}
+
+function casesFor(kind: string): IdentityCase[] {
+  return [...interiorCases(kind), leadingCase(kind), trailingCase(kind)];
+}
+
+beforeEach(() => {
+  resetWarnOnce();
+  resetTransitionNodeCache();
+});
+
+// COMPOSITE kinds are asserted to FAIL — every kind in the catalog, today.
+// `toBeGreaterThan(1)`, never `.not.toBe(1)`: the latter is satisfied
+// vacuously by `distinct === 0` (a broken query), which is precisely the
+// "empty set passes trivially" trap the task brief calls out. `observed`'s
+// own guard is asserted FIRST and separately, so a broken query fails loudly
+// on ITS OWN assertion rather than being laundered through `distinct`.
+describe.each(COMPOSITE_KINDS)('DERIVED — composite-arm "%s" remounts across the crossing (ratchet: RED today)', (kind) => {
+  it.each(casesFor(kind).map((c): [string, IdentityCase] => [c.label, c]))('%s', (_label, c) => {
+    expect.hasAssertions();
+    const { distinct, observed } = sweepIdentity(c.items, c.testid, c.window);
+    expect(observed).toBeGreaterThanOrEqual(2);
+    expect(distinct).toBeGreaterThan(1);
+  });
+});
+
+// PLAN kinds are asserted to PASS. Zero iterations today (`PLAN_KINDS` is
+// pinned empty above) — `describe.each([])` runs no tests, which is exactly
+// the "derived assertion over an empty set" the brief warns can pass
+// trivially by having nothing to check. The block immediately below is what
+// keeps this branch from being vacuous: it proves, with a test-only plan node
+// built the same way a Stage 2+ brand registration would build one, that this
+// SAME machinery (`sweepIdentity`, `casesFor`'s geometry) actually reports
+// `distinct === 1` for a real single-mount boundary — not just that it never
+// gets the chance to fail.
+describe.each(PLAN_KINDS)('DERIVED — plan-arm "%s" never remounts across the crossing (ratchets green as kinds migrate)', (kind) => {
+  it.each(casesFor(kind).map((c): [string, IdentityCase] => [c.label, c]))('%s', (_label, c) => {
+    expect.hasAssertions();
+    const { distinct, observed } = sweepIdentity(c.items, c.testid, c.window);
+    expect(observed).toBeGreaterThanOrEqual(2);
+    expect(distinct).toBe(1);
+  });
+});
+
+describe('DERIVED proof — the identity sweep is capable of PASSING, not only of failing', () => {
+  // Built exactly the way a Stage 2 brand registration would build one — a
+  // `plan` returning ops on the already-mounted shells, nothing more — and
+  // registered under a kind that is NOT in `TRANSITION_CATALOG`, so this can
+  // never be confused with a catalog kind quietly migrating. `PLAN_KINDS`
+  // stays empty; this is scaffolding for the assertion, not a fifth bucket.
+  //
+  // `planCalls` closes a vacuity gap `distinct` alone cannot: a HARD CUT
+  // (unrecognised kind, or a typo the registry doesn't match) ALSO produces
+  // `distinct === 1`, for a completely different and unwanted reason — there
+  // is no boundary at all, so nothing ever duplicates the item either. A
+  // green assertion on `distinct` alone cannot tell "the plan arm mounted
+  // once" from "there was no transition here to begin with". Counting real
+  // calls to `testPlan` is the positive evidence that the plan path — not a
+  // silent fallback — is what actually ran.
+  let planCalls = 0;
+  const testPlan = (p: TransitionPlanProps): TransitionComposite => {
+    planCalls += 1;
+    return {
+      from: { style: { opacity: 1 - p.progress } },
+      to: { style: { opacity: p.progress } },
+    };
+  };
+  const REGISTRY: TransitionRegistry = { 'single-mount-probe': { renderer: () => ({ plan: testPlan }) } };
+  const layoutOpts = { brandKinds: new Set(Object.keys(REGISTRY)) };
+
+  it('reports distinct === 1 for a real (test-only) plan-arm boundary, interior and both edges', () => {
+    expect.hasAssertions();
+    planCalls = 0;
+    const interior: VideoItem[] = [
+      clip('a', 0, 3000, { transitionOut: { kind: 'single-mount-probe', frames: IDENTITY_FRAMES } }),
+      clip('b', 3000, 6000),
+    ];
+    const layoutInterior = computeVideoLayout(interior, IDENTITY_FPS, layoutOpts);
+    const outWindow = {
+      start: layoutInterior[0].seqFrom + layoutInterior[0].seqDuration - layoutInterior[0].outFrames,
+      frames: layoutInterior[0].outFrames,
+    };
+    const inWindow = { start: layoutInterior[1].seqFrom, frames: layoutInterior[1].inFrames };
+
+    const leading: VideoItem[] = [
+      clip('solo', 0, 3000, { transitionIn: { kind: 'single-mount-probe', frames: IDENTITY_FRAMES } }),
+    ];
+    const layoutLeading = computeVideoLayout(leading, IDENTITY_FPS, layoutOpts);
+
+    const trailing: VideoItem[] = [
+      clip('solo', 0, 3000, { transitionOut: { kind: 'single-mount-probe', frames: IDENTITY_FRAMES } }),
+    ];
+    const layoutTrailing = computeVideoLayout(trailing, IDENTITY_FPS, layoutOpts);
+
+    const cases: IdentityCase[] = [
+      { label: 'interior/outgoing', items: interior, testid: 'vid-a', window: outWindow },
+      { label: 'interior/incoming', items: interior, testid: 'vid-b', window: inWindow },
+      {
+        label: 'leading',
+        items: leading,
+        testid: 'vid-solo',
+        window: { start: layoutLeading[0].seqFrom, frames: layoutLeading[0].inFrames },
+      },
+      {
+        label: 'trailing',
+        items: trailing,
+        testid: 'vid-solo',
+        window: {
+          start: layoutTrailing[0].seqFrom + layoutTrailing[0].seqDuration - layoutTrailing[0].outFrames,
+          frames: layoutTrailing[0].outFrames,
+        },
+      },
+    ];
+    for (const c of cases) {
+      const { distinct, observed } = sweepIdentity(c.items, c.testid, c.window, REGISTRY);
+      expect(observed, c.label).toBeGreaterThanOrEqual(2);
+      expect(distinct, c.label).toBe(1);
+    }
+    // The positive check: the plan actually ran. Without this, a broken
+    // registry wiring (a typo'd kind, a dropped `transitions` option) would
+    // silently degrade to a hard cut and pass `distinct === 1` for the wrong
+    // reason — see this block's docblock.
+    expect(planCalls).toBeGreaterThan(0);
   });
 });
