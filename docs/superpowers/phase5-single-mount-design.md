@@ -499,11 +499,22 @@ by three things, all cheap:
 1. Shells are **core's** components, always mounted, styled-only. Brands cannot get this wrong
    through `style`, `z`, `layers` or `post`.
 2. The two places a brand *can* get it wrong are `ghosts.length` varying with progress and a
-   `wrap` that is not a stable reference. Both get a dev warning (`warnOnce`, per §6) and a
-   derived test over `TRANSITION_CATALOG` — one that renders each kind at every probe progress
-   and asserts DOM element identity is stable, which is the promoted form of
+   `wrap` that is not a stable reference.
+
+   **CORRECTED IN PLACE BY TASK 1.4.** This originally said both get a dev warning (`warnOnce`,
+   per §6). Only `ghosts.length` variance does (`auditGhosts`,
+   `lib/render/video-track-plan.tsx`) — `wrap` instability was never given one, and
+   `lib/theming/transitions.ts`'s `LayerOp.wrap` doc comment now says so explicitly, having
+   walked back an earlier overclaim of its own (Task 1.1 shipped a `ghosts` comment promising a
+   dev warning and a test that did not exist; this is the same failure shape, caught here before
+   it shipped rather than after). What DOES catch it is the derived test below — a
+   `warnOnce`-based dev warning for a brand author who does not run core's test suite would be
+   a genuine, real gap for them specifically, but building it is out of this task's scope; flagged
+   in `task-1.4-report.md` rather than built speculatively.
+3. Both get a derived test over `TRANSITION_CATALOG` — one that renders each kind at every probe
+   progress and asserts DOM element identity is stable, which is the promoted form of
    `lib/editor/src/video-track-remount.test.tsx`.
-3. Remotion's own arrangement has the same requirement and satisfies it the same way
+4. Remotion's own arrangement has the same requirement and satisfies it the same way
    (§1.1, `dist/TransitionSeries.js:341-355`).
 
 ---

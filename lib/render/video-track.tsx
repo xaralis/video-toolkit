@@ -658,31 +658,48 @@ function handleFor(
  *  evaluation (by a test, or by a node author reading its own inputs) — and
  *  hands `LayerShell` (`video-track-plan.tsx`) a per-side answer to "does
  *  this boundary declare a wrap at all" that is available before, during and
- *  after the window.
+ *  after the window. `LayerShell` reads ONLY this sample now, never the live
+ *  composite's own `op.wrap` (fix round 1, Important 1 — an earlier version
+ *  preferred the live value while the boundary was live and fell back to
+ *  this sample outside it; that second source was the sole cause of a real
+ *  one-frame flicker at the window's opening edge when the two disagreed,
+ *  and deleting it left every test green, so there is now exactly one
+ *  source of truth for `Wrap`'s identity).
  *
- *  Why the sentinel frame is a safe stand-in for every live one: `wrap`'s
- *  own doc comment (`lib/theming/transitions.ts`) requires it to be a STABLE
- *  component reference for the item's whole mounted life — so a compliant
- *  node returns the identical `wrap` (present or absent) regardless of
- *  progress or frame, and sampling any one input is sampling all of them.
- *  `LayerShell` does not lean on this sample alone: it prefers the LIVE
- *  composite's own `op.wrap` whenever the boundary is actually live (falling
- *  back to this sample only outside the window, where there is no live
- *  composite), so a node that violates the invariant WITHIN the window is
- *  still caught by `video-track-remount.test.tsx`'s identity ratchet exactly
- *  as before this task — this function only extends the answer to the
- *  frames that ratchet was never asked about.
+ *  `{ progress: 0, frame: -1 }` IS AN INCONSISTENT PAIR — a state no LIVE
+ *  call could ever produce (`planProgress` derives `progress` FROM `frame`;
+ *  no in-range `frame` maps to a `progress` of exactly 0 except `frame: 0`
+ *  itself). That is deliberate, not sloppy: it is what makes the sample
+ *  unambiguously a SAMPLE, distinguishable from a live call by inspection
+ *  (a test, or a node's own logging) rather than by convention. A compliant
+ *  node — `wrap`'s own doc comment requires a reference stable across the
+ *  item's whole life — does not care what `progress`/`frame` pair it is
+ *  called with at all, so this costs nothing; a node whose `wrap` decision
+ *  actually reads `frame` or `progress` is already violating the contract,
+ *  and `LayerShell` now sourcing `Wrap` from THIS CALL ALONE (see above) is
+ *  what turns that violation into a defined, tested outcome — see the
+ *  "flicker" proof below — rather than a display of whichever of two
+ *  disagreeing values a stale two-source implementation happened to prefer.
  *
  *  Deliberately UNCACHED, even though `buildVideoNodes` runs on every frame
  *  of every render and this therefore re-invokes `plan()` once per PLANNED
  *  boundary per frame, everywhere in the reel, not only near its own window.
- *  A plan is required to be "pure and trivial" (Task 1.2 report §3.3), and a
- *  cache keyed on the resolved node would make the SAMPLED half of a
- *  reference-instability bug invisible outside the window (frozen at
- *  whichever value happened to be sampled first) while the live half stayed
- *  detectable inside it — an asymmetry not worth the complexity for a call
- *  this cheap. Revisit only if this is ever measured to matter (same
- *  standard the ghost audit uses, `video-track-plan.tsx`'s `auditGhosts`). */
+ *  THIS IS NOW LOAD-BEARING, NOT MERELY CHEAP (fix round 1, Important 1):
+ *  because `LayerShell` reads `Wrap` from this sample ALONE — there is no
+ *  second, live-composite source anymore — an unstable wrap (a node
+ *  returning a fresh component reference on different calls, violating the
+ *  contract) is detectable ONLY because this function re-samples on every
+ *  call and therefore returns a fresh reference too, every frame, live
+ *  window or not. A future `WeakMap<TransitionNode, PlanBoundary['wrap']>`
+ *  cache keyed on the resolved node — the obvious optimisation once a real
+ *  kind exercises this path — would SILENTLY DISABLE that detection: the
+ *  cache would freeze on the first sample and every later frame, live or
+ *  not, would replay that one reference regardless of what the node
+ *  actually returns on subsequent calls. A plan is required to be "pure and
+ *  trivial" (Task 1.2 report §3.3), which is what makes leaving this
+ *  uncached affordable; do not add that cache without also re-deriving
+ *  whether `video-track-remount.test.tsx`'s unstable-wrap proof still goes
+ *  red without it (it would not). */
 function wrapFor(
   plan: NonNullable<TransitionNode['plan']>,
   props: PlanBoundary['props'],

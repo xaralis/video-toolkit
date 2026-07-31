@@ -1190,3 +1190,278 @@ describe('DERIVED proof — TASK 1.4: a `wrap` is mounted for the item\'s WHOLE 
     expect(afterClose[0].getAttribute('data-active')).toBe('false');
   });
 });
+
+// ---------------------------------------------------------------------------
+// PHASE 5 TASK 1.4, FIX ROUND 1, IMPORTANT 1 — "A WRAP THAT DISAGREES BETWEEN
+// THE SAMPLE AND A LIVE CALL" — the proof `LayerShell`'s and `wrapFor`'s doc
+// comments cite by this exact phrase. Written because the comments cited it
+// before it existed — the precise overclaim shape this phase has already had
+// to walk back once (Task 1.1's `ghosts`/`warnOnce` promise).
+//
+// THE CASE, per the task brief: a plan whose LIVE `op.wrap` differs from what
+// `wrapFor` sampled. `wrapFor` samples with the sentinel `frame: -1`, so
+// `wrap: p.frame < 0 ? Stable : Live` returns `Stable` to the one-time sample
+// and `Live` to every real per-frame call — a contract violation (the doc
+// comment on `LayerOp.wrap` requires a reference stable for the item's whole
+// life), but the exact shape the fix round exists to define behaviour for.
+//
+// BOTH HALVES OF THE MEASUREMENT:
+//   1. Under the SHIPPED one-source code (`LayerShell` reads only
+//      `wraps.get(...)`, never the live `op.wrap`), this test asserts
+//      `persists === true` and the SAME DOM reference — still `Stable` —
+//      before, at, and after the window opens: no flicker, because the live
+//      `Live` value is never read at all.
+//   2. The OLD two-source code (`Wrap = op?.wrap ?? wraps.get(...)`, deleted
+//      by this fix round) is not present in the tree to run — but was
+//      confirmed by manual mutation (re-adding that exact line) to fail this
+//      same test: the DOM tag flips from `Stable` to `Live` at the window's
+//      first live frame, changing `container.innerHTML`'s element type at
+//      `children`'s position and producing `persists === false` (see
+//      task-1.4-report.md's fix-round-1 mutation log for the exact command
+//      and output).
+describe('DERIVED proof — TASK 1.4 fix round 1: "a wrap that disagrees between the sample and a live call"', () => {
+  it('does not flicker under the shipped one-source code — the live op.wrap is never read', () => {
+    expect.hasAssertions();
+    const Stable: React.FC<{ active: boolean; children: React.ReactNode }> = ({ active, children }) => (
+      <span data-testid="wrap-marker" data-source="stable" data-active={String(active)}>{children}</span>
+    );
+    const Live: React.FC<{ active: boolean; children: React.ReactNode }> = ({ active, children }) => (
+      <span data-testid="wrap-marker" data-source="live" data-active={String(active)}>{children}</span>
+    );
+    // `p.frame < 0` is true ONLY for `wrapFor`'s sentinel sample
+    // (`{ progress: 0, frame: -1 }`) — never for a genuine live call, which
+    // `VideoTrackHost` only ever makes with `frame` in `[0, b.frames]`. So
+    // this plan is deliberately NON-compliant with `wrap`'s stable-reference
+    // requirement, on purpose: it is the fixture for what happens when that
+    // requirement is violated.
+    const disagreeingPlan = (p: TransitionPlanProps): TransitionComposite => ({
+      from: { style: { opacity: 1 - p.progress }, wrap: p.frame < 0 ? Stable : Live },
+      to: { style: { opacity: p.progress } },
+    });
+    const REGISTRY: TransitionRegistry = {
+      'single-mount-wrap-disagree-probe': { renderer: () => ({ plan: disagreeingPlan }) },
+    };
+    const opts = { brandKinds: new Set(Object.keys(REGISTRY)) };
+
+    const items: VideoItem[] = [
+      clip('a', 0, 3000, { transitionOut: { kind: 'single-mount-wrap-disagree-probe', frames: IDENTITY_FRAMES } }),
+      clip('b', 3000, 6000),
+    ];
+    const layout = computeVideoLayout(items, IDENTITY_FPS, opts);
+    // `from` side of an interior boundary — genuine pre-window on-screen
+    // life, which is what makes the window-opening edge observable at all
+    // (the same reason `wrapCases`' opening-edge test above uses this axis).
+    const outWindow = {
+      start: layout[0].seqFrom + layout[0].seqDuration - layout[0].outFrames,
+      frames: layout[0].outFrames,
+    };
+
+    clock.preview = true;
+    clock.frame = outWindow.start - IDENTITY_PAD; // before the window opens
+    const { container, rerender } = render(identityTree(items, REGISTRY));
+    const before = instancesOf(container, 'wrap-marker');
+    expect(before.length).toBe(1);
+    expect(before[0].getAttribute('data-source')).toBe('stable'); // wrapFor's frame:-1 sample
+    const markerRef = before[0];
+
+    // The window's first live frame — under the deleted two-source code,
+    // `op.wrap` here would be `Live`, a different component reference /
+    // element type than the sample's `Stable`, and the mount would flip.
+    clock.frame = outWindow.start;
+    rerender(identityTree(items, REGISTRY));
+    const atOpen = instancesOf(container, 'wrap-marker');
+    expect(atOpen.length).toBe(1);
+    expect(atOpen[0]).toBe(markerRef); // SAME reference — still Stable, no flicker
+    expect(atOpen[0].getAttribute('data-source')).toBe('stable');
+
+    clock.frame = outWindow.start + Math.floor(outWindow.frames / 2); // mid-window
+    rerender(identityTree(items, REGISTRY));
+    const mid = instancesOf(container, 'wrap-marker');
+    expect(mid[0]).toBe(markerRef);
+    expect(mid[0].getAttribute('data-source')).toBe('stable');
+
+    const { persists, observed } = sweepIdentity(items, 'vid-a', outWindow, REGISTRY);
+    expect(observed).toBeGreaterThanOrEqual(IDENTITY_OBSERVED_FLOOR_PLAN(outWindow));
+    expect(persists).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PHASE 5 TASK 1.4, FIX ROUND 2, ITEM 3 — `active`'s INDEPENDENCE FROM
+// OP-PRESENCE, PINNED. `LayerShell`'s own doc comment on `active` says: "the
+// boundary is LIVE this frame, independent of whether this particular SIDE's
+// op happens to be present (a plan that sets only `to` on some live frame
+// still has its boundary live for `from`'s purposes)". Nothing enforced that
+// claim before this test — `active = op !== undefined` (a plausible-looking
+// simplification) leaves all pre-existing tests green, because every one of
+// them authors a plan that sets BOTH `from` and `to` on every live frame.
+//
+// THE FIXTURE: a plan whose live composite returns ONLY a `to` key — no
+// `from` property at all, not even `from: undefined` — every live frame. The
+// `from` side's `wrap` still comes from `wrapFor`'s ONE-TIME sample
+// (`frame: -1`), which this plan answers separately (only at that sentinel
+// call) purely so the test has a `Wrap` to read `active` off; the LIVE half
+// of the fixture never sets `from` at all, which is the actual thing under
+// test.
+describe('DERIVED proof — TASK 1.4 fix round 2: `active` does not depend on this side\'s own op being present', () => {
+  it('the `from` shell stays active when the live composite sets only `to`', () => {
+    expect.hasAssertions();
+    const Marker: React.FC<{ active: boolean; children: React.ReactNode }> = ({ active, children }) => (
+      <span data-testid="wrap-marker" data-active={String(active)}>{children}</span>
+    );
+    const onlyToPlan = (p: TransitionPlanProps): TransitionComposite => {
+      if (p.frame < 0) {
+        // `wrapFor`'s sentinel sample only — gives `LayerShell` a `wrap` to
+        // mount on the `from` side so `active` has somewhere to be observed.
+        return { from: { wrap: Marker } };
+      }
+      // Every LIVE frame: `from` is entirely absent, not merely styleless.
+      return { to: { style: { opacity: p.progress } } };
+    };
+    const REGISTRY: TransitionRegistry = {
+      'single-mount-active-independence-probe': { renderer: () => ({ plan: onlyToPlan }) },
+    };
+    const opts = { brandKinds: new Set(Object.keys(REGISTRY)) };
+
+    const items: VideoItem[] = [
+      clip('a', 0, 3000, { transitionOut: { kind: 'single-mount-active-independence-probe', frames: IDENTITY_FRAMES } }),
+      clip('b', 3000, 6000),
+    ];
+    const layout = computeVideoLayout(items, IDENTITY_FPS, opts);
+    const outWindow = {
+      start: layout[0].seqFrom + layout[0].seqDuration - layout[0].outFrames,
+      frames: layout[0].outFrames,
+    };
+
+    clock.preview = true;
+    clock.frame = outWindow.start + Math.floor(outWindow.frames / 2); // mid-window, live
+    const { container } = render(identityTree(items, REGISTRY));
+    const markers = instancesOf(container, 'wrap-marker');
+    expect(markers.length).toBe(1);
+    // The pin: `op` (this side's own live value) is undefined on every live
+    // frame for this fixture, and `active` must be `true` anyway — it comes
+    // from the BOUNDARY being live, not from this SIDE having an op.
+    expect(markers[0].getAttribute('data-active')).toBe('true');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PHASE 5 TASK 1.4, FIX ROUND 2, ITEM 4 — THE WRAP-ON-THE-EDGE-PLATE AXIS.
+// Design §2.5 claims a materialised `EdgePlate` takes its side's op "exactly
+// as a clip does" — `wrap` included — via the same `LayerShell`
+// (`video-track.tsx`'s `edge()`). Every `wrapCases` entry above puts the wrap
+// on the REAL clip's side of a leading/trailing boundary; neither ever puts
+// it on the EDGE PLATE's own side, so that half of the design's claim was
+// untested.
+//
+// CONFIRMS THE REVIEWER'S READ, RATHER THAN ASSUMING IT: the plate's
+// `LayerShell` lives inside `edge()`'s own `planSequence`
+// (`from: b.start, durationInFrames: b.frames + BOUNDARY_TAIL`) — a
+// window-scoped Sequence, not a life-long one like an item's own. Outside
+// that Sequence's range the plate's `LayerShell` is not merely inactive, it
+// does not exist in the tree AT ALL (a plain, non-premounted `<Sequence>`
+// renders `null` outside its own range). And WITHIN that range, `local` is
+// always in `[0, b.frames]` by construction — exactly `VideoTrackHost`'s own
+// live-boundary condition — so the boundary is live on every frame the
+// plate's shell is mounted. The two tests below check both directions: the
+// plate is wrapped, `active`, whenever it exists (first test), and it simply
+// does not exist at all outside the window (second test) — together showing
+// there is no active-toggling axis to sweep here, structurally, not by
+// assumption.
+describe('DERIVED proof — TASK 1.4 fix round 2: wrap applies to a materialised edge plate exactly as it does to a clip', () => {
+  const Marker: React.FC<{ active: boolean; children: React.ReactNode }> = ({ active, children }) => (
+    <span data-testid="wrap-marker" data-active={String(active)}>{children}</span>
+  );
+  const leadingWrapPlan = (p: TransitionPlanProps): TransitionComposite => ({
+    from: { style: { opacity: 1 - p.progress }, wrap: Marker },
+    to: { style: { opacity: p.progress } },
+  });
+  const trailingWrapPlan = (p: TransitionPlanProps): TransitionComposite => ({
+    from: { style: { opacity: 1 - p.progress } },
+    to: { style: { opacity: p.progress }, wrap: Marker },
+  });
+  const LEADING_REGISTRY: TransitionRegistry = {
+    'single-mount-edge-wrap-leading-probe': { renderer: () => ({ plan: leadingWrapPlan }) },
+  };
+  const TRAILING_REGISTRY: TransitionRegistry = {
+    'single-mount-edge-wrap-trailing-probe': { renderer: () => ({ plan: trailingWrapPlan }) },
+  };
+
+  it('leading edge: the materialised `from` plate (the reel-edge side) mounts inside Wrap, active while its window is live', () => {
+    expect.hasAssertions();
+    const items: VideoItem[] = [
+      clip('solo', 0, 3000, { transitionIn: { kind: 'single-mount-edge-wrap-leading-probe', frames: IDENTITY_FRAMES } }),
+    ];
+    const opts = { brandKinds: new Set(Object.keys(LEADING_REGISTRY)) };
+    const layout = computeVideoLayout(items, IDENTITY_FPS, opts);
+    const window = { start: layout[0].seqFrom, frames: layout[0].inFrames };
+
+    clock.preview = true;
+    clock.frame = window.start + Math.floor(window.frames / 2); // mid-window
+    const { container } = render(identityTree(items, LEADING_REGISTRY));
+    const markers = instancesOf(container, 'wrap-marker');
+    expect(markers.length).toBe(1);
+    expect(markers[0].getAttribute('data-active')).toBe('true');
+  });
+
+  it('trailing edge: the materialised `to` plate (the reel-edge side) mounts inside Wrap, active while its window is live', () => {
+    expect.hasAssertions();
+    const items: VideoItem[] = [
+      clip('solo', 0, 3000, { transitionOut: { kind: 'single-mount-edge-wrap-trailing-probe', frames: IDENTITY_FRAMES } }),
+    ];
+    const opts = { brandKinds: new Set(Object.keys(TRAILING_REGISTRY)) };
+    const layout = computeVideoLayout(items, IDENTITY_FPS, opts);
+    const window = {
+      start: layout[0].seqFrom + layout[0].seqDuration - layout[0].outFrames,
+      frames: layout[0].outFrames,
+    };
+
+    clock.preview = true;
+    clock.frame = window.start + Math.floor(window.frames / 2); // mid-window
+    const { container } = render(identityTree(items, TRAILING_REGISTRY));
+    const markers = instancesOf(container, 'wrap-marker');
+    expect(markers.length).toBe(1);
+    expect(markers[0].getAttribute('data-active')).toBe('true');
+  });
+
+  // A leading edge's window starts at composition frame 0 (the reel's own
+  // start), so there is no "before the window opens" frame to observe at
+  // all — this checks the other direction, AFTER the window closes, which is
+  // reachable (the item's own life continues well past it).
+  it('the leading plate does not exist at all after its window closes — confirms there is no active=false state to observe', () => {
+    expect.hasAssertions();
+    const items: VideoItem[] = [
+      clip('solo', 0, 3000, { transitionIn: { kind: 'single-mount-edge-wrap-leading-probe', frames: IDENTITY_FRAMES } }),
+    ];
+    const opts = { brandKinds: new Set(Object.keys(LEADING_REGISTRY)) };
+    const layout = computeVideoLayout(items, IDENTITY_FPS, opts);
+    const window = { start: layout[0].seqFrom, frames: layout[0].inFrames };
+    expect(window.start).toBe(0); // confirms the "before" direction is unreachable, as claimed above
+
+    clock.preview = true;
+    clock.frame = window.start + window.frames + 1; // one past the window's close
+    const { container } = render(identityTree(items, LEADING_REGISTRY));
+    expect(instancesOf(container, 'wrap-marker').length).toBe(0);
+  });
+
+  // The trailing edge's window does NOT start at frame 0, so this checks the
+  // direction the leading test above cannot: BEFORE the window opens.
+  it('the trailing plate does not exist at all before its window opens — confirms there is no active=false state to observe', () => {
+    expect.hasAssertions();
+    const items: VideoItem[] = [
+      clip('solo', 0, 3000, { transitionOut: { kind: 'single-mount-edge-wrap-trailing-probe', frames: IDENTITY_FRAMES } }),
+    ];
+    const opts = { brandKinds: new Set(Object.keys(TRAILING_REGISTRY)) };
+    const layout = computeVideoLayout(items, IDENTITY_FPS, opts);
+    const window = {
+      start: layout[0].seqFrom + layout[0].seqDuration - layout[0].outFrames,
+      frames: layout[0].outFrames,
+    };
+    expect(window.start).toBeGreaterThan(0);
+
+    clock.preview = true;
+    clock.frame = window.start - 1; // one frame before the window opens
+    const { container } = render(identityTree(items, TRAILING_REGISTRY));
+    expect(instancesOf(container, 'wrap-marker').length).toBe(0);
+  });
+});

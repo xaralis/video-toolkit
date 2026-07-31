@@ -75,12 +75,26 @@ const PlanCompositesContext = React.createContext<ReadonlyMap<string, Transition
 /** PHASE 5 TASK 1.4 — the STRUCTURAL half of `wrap`, published separately
  *  from the live per-frame composites above. Keyed the same way
  *  (`PlanBoundary.key`), but its values are the ONE-TIME samples
- *  `buildVideoNodes` computed (`wrapFor`) — available on every frame,
- *  including the ones `PlanCompositesContext` has nothing for, which is the
- *  whole reason this is a second context rather than a field squeezed onto
- *  the first: `EMPTY_COMPOSITES` has to stay a stable EMPTY value so a
- *  boundary with nothing live re-renders its consumers with an unchanged
- *  context value, and a per-boundary wrap map does not share that shape. */
+ *  `buildVideoNodes` computed (`wrapFor`) for EVERY boundary, whether or not
+ *  it is live THIS frame — which is the whole and only reason this is a
+ *  second context rather than a field squeezed onto the first:
+ *  `PlanCompositesContext` is deliberately populated for LIVE boundaries
+ *  only (that emptiness outside every window is what `EMPTY_COMPOSITES`
+ *  exists to spell cheaply), and a map that must answer for boundaries
+ *  outside their window too cannot share that population rule.
+ *
+ *  NOT reference-stable across renders once any boundary is planned (see
+ *  `VideoTrackHost` below: a fresh `Map` is built from `boundaries` on every
+ *  call when `boundaries.length > 0`) — fixed round 1 correction: an earlier
+ *  version of this comment implied `EMPTY_COMPOSITES`'s stability property
+ *  extended here too; it does not, and does not need to. `VideoTrackHost`
+ *  itself re-renders every frame (`useCurrentFrame`), so every consumer
+ *  under it already re-renders regardless of this Provider's value
+ *  identity — nothing in this module relies on `React.memo` or a stable
+ *  Context value to skip work, so a fresh `Map` costs one allocation per
+ *  plan boundary per frame and nothing more. `EMPTY_WRAPS` exists only to
+ *  skip that allocation on the (today, universal) case of zero plan
+ *  boundaries, not to provide a memoization guarantee. */
 const EMPTY_WRAPS: ReadonlyMap<string, PlanBoundary['wrap']> = new Map();
 const PlanWrapContext = React.createContext<ReadonlyMap<string, PlanBoundary['wrap']>>(EMPTY_WRAPS);
 
@@ -310,7 +324,34 @@ export const VideoTrackHost: React.FC<{
  *  window's edges — before Task 1.4, a `wrap` present only while live was a
  *  type change at BOTH edges (absent → present, present → absent), which
  *  remounted the clip: the exact defect class this phase removes, reached
- *  through the contract rather than the assembly. */
+ *  through the contract rather than the assembly.
+ *
+ *  ONE SOURCE FOR `Wrap`, NOT TWO (Task 1.4 fix round 1, Important 1). An
+ *  earlier version of this line preferred the LIVE composite's own `op.wrap`
+ *  while the boundary was live and fell back to the structural sample
+ *  (`wraps.get(...)`) only outside it — on the theory that this let an
+ *  in-window reference-instability bug stay visible to the identity ratchet.
+ *  Measured, that branch bought NOTHING (deleting it left every test green)
+ *  AND it was the sole cause of a real defect: at the window's OPENING edge,
+ *  a node whose live `op.wrap` differs from what `wrapFor` sampled (a
+ *  contract violation, but one worth being DEFINED about rather than merely
+ *  disclaimed) flips the mounted element from the sample's type to the live
+ *  one for exactly one frame — a real, if brief, remount, reachable only
+ *  because two different sources could disagree. The structural sample
+ *  ALONE already catches in-window instability just as well: `wrapFor` is
+ *  deliberately uncached (see its own doc comment in `video-track.tsx`), so
+ *  it re-samples the plan on every `buildVideoNodes` call, live window or
+ *  not — an unstable wrap produces a fresh reference through the sample too,
+ *  every frame. See `video-track-remount.test.tsx`'s "a wrap that disagrees
+ *  between the sample and a live call" proof — it asserts the half that
+ *  matters going forward (no flicker under the shipped one-source code,
+ *  same DOM reference before/at/after the window opens). The other half
+ *  (the old two-source code DOES flicker on this exact fixture) is not
+ *  re-provable by that same in-tree test, because the old code no longer
+ *  exists to run; it was confirmed once, by manually reintroducing the
+ *  deleted `op?.wrap ?? …` line and watching the test go red — see
+ *  task-1.4-report.md's fix-round-1 mutation log for the exact command and
+ *  output. */
 export const LayerShell: React.FC<{
   /** The plan boundary this shell's side belongs to, or `null` when this item
    *  has no plan boundary on this side — the inert case, which is every item
@@ -336,17 +377,15 @@ export const LayerShell: React.FC<{
     ...(op?.z === undefined ? {} : { zIndex: op.z }),
   };
 
-  // WRAP — the LIVE composite's own `op.wrap` while the boundary is live (so
-  // a node whose wrap reference drifts frame-to-frame WITHIN the window is
-  // still visible to `video-track-remount.test.tsx`'s identity ratchet,
-  // exactly as before this task), and the ONE-TIME structural sample
-  // (`PlanBoundary.wrap`, `wrapFor` in `video-track.tsx`) OUTSIDE it, where
-  // there is no live composite to read at all. A COMPLIANT node — `wrap`'s
-  // own doc comment requires a STABLE reference for the item's whole life —
-  // returns the identical value either way, which is exactly what makes the
-  // element type at `children`'s position constant across the window's
-  // edges.
-  const Wrap = boundaryKey === null ? undefined : (op?.wrap ?? wraps.get(boundaryKey)?.[side]);
+  // WRAP — ALWAYS the structural sample (`PlanBoundary.wrap`, `wrapFor` in
+  // `video-track.tsx`), NEVER the live composite's own `op.wrap`. One source
+  // only, on purpose (see the doc comment above): the live composite is
+  // recomputed with the identical inputs `wrapFor` samples with, so a
+  // compliant node's `op.wrap` and its sampled `wrap` are the same reference
+  // by construction, and reading only the sample removes the two-source
+  // disagreement that could otherwise flicker the element type for one
+  // frame at the window's opening edge.
+  const Wrap = boundaryKey === null ? undefined : wraps.get(boundaryKey)?.[side];
   return (
     <div style={style}>
       {Wrap ? <Wrap active={active}>{children}</Wrap> : children}
