@@ -971,3 +971,222 @@ describe('DERIVED proof — a ghost whose count VARIES with progress is NOT tole
     expect(persists).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// PHASE 5 TASK 1.4 — FINDING 1's FIX, PROVED ON THE SAME INSTRUMENT.
+//
+// Before this task, `LayerShell` (`video-track-plan.tsx`) read `wrap` off the
+// LIVE per-frame composite alone — so a boundary whose plan declares a `wrap`
+// at all had it present ONLY for the frames the boundary was actually live:
+// absent outside the window, present inside it. That is a type change at
+// `children`'s tree position at BOTH window edges, which remounts the clip —
+// the exact defect class this phase removes, reached through the contract
+// (`LayerOp.wrap`) rather than through the assembly. `wrapFor`
+// (`video-track.tsx`) is the fix: it samples the plan ONCE, outside any live
+// frame (`frame: -1`, unreachable from a real boundary window), so
+// `LayerShell` has an answer for "does this side declare a wrap" on every
+// frame the item is mounted, not only the live ones — and mounts the Wrap
+// component (when declared) for the item's WHOLE life, passing `active` to
+// say whether the boundary happens to be live this frame.
+//
+// CONFIRMED RED AGAINST THE PRE-1.4 TREE — measured, not assumed. Run via
+// `git stash push -- lib/render/video-track.tsx lib/render/video-track-plan.tsx
+// lib/theming/transitions.ts` (this test file and the rest of the fixture
+// left in place: `wrap`'s pre-1.4 TYPE — `ComponentType<{ children }>`, no
+// `active` — is structurally compatible with the `active`-carrying `Marker`
+// below, since TypeScript accepts extra unused props on a function
+// component, so no compile change was needed to observe the pre-fix runtime
+// behaviour), then `npx vitest run --no-file-parallelism
+// src/video-track-remount.test.tsx`: **6 of 176 failed, exactly the 6 below,
+// every pre-existing test in the file unaffected** — all four `wrapCases`
+// entries reported `persists === false` (not flaky; every run), and both
+// dedicated OPENING/CLOSING-edge tests failed exactly where the pre-1.4
+// `LayerShell` could not have passed them (no life-long mount at all, so no
+// `wrap-marker` before the window opens, and no `active` on it either).
+// `git stash pop` restored the fix and all 176 passed again. See the task
+// report for the exact terminal output.
+describe('DERIVED proof — TASK 1.4: a `wrap` is mounted for the item\'s WHOLE life, not only while its own boundary is live (Finding 1)', () => {
+  // A component that renders visibly (so a test can tell it is actually
+  // mounted, not merely declared) and echoes `active` into the DOM (so the
+  // WIRING that delivers `active` — not just the presence of `Wrap` itself —
+  // has something to be pinned by; see the `active`-delivery pin below).
+  const Marker: React.FC<{ active: boolean; children: React.ReactNode }> = ({ active, children }) => (
+    <span data-testid="wrap-marker" data-active={String(active)}>{children}</span>
+  );
+  const wrapPlanFrom = (p: TransitionPlanProps): TransitionComposite => ({
+    from: { style: { opacity: 1 - p.progress }, wrap: Marker },
+    to: { style: { opacity: p.progress } },
+  });
+  const wrapPlanTo = (p: TransitionPlanProps): TransitionComposite => ({
+    from: { style: { opacity: 1 - p.progress } },
+    to: { style: { opacity: p.progress }, wrap: Marker },
+  });
+  const WRAP_FROM_REGISTRY: TransitionRegistry = { 'single-mount-wrap-from-probe': { renderer: () => ({ plan: wrapPlanFrom }) } };
+  const WRAP_TO_REGISTRY: TransitionRegistry = { 'single-mount-wrap-to-probe': { renderer: () => ({ plan: wrapPlanTo }) } };
+  const fromOpts = { brandKinds: new Set(Object.keys(WRAP_FROM_REGISTRY)) };
+  const toOpts = { brandKinds: new Set(Object.keys(WRAP_TO_REGISTRY)) };
+
+  interface WrapCase extends IdentityCase { registry: TransitionRegistry }
+
+  // The same four axis shapes the ghost-tolerance proof above uses, for the
+  // same reason: `from` has genuine PRE-window on-screen life on
+  // `interior/outgoing` and `trailing`; `to` does not on `interior/incoming`
+  // and `leading` (its item's own Sequence starts exactly at `window.start`)
+  // — the shape that broke `persists`'s first formulation (Review Round 2).
+  // Both arms of `wrap` × both distinct edge shapes, per the task brief.
+  const wrapCases = (): WrapCase[] => {
+    const interiorFrom: VideoItem[] = [
+      clip('a', 0, 3000, { transitionOut: { kind: 'single-mount-wrap-from-probe', frames: IDENTITY_FRAMES } }),
+      clip('b', 3000, 6000),
+    ];
+    const layoutFrom = computeVideoLayout(interiorFrom, IDENTITY_FPS, fromOpts);
+    const outWindow = {
+      start: layoutFrom[0].seqFrom + layoutFrom[0].seqDuration - layoutFrom[0].outFrames,
+      frames: layoutFrom[0].outFrames,
+    };
+
+    const interiorTo: VideoItem[] = [
+      clip('a', 0, 3000, { transitionOut: { kind: 'single-mount-wrap-to-probe', frames: IDENTITY_FRAMES } }),
+      clip('b', 3000, 6000),
+    ];
+    const layoutTo = computeVideoLayout(interiorTo, IDENTITY_FPS, toOpts);
+    const inWindow = { start: layoutTo[1].seqFrom, frames: layoutTo[1].inFrames };
+
+    const leading: VideoItem[] = [
+      clip('solo', 0, 3000, { transitionIn: { kind: 'single-mount-wrap-to-probe', frames: IDENTITY_FRAMES } }),
+    ];
+    const layoutLeading = computeVideoLayout(leading, IDENTITY_FPS, toOpts);
+
+    const trailing: VideoItem[] = [
+      clip('solo', 0, 3000, { transitionOut: { kind: 'single-mount-wrap-from-probe', frames: IDENTITY_FRAMES } }),
+    ];
+    const layoutTrailing = computeVideoLayout(trailing, IDENTITY_FPS, fromOpts);
+
+    return [
+      {
+        label: 'interior/outgoing (wrap on from — has pre-window life)',
+        items: interiorFrom, testid: 'vid-a', window: outWindow, registry: WRAP_FROM_REGISTRY,
+      },
+      {
+        label: 'interior/incoming (wrap on to — no pre-window life)',
+        items: interiorTo, testid: 'vid-b', window: inWindow, registry: WRAP_TO_REGISTRY,
+      },
+      {
+        label: 'leading (wrap on to — no pre-window life)',
+        items: leading, testid: 'vid-solo',
+        window: { start: layoutLeading[0].seqFrom, frames: layoutLeading[0].inFrames },
+        registry: WRAP_TO_REGISTRY,
+      },
+      {
+        label: 'trailing (wrap on from — has pre-window life)',
+        items: trailing, testid: 'vid-solo',
+        window: {
+          start: layoutTrailing[0].seqFrom + layoutTrailing[0].seqDuration - layoutTrailing[0].outFrames,
+          frames: layoutTrailing[0].outFrames,
+        },
+        registry: WRAP_FROM_REGISTRY,
+      },
+    ];
+  };
+
+  it.each(wrapCases().map((c): [string, WrapCase] => [c.label, c]))(
+    '%s — persists === true across both window edges (the clip never leaves its Wrap)',
+    (_label, c) => {
+      expect.hasAssertions();
+      // Vacuity guard: the Wrap marker is genuinely mounted before trusting a
+      // green `persists` — otherwise a broken registry wiring could silently
+      // degrade to "no wrap at all" and pass for the wrong reason.
+      clock.preview = true;
+      clock.frame = c.window.start + Math.floor(c.window.frames / 2);
+      const { container } = render(identityTree(c.items, c.registry));
+      expect(instancesOf(container, 'wrap-marker').length).toBeGreaterThanOrEqual(1);
+
+      const { persists, observed } = sweepIdentity(c.items, c.testid, c.window, c.registry);
+      expect(observed).toBeGreaterThanOrEqual(IDENTITY_OBSERVED_FLOOR_PLAN(c.window));
+      expect(persists).toBe(true);
+    },
+  );
+
+  // PIN THE WIRING, NOT THE PURE FUNCTION. `persists === true` alone would
+  // also be satisfied by a `LayerShell` that dropped `wrap` on the floor
+  // entirely (never mounting `Marker` at all) — the clip's own identity would
+  // trivially persist with nothing wrapping it. This asserts the POSITIVE
+  // fact the persistence check cannot: the Wrap element is mounted on every
+  // frame the item is on screen (before, during and after the window) with
+  // exactly ONE reference the whole time, and it carries the correct `active`
+  // value on both sides of both edges.
+  it('the OPENING edge: the Wrap element persists (one reference) from before the window through mid-window, with `active` flipping true', () => {
+    expect.hasAssertions();
+    // `from` side of an interior boundary — the one axis shape with genuine
+    // PRE-window on-screen life (`interior/outgoing` in `wrapCases` above),
+    // which is what this edge needs to exercise: the same Wrap reference must
+    // already be there BEFORE the window opens.
+    const items: VideoItem[] = [
+      clip('a', 0, 3000, { transitionOut: { kind: 'single-mount-wrap-from-probe', frames: IDENTITY_FRAMES } }),
+      clip('b', 3000, 6000),
+    ];
+    const layout = computeVideoLayout(items, IDENTITY_FPS, fromOpts);
+    const outWindow = {
+      start: layout[0].seqFrom + layout[0].seqDuration - layout[0].outFrames,
+      frames: layout[0].outFrames,
+    };
+
+    clock.preview = true;
+    clock.frame = outWindow.start - IDENTITY_PAD; // before the window opens; 'a' is already on screen
+    const { container, rerender } = render(identityTree(items, WRAP_FROM_REGISTRY));
+    const before = instancesOf(container, 'wrap-marker');
+    expect(before.length).toBe(1);
+    expect(before[0].getAttribute('data-active')).toBe('false');
+    const markerRef = before[0];
+
+    clock.frame = outWindow.start; // window opens
+    rerender(identityTree(items, WRAP_FROM_REGISTRY));
+    const atOpen = instancesOf(container, 'wrap-marker');
+    expect(atOpen.length).toBe(1);
+    expect(atOpen[0]).toBe(markerRef); // same reference — no remount at the opening edge
+    expect(atOpen[0].getAttribute('data-active')).toBe('true');
+
+    clock.frame = outWindow.start + Math.floor(outWindow.frames / 2); // mid-window
+    rerender(identityTree(items, WRAP_FROM_REGISTRY));
+    const mid = instancesOf(container, 'wrap-marker');
+    expect(mid[0]).toBe(markerRef);
+    expect(mid[0].getAttribute('data-active')).toBe('true');
+  });
+
+  it('the CLOSING edge: the Wrap element persists (one reference) from mid-window through well after it closes, with `active` flipping back to false', () => {
+    expect.hasAssertions();
+    // `to` side of an interior boundary — but the RECEIVING item's life must
+    // outlast the window for a closing edge to be observable at all, so this
+    // uses a THREE-item reel: `b`'s incoming boundary (from `a`) is the one
+    // under test, and `b`'s own Sequence runs on well past that window's
+    // close, right up to its own (unrelated, hard-cut) boundary with `c`.
+    const items: VideoItem[] = [
+      clip('a', 0, 3000, { transitionOut: { kind: 'single-mount-wrap-to-probe', frames: IDENTITY_FRAMES } }),
+      clip('b', 3000, 6000),
+      clip('c', 6000, 9000),
+    ];
+    const layout = computeVideoLayout(items, IDENTITY_FPS, toOpts);
+    const inWindow = { start: layout[1].seqFrom, frames: layout[1].inFrames };
+
+    clock.preview = true;
+    clock.frame = inWindow.start; // window opens — 'b' has no pre-window life on this side
+    const { container, rerender } = render(identityTree(items, WRAP_TO_REGISTRY));
+    const atOpen = instancesOf(container, 'wrap-marker');
+    expect(atOpen.length).toBe(1);
+    expect(atOpen[0].getAttribute('data-active')).toBe('true');
+    const markerRef = atOpen[0];
+
+    clock.frame = inWindow.start + Math.floor(inWindow.frames / 2); // mid-window
+    rerender(identityTree(items, WRAP_TO_REGISTRY));
+    const mid = instancesOf(container, 'wrap-marker');
+    expect(mid[0]).toBe(markerRef);
+    expect(mid[0].getAttribute('data-active')).toBe('true');
+
+    clock.frame = inWindow.start + inWindow.frames + 1; // one past the window's close
+    rerender(identityTree(items, WRAP_TO_REGISTRY));
+    const afterClose = instancesOf(container, 'wrap-marker');
+    expect(afterClose.length).toBe(1);
+    expect(afterClose[0]).toBe(markerRef); // same reference — no remount at the closing edge
+    expect(afterClose[0].getAttribute('data-active')).toBe('false');
+  });
+});

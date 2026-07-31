@@ -196,10 +196,18 @@ mentions of `TransitionRenderProps` are the OTHER, pre-existing type and are unc
 // lib/theming/transitions.ts
 
 /** What the node is told about one side of the boundary. NOT a ReactNode: the
- *  layer is ALREADY MOUNTED and the node styles it. */
+ *  layer is ALREADY MOUNTED and the node styles it.
+ *
+ *  **CORRECTED IN PLACE BY TASK 1.4.** This originally also carried
+ *  `readonly source: 'clip' | 'edge'`, on the premise that a node needed a way
+ *  to branch at a materialised reel edge. Task 1.2's review found it dead
+ *  (core always passes `'clip'`; nothing ever produced `'edge'`) *and*
+ *  redundant, not merely unused: `from === null` / `to === null` already say
+ *  "this side is the reel edge" (§2.5), and the materialised edge plate
+ *  reaches the same `LayerShell` a clip does, so a node's `from`/`to` op
+ *  applies to it identically either way. The field is removed rather than
+ *  reconciled with a third nullability state — see §2.5, also corrected. */
 export interface LayerHandle {
-  /** A real clip, or the reel-edge background plate core substitutes. */
-  readonly source: 'clip' | 'edge';
   /** The layer's own frame range, in BOUNDARY coordinates — how much handle it
    *  actually has. `[0, frames]` for a full-window side; a shorter range is how
    *  a node can see that the outgoing clip expires before progress 1. */
@@ -242,9 +250,22 @@ export interface LayerOp {
   ghosts?: readonly React.CSSProperties[];
   /** Component form, for a shell no style can express — SVG `mask`/
    *  `foreignObject` (`burn`), and the route `fromRemotionPresentation` uses.
+   *
+   *  **CORRECTED IN PLACE BY TASK 1.4.** This originally took only
+   *  `{ children: React.ReactNode }` and was applied *only while the
+   *  boundary was live* — a type change at `children`'s tree position at
+   *  both window edges, which remounts the clip through the contract rather
+   *  than the assembly (found during Task 1.2, §4.6; not yet reachable then
+   *  because no kind produced a plan). Core now mounts a declared `wrap` for
+   *  the item's WHOLE life and passes `active: false` outside the window,
+   *  `active: true` inside it, so the element type at `children`'s position
+   *  never changes; a `wrap` that must be inert outside the window renders
+   *  `children` unchanged when `active` is false.
+   *
    *  MUST render `children` exactly once, and MUST be a STABLE component
-   *  reference across frames. */
-  wrap?: React.ComponentType<{ children: React.ReactNode }>;
+   *  reference for the item's whole mounted life (not merely across the
+   *  window's own frames, now that the mount spans more than the window). */
+  wrap?: React.ComponentType<{ active: boolean; children: React.ReactNode }>;
 }
 
 /** A media-free full-frame plate. */
@@ -297,9 +318,15 @@ Preserved verbatim in the props. Core additionally materialises the missing side
 timeline sibling** — an `EdgePlate` Sequence spanning the window (plus its progress-1 frame) —
 and applies the node's `from`/`to` op to it. That is the ordinary NLE idiom (a slug), and it
 is what `edgeInput` (`lib/transitions/edge-plate.tsx:40-42`) already does in spirit; the plate
-just stops being something the node instantiates. `LayerHandle.source === 'edge'` lets a node
-that wants to branch still branch, and `from === null` / `to === null` still mean what Task 2.2
-made them mean.
+just stops being something the node instantiates. `from === null` / `to === null` still mean
+what Task 2.2 made them mean, and that is now the ONLY way a node branches at an edge.
+
+**CORRECTED IN PLACE BY TASK 1.4.** This section originally also said `LayerHandle.source ===
+'edge'` gives a node a second way to branch at an edge. Task 1.2's review found `source` dead
+(core always passes `'clip'`) and redundant (the nullability check above already tells a node
+its side is the reel edge, and the materialised plate reaches the node's op through the same
+`LayerShell` a clip does) — so the field is retired rather than reconciled with a third state.
+See §2.3, also corrected.
 
 At a trailing edge the outgoing clip's Sequence ends one frame before the window does
 (§1.2). The plate covers that frame, so the `progress === 1` picture is the background — the

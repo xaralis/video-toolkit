@@ -178,14 +178,29 @@ describe('the plan arm and the composite arm coexist, per boundary, in one reel'
     expect(live[0].params).toMatchObject({ kind: 'planned', frames: 20 });
     // `from` expires one frame before the window does (design §1.2); `to`
     // spans the whole of it.
-    expect(live[0].from).toEqual({ source: 'clip', range: [0, 19] });
-    expect(live[0].to).toEqual({ source: 'clip', range: [0, 20] });
+    expect(live[0].from).toEqual({ range: [0, 19] });
+    expect(live[0].to).toEqual({ range: [0, 20] });
   });
 
-  it('does not evaluate the plan outside its own window', () => {
+  it('does not evaluate the plan\'s LIVE composite outside its own window', () => {
     clock.frame = 79; // one frame before the window opens
     render(tree());
-    expect(seen.length).toBe(0);
+    // TASK 1.4 — `buildVideoNodes` also samples the plan ONCE with the
+    // out-of-range marker `frame: -1` (`wrapFor`, video-track.tsx), purely to
+    // learn whether either side declares a `wrap` — necessary even here,
+    // before the window has ever gone live, which is the whole point of
+    // Finding 1's fix (a life-long `wrap` mount needs an answer for frames
+    // the boundary is never live on). That sample is not a live evaluation of
+    // the boundary's picture, so it is excluded from `live` below; this
+    // test's actual claim — no REAL progress-bearing call happens before the
+    // window opens — still holds.
+    const live = seen.filter((p) => p.frame !== -1);
+    expect(live.length).toBe(0);
+    // The other half of the same fact, pinned positively: exactly the wrap
+    // sample ran, not zero (which would mean `wrapFor` stopped being called
+    // — the wiring this task adds) and not more than one (which would mean
+    // it is being re-invoked needlessly).
+    expect(seen.length).toBe(1);
   });
 
   it('still evaluates it on the progress-1 frame, which is a real frame something must draw', () => {
@@ -375,7 +390,7 @@ describe('the reel edge is materialised as a timeline sibling and takes the node
     const { rerender } = render(tree(LEADING()));
     const leading = seen.filter((p) => p.progress === 0.25);
     expect(leading[0].from).toBeNull();
-    expect(leading[0].to).toEqual({ source: 'clip', range: [0, 20] });
+    expect(leading[0].to).toEqual({ range: [0, 20] });
 
     seen.length = 0;
     clock.frame = 75;
@@ -384,7 +399,7 @@ describe('the reel edge is materialised as a timeline sibling and takes the node
     expect(trailing[0].to).toBeNull();
     // The outgoing clip's own Sequence ends at frame 89, one before the window
     // does — `[0, 19]`, not `[0, 20]`.
-    expect(trailing[0].from).toEqual({ source: 'clip', range: [0, 19] });
+    expect(trailing[0].from).toEqual({ range: [0, 19] });
   });
 });
 
@@ -606,7 +621,7 @@ describe('DERIVED — every member of TransitionPlanProps is delivered', () => {
   // 20) are pairwise distinct at the frame chosen.
   const DELIVERED: Record<keyof TransitionPlanProps, (p: TransitionPlanProps) => boolean> = {
     from: (p) => p.from === null, // leading edge — the only side that can be null here
-    to: (p) => p.to?.source === 'clip' && p.to.range[0] === 0 && p.to.range[1] === 20,
+    to: (p) => p.to?.range[0] === 0 && p.to.range[1] === 20,
     progress: (p) => p.progress === 0.15,
     frame: (p) => p.frame === 3,
     durationInFrames: (p) => p.durationInFrames === 20,

@@ -343,25 +343,27 @@ export function buildVideoNodes(
     const node = transitionNodeFor(b.record, dims);
     nodeFor.set(b.key, node);
     if (typeof node?.plan !== 'function') continue;
+    const props: PlanBoundary['props'] = {
+      from: handleFor(b.fromIndex, b, layout),
+      to: handleFor(b.toIndex, b, layout),
+      durationInFrames: b.frames,
+      // The whole authored record (`kind`, `frames` and the kind's own
+      // params) — the same object a registry renderer already receives as
+      // `TransitionRenderProps.transition`. A plan closes over nothing at
+      // resolution time, so this is where its params reach it.
+      params: b.record as unknown as Record<string, unknown>,
+      config: registrationConfig(opts.transitions, b.record.kind),
+      dims: { width: opts.width, height: opts.height, fps: opts.fps },
+      palette: opts.palette ?? [],
+      background: opts.background ?? 'transparent',
+    };
     planned.set(b.key, {
       key: b.key,
       start: b.start,
       frames: b.frames,
       plan: node.plan,
-      props: {
-        from: handleFor(b.fromIndex, b, layout),
-        to: handleFor(b.toIndex, b, layout),
-        durationInFrames: b.frames,
-        // The whole authored record (`kind`, `frames` and the kind's own
-        // params) — the same object a registry renderer already receives as
-        // `TransitionRenderProps.transition`. A plan closes over nothing at
-        // resolution time, so this is where its params reach it.
-        params: b.record as unknown as Record<string, unknown>,
-        config: registrationConfig(opts.transitions, b.record.kind),
-        dims: { width: opts.width, height: opts.height, fps: opts.fps },
-        palette: opts.palette ?? [],
-        background: opts.background ?? 'transparent',
-      },
+      props,
+      wrap: wrapFor(node.plan, props),
     });
   }
   const isPlanned = (b: Boundary) => planned.has(b.key);
@@ -636,10 +638,55 @@ function handleFor(
   if (index === null) return null;
   const entry = layout[index];
   return {
-    source: 'clip',
     range: [
       Math.max(0, entry.seqFrom - b.start),
       Math.min(b.frames, entry.seqFrom + entry.seqDuration - 1 - b.start),
     ] as const,
   };
+}
+
+/** PHASE 5 TASK 1.4 — what makes `wrap` mountable for the item's WHOLE life
+ *  (Finding 1's fix), not only while the boundary is live.
+ *
+ *  A plan is only ever CALLED WITH A LIVE, IN-RANGE FRAME while its boundary
+ *  is live (`VideoTrackHost`'s own loop skips every out-of-window frame,
+ *  never handing `plan()` a `frame` outside `[0, b.frames]`), so there is no
+ *  live composite to read a `wrap` off outside the window — the exact frames
+ *  a life-long mount needs an answer for. This samples the plan ONCE PER
+ *  `buildVideoNodes` CALL, with `frame: -1` — deliberately OUT OF the live
+ *  range, so this sample can never be confused with a genuine live
+ *  evaluation (by a test, or by a node author reading its own inputs) — and
+ *  hands `LayerShell` (`video-track-plan.tsx`) a per-side answer to "does
+ *  this boundary declare a wrap at all" that is available before, during and
+ *  after the window.
+ *
+ *  Why the sentinel frame is a safe stand-in for every live one: `wrap`'s
+ *  own doc comment (`lib/theming/transitions.ts`) requires it to be a STABLE
+ *  component reference for the item's whole mounted life — so a compliant
+ *  node returns the identical `wrap` (present or absent) regardless of
+ *  progress or frame, and sampling any one input is sampling all of them.
+ *  `LayerShell` does not lean on this sample alone: it prefers the LIVE
+ *  composite's own `op.wrap` whenever the boundary is actually live (falling
+ *  back to this sample only outside the window, where there is no live
+ *  composite), so a node that violates the invariant WITHIN the window is
+ *  still caught by `video-track-remount.test.tsx`'s identity ratchet exactly
+ *  as before this task — this function only extends the answer to the
+ *  frames that ratchet was never asked about.
+ *
+ *  Deliberately UNCACHED, even though `buildVideoNodes` runs on every frame
+ *  of every render and this therefore re-invokes `plan()` once per PLANNED
+ *  boundary per frame, everywhere in the reel, not only near its own window.
+ *  A plan is required to be "pure and trivial" (Task 1.2 report §3.3), and a
+ *  cache keyed on the resolved node would make the SAMPLED half of a
+ *  reference-instability bug invisible outside the window (frozen at
+ *  whichever value happened to be sampled first) while the live half stayed
+ *  detectable inside it — an asymmetry not worth the complexity for a call
+ *  this cheap. Revisit only if this is ever measured to matter (same
+ *  standard the ghost audit uses, `video-track-plan.tsx`'s `auditGhosts`). */
+function wrapFor(
+  plan: NonNullable<TransitionNode['plan']>,
+  props: PlanBoundary['props'],
+): PlanBoundary['wrap'] {
+  const sample = plan({ ...props, progress: 0, frame: -1 });
+  return { from: sample.from?.wrap, to: sample.to?.wrap };
 }

@@ -127,10 +127,20 @@ export interface TransitionNodeProps {
 // `TransitionRenderProps` is untouched, per this task's additive-only mandate.
 
 /** What the node is told about one side of the boundary. NOT a ReactNode: the
- *  layer is ALREADY MOUNTED and the node styles it. */
+ *  layer is ALREADY MOUNTED and the node styles it.
+ *
+ *  PHASE 5 TASK 1.4 — `source: 'clip' | 'edge'` REMOVED. It was dead (core's
+ *  `handleFor` in `lib/render/video-track.tsx` always passed `'clip'`;
+ *  `git grep "source: 'edge'"` over `lib/` — plus every consuming brand
+ *  repo — returns nothing) and, more to the point, redundant: `from === null`
+ *  / `to === null` (on `TransitionPlanProps`) already tell a node its side is
+ *  the reel edge, and the materialised edge plate (`edge()` in
+ *  `video-track.tsx`) reaches the node's `from`/`to` op through the SAME
+ *  `LayerShell` a real clip does, so `style`/`z`/`ghosts`/`wrap` all apply to
+ *  it exactly as they do to a clip. A third nullability state was never
+ *  needed; the field was. See `docs/superpowers/phase5-single-mount-design.md`
+ *  §2.3/§2.5, corrected in the same commit. */
 export interface LayerHandle {
-  /** A real clip, or the reel-edge background plate core substitutes. */
-  readonly source: 'clip' | 'edge';
   /** The layer's own frame range, in BOUNDARY coordinates — how much handle it
    *  actually has. `[0, frames]` for a full-window side; a shorter range is how
    *  a node can see that the outgoing clip expires before progress 1. */
@@ -172,11 +182,36 @@ export interface LayerOp {
    *  presentation to need it); the invariant will get a dev warning and a
    *  test once something does. */
   ghosts?: readonly React.CSSProperties[];
-  /** Component form, for a shell no style can express. MUST render `children`
-   *  exactly once, and MUST be a STABLE component reference across frames —
-   *  a fresh reference each frame remounts its subtree, which is the exact
-   *  defect class this phase removes. */
-  wrap?: React.ComponentType<{ children: React.ReactNode }>;
+  /** Component form, for a shell no style can express (an SVG `mask`/
+   *  `foreignObject`; the route `fromRemotionPresentation` uses starting at
+   *  Stage 2.1). Core mounts a declared `wrap` for the ITEM'S WHOLE LIFE, not
+   *  only while this boundary is live: `active` is `true` for the frames
+   *  inside the window and `false` outside it, and a `wrap` that must be
+   *  inert when `active` is false renders `children` unchanged.
+   *
+   *  PHASE 5 TASK 1.4 — WHY `active` EXISTS AND WHY MOUNTING IS LIFE-LONG.
+   *  Before this task, `wrap` was applied only for the frames a live
+   *  boundary actually returned one — so the element type at `children`'s
+   *  tree position changed at BOTH window edges (absent outside, present
+   *  inside), which remounts the clip: the exact defect class this phase
+   *  removes, reached through the CONTRACT rather than the assembly (Task
+   *  1.2's finding, unreachable then because no kind produced a plan; the
+   *  first kind to reach it is Stage 2.1's `fromRemotionPresentation` lift).
+   *  Mounting life-long and letting `active` carry the in/out-of-window
+   *  distinction is what keeps the element type constant across both edges.
+   *
+   *  MUST render `children` exactly once, and MUST be a STABLE component
+   *  reference for the item's whole mounted life — not merely across the
+   *  window's own frames, now that the mount outlives the window — because a
+   *  fresh reference on any frame remounts the subtree. THIS IS ENFORCED BY
+   *  NOTHING IN THIS REPO AUTOMATICALLY; there is no dev warning for it (only
+   *  `ghosts`-count variance and a second live `post` get one, in
+   *  `lib/render/video-track-plan.tsx`). What DOES catch a violation is
+   *  `lib/editor/src/video-track-remount.test.tsx`'s derived DOM-identity
+   *  ratchet, for any kind that has migrated to the `plan` arm — a fresh
+   *  reference collapses its base-mount-persistence check to an empty
+   *  intersection within a couple of frames. */
+  wrap?: React.ComponentType<{ active: boolean; children: React.ReactNode }>;
 }
 
 /** A media-free full-frame plate. */

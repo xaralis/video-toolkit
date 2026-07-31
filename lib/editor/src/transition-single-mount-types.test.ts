@@ -22,7 +22,7 @@ import {
 // supplying both `plan` and `composite` on one node does not compile, and
 // `isTransitionNode` (the existing structural test) accepts both arms.
 
-const PLAN_HANDLE: LayerHandle = { source: 'clip', range: [0, 30] };
+const PLAN_HANDLE: LayerHandle = { range: [0, 30] };
 
 const PLAN_COMPOSITE: TransitionComposite = {
   from: { style: { opacity: 1 } },

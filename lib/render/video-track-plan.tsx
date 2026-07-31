@@ -58,6 +58,12 @@ export interface PlanBoundary {
   plan: (props: TransitionPlanProps) => TransitionComposite;
   /** Everything in `TransitionPlanProps` that does not depend on the frame. */
   props: Omit<TransitionPlanProps, 'progress' | 'frame'>;
+  /** PHASE 5 TASK 1.4 — sampled ONCE by `buildVideoNodes` (`wrapFor`,
+   *  `video-track.tsx`), not read from the live per-frame composite: this is
+   *  what lets `LayerShell` know a side declares a `wrap` OUTSIDE the window
+   *  too, where nothing ever calls `plan()`. See `LayerShell`'s doc comment
+   *  for how this combines with the live composite's own `op.wrap`. */
+  wrap: { from?: LayerOp['wrap']; to?: LayerOp['wrap'] };
 }
 
 /** The live boundaries' composites for THIS frame, keyed by boundary key.
@@ -65,6 +71,18 @@ export interface PlanBoundary {
  *  consumer that reads nothing re-renders with an unchanged context value. */
 const EMPTY_COMPOSITES: ReadonlyMap<string, TransitionComposite> = new Map();
 const PlanCompositesContext = React.createContext<ReadonlyMap<string, TransitionComposite>>(EMPTY_COMPOSITES);
+
+/** PHASE 5 TASK 1.4 — the STRUCTURAL half of `wrap`, published separately
+ *  from the live per-frame composites above. Keyed the same way
+ *  (`PlanBoundary.key`), but its values are the ONE-TIME samples
+ *  `buildVideoNodes` computed (`wrapFor`) — available on every frame,
+ *  including the ones `PlanCompositesContext` has nothing for, which is the
+ *  whole reason this is a second context rather than a field squeezed onto
+ *  the first: `EMPTY_COMPOSITES` has to stay a stable EMPTY value so a
+ *  boundary with nothing live re-renders its consumers with an unchanged
+ *  context value, and a per-boundary wrap map does not share that shape. */
+const EMPTY_WRAPS: ReadonlyMap<string, PlanBoundary['wrap']> = new Map();
+const PlanWrapContext = React.createContext<ReadonlyMap<string, PlanBoundary['wrap']>>(EMPTY_WRAPS);
 
 /** THE STACKING RULE.
  *
@@ -196,6 +214,17 @@ export const VideoTrackHost: React.FC<{
 }> = ({ boundaries, isolate, children }) => {
   const frame = useCurrentFrame();
 
+  // PHASE 5 TASK 1.4 — the wrap map is STRUCTURAL, not per-frame: built from
+  // every boundary regardless of whether it is live THIS frame, which is the
+  // whole point (`LayerShell` needs an answer for the frames outside every
+  // window too). Rebuilt every render — `boundaries` is a fresh array from
+  // `buildVideoNodes` on every call — but that is cheap (one map insertion
+  // per plan boundary) next to the JSX tree construction already happening
+  // at the same cadence.
+  const wraps = boundaries.length === 0
+    ? EMPTY_WRAPS
+    : new Map(boundaries.map((b) => [b.key, b.wrap] as const));
+
   let composites: Map<string, TransitionComposite> | null = null;
   let post: React.CSSProperties | undefined;
   let postFrom: string | undefined;
@@ -236,9 +265,11 @@ export const VideoTrackHost: React.FC<{
 
   return (
     <div style={style}>
-      <PlanCompositesContext.Provider value={composites ?? EMPTY_COMPOSITES}>
-        {children}
-      </PlanCompositesContext.Provider>
+      <PlanWrapContext.Provider value={wraps}>
+        <PlanCompositesContext.Provider value={composites ?? EMPTY_COMPOSITES}>
+          {children}
+        </PlanCompositesContext.Provider>
+      </PlanWrapContext.Provider>
     </div>
   );
 };
@@ -267,16 +298,19 @@ export const VideoTrackHost: React.FC<{
  *  the default order is tree order, so an inert shell — which today is every
  *  shell in every reel — adds no stacking context of its own.
  *
- *  THE `wrap` HAZARD, RECORDED RATHER THAN SOLVED (see the Task 1.2 report).
- *  `LayerOp.wrap` is honoured literally: when the live op supplies one it is
- *  mounted between this div and `children`. A node that supplies a `wrap` on
- *  SOME frames of its window and not others therefore changes the element type
- *  at `children`'s position at those frames and remounts the clip — the very
- *  defect class this phase removes, reachable through the contract rather than
- *  through the assembly. No kind uses `wrap` today (nothing produces a plan at
- *  all), so nothing is broken now; the fix belongs with the contract, not here,
- *  and is written up as a finding rather than patched over with a heuristic
- *  that would guess when a wrap "should" be mounted. */
+ *  THE `wrap` HAZARD, SOLVED HERE (Phase 5 Task 1.4; recorded but left open by
+ *  Task 1.2's report). `wrap` is now mounted for the SAME item's-whole-life
+ *  span this shell already is, never only while the boundary is live: the
+ *  side's Wrap component (if the boundary declares one at all — see `Wrap`
+ *  below) sits between this div and `children` on EVERY frame the shell is
+ *  mounted, receiving `active: true` for the frames inside the window and
+ *  `active: false` outside it. A `wrap` that must be inert outside the
+ *  window renders `children` unchanged when `active` is false. This is what
+ *  keeps the element type at `children`'s tree position constant across the
+ *  window's edges — before Task 1.4, a `wrap` present only while live was a
+ *  type change at BOTH edges (absent → present, present → absent), which
+ *  remounted the clip: the exact defect class this phase removes, reached
+ *  through the contract rather than the assembly. */
 export const LayerShell: React.FC<{
   /** The plan boundary this shell's side belongs to, or `null` when this item
    *  has no plan boundary on this side — the inert case, which is every item
@@ -286,7 +320,12 @@ export const LayerShell: React.FC<{
   children: React.ReactNode;
 }> = ({ boundaryKey, side, children }) => {
   const composites = React.useContext(PlanCompositesContext);
+  const wraps = React.useContext(PlanWrapContext);
   const op = boundaryKey === null ? undefined : composites.get(boundaryKey)?.[side];
+  // `active` — the boundary is LIVE this frame, independent of whether this
+  // particular SIDE's op happens to be present (a plan that sets only `to`
+  // on some live frame still has its boundary live for `from`'s purposes).
+  const active = boundaryKey !== null && composites.has(boundaryKey);
 
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -297,10 +336,20 @@ export const LayerShell: React.FC<{
     ...(op?.z === undefined ? {} : { zIndex: op.z }),
   };
 
-  const Wrap = op?.wrap;
+  // WRAP — the LIVE composite's own `op.wrap` while the boundary is live (so
+  // a node whose wrap reference drifts frame-to-frame WITHIN the window is
+  // still visible to `video-track-remount.test.tsx`'s identity ratchet,
+  // exactly as before this task), and the ONE-TIME structural sample
+  // (`PlanBoundary.wrap`, `wrapFor` in `video-track.tsx`) OUTSIDE it, where
+  // there is no live composite to read at all. A COMPLIANT node — `wrap`'s
+  // own doc comment requires a STABLE reference for the item's whole life —
+  // returns the identical value either way, which is exactly what makes the
+  // element type at `children`'s position constant across the window's
+  // edges.
+  const Wrap = boundaryKey === null ? undefined : (op?.wrap ?? wraps.get(boundaryKey)?.[side]);
   return (
     <div style={style}>
-      {Wrap ? <Wrap>{children}</Wrap> : children}
+      {Wrap ? <Wrap active={active}>{children}</Wrap> : children}
       {/* Ghosts are appended AFTER the real child, never before it: an
           appearing or disappearing ghost must not shift the child's tree
           position, or the child remounts and the extra mount costs the very
