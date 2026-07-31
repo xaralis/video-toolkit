@@ -225,6 +225,44 @@ describe('media elements alive around a footage cut (Task R2)', () => {
   });
 });
 
+// PHASE 5 TASK 1.2 — THE SHELLS ARE INERT HERE, AND THAT IS THE POINT.
+//
+// Every video item is now wrapped in two always-mounted, style-only shells and
+// the whole track in one wrapper (lib/render/video-track-plan.tsx), so that a
+// `plan`-arm boundary has something to style. `fade` is a `composite`-arm kind
+// and every kind in the catalog still is, so this file's geometry, counts and
+// identities above must be UNCHANGED by their arrival — which is what makes
+// them a parity statement for the shells rather than only for R1/R2.
+//
+// The single-mount path's own identity assertions live in
+// `single-mount-assembly.test.tsx`; this file stays the pin for the composite
+// arm, which is what the whole staged migration is measured against.
+describe('Phase 5 Task 1.2 — the shells do not disturb the composite arm', () => {
+  it('wraps the item in two extra divs without changing its DOM identity across the window', () => {
+    clock.preview = true;
+    clock.frame = 80;
+    const { container, rerender } = render(tree());
+    const own = container.querySelectorAll('[data-testid="vid-b"]')[0];
+    // ItemBody's preview wrapper + the two shells = three divs between the
+    // clip and its Sequence. Asserted as a COUNT so a shell silently
+    // disappearing (or a third appearing) is caught here too.
+    let depth = 0;
+    for (let el = own.parentElement; el && el !== container; el = el.parentElement) depth += 1;
+    expect(depth).toBe(4); // 3 wrappers + the track wrapper
+
+    clock.frame = 101;
+    rerender(tree());
+    expect(container.querySelectorAll('[data-testid="vid-b"]')[0]).toBe(own);
+  });
+
+  it('returns ONE node — the always-mounted track wrapper — not one per item', () => {
+    const nodes = buildVideoNodes(reel(), {
+      renderItem: () => null, width: 540, height: 960, fps: 30, palette: undefined,
+    });
+    expect(nodes.length).toBe(1);
+  });
+});
+
 describe('the amplifier — a boundary keeps its node identity across an unrelated re-render (Fix 3)', () => {
   it('does not remount the boundary contents when buildVideoNodes is called again with unchanged config', () => {
     clock.frame = 85; // inside the window, independent of the preview gate

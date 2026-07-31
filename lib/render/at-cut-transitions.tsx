@@ -625,21 +625,29 @@ export const AtCutTransition: React.FC<{
     // exists. `'in'` would take this branch for that node; `typeof` checks
     // the VALUE and does not. Matches `isTransitionNode`'s own discriminant.
     //
-    // Phase 5 Task 1.1: `TransitionNode` widened to admit the `plan` arm, but
-    // nothing can produce one yet — no presentation returns `{ plan }` until
-    // Stage 4 migrates a kind and Stage 1.2 wires this component to actually
-    // DRIVE `plan`. This branch is therefore unreachable in the current repo.
-    // It exists anyway rather than falling through silently, because an
-    // unreachable branch that hard-cuts without saying so is exactly how core
-    // lost four transition kinds once already (`at-cut-transition-findings.md`)
-    // — a hand-built or future node reaching here should be loud, not quiet.
-    // Same fallback as the `!node` branch above: draw both inputs plainly.
+    // PHASE 5 TASK 1.2 — RE-SCOPED, NOT REMOVED. Task 1.1 added this branch
+    // when the plan path did not exist at all ("that lands in Stage 1.2").
+    // It exists now — but it is NOT here. A plan is applied to mounts that
+    // already exist, which only the track assembly owns, so `buildVideoNodes`
+    // routes a plan-arm boundary away from this component entirely
+    // (`typeof node.plan === 'function'`, the same discriminant used here).
+    //
+    // What reaching this branch means TODAY is therefore narrower and more
+    // useful than what it meant before: a caller drove a plan node through the
+    // BOUNDARY COMPOSITOR — a hand-rolled assembly, or a brand renderer still
+    // building its own `<AtCutTransition>` — where the single-mount path is
+    // structurally unreachable, because this component receives its inputs as
+    // subtrees and has no shells to style. The fallback is unchanged (draw both
+    // inputs plainly, i.e. a hard cut) and so is the key, so a session that has
+    // already seen it does not see it twice.
     warnOnce(
       'at-cut-transition:plan-arm-unwired',
       () =>
-        '[video-toolkit] a transition node supplied `plan` instead of `composite`, but ' +
-        'AtCutTransition cannot drive the plan arm yet — that lands in Stage 1.2 of ' +
-        'docs/superpowers/phase5-single-mount-design.md. This boundary is rendering as a HARD CUT.',
+        '[video-toolkit] a transition node supplied `plan` instead of `composite`, and `plan` is ' +
+        'driven by buildVideoNodes\' single-mount assembly, not by AtCutTransition — this component ' +
+        'receives its two inputs as subtrees and has no already-mounted layers to apply a plan to. ' +
+        'Render this boundary through buildVideoNodes (see docs/superpowers/' +
+        'phase5-single-mount-design.md). This boundary is rendering as a HARD CUT.',
     );
     // eslint-disable-next-line react/jsx-no-useless-fragment
     return <>{from}{to}</>;

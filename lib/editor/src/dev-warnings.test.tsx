@@ -541,14 +541,17 @@ describe('warning 8 — config-only registration for a brand-only transition kin
 });
 
 // ---------------------------------------------------------------------------
-// Warning 9 — a `plan`-arm TransitionNode reaches `AtCutTransition` before
-// Stage 1.2 wires the plan path (Phase 5 Task 1.1). Nothing in the repo
-// produces a `plan` node yet, so this branch is UNREACHABLE today — but an
-// unreachable branch that hard-cuts silently is exactly how core lost four
-// transition kinds once already (see `at-cut-transition-findings.md`), so it
-// gets a warning and a test now rather than waiting for Stage 4 to need it.
+// Warning 9 — a `plan`-arm TransitionNode reaches `AtCutTransition`.
+//
+// RE-SCOPED BY TASK 1.2, not retired: the plan path now exists, but it lives in
+// `buildVideoNodes`' assembly (a plan styles mounts that already exist), and
+// `AtCutTransition` is the COMPOSITE arm's boundary compositor, which receives
+// its inputs as subtrees and has nothing to apply a plan to. So reaching this
+// branch means a caller drove a plan node through the wrong entry point — a
+// hand-rolled assembly or a brand renderer building its own
+// `<AtCutTransition>` — rather than "the feature is not built yet".
 // ---------------------------------------------------------------------------
-describe('warning 9 — a plan-arm TransitionNode reaches AtCutTransition (unreachable until Stage 1.2)', () => {
+describe('warning 9 — a plan-arm TransitionNode reaches AtCutTransition (the wrong entry point)', () => {
   it('warns once, names the shape, and still hard-cuts (draws both inputs plainly)', () => {
     // Hand-built — no presentation returns `{ plan }` yet, so this is the only
     // way to construct one. `plan` itself is never called by this branch.
@@ -568,6 +571,7 @@ describe('warning 9 — a plan-arm TransitionNode reaches AtCutTransition (unrea
     expect(warn).toHaveBeenCalledTimes(1);
     const text = String(warn.mock.calls[0][0]);
     expect(text).toContain('plan');
+    expect(text).toContain('buildVideoNodes');
     expect(text).toContain('HARD CUT');
   });
 
@@ -583,6 +587,124 @@ describe('warning 9 — a plan-arm TransitionNode reaches AtCutTransition (unrea
       />,
     );
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Warnings 10 and 11 — the two the single-mount assembly owns (Phase 5 Task
+// 1.2). Both are pinned through the REAL render path: `LayeredReelComposition`
+// → `buildVideoNodes` → `VideoTrackHost`, which is the component that both
+// COMPUTES the composite the shells consume and runs the audit on it. That is
+// the "audit and renderer travel together" rule (HANDOFF.md, Task 6.3): an
+// audit mounted as a sibling of what it audits can warn falsely or go blind
+// whenever a conditional sits between them, and here there is no between.
+//
+// Both get a negative pin as well as a positive one, because `warnOnce` is
+// permanent per key for the whole session: one false positive on the first
+// qualifying frame poisons the warning forever.
+// ---------------------------------------------------------------------------
+describe('warnings 10 and 11 — the single-mount assembly', () => {
+  const planned = (plan: (p: never) => unknown): CompositionTheme => ({
+    ...bareTheme,
+    transitions: { planned: { renderer: () => ({ plan }) as never } },
+  });
+  // Two 3s clips, a 20-frame `planned` transition on the cut: window [80, 100].
+  const twoClips = (): VideoItem[] => [
+    {
+      id: 'a', kind: 'clip', startMs: 0, endMs: 3000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 3000,
+      transitionOut: { kind: 'planned', frames: 20 },
+    } as VideoItem,
+    { id: 'b', kind: 'clip', startMs: 3000, endMs: 6000, source: 'b.mp4', sourceInMs: 0, sourceOutMs: 3000 } as VideoItem,
+  ];
+  // Clips SHORTER than their own transitions, so two windows are live at once.
+  const overlapping = (): VideoItem[] => [
+    {
+      id: 'a', kind: 'clip', startMs: 0, endMs: 400, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 400,
+      transitionOut: { kind: 'planned', frames: 20 },
+    } as VideoItem,
+    {
+      // A DIFFERENT length, so the two live boundaries are distinguishable
+      // from inside the plan — which is what lets the negative pin below have
+      // exactly one of them set `post` while both are live.
+      id: 'b', kind: 'clip', startMs: 400, endMs: 800, source: 'b.mp4', sourceInMs: 0, sourceOutMs: 400,
+      transitionOut: { kind: 'planned', frames: 21 },
+    } as VideoItem,
+    { id: 'c', kind: 'clip', startMs: 800, endMs: 3000, source: 'c.mp4', sourceInMs: 0, sourceOutMs: 2200 } as VideoItem,
+  ];
+  const messages = () => warn.mock.calls.map((c) => String(c[0]));
+
+  it('10 — warns when `ghosts.length` varies with progress, naming the boundary and the counts', () => {
+    clock.frame = 90;
+    render(
+      <LayeredReelComposition
+        reel={reelWith(twoClips())}
+        theme={planned(({ progress }: { progress: number }) => ({
+          to: { ghosts: progress > 0.25 ? [{ opacity: 0.5 }, { opacity: 0.2 }] : [] },
+        }) as never)}
+      />,
+    );
+    const ghostWarnings = messages().filter((m) => m.includes('ghosts'));
+    expect(ghostWarnings.length).toBe(1);
+    // The boundary is owned by the item ENTERING it — `b--in`, not `a--out`.
+    expect(ghostWarnings[0]).toContain('b--in');
+    expect(ghostWarnings[0]).toContain('0, 2');
+  });
+
+  it('10 — does NOT warn for a CONSTANT ghost count, nor for no ghosts at all', () => {
+    clock.frame = 90;
+    const { rerender } = render(
+      <LayeredReelComposition
+        reel={reelWith(twoClips())}
+        theme={planned(({ progress }: { progress: number }) => ({
+          // Count constant, STYLE varying — the shape the warning tells authors
+          // to use, so it must not be the shape the warning fires on.
+          to: { ghosts: [{ opacity: progress }, { opacity: 1 - progress }] },
+        }) as never)}
+      />,
+    );
+    expect(messages().filter((m) => m.includes('ghosts')).length).toBe(0);
+
+    resetWarnOnce();
+    rerender(
+      <LayeredReelComposition
+        reel={reelWith(twoClips())}
+        theme={planned(({ progress }: { progress: number }) => ({ to: { style: { opacity: progress } } }) as never)}
+      />,
+    );
+    expect(messages().filter((m) => m.includes('ghosts')).length).toBe(0);
+  });
+
+  it('11 — warns when a SECOND live boundary sets `post` on the same frame, and says which one wins', () => {
+    clock.frame = 20; // inside both windows of the overlapping reel
+    render(
+      <LayeredReelComposition
+        reel={reelWith(overlapping())}
+        theme={planned(() => ({ post: { filter: 'blur(1px)' } }) as never)}
+      />,
+    );
+    const postWarnings = messages().filter((m) => m.includes('`post`'));
+    expect(postWarnings.length).toBe(1);
+    expect(postWarnings[0]).toContain('WHOLE video track');
+    // The overlapping-boundaries DIAGNOSTIC still sees a plan boundary too: it
+    // reads every boundary's claimed range, not only the ones that blank.
+    expect(messages().some((m) => m.includes('shorter than its own transitions'))).toBe(true);
+    expect(postWarnings[0]).toContain('"c--in" wins');
+  });
+
+  it('11 — does NOT warn when only ONE live boundary sets `post`, on the very same overlapping reel', () => {
+    clock.frame = 20;
+    render(
+      <LayeredReelComposition
+        reel={reelWith(overlapping())}
+        // Only the LONGER boundary sets post — same two live windows, so
+        // this isolates "two boundaries are live" from "two boundaries set
+        // post", which is the false positive that would poison the key.
+        theme={planned((p: { durationInFrames: number }) => (
+          p.durationInFrames === 21 ? { post: { filter: 'blur(1px)' } } : {}
+        ) as never)}
+      />,
+    );
+    expect(messages().filter((m) => m.includes('`post`')).length).toBe(0);
   });
 });
 
