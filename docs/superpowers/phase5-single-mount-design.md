@@ -311,11 +311,26 @@ same pixel `BOUNDARY_TAIL` produces today.
 signature and returns a **single-element array** holding one always-mounted track wrapper. Two
 properties on that wrapper:
 
-- `isolation: 'isolate'`, **unconditionally**. `mixBlendMode` on a `to` layer must blend against
-  `from`, not against everything beneath the video track. Unconditional because a *conditional*
-  stacking context (which is what a toggling `filter` creates) would change blending behaviour
-  between in-window and out-of-window frames — the exact class of divergence this design exists
-  to remove.
+- `isolation: 'isolate'`. `mixBlendMode` on a `to` layer must blend against `from`, not against
+  everything beneath the video track.
+
+  **CORRECTED IN PLACE BY TASK 1.2 (measured).** This section originally said
+  *unconditionally*, and that is wrong as built: `isolation: 'isolate'` is a blending-group
+  boundary, so applying it to a tree where no kind has migrated changes what the EXISTING
+  `mixBlendMode`-using presentations blend against. Measured on the Task 1.2 tree, with the
+  wrapper as the only change: `npm run pixel-gate:strict` reported **37 drifted + 24
+  same-picture-different-bytes of 300**, max 8×8 cell delta **10** — `light-leak` (9 cells),
+  `whip-pan` (7), `zoom-blur` (2), plus NEARs across `pixelate`, `scanline-glitch` and
+  `rgb-split`. That would have destroyed the only instrument that can prove this phase neutral.
+
+  What ships instead: the flag is derived from the reel's **config** — is any boundary's node a
+  plan? — and is therefore **constant across every frame of a composition**. The property this
+  paragraph actually argues for (no divergence between in-window and out-of-window frames) is
+  preserved exactly; what changes is that a reel's blending is coupled to whether it contains a
+  plan kind at all, which **Stage 2 must adjudicate** when the first kind migrates and its cells
+  move partly for this reason rather than for the kind's own. At Stage 5, with every kind
+  migrated, the condition is true for every reel that has a transition at all and the deviation
+  disappears.
 - `filter` (and only `filter`/`transform`) from the live boundary's `post`, `undefined`
   otherwise.
 

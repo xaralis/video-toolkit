@@ -383,6 +383,38 @@ describe('ghosts are extra mounts, appended after the real child', () => {
   });
 });
 
+describe('`z` and `config` — the two per-op deliveries a style assertion alone would miss', () => {
+  const zPlan = (p: TransitionPlanProps): TransitionComposite => ({
+    // The outgoing clip ON TOP — the one thing tree order cannot express, and
+    // therefore the only reason `LayerOp.z` exists.
+    from: { z: 9 },
+    to: { style: { opacity: p.progress }, ...(p.config === 'brand-config' ? { z: 4 } : {}) },
+  });
+  const Z_REGISTRY: TransitionRegistry = {
+    zed: { renderer: () => ({ plan: zPlan }), config: 'brand-config' },
+  };
+
+  it('puts the op\'s `z` on that side\'s shell, and hands the node the brand registration\'s `config`', () => {
+    clock.frame = 85;
+    const { container } = render(
+      <>
+        {buildVideoNodes(
+          [clip('a', 0, 3000, { transitionOut: { kind: 'zed', frames: 20 } }), clip('b', 3000, 6000)],
+          {
+            renderItem: (item) => <video data-testid={`vid-${item.id}`} />,
+            width: 540, height: 960, fps: 30, palette: undefined,
+            transitions: Z_REGISTRY, background: '#101010',
+          },
+        )}
+      </>,
+    );
+    expect(vids(container, 'a')[0].parentElement!.parentElement!.style.zIndex).toBe('9');
+    // 4 only if `config` reached the plan — the registration's own value, which
+    // no other input to the plan could supply.
+    expect(vids(container, 'b')[0].parentElement!.style.zIndex).toBe('4');
+  });
+});
+
 describe('`wrap` — the component form, for a shell no style can express', () => {
   const Masked: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     <svg data-testid="wrap"><foreignObject>{children}</foreignObject></svg>
