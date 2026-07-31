@@ -514,6 +514,175 @@ describe('`wrap` — the component form, for a shell no style can express', () =
 });
 
 // ---------------------------------------------------------------------------
+// THE TWO DERIVED PINS (review round 2).
+//
+// Round 1 replaced a capability LIST with an axis LIST and found five more
+// holes — and still shipped six, two of them inside an axis that round had
+// declared complete ("the fill axis has four members, not two"). The lesson is
+// not "enumerate harder": an axis list is a list, so it inherits exactly the
+// failure mode it was meant to cure, one level up. This repo's own law applies —
+// PREFER THE RULE THAT GENERATES A SET OVER A LIST OF TODAY'S MEMBERS — so the
+// two places a rule is available get a derived test, and a member added in a
+// later stage is covered the day it is added rather than the day someone
+// remembers a list.
+// ---------------------------------------------------------------------------
+
+// The kitchen-sink fixture: ONE tree containing every species of element the
+// assembly mounts — track host, both item shells, ItemBody's preview wrapper,
+// a materialised edge plate, a ghost wrapper on each side, and a plate with
+// `content`. The derived tests below quantify over it, so a new species is
+// covered as soon as it appears in a fixture that renders it.
+const sinkPlan = (p: TransitionPlanProps): TransitionComposite => ({
+  from: { style: { opacity: 1 - p.progress }, ghosts: [{ opacity: 0.5 }] },
+  to: { style: { opacity: p.progress }, ghosts: [{ opacity: 0.3 }] },
+  layers: [{
+    key: 'k',
+    z: 'over',
+    style: { backgroundColor: 'rgb(2, 2, 2)' },
+    content: <svg data-testid="plate-content" />,
+  }],
+});
+const SINK_REGISTRY: TransitionRegistry = { sink: { renderer: () => ({ plan: sinkPlan }) } };
+const sinkTree = () => (
+  <>
+    {buildVideoNodes(
+      [clip('solo', 0, 3000, { transitionIn: { kind: 'sink', frames: 20 } })],
+      {
+        renderItem: (item) => <video data-testid={`vid-${item.id}`} />,
+        width: 540, height: 960, fps: 30, palette: undefined,
+        transitions: SINK_REGISTRY, background: '#101010',
+      },
+    )}
+  </>
+);
+
+describe('DERIVED — every element the assembly mounts fills its parent', () => {
+  // The rule, rather than a list of wrapper names: the assembly mounts only
+  // `<div>`s of its own (the test's `renderItem` returns a bare `<video>` and a
+  // plate's `content` is an `<svg>`), so "every div in the tree" IS the set of
+  // wrappers core is responsible for. Two acceptable spellings of "fills its
+  // parent" — `inset: 0` (the shells, the ghost and plate wrappers, the host)
+  // and the four longhand offsets (Remotion's own `AbsoluteFill`, which is what
+  // `EdgePlate` renders) — because the property being pinned is the RESULT, not
+  // the CSS shorthand used to get it.
+  const fills = (el: HTMLElement) =>
+    el.style.position === 'absolute' &&
+    (el.style.inset === '0' ||
+      (el.style.top === '0px' && el.style.left === '0px' &&
+       el.style.right === '0px' && el.style.bottom === '0px'));
+
+  it('holds for every div, with every species of wrapper present at once', () => {
+    clock.preview = true;
+    clock.frame = 5; // window [0, 20]; leading edge, so the edge plate is live
+    const { container } = render(sinkTree());
+    const divs = [...container.querySelectorAll('div')];
+    // VACUITY GUARD, and the reason this test cannot pass by rendering
+    // nothing: every species must actually be here. Named by what they carry,
+    // not by component name, so a refactor that renames a component does not
+    // silently drop one.
+    expect(container.querySelectorAll('[data-testid="plate-content"]').length).toBe(1); // a plate
+    expect(divs.some((d) => d.style.opacity === '0.5')).toBe(true); // a from-side ghost
+    expect(divs.some((d) => d.style.opacity === '0.3')).toBe(true); // a to-side ghost
+    expect(divs.some((d) => d.style.backgroundColor === 'rgb(16, 16, 16)')).toBe(true); // the edge plate
+    expect(divs.length).toBeGreaterThanOrEqual(8);
+
+    const offenders = divs.filter((d) => !fills(d)).map((d) => d.getAttribute('style'));
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('DERIVED — every member of TransitionPlanProps is delivered', () => {
+  // `Record<keyof TransitionPlanProps, …>` is the generating rule: the COMPILER
+  // demands an entry for every member of the type, so a field added to the
+  // contract in a later stage fails to compile here until it has a probe — the
+  // same mechanism `CORE_TRANSITIONS` uses to force a renderer per catalog kind.
+  // An enumerated list of `expect`s would have gone stale silently instead,
+  // which is how `palette` and `dims` reached review round 2 unpinned.
+  //
+  // Each probe is attributable to ONE key: a value no other member of the bag
+  // could have supplied. The dims are 541x961 (not the 540x960 every other
+  // fixture uses), the palette slot and the authored param carry unique
+  // strings, and the three numbers (progress 0.15, frame 3, durationInFrames
+  // 20) are pairwise distinct at the frame chosen.
+  const DELIVERED: Record<keyof TransitionPlanProps, (p: TransitionPlanProps) => boolean> = {
+    from: (p) => p.from === null, // leading edge — the only side that can be null here
+    to: (p) => p.to?.source === 'clip' && p.to.range[0] === 0 && p.to.range[1] === 20,
+    progress: (p) => p.progress === 0.15,
+    frame: (p) => p.frame === 3,
+    durationInFrames: (p) => p.durationInFrames === 20,
+    params: (p) => (p.params as { probe?: string }).probe === 'authored-param-probe',
+    config: (p) => p.config === 'registration-config-probe',
+    dims: (p) => p.dims.width === 541 && p.dims.height === 961 && p.dims.fps === 30,
+    palette: (p) => p.palette.length === 1 && p.palette[0].key === 'palette-probe',
+    background: (p) => p.background === '#0b0b0b',
+  };
+
+  it('delivers each one with a value only that member could have supplied', () => {
+    clock.frame = 3; // window [0, 20]; progress 0.15, not a ghost-audit probe
+    render(
+      <>
+        {buildVideoNodes(
+          [clip('solo', 0, 3000, {
+            transitionIn: { kind: 'probed', frames: 20, probe: 'authored-param-probe' },
+          })],
+          {
+            renderItem: () => null,
+            width: 541,
+            height: 961,
+            fps: 30,
+            palette: [{ key: 'palette-probe', label: 'Probe', color: '#123456' }],
+            transitions: {
+              probed: { renderer: () => ({ plan }), config: 'registration-config-probe' },
+            },
+            background: '#0b0b0b',
+          },
+        )}
+      </>,
+    );
+    const live = seen.filter((p) => p.progress === 0.15);
+    expect(live.length).toBe(1);
+    const missing = Object.entries(DELIVERED)
+      .filter(([, check]) => !check(live[0]))
+      .map(([key]) => key);
+    expect(missing).toEqual([]);
+  });
+});
+
+describe('a plate\'s `content` and the window\'s progress-1 frame', () => {
+  it('renders PlateLayer.content inside its plate — the slot Stage 2 puts an SVG mask in', () => {
+    clock.frame = 5;
+    const { container } = render(sinkTree());
+    const content = container.querySelector('[data-testid="plate-content"]')!;
+    expect(content).toBeTruthy();
+    // Inside the plate div, not a sibling of it: a `<defs>`/mask has to be in
+    // the element the style applies to.
+    expect((content.parentElement as HTMLElement).style.backgroundColor).toBe('rgb(2, 2, 2)');
+  });
+
+  it('keeps the plates AND the edge plate mounted on the progress-1 frame', () => {
+    // The audit and the renderer must not diverge by a frame: `VideoTrackHost`
+    // still EVALUATES the plan at progress 1 (pinned separately), so the
+    // elements that plan describes have to still be MOUNTED there. The window
+    // is [0, 20] and 20 is a real frame something must draw — which is what
+    // `+ BOUNDARY_TAIL` on the plan Sequences buys, exactly as it does on the
+    // composite arm's boundary Sequence.
+    clock.frame = 20;
+    const { container } = render(sinkTree());
+    expect(container.querySelectorAll('[data-testid="plate-content"]').length).toBe(1);
+    expect([...container.querySelectorAll('div')]
+      .some((d) => d.style.backgroundColor === 'rgb(16, 16, 16)')).toBe(true);
+  });
+
+  it('drops both the frame after the window closes', () => {
+    clock.frame = 21;
+    const { container } = render(sinkTree());
+    expect(container.querySelectorAll('[data-testid="plate-content"]').length).toBe(0);
+    expect([...container.querySelectorAll('div')]
+      .some((d) => d.style.backgroundColor === 'rgb(16, 16, 16)')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // The signature 12 brand call sites depend on.
 // ---------------------------------------------------------------------------
 describe('buildVideoNodes still returns React.ReactNode[]', () => {

@@ -613,7 +613,21 @@ export function buildVideoNodes(
  *  `range` is INCLUSIVE, in BOUNDARY coordinates, and is how a node sees that
  *  the outgoing clip expires before progress 1: at an interior cut the `from`
  *  item's own Sequence ends one frame before the window does (design §1.2), so
- *  its range is `[0, frames - 1]` while the `to` item's is `[0, frames]`. */
+ *  its range is `[0, frames - 1]` while the `to` item's is `[0, frames]`.
+ *
+ *  THE `Math.max(0, …)` LOWER BOUND IS LOAD-BEARING, EVEN THOUGH ITS RESULT IS
+ *  ALWAYS 0 (review round 2 observation, resolved by keeping it and saying
+ *  why). Both facts are true at once and they are easy to confuse: the clamp
+ *  never lets a DIFFERENT value through, because no boundary starts before the
+ *  Sequence of either side (`b.start === entry.seqFrom` for the `to` side by
+ *  construction, and strictly greater for the `from` side) — but the raw
+ *  difference it clamps is NEGATIVE on every `from` side, deeply so (-80 in the
+ *  interior-cut fixture). Delete the clamp and the node is told the outgoing
+ *  clip's range begins 80 frames before the window. So this is a delivery line,
+ *  not dead defensiveness, and it is already pinned: the mixed-reel test
+ *  asserts `from` is `[0, 19]`, which is exactly the assertion that fails
+ *  without it. No fixture can make the result non-zero without first changing
+ *  boundary construction, which is why none was written. */
 function handleFor(
   index: number | null,
   b: Boundary,
