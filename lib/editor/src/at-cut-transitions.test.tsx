@@ -75,11 +75,13 @@ const DIMS = { width: 1080, height: 1920 };
 // Phase 5 Task 1.1 widened `TransitionNode` into a `plan`/`composite` union.
 // Nothing in this repo produces a `plan` node yet — every node this suite
 // builds or resolves is still composite-only — so this helper narrows once
-// per call site instead of repeating an `if ('plan' in node) throw …` guard
-// at every one of them. If a future `plan` node genuinely reaches one of
-// these call sites, this throw is the loud failure that says so.
+// per call site instead of repeating an `if (typeof node.plan === 'function')
+// throw …` guard at every one of them (typeof, not `'plan' in node` — see
+// TransitionNode's own doc comment in lib/theming/transitions.ts for why). If
+// a future `plan` node genuinely reaches one of these call sites, this throw
+// is the loud failure that says so.
 function compositeOf(node: TransitionNode): React.ComponentType<TransitionNodeProps> {
-  if ('plan' in node) throw new Error('expected a composite-arm TransitionNode in this test');
+  if (typeof node.plan === 'function') throw new Error('expected a composite-arm TransitionNode in this test');
   return node.composite;
 }
 

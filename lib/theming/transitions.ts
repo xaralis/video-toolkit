@@ -118,7 +118,7 @@ export interface TransitionNodeProps {
 //
 // NAMING NOTE: the design doc's §2.3 names the per-frame plan-invocation prop
 // bag `TransitionRenderProps` — but that identifier is already this file's
-// public export at line 56 (the renderer-SELECTION prop bag: `transition`,
+// public export (the renderer-SELECTION prop bag: `transition`,
 // `width`, `height`, `palette`, `config`, consumed by `TransitionRenderer`).
 // Reusing it here would be a duplicate top-level export, not a shadow — a hard
 // compile error, not a style question. This task renames the NEW type to
@@ -168,7 +168,9 @@ export interface LayerOp {
   /** EXTRA styled copies of this layer. Each entry is one extra MOUNT of the
    *  clip. `ghosts.length` MUST NOT vary with `progress` — a varying count is
    *  an element-count change mid-window, i.e. the remount this whole phase
-   *  exists to remove. Dev-warned and pinned by a test. */
+   *  exists to remove. Nothing consumes `ghosts` yet (Stage 4 is the first
+   *  presentation to need it); the invariant will get a dev warning and a
+   *  test once something does. */
   ghosts?: readonly React.CSSProperties[];
   /** Component form, for a shell no style can express. MUST render `children`
    *  exactly once, and MUST be a STABLE component reference across frames —
@@ -200,11 +202,34 @@ export interface TransitionComposite {
 /** A natively TWO-INPUT transition: either the declarative `plan` form (the
  *  single-mount contract this phase migrates every kind to) or the JSX
  *  `composite` form (Task 1.3's shape, retained through the staged migration
- *  and removed at its end). A node supplies exactly one — the `…?: never`
- *  members are load-bearing: they are what makes `'plan' in node` a sound
- *  narrowing, and what makes supplying both a type error instead of silently
- *  picking one. Structurally distinguishable from `AnyPresentation` by having
- *  neither a `component` nor a `props` field. */
+ *  and removed at its end). A node supplies exactly one.
+ *
+ *  `composite?: never` (on the `plan` arm) is what rejects a FRESH LITERAL
+ *  supplying both `plan` and `composite` instead of silently picking one —
+ *  verified by deleting it (`transition-single-mount-types.test.ts`'s
+ *  double-field literal pin goes red). `plan?: never` (on the `composite`
+ *  arm) is NOT independently exercised by that same literal pin — deleting
+ *  it alone there stays green, because a fresh literal's excess-property
+ *  check treats `plan` as non-excess as long as it is declared SOMEWHERE in
+ *  the union, so `composite?: never` alone already carries that particular
+ *  test. `plan?: never` has its OWN pin instead, one a fresh literal cannot
+ *  exercise: a DECLARED (non-literal) value shaped like a composite node,
+ *  whose `plan` key holds something other than `never`, is accepted by a
+ *  composite-only type and rejected only because `plan?: never` is present —
+ *  ordinary structural typing tolerates a value's extra properties, but not
+ *  when the target itself declares that key. Both members are therefore
+ *  pinned, by two different tests exercising two different TypeScript
+ *  mechanisms; keep both.
+ *
+ *  Narrow with `typeof node.plan === 'function'`, NOT `'plan' in node`:
+ *  `plan?: never` being OPTIONAL means `{ composite: X, plan: undefined }` —
+ *  a plausible shape for a spread-built node — has the `plan` KEY present
+ *  without a callable VALUE, and `'in'` would take the wrong branch for it.
+ *  `isTransitionNode` below and `AtCutTransition`
+ *  (`lib/render/at-cut-transitions.tsx`) both use `typeof` for this reason.
+ *
+ *  Structurally distinguishable from `AnyPresentation` by having neither a
+ *  `component` nor a `props` field. */
 export type TransitionNode =
   | { plan: (props: TransitionPlanProps) => TransitionComposite; composite?: never }
   | { composite: React.ComponentType<TransitionNodeProps>; plan?: never };

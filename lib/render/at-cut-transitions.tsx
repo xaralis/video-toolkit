@@ -618,7 +618,13 @@ export const AtCutTransition: React.FC<{
     // eslint-disable-next-line react/jsx-no-useless-fragment
     return <>{from}{to}</>;
   }
-  if ('plan' in node) {
+  if (typeof node.plan === 'function') {
+    // `typeof`, not `'plan' in node`: `plan?: never` is OPTIONAL, so
+    // `{ composite: X, plan: undefined }` — a plausible shape for a
+    // spread-built node — is a legal composite node whose `plan` KEY still
+    // exists. `'in'` would take this branch for that node; `typeof` checks
+    // the VALUE and does not. Matches `isTransitionNode`'s own discriminant.
+    //
     // Phase 5 Task 1.1: `TransitionNode` widened to admit the `plan` arm, but
     // nothing can produce one yet — no presentation returns `{ plan }` until
     // Stage 4 migrates a kind and Stage 1.2 wires this component to actually

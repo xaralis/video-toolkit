@@ -49,7 +49,7 @@ const B = <div data-testid="b" />;
 // every node this file resolves is composite-only — narrow once here instead
 // of at each call site.
 function compositeOf(node: TransitionNode): React.ComponentType<TransitionNodeProps> {
-  if ('plan' in node) throw new Error('expected a composite-arm TransitionNode in this test');
+  if (typeof node.plan === 'function') throw new Error('expected a composite-arm TransitionNode in this test');
   return node.composite;
 }
 
