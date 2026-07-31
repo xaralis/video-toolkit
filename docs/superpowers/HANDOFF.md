@@ -44,9 +44,18 @@ The full audit and phase plan live at
 | 2.5 | Apply the brand migrations — the validation of 1–2 | ✅ both brand repos green, 2026-07-26 |
 | 3 | Close the extension contract (registries, effects, generators, captions) | ✅ core-side, `refactor/phase3-extension-contract` |
 | 3.5 | Apply the Phase 3 brand migrations — the validation of 3 | ⬜ still pending, `docs/superpowers/phase3-migrations.md` |
-| 4 | One node contract for effects and transitions (the model tightening) | 🟡 **in progress**, `refactor/phase4-node-contract` — Workstreams 1 ✅ and 2 ✅ complete, 3.1 ✅, 6.1 ✅; Workstreams 3 (bar 3.1), 4, 5 and 6.2–6.4 **not started** |
+| 4 | One node contract for effects and transitions (the model tightening) | ✅ **complete and fully reviewed**, `refactor/phase4-node-contract` @ `2e6265e` — all six workstreams plus the unplanned Tasks R1/R2. Pushed, not merged |
 | 5 | NLE alignment (effect stack, music track, transition entities, media pool) | ⬜ |
 | 6 | `brand.json` becomes the theming contract | ⬜ |
+
+> ⚠️ **Naming collision, live and confusing — read this before using the words "Phase 5".**
+> `docs/superpowers/phase5-single-mount-design.md` and the branch `refactor/phase5-single-mount`
+> are **not** the programme's Phase 5 above. They are the **single-mount transition rendering**
+> workstream — Phase 4's direct successor, produced by Task R2's wall investigation. The
+> programme's Phase 5 ("NLE alignment") is untouched and still ⬜. When a document says "Phase 5",
+> check which one it means: if it mentions `plan`, `LayerOp`, shells or the pixel harness, it is
+> the single-mount one. Its status is in the **🟡 Phase 5 — single-mount transitions** section
+> below, and it is currently at **Stages 0 and 1 complete, Stage 2 not started**.
 
 ---
 
@@ -1482,6 +1491,199 @@ itself — carried there, not repeated here.
   its own channel, not by file mtime.** Also: a review brief cited
   `lib/theming/effects/grade.ts:43` when the real path is `lib/reel-config-base/grade.ts:43` —
   verify paths before putting them in briefs.
+
+---
+
+## 🟡 Phase 5 — single-mount transitions. Stages 0 and 1 COMPLETE, Stage 2 not started
+
+**Branch:** `refactor/phase5-single-mount`, branched from `refactor/phase4-node-contract` @
+`2e6265e`. **Pushed.** Not merged.
+
+**What Phase 5 is:** Phase 4 established the NLE node contract — one node per boundary, arity two,
+one clamped progress, one parameter set, `to === null` at the trailing edge. Phase 5 changes only
+the *medium*: a node stops returning **JSX that wraps its two inputs** (which forces each clip to be
+mounted twice around a boundary — the cause of the editor stutter and of up to four `<video>`
+elements alive at one cut) and starts returning a **declarative two-sided composite plan** core
+applies to each clip's **single existing mount**. Arity, progress, params, nullability: all
+preserved. Design and staged plan: `docs/superpowers/phase5-single-mount-design.md`.
+
+**Done: Stage 0** (two wins needing no contract change) **and Stage 1** (the contract, the assembly,
+the ratchet), **plus Task 1.4**, a controller-scheduled contract amendment that is not in the design
+document. 15 commits, 18 files, +4152 / −173 measured at `637e141` — re-derive rather than trust:
+
+```bash
+git log --oneline 2e6265e..HEAD | wc -l
+git diff --stat 2e6265e..HEAD | tail -1
+```
+
+### Gates at `637e141` — every figure re-derived, none carried forward
+
+| Gate | Value |
+|---|---|
+| Editor tests | **107 files / 1717 tests** — 1713 passed, **4 skipped** |
+| Editor types | **3** errors, **exit 2** — the same three files, checked by *identity* not count |
+| Render/transitions types | **0**; coverage guard **13** / 16 / 26 / 10 / 1 (render rose by one: `video-track-plan.tsx`; the guard is a FLOOR) |
+| Pixel harness | **PASS** — 300 accepted, **0 drifted, 0 missing** |
+| Brand leak | exactly **2**, both comments |
+| `it.fails` (escaped dot) | **0** |
+| Python `sync_template` | **36** — the FILE, not the suite |
+
+`CLAUDE.md`'s gate table was re-derived at `637e141` and matches.
+
+### What landed
+
+| Task | What | Goldens |
+|---|---|---|
+| 0.1 | `checkerboard` → one SVG alpha mask over a single mounted `to`. **66 → 3** media elements at an interior cut, *inside today's contract* | 12 of 15 cells re-baselined, deliberately |
+| 0.2 | `scanline-glitch`'s DOM triple-render → one `feOffset`/`feColorMatrix`/`feBlend` chain. **7 → 3** | 10 of 15 re-baselined, deliberately |
+| 1.1 | The `plan` arm of `TransitionNode`, plus `LayerHandle`, `LayerOp`, `PlateLayer`, `TransitionComposite` | none |
+| 1.2 | The shell assembly and the plan path, selected per boundary. **ZERO kinds migrated** | **none — byte-identical, six independent processes** |
+| 1.3 | The derived DOM-identity ratchet over the catalog | none |
+| 1.4 | Contract amendment: `wrap` mounts life-long with `active`; `LayerHandle.source` retired | none |
+
+**Stage 1.2's acceptance criterion — the assembly lands, zero kinds migrated, every golden
+byte-identical — HELD, across six independent render processes.** The design named this as the
+phase's biggest risk and the only instrument that can prove neutrality. It is the single most
+important fact in this section.
+
+### The design document has been measured WRONG four times, and corrected in place each time
+
+Its *architecture* has survived every test. Its concrete prescriptions have not. Corrections are
+made in the document itself, in the same commit, with the measurement recorded — never footnoted:
+
+1. **§2.4's `checkerboard` row** prescribed `to.style.mask = url(#cells)`. A CSS `mask` on an HTML
+   div renders the layer **fully invisible** in this renderer. The working technique is
+   `burn.tsx`'s `<foreignObject mask>` + `maskUnits="userSpaceOnUse"` + pixel geometry. (CSS
+   `filter: url(...)` is a *different* property and works fine — that is what `glitch` uses.)
+2. **§2.3 named the new props bag `TransitionRenderProps`** — an identifier that already exists,
+   is exported, has 16 references across 4 files, and means something else entirely (what a
+   registry *renderer* receives). The new bag is **`TransitionPlanProps`**.
+3. **§2.6 specified `isolation: 'isolate'` UNCONDITIONALLY** on the track wrapper. Measured with
+   zero kinds migrated, that drifts **37 of 300 goldens plus 24 fatal NEARs**, max 8×8 cell delta
+   10. It ships **conditional on the reel containing a plan boundary**. The deviation was reviewed
+   on its merits and upheld: the property §2.6 actually reasons about (no in-window/out-of-window
+   divergence) is preserved because the flag is derived from config, not frame — and `post` is a
+   `filter`, a toggling filter creates a stacking context anyway, so the flag is on *exactly* when
+   `post` can toggle.
+4. **§4.6 promised a `warnOnce` for unstable `wrap`.** Only `ghosts.length` variance has one. What
+   catches unstable `wrap` is the ratchet. A dev warning for brand authors — who do not run core's
+   test suite — remains a real gap for them specifically, and is **unscheduled**.
+
+`LayerHandle.source` was also retired: it could only ever be `'clip'`, and `from === null` already
+carries the whole meaning. The ops **do** reach the materialised edge plate, because `edge()` routes
+it through the same `LayerShell`.
+
+### The findings that must survive
+
+**A capability shipped one-line-deletable with a fully green suite SIX times in this programme, and
+every single one was found by a reviewer's deletion sweep, never the implementer's.** Phase 5 added
+three: the trailing-edge edge plate (Critical), `position:absolute; inset:0` on two wrappers, and
+the live/sample `wrap` source-choice.
+
+**The deletion sweep's own method failed twice, one level up each time.** A capability-list sweep
+missed five delivery lines. Re-running it enumerated **by axis** found those five — and then a
+reviewer's axis sweep found **six more, two of them inside an axis the fix round had just declared
+complete**. The reason: "shell/host" and "the props bag" are *themselves lists*. This is Law 4
+(*prefer the rule that generates a set over a list of today's members*) reaching the test suite. The
+fix was **derived** pins — `Record<keyof TransitionPlanProps, predicate>` so the compiler demands an
+entry per member, verified generative by adding a field and watching `TS2741` fire; and "every
+`<div>` the assembly mounts fills its parent" rather than naming the wrappers.
+
+**A derived assertion over an empty set passes trivially, so every derived pin needs a vacuity guard
+— and the guard itself must be mutation-tested.** The standard set here: remove a species from the
+fixture and confirm **the guard** fails, not just the assertion.
+
+**Date a Phase 5 hazard from the design's §7, never from a code comment.** Two hazards were dated
+one stage late by reading a comment: the `wrap` presence-toggling defect was dated to Stage 4 and
+actually lands at **2.1**; the `ghosts` false-positive in the ratchet was dated to Stage 4 and
+actually lands at **3** (`rgb-split`'s entire migration *is* `ghosts`). Both would have surfaced as
+confusing mid-migration failures rather than scheduled work.
+
+**When a proof fails, fix the formulation, not the fixture.** Task 1.3's ghost-tolerance proof
+failed on the incoming side and was resolved by moving the proof to the outgoing side — where the
+question was already settled. The claim ended up true on the easy case and false on half the real
+ones. Caught in re-review; the final formulation is a two-criterion `persists` (base-mount
+persistence across the sweep **plus** in-window reference-set constancy **by reference, not by
+count** — an element destroyed and recreated with the count held constant is a remount that
+count-only checks miss, and that case was constructed and confirmed RED).
+
+**Do not let a comment claim something no test enforces.** Three comments this phase: `ghosts`
+promising a dev warning and a test that did not exist; a comment citing a ratchet proof that had not
+been written yet (left in the tree by a died-mid-round agent); and a comment claiming a committed
+test proved "both halves" of a before/after measurement when a committed test can only exercise the
+current code. All three walked back.
+
+**Reading a cached rendering of a fact is not reading the fact.** An implementer left `CLAUDE.md`'s
+gate table stale, justifying it as "no task since 0.2 refreshed it" — which described the stale copy
+injected into its session context, not the file on disk, which Task 1.2 *had* refreshed. Same
+two-places-hold-one-fact shape, one level further out.
+
+**Two disagreements resolved in the implementer's favour, both worth remembering as calibration:**
+`handleFor`'s `Math.max(0, seqFrom - b.start)` was called dead defensiveness because the *result* is
+always 0 — but the value being clamped is negative on every `from` side (−80 in the interior
+fixture), so deleting it tells the node the outgoing clip's range starts 80 frames early. And an
+implementer found, unprompted, that **`wipe` renders only one side of the boundary at a time**, so a
+uniform persistence formulation would have made it spuriously *pass* the composite-must-fail bucket;
+splitting the ratchet's assertion by arm was the right call.
+
+### Where the mount counts stand
+
+Media elements at an interior footage cut: `checkerboard` **66 → 3**, `scanline-glitch` **7 → 3**,
+both achieved in Stage 0 without touching the contract. The single-mount target of **2** arrives as
+kinds migrate in Stages 2–4. `rgb-split` is the exception the design already flags — it writes its
+input 3× and will be **6** until its ghosts become an SVG filter, which is scoped in rather than
+discovered.
+
+### What is next, and what is already prepared
+
+**Task 2.1 is briefed and not started**: migrate the six `fromRemotionPresentation` kinds (`fade`,
+`dissolve`, `slide`, `flip`, `clock-wipe`, `iris`, plus `fade-to-color`'s no-colour fallback) onto
+`LayerOp.wrap`. Brief at `.superpowers/sdd/phase5-single-mount-design/task-2.1-brief.md`.
+
+Three things that brief carries and a successor must not lose:
+
+- **Task 2.1's golden run is the plan path's FIRST PIXEL EVIDENCE, not a regression check.** Every
+  task so far rendered a plan path that drew nothing. A moved cell there means "the plan path draws
+  differently", and must be adjudicated against a hand-inspected picture, not a hash.
+- **Two effects will be mixed in whatever moves**: the `isolate` flag flipping on for a reel with a
+  plan boundary, and the migration itself. They can be separated by rendering the six kinds with the
+  flag forced on *while still unmigrated*. The 37 drifting cells Task 1.2 measured named
+  `light-leak`, `whip-pan`, `zoom-blur`, `pixelate`, `scanline-glitch`, `rgb-split` — none of the
+  six — but **that is an inference from a list, not a measurement**.
+- **`clock-wipe` (9) and `iris` (7) carry 16 of the 24 bimodal cells**, whose second recorded hash
+  came from a DOM arrangement that will no longer exist. Re-seed with `--repeat`; never de-list a
+  bimodal cell on absence.
+
+Remaining after 2.1: **2.2** (`wipe`, `fade-to-color`, `pixelate`, `gradient-wipe`), **2.3**
+(`burn`, `glitch` — 15 cells move on clock origin — `light-leak`, `whip-pan`, `zoom-through`,
+`zoom-blur`), **3** (`rgb-split`, `scanline-glitch`), **4** (`checkerboard`'s carve-out), **5** (the
+flip: delete the `composite` arm and §6's deletion table, full 300-cell re-baseline, both brand pins
+bumped).
+
+### Carried out of Stages 0–1
+
+- **`glitch.tsx:86` and `:104` conditionally mount** the scanline and noise overlays on
+  `glitchIntensity` thresholds — progress-varying element count, a structural-constancy violation
+  Stage 2.3 must fix when `glitch` migrates. **Not a pattern to copy.**
+- **`stripGeneratedIds`' `/id="[^"]*"/` is unanchored**, so it also rewrites `data-testid` and
+  collapses the `from`/`to` markers. Latent, not live — no current param's only effect is side
+  selection, and all 11 are proven to bite. Anchor to `/\bid="[^"]*"/` next time that helper is
+  touched.
+- **`IDENTITY_OBSERVED_FLOOR_PLAN` equals `observed` exactly on two of four axes** (25 = 25, zero
+  margin). Deliberate — a precise floor, not a loose one — but any one-frame change in window
+  geometry flips the *guard* rather than the metric. Expect this as Stage 2 kinds land.
+- **`wrapFor` is deliberately uncached, and that is LOAD-BEARING**, not merely cheap: it is what
+  keeps an unstable `wrap` detectable through the structural sample. A future
+  `WeakMap<TransitionNode, …>` cache would silently disable that detection. The code comment says
+  so where the cache would go; re-measure once Stage 2.1 lands real `wrap`-using kinds.
+- **A dev warning for unstable `wrap`** — for brand authors who never run core's suite — is a real
+  gap and **unscheduled**.
+- Deferred minors: `checkerboard`'s `cellDivsOf` selects on `transformOrigin`; a `never draws an
+  empty cell` test name overstating what it checks; a `clock.frame` reset in a test body rather than
+  an `afterEach`; `expect.hasAssertions()` firing only if *all* assertions are removed; an
+  unbalanced backtick at `lib/render/README.md:67`.
+- Two reviewer scratch stashes remain (`stash@{0}` `rgbprobe`, `stash@{1}` `review-probes-revert`);
+  the safety net blocks dropping them. The tree is clean; both are scratch only.
 
 ---
 
