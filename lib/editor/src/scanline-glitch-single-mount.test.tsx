@@ -35,6 +35,8 @@ vi.mock('remotion', async () => {
 import {
   transitionNodeFor,
   type TransitionRecord,
+  type TransitionNode,
+  type TransitionNodeProps,
 } from '@video-toolkit/lib/render/at-cut-transitions';
 
 const DIMS = { width: 1080, height: 1920 };
@@ -42,12 +44,21 @@ const DIMS = { width: 1080, height: 1920 };
 const A = <div data-testid="a" />;
 const B = <div data-testid="b" />;
 
+// Phase 5 Task 1.1 widened `TransitionNode` into a `plan`/`composite` union.
+// `scanline-glitch` is still a `composite` node (Stage 4 migrates it), so
+// every node this file resolves is composite-only — narrow once here instead
+// of at each call site.
+function compositeOf(node: TransitionNode): React.ComponentType<TransitionNodeProps> {
+  if ('plan' in node) throw new Error('expected a composite-arm TransitionNode in this test');
+  return node.composite;
+}
+
 const mount = (
   t: Partial<TransitionRecord> & { kind: 'scanline-glitch' },
   progress: number,
   inputs: { from?: React.ReactNode | null; to?: React.ReactNode | null } = {},
 ) => {
-  const Composite = transitionNodeFor(t as TransitionRecord, DIMS)!.composite;
+  const Composite = compositeOf(transitionNodeFor(t as TransitionRecord, DIMS)!);
   return render(
     <Composite
       from={inputs.from === undefined ? A : inputs.from}
@@ -102,7 +113,7 @@ describe('scanline-glitch the filter is actually wired to the mounted layer, not
 
   it('the filter id is stable across re-renders of the same instance and distinct across two instances', () => {
     const node = transitionNodeFor({ kind: 'scanline-glitch', frames: 15 } as TransitionRecord, DIMS)!;
-    const Composite = node.composite;
+    const Composite = compositeOf(node);
     const { container, rerender, unmount } = render(
       <Composite from={A} to={B} progress={0} durationInFrames={15} width={1080} height={1920} fps={30} palette={[]} background="transparent" />,
     );

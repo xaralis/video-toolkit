@@ -67,7 +67,9 @@ vi.mock('remotion', async () => {
 
 import { LayeredReelComposition } from '@video-toolkit/lib/render/layered-composition';
 import { SegmentMedia } from '@video-toolkit/lib/theming/segment/SegmentMedia';
-import { transitionNodeFor, resetTransitionNodeCache } from '@video-toolkit/lib/render/at-cut-transitions';
+import {
+  transitionNodeFor, resetTransitionNodeCache, AtCutTransition, type TransitionNode,
+} from '@video-toolkit/lib/render/at-cut-transitions';
 import { LayeredInspector } from '../app/LayeredInspector';
 import { editorMetaFromTheme } from '../app/editor-meta';
 import type { CompositionTheme, VideoRenderProps, OverlayRenderer } from '@video-toolkit/lib/theming';
@@ -534,6 +536,52 @@ describe('warning 8 — config-only registration for a brand-only transition kin
       { width: 100, height: 100, transitions: { 'sand-sweep': { renderer: () => ({ component: () => null, props: {} }) } } },
     );
     expect(node).not.toBeNull();
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Warning 9 — a `plan`-arm TransitionNode reaches `AtCutTransition` before
+// Stage 1.2 wires the plan path (Phase 5 Task 1.1). Nothing in the repo
+// produces a `plan` node yet, so this branch is UNREACHABLE today — but an
+// unreachable branch that hard-cuts silently is exactly how core lost four
+// transition kinds once already (see `at-cut-transition-findings.md`), so it
+// gets a warning and a test now rather than waiting for Stage 4 to need it.
+// ---------------------------------------------------------------------------
+describe('warning 9 — a plan-arm TransitionNode reaches AtCutTransition (unreachable until Stage 1.2)', () => {
+  it('warns once, names the shape, and still hard-cuts (draws both inputs plainly)', () => {
+    // Hand-built — no presentation returns `{ plan }` yet, so this is the only
+    // way to construct one. `plan` itself is never called by this branch.
+    const planNode = { plan: () => ({}) } as unknown as TransitionNode;
+    const { container } = render(
+      <AtCutTransition
+        node={planNode}
+        from={<div data-testid="a" />}
+        to={<div data-testid="b" />}
+        frames={10}
+        dims={{ width: 1080, height: 1920, fps: 30 }}
+      />,
+    );
+    // Same fallback as no-node-at-all: both inputs drawn, neither dropped.
+    expect(container.querySelector('[data-testid="a"]')).toBeTruthy();
+    expect(container.querySelector('[data-testid="b"]')).toBeTruthy();
+    expect(warn).toHaveBeenCalledTimes(1);
+    const text = String(warn.mock.calls[0][0]);
+    expect(text).toContain('plan');
+    expect(text).toContain('HARD CUT');
+  });
+
+  it('does NOT warn for an ordinary composite-arm node — the false-positive this pin must not become', () => {
+    const node = transitionNodeFor({ kind: 'dissolve', frames: 10 } as never, { width: 1080, height: 1920 })!;
+    render(
+      <AtCutTransition
+        node={node}
+        from={<div data-testid="a" />}
+        to={<div data-testid="b" />}
+        frames={10}
+        dims={{ width: 1080, height: 1920, fps: 30 }}
+      />,
+    );
     expect(warn).not.toHaveBeenCalled();
   });
 });

@@ -17,6 +17,8 @@ import { render } from '@testing-library/react';
 import {
   transitionNodeFor,
   type TransitionRecord,
+  type TransitionNode,
+  type TransitionNodeProps,
 } from '@video-toolkit/lib/render/at-cut-transitions';
 
 const DIMS = { width: 1080, height: 1920 };
@@ -24,12 +26,21 @@ const DIMS = { width: 1080, height: 1920 };
 const A = <div data-testid="a" />;
 const B = <div data-testid="b" />;
 
+// Phase 5 Task 1.1 widened `TransitionNode` into a `plan`/`composite` union.
+// `checkerboard` is still a `composite` node (Stage 4 migrates it), so every
+// node this file resolves is composite-only — narrow once here instead of at
+// each call site.
+function compositeOf(node: TransitionNode): React.ComponentType<TransitionNodeProps> {
+  if ('plan' in node) throw new Error('expected a composite-arm TransitionNode in this test');
+  return node.composite;
+}
+
 const mount = (
   t: Partial<TransitionRecord> & { kind: 'checkerboard' },
   progress: number,
   inputs: { from?: React.ReactNode | null; to?: React.ReactNode | null } = {},
 ) => {
-  const Composite = transitionNodeFor(t as TransitionRecord, DIMS)!.composite;
+  const Composite = compositeOf(transitionNodeFor(t as TransitionRecord, DIMS)!);
   return render(
     <Composite
       from={inputs.from === undefined ? A : inputs.from}
@@ -149,7 +160,7 @@ describe('checkerboard the mask is actually wired to the masked layer, not just 
 
 describe('checkerboard the mask id is stable across frames and unique per instance', () => {
   it('the same instance keeps the same mask id across re-renders (progress changes)', () => {
-    const Composite = transitionNodeFor({ kind: 'checkerboard', frames: 15 } as TransitionRecord, DIMS)!.composite;
+    const Composite = compositeOf(transitionNodeFor({ kind: 'checkerboard', frames: 15 } as TransitionRecord, DIMS)!);
     const props = { from: A, to: B, durationInFrames: 15, width: 1080, height: 1920, fps: 30, palette: [], background: 'transparent' };
     const { container, rerender, unmount } = render(<Composite {...props} progress={0} />);
     const idAt0 = container.querySelector('mask')?.id;
@@ -174,7 +185,7 @@ describe('checkerboard the mask id is stable across frames and unique per instan
   // production code, not on reaching for a second root in this test.
   it('two concurrent instances (two live boundaries) get different mask ids', () => {
     const node = transitionNodeFor({ kind: 'checkerboard', frames: 15 } as TransitionRecord, DIMS)!;
-    const Composite = node.composite;
+    const Composite = compositeOf(node);
     const props = { progress: 0.5, durationInFrames: 15, width: 1080, height: 1920, fps: 30, palette: [], background: 'transparent' };
     const first = render(<Composite {...props} from={<div data-testid="a1" />} to={<div data-testid="b1" />} />);
     const second = render(<Composite {...props} from={<div data-testid="a2" />} to={<div data-testid="b2" />} />);

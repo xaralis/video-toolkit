@@ -109,19 +109,118 @@ export interface TransitionNodeProps {
   background: string;
 }
 
-/** A natively TWO-INPUT transition: one component that composites both inputs
- *  itself. Structurally distinguishable from `AnyPresentation` by its
- *  `composite` field, which is what lets one registry hold both shapes. */
-export type TransitionNode = { composite: React.ComponentType<TransitionNodeProps> };
+// THE SINGLE-MOUNT CONTRACT (Phase 5 Task 1.1). Added ADDITIVELY: `TransitionNode`
+// widens from a single shape to a union, and every existing `{ composite }` node
+// keeps type-checking unchanged (the `plan?: never` member makes an object
+// literal that omits `plan` still assignable). Nothing renders through the
+// `plan` arm yet — that starts at Task 1.2. See
+// docs/superpowers/phase5-single-mount-design.md §2.3 for the design.
+//
+// NAMING NOTE: the design doc's §2.3 names the per-frame plan-invocation prop
+// bag `TransitionRenderProps` — but that identifier is already this file's
+// public export at line 56 (the renderer-SELECTION prop bag: `transition`,
+// `width`, `height`, `palette`, `config`, consumed by `TransitionRenderer`).
+// Reusing it here would be a duplicate top-level export, not a shadow — a hard
+// compile error, not a style question. This task renames the NEW type to
+// `TransitionPlanProps` (parallel to the existing `TransitionNodeProps` for the
+// `composite` arm) and keeps everything else verbatim. The existing
+// `TransitionRenderProps` is untouched, per this task's additive-only mandate.
+
+/** What the node is told about one side of the boundary. NOT a ReactNode: the
+ *  layer is ALREADY MOUNTED and the node styles it. */
+export interface LayerHandle {
+  /** A real clip, or the reel-edge background plate core substitutes. */
+  readonly source: 'clip' | 'edge';
+  /** The layer's own frame range, in BOUNDARY coordinates — how much handle it
+   *  actually has. `[0, frames]` for a full-window side; a shorter range is how
+   *  a node can see that the outgoing clip expires before progress 1. */
+  readonly range: readonly [number, number];
+}
+
+/** ONE call per boundary per frame. BOTH sides. ONE progress. Unchanged
+ *  semantics; `from`/`to` are handles instead of subtrees. Named
+ *  `TransitionPlanProps`, not `TransitionRenderProps` — see the naming note
+ *  above. */
+export interface TransitionPlanProps {
+  /** The OUTGOING side (A). `null` at the reel's LEADING edge. */
+  from: LayerHandle | null;
+  /** The INCOMING side (B). `null` at the reel's TRAILING edge. */
+  to: LayerHandle | null;
+  /** 0..1 across the boundary. CLAMPED BY CORE — a node must never clamp. */
+  progress: number;
+  /** Boundary-relative frame. Passed explicitly because a plan is a plain
+   *  function and cannot call `useCurrentFrame()`. */
+  frame: number;
+  durationInFrames: number;
+  params: Record<string, unknown>;
+  config?: unknown;
+  dims: { width: number; height: number; fps: number };
+  palette: readonly AccentSlot[];
+  background: string;
+}
+
+/** How one already-mounted layer is treated. */
+export interface LayerOp {
+  /** Merged onto the layer's shell. */
+  style?: React.CSSProperties;
+  /** Stacking relative to the other side. Default: `to` over `from`. */
+  z?: number;
+  /** EXTRA styled copies of this layer. Each entry is one extra MOUNT of the
+   *  clip. `ghosts.length` MUST NOT vary with `progress` — a varying count is
+   *  an element-count change mid-window, i.e. the remount this whole phase
+   *  exists to remove. Dev-warned and pinned by a test. */
+  ghosts?: readonly React.CSSProperties[];
+  /** Component form, for a shell no style can express. MUST render `children`
+   *  exactly once, and MUST be a STABLE component reference across frames —
+   *  a fresh reference each frame remounts its subtree, which is the exact
+   *  defect class this phase removes. */
+  wrap?: React.ComponentType<{ children: React.ReactNode }>;
+}
+
+/** A media-free full-frame plate. */
+export interface PlateLayer {
+  key: string;
+  /** `under` both clips, `between` them, or `over` both. */
+  z: 'under' | 'between' | 'over';
+  style: React.CSSProperties;
+  /** Optional media-free children (an SVG filter `<defs>`, a cell grid, …). */
+  content?: React.ReactNode;
+}
+
+/** What a node returns instead of JSX around its inputs. */
+export interface TransitionComposite {
+  from?: LayerOp;
+  to?: LayerOp;
+  layers?: readonly PlateLayer[];
+  /** Applied to the WHOLE video track for this window. At most one live
+   *  boundary may set it; a second is dev-warned and the later wins. */
+  post?: React.CSSProperties;
+}
+
+/** A natively TWO-INPUT transition: either the declarative `plan` form (the
+ *  single-mount contract this phase migrates every kind to) or the JSX
+ *  `composite` form (Task 1.3's shape, retained through the staged migration
+ *  and removed at its end). A node supplies exactly one — the `…?: never`
+ *  members are load-bearing: they are what makes `'plan' in node` a sound
+ *  narrowing, and what makes supplying both a type error instead of silently
+ *  picking one. Structurally distinguishable from `AnyPresentation` by having
+ *  neither a `component` nor a `props` field. */
+export type TransitionNode =
+  | { plan: (props: TransitionPlanProps) => TransitionComposite; composite?: never }
+  | { composite: React.ComponentType<TransitionNodeProps>; plan?: never };
 
 /** What a renderer may hand back: a two-input node, or a one-sided Remotion
  *  presentation that core lifts into one. */
 export type ResolvedTransition = AnyPresentation | TransitionNode;
 
-/** True for the two-input shape. A structural test, not a tag, so a brand can
- *  build a node as a plain object literal without importing a constructor. */
+/** True for the two-input shape — either arm of the `TransitionNode` union. A
+ *  structural test, not a tag, so a brand can build a node as a plain object
+ *  literal without importing a constructor. Widened in Task 1.1 to also accept
+ *  the `plan` arm: it previously pattern-matched on `composite` alone, which
+ *  would have misclassified a `plan`-only node as `AnyPresentation`. */
 export function isTransitionNode(r: ResolvedTransition): r is TransitionNode {
-  return typeof (r as TransitionNode).composite === 'function';
+  const n = r as TransitionNode;
+  return typeof n.composite === 'function' || typeof n.plan === 'function';
 }
 
 /** What a registered transition kind resolves to. Returning `null` means "no

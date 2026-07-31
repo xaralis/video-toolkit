@@ -618,6 +618,26 @@ export const AtCutTransition: React.FC<{
     // eslint-disable-next-line react/jsx-no-useless-fragment
     return <>{from}{to}</>;
   }
+  if ('plan' in node) {
+    // Phase 5 Task 1.1: `TransitionNode` widened to admit the `plan` arm, but
+    // nothing can produce one yet — no presentation returns `{ plan }` until
+    // Stage 4 migrates a kind and Stage 1.2 wires this component to actually
+    // DRIVE `plan`. This branch is therefore unreachable in the current repo.
+    // It exists anyway rather than falling through silently, because an
+    // unreachable branch that hard-cuts without saying so is exactly how core
+    // lost four transition kinds once already (`at-cut-transition-findings.md`)
+    // — a hand-built or future node reaching here should be loud, not quiet.
+    // Same fallback as the `!node` branch above: draw both inputs plainly.
+    warnOnce(
+      'at-cut-transition:plan-arm-unwired',
+      () =>
+        '[video-toolkit] a transition node supplied `plan` instead of `composite`, but ' +
+        'AtCutTransition cannot drive the plan arm yet — that lands in Stage 1.2 of ' +
+        'docs/superpowers/phase5-single-mount-design.md. This boundary is rendering as a HARD CUT.',
+    );
+    // eslint-disable-next-line react/jsx-no-useless-fragment
+    return <>{from}{to}</>;
+  }
   const Composite = node.composite;
   return (
     <Composite

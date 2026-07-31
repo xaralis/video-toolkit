@@ -182,6 +182,16 @@ Nothing is ever relocated, so nothing ever remounts.
 
 ### 2.3 The contract
 
+**Naming correction (Task 1.1):** this section originally named the plan-invocation prop bag
+below `TransitionRenderProps`. That collides with the PRE-EXISTING, unrelated
+`TransitionRenderProps` already exported from `lib/theming/transitions.ts` (the props a
+*registry renderer* receives — `transition`, `width`, `height`, `palette`, `config` — a different
+concept, reused by mistake when this section was drafted). Task 1.1 caught the collision before
+writing it (it would have been a duplicate top-level export, a hard compile error) and renamed
+this one to **`TransitionPlanProps`**, parallel to the existing `TransitionNodeProps` for the
+`composite` arm. Every occurrence below and in §4.4 has been corrected to match; §8.2/§8.5's
+mentions of `TransitionRenderProps` are the OTHER, pre-existing type and are unchanged.
+
 ```ts
 // lib/theming/transitions.ts
 
@@ -198,7 +208,7 @@ export interface LayerHandle {
 
 /** ONE call per boundary per frame. BOTH sides. ONE progress. Unchanged
  *  semantics; `from`/`to` are handles instead of subtrees. */
-export interface TransitionRenderProps {
+export interface TransitionPlanProps {
   /** The OUTGOING side (A). `null` at the reel's LEADING edge. */
   from: LayerHandle | null;
   /** The INCOMING side (B). `null` at the reel's TRAILING edge. */
@@ -262,7 +272,7 @@ export interface TransitionComposite {
  *  is Task 1.3's JSX form, retained through the staged migration (§7) and
  *  removed at the end of it. A node must supply exactly one. */
 export type TransitionNode =
-  | { plan: (props: TransitionRenderProps) => TransitionComposite; composite?: never }
+  | { plan: (props: TransitionPlanProps) => TransitionComposite; composite?: never }
   | { composite: React.ComponentType<TransitionNodeProps>; plan?: never };
 ```
 
@@ -420,7 +430,7 @@ makes the asymmetry *more* explicit, not less: `from` gets `{}` and `to` gets th
 **Root cause** (`at-cut-transition-findings.md:235-241`): the last item has an `outRecord` but
 no successor to enter, so nothing drew.
 
-**Not re-opened.** `to === null` survives verbatim in `TransitionRenderProps` (§2.3) and is
+**Not re-opened.** `to === null` survives verbatim in `TransitionPlanProps` (§2.3) and is
 still what defines the trailing edge; the background still comes from
 `CompositionTheme.background` threaded through `buildVideoNodes`
 (`layered-composition.tsx:388`), and core still names no colour of its own. The only change is

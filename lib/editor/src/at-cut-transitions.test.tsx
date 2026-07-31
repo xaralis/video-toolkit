@@ -72,6 +72,17 @@ import { paramChoices, type ParamOption } from '@video-toolkit/lib/reel-config-b
 const KINDS = TRANSITION_CATALOG.map((e) => e.kind);
 const DIMS = { width: 1080, height: 1920 };
 
+// Phase 5 Task 1.1 widened `TransitionNode` into a `plan`/`composite` union.
+// Nothing in this repo produces a `plan` node yet — every node this suite
+// builds or resolves is still composite-only — so this helper narrows once
+// per call site instead of repeating an `if ('plan' in node) throw …` guard
+// at every one of them. If a future `plan` node genuinely reaches one of
+// these call sites, this throw is the loud failure that says so.
+function compositeOf(node: TransitionNode): React.ComponentType<TransitionNodeProps> {
+  if ('plan' in node) throw new Error('expected a composite-arm TransitionNode in this test');
+  return node.composite;
+}
+
 // A brand's palette, invented here — core owns no colour vocabulary, so the
 // slots below stand in for whatever a consuming brand declares.
 const PALETTE: readonly AccentSlot[] = [
@@ -288,7 +299,7 @@ describe.each(KINDS)('transition kind %s', (kind) => {
       return;
     }
     expect(node).not.toBeNull();
-    expect(typeof node!.composite).toBe('function');
+    expect(typeof compositeOf(node!)).toBe('function');
     // A native node has NO one-sided form to hand back; every other kind still
     // does, and brands' `presentationFor` call sites still get it.
     const p = presentationFor(transition as never, DIMS);
@@ -303,7 +314,7 @@ describe.each(KINDS)('transition kind %s', (kind) => {
     const { transition } = probeTransitionFor(kind);
     const node = transitionNodeFor(transition as never, DIMS);
     if (!node) return; // cut
-    const Composite = node.composite;
+    const Composite = compositeOf(node);
     const inputs: Array<[React.ReactNode | null, React.ReactNode | null]> = [
       [<div key="a" />, <div key="b" />],
       // The reel's leading and trailing edges — a node must survive a missing
@@ -404,7 +415,7 @@ describe.each(NODE_KINDS)('two-input node %s delivers every authored param', (ki
 
   const renderedFor = (t: Record<string, unknown>) =>
     PROBE_PROGRESS.map((progress) => {
-      const Composite = transitionNodeFor(t as TransitionRecord, { ...DIMS, palette: PALETTE })!.composite;
+      const Composite = compositeOf(transitionNodeFor(t as TransitionRecord, { ...DIMS, palette: PALETTE })!);
       const { container, unmount } = render(
         <Composite
           from={<div data-testid="a" />}
@@ -461,7 +472,7 @@ describe('composition-size-dependent kinds', () => {
 // node paints — which is a stronger pin than the props bag ever was.
 describe('accent-slot resolution', () => {
   const sheetColorFor = (t: TransitionRecord, dims: Parameters<typeof transitionNodeFor>[1]) => {
-    const Composite = transitionNodeFor(t, dims)!.composite;
+    const Composite = compositeOf(transitionNodeFor(t, dims)!);
     const { container, unmount } = render(
       <Composite from={null} to={null} progress={0.5} durationInFrames={15} width={1080} height={1920} fps={30} palette={[]} background="transparent" />,
     );
@@ -565,7 +576,7 @@ describe('the four two-input nodes render what their name promises', () => {
     progress: number,
     inputs: { from?: React.ReactNode | null; to?: React.ReactNode | null } = {},
   ) => {
-    const Composite = node.composite;
+    const Composite = compositeOf(node);
     return render(
       <Composite
         from={inputs.from === undefined ? A : inputs.from}
@@ -912,7 +923,7 @@ describe('fromRemotionPresentation lifts a one-sided presentation', () => {
   it('renders `from` through EXITING and `to` through ENTERING, entering on top', () => {
     const order: string[] = [];
     const node = fromRemotionPresentation(trace(order));
-    const Composite = node.composite;
+    const Composite = compositeOf(node);
     const { container } = render(
       <Composite
         from={<div data-testid="a" />}
@@ -941,7 +952,7 @@ describe('fromRemotionPresentation lifts a one-sided presentation', () => {
   it('runs BOTH branches on a null side, feeding it the background plate', () => {
     const order: string[] = [];
     const node = fromRemotionPresentation(trace(order));
-    const Composite = node.composite;
+    const Composite = compositeOf(node);
     const { container } = render(
       <Composite
         from={null}
@@ -970,7 +981,7 @@ describe('fromRemotionPresentation lifts a one-sided presentation', () => {
       },
       props: { marker: 42 },
     });
-    const Composite = node.composite;
+    const Composite = compositeOf(node);
     render(
       <Composite from={null} to={<div />} progress={0.25} durationInFrames={12} width={1} height={2} fps={30} palette={[]} background="transparent" />,
     );
@@ -997,7 +1008,7 @@ describe('transitionNodeFor is the render path', () => {
       ...DIMS,
       transitions: { 'brand-x': { renderer: () => ({ composite }) } },
     });
-    expect(node!.composite).toBe(composite);
+    expect(compositeOf(node!)).toBe(composite);
   });
 
   // TASK R1 — MEMOIZATION, pinned at the wiring (Review Round 1, Important
@@ -1080,8 +1091,8 @@ describe('transitionNodeFor is the render path', () => {
       const nodeA = transitionNodeFor(t, { ...DIMS, transitions: { 'brand-sweep': { renderer: () => ({ composite: compositeA }) } } });
       const nodeB = transitionNodeFor(t, { ...DIMS, transitions: { 'brand-sweep': { renderer: () => ({ composite: compositeB }) } } });
 
-      expect(nodeA!.composite).toBe(compositeA);
-      expect(nodeB!.composite).toBe(compositeB);
+      expect(compositeOf(nodeA!)).toBe(compositeA);
+      expect(compositeOf(nodeB!)).toBe(compositeB);
       expect(nodeB).not.toBe(nodeA);
     });
   });
@@ -1129,7 +1140,7 @@ describe('a reel edge resolves the missing input to the theme background', () =>
     palette: readonly AccentSlot[] = [],
   ) => {
     const t = { ...(defaultTransition(kind, { frames: 20 }) as object), ...extra } as unknown as TransitionRecord;
-    const Composite = transitionNodeFor(t, { ...DIMS, palette })!.composite;
+    const Composite = compositeOf(transitionNodeFor(t, { ...DIMS, palette })!);
     return render(
       <Composite
         from={inputs.from === undefined ? CLIP : inputs.from}
@@ -1411,7 +1422,7 @@ describe('a fade’s colour is a parameter (fade-to-color)', () => {
     palette: readonly AccentSlot[] = PALETTE,
   ) => {
     const node = transitionNodeFor(t as unknown as TransitionRecord, { ...DIMS, palette })!;
-    const Composite = node.composite;
+    const Composite = compositeOf(node);
     return render(
       <Composite
         from={A}

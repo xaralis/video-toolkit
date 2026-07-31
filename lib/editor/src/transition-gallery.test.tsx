@@ -37,6 +37,7 @@ import {
   transitionNodeFor,
   fromRemotionPresentation,
   type TransitionNode,
+  type TransitionNodeProps,
   type TransitionRecord,
 } from '@video-toolkit/lib/render/at-cut-transitions';
 import { TRANSITIONS, transitionMap } from '@video-toolkit/lib/transitions/TransitionGallery';
@@ -56,12 +57,20 @@ const GALLERY_DIMS = { width: 1920, height: 1080, fps: 30 };
 const normalizeMountIds = (html: string): string =>
   html.replace(/(\bid="|url\(#)[^"')]*/g, '$1UID');
 
+// Phase 5 Task 1.1 widened `TransitionNode` into a `plan`/`composite` union.
+// Every node this file resolves is still composite-only — narrow once here
+// instead of at each call site.
+function compositeOf(node: TransitionNode): React.ComponentType<TransitionNodeProps> {
+  if ('plan' in node) throw new Error('expected a composite-arm TransitionNode in this test');
+  return node.composite;
+}
+
 /** The picture a node draws across its whole window, as one comparable string.
  *  Both inputs are inert markers, so any difference is the TRANSITION's. */
 const pictureOf = (node: TransitionNode): string =>
   [0, 0.25, 0.5, 0.75, 1]
     .map((progress) => {
-      const Composite = node.composite;
+      const Composite = compositeOf(node);
       const { container, unmount } = render(
         <Composite
           from={<div data-testid="a" />}
