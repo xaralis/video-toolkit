@@ -638,10 +638,14 @@ export const AtCutTransition: React.FC<{
     // building its own `<AtCutTransition>` — where the single-mount path is
     // structurally unreachable, because this component receives its inputs as
     // subtrees and has no shells to style. The fallback is unchanged (draw both
-    // inputs plainly, i.e. a hard cut) and so is the key, so a session that has
-    // already seen it does not see it twice.
+    // inputs plainly, i.e. a hard cut). The KEY is renamed to match what the
+    // branch now means — `unwired` was true only while the plan path did not
+    // exist anywhere, and a key that describes the old world is a key the next
+    // reader has to decode. Nothing in the repo can produce a plan node yet, so
+    // no session can have seen the old key and be de-duplicated wrongly by the
+    // new one.
     warnOnce(
-      'at-cut-transition:plan-arm-unwired',
+      'at-cut-transition:plan-arm-wrong-entry-point',
       () =>
         '[video-toolkit] a transition node supplied `plan` instead of `composite`, and `plan` is ' +
         'driven by buildVideoNodes\' single-mount assembly, not by AtCutTransition — this component ' +

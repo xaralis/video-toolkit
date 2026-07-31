@@ -140,9 +140,24 @@ function ghostCount(op: LayerOp | undefined): number {
  *  remove, reintroduced by a node instead of by the assembly. Warned, never
  *  blocked (this module's whole warning discipline — see warn-once.ts).
  *
- *  Deliberately compares the PROBE SAMPLES to each other rather than each
- *  sample to the live frame's count: that makes the check independent of WHICH
- *  frame happens to render first, so it is deterministic. */
+ *  WHAT IS AND IS NOT DETERMINISTIC HERE (review round 1, Important 4 — an
+ *  earlier version of this comment claimed the live frame's count was excluded
+ *  and that the whole check was frame-independent; the code has always included
+ *  it, so the claim was simply false). The two properties, separated:
+ *
+ *    - The PROBE SAMPLES are compared to each other, and they are the same five
+ *      calls on every frame. So if a plan's ghost count varies across the
+ *      window at all visibly, this fires on the FIRST live frame, whichever
+ *      frame that is. That is the deterministic part, and it is the guarantee.
+ *    - The LIVE frame's count is included as a SIXTH sample deliberately, kept
+ *      after the review rather than dropped: it is the only thing that can
+ *      catch a count that changes at a threshold falling strictly between two
+ *      probes. The cost is that the `saw …` list — and, for that
+ *      pathological-threshold case alone, WHETHER it fires — depends on which
+ *      frame rendered. That is a strictly-more-sensitive check with a
+ *      frame-dependent message, not a flaky one: it never fires on a plan whose
+ *      count is constant, which is the only false positive that would matter
+ *      (`warnOnce` keys are permanent per session). */
 function auditGhosts(b: PlanBoundary, live: TransitionComposite): void {
   if (!isDevEnvironment()) return;
   const samples = GHOST_PROBE_PROGRESS.map((p) => {

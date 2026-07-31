@@ -89,12 +89,13 @@ const plan = (p: TransitionPlanProps): TransitionComposite => {
     from: { style: { opacity: 1 - p.progress } },
     to: { style: { opacity: p.progress } },
     layers: [
+      { key: 'base', z: 'under', style: { backgroundColor: 'rgb(7, 8, 9)' } },
       { key: 'sheet', z: 'between', style: { backgroundColor: 'rgb(1, 2, 3)' } },
       { key: 'lid', z: 'over', style: { backgroundColor: 'rgb(4, 5, 6)' } },
     ],
     // `opacity` is deliberately in here: `post` reads `filter`/`transform` and
     // nothing else, and that narrowness is a pinned property, not an accident.
-    ...(p.progress > 0.5 ? { post: { filter: 'blur(2px)', opacity: 0.25 } } : {}),
+    ...(p.progress > 0.5 ? { post: { filter: 'blur(2px)', transform: 'scale(1.02)', opacity: 0.25 } } : {}),
   };
 };
 
@@ -251,6 +252,27 @@ describe('the shells are mounted for the item\'s whole life and are structurally
     }
   });
 
+  // REVIEW ROUND 1, IMPORTANT 3. Both wrappers fill their parent explicitly,
+  // and both were deletable green before this test. The pixel harness
+  // structurally cannot catch it: every renderer this repo and both brand repos
+  // ship roots its content at `AbsoluteFill`, so an unstyled `<div>` is
+  // layout-neutral TODAY — which is precisely the dependency on every current
+  // renderer's shape that filling it explicitly exists to remove. A future
+  // renderer rooting at a static element with `height: 100%` would collapse to
+  // zero height inside an unstyled wrapper, and no golden would move until that
+  // renderer existed.
+  it('fills its parent explicitly — both shells AND the track wrapper', () => {
+    clock.preview = true;
+    clock.frame = 85;
+    const { container } = render(tree());
+    const track = container.firstElementChild as HTMLElement;
+    const [, enter, exit] = shellChain(container, 'a');
+    for (const el of [track, enter, exit]) {
+      expect(el.style.position).toBe('absolute');
+      expect(el.style.inset).toBe('0');
+    }
+  });
+
   it('keeps the element count under an item constant across the crossing (no appearing/vanishing wrapper)', () => {
     clock.preview = true;
     const counts = new Set<number>();
@@ -277,7 +299,7 @@ describe('a plan\'s media-free layers are real timeline siblings', () => {
     clock.frame = 85;
     const { container, rerender } = render(tree());
     expect(platesOf(container).map((d) => d.style.backgroundColor))
-      .toEqual(['rgb(1, 2, 3)', 'rgb(4, 5, 6)']);
+      .toEqual(['rgb(7, 8, 9)', 'rgb(1, 2, 3)', 'rgb(4, 5, 6)']);
 
     clock.frame = 120;
     rerender(tree());
@@ -287,7 +309,10 @@ describe('a plan\'s media-free layers are real timeline siblings', () => {
   it('honours z: `between` sits between the two clips by tree order, `over` and `under` by z-index', () => {
     clock.frame = 85;
     const { container } = render(tree());
-    const [between, over] = platesOf(container);
+    const [under, between, over] = platesOf(container);
+    // All THREE classes, because `under` and `over` are axis-symmetric twins
+    // and pinning one of a symmetric pair is how C1 shipped.
+    expect(under.style.zIndex).toBe('-1');
     expect(between.style.zIndex).toBe('');
     expect(over.style.zIndex).toBe('1');
     // Tree order is the mechanism for `between`: after a, before b.
@@ -297,38 +322,82 @@ describe('a plan\'s media-free layers are real timeline siblings', () => {
   });
 });
 
+// BOTH EDGES, and the pairing is the point. Review round 1 CRITICAL 1: the
+// TRAILING plate (`if (b.toIndex === null) nodes.push(edge(b, 'to'))`) shipped
+// one-line-deletable with the whole suite green, because every fixture here was
+// a LEADING edge — the axis-symmetric twin of the case that was pinned. Any
+// test in this file that covers one end of a leading/trailing, from/to,
+// enter/exit or first/last axis must cover the other.
 describe('the reel edge is materialised as a timeline sibling and takes the node\'s op', () => {
-  const EDGE = (): VideoItem[] => [
+  // A solo clip whose `transitionIn` is the plan: fromIndex === null.
+  const LEADING = (): VideoItem[] => [
     clip('solo', 0, 3000, { transitionIn: { kind: 'planned', frames: 20 } }),
   ];
+  // A solo clip whose `transitionOut` is the plan: toIndex === null. Note the
+  // window is [70, 90], NOT [80, 100]: the last item lends no out handle to a
+  // neighbour it does not have, so the window ends where the clip does. Getting
+  // this wrong is how the first draft of this test "passed" against the wrong
+  // progress.
+  const TRAILING = (): VideoItem[] => [
+    clip('solo', 0, 3000, { transitionOut: { kind: 'planned', frames: 20 } }),
+  ];
+  const plateIn = (c: HTMLElement) =>
+    [...c.querySelectorAll('div')].find((d) => d.style.backgroundColor === 'rgb(16, 16, 16)');
 
-  it('mounts an EdgePlate of the composition background for the missing side, styled by the op', () => {
+  it('LEADING: mounts an EdgePlate of the composition background BELOW the incoming clip, styled by the `from` op', () => {
     clock.frame = 5; // window is [0, 20]; progress 0.25
-    const { container } = render(tree(EDGE()));
-    const plate = [...container.querySelectorAll('div')].find(
-      (d) => d.style.backgroundColor === 'rgb(16, 16, 16)',
-    );
+    const { container } = render(tree(LEADING()));
+    const plate = plateIn(container);
     expect(plate).toBeTruthy();
-    // The `from` op — the missing side's — is applied to it.
     expect(plate!.parentElement!.style.opacity).toBe('0.75');
+    // Below: the plate is emitted BEFORE the clip, and tree order is what
+    // stacks them (see THE STACKING RULE).
+    const order = [...container.querySelectorAll('div, video')];
+    expect(order.indexOf(plate!)).toBeLessThan(order.indexOf(vids(container, 'solo')[0]));
   });
 
-  it('tells the node the side is missing with `from === null`, exactly as Task 2.2 made it mean', () => {
+  it('TRAILING: mounts one ABOVE the outgoing clip, styled by the `to` op', () => {
+    clock.frame = 75; // window is [70, 90]; progress 0.25
+    const { container } = render(tree(TRAILING()));
+    const plate = plateIn(container);
+    expect(plate).toBeTruthy();
+    // The `to` op — the missing side's, at this end — carries `opacity:
+    // progress`, so this is 0.25 and not the 0.75 the `from` op would give.
+    // That difference is what makes this a test of the TRAILING wiring rather
+    // than a copy of the leading one.
+    expect(plate!.parentElement!.style.opacity).toBe('0.25');
+    const order = [...container.querySelectorAll('div, video')];
+    expect(order.indexOf(plate!)).toBeGreaterThan(order.indexOf(vids(container, 'solo')[0]));
+  });
+
+  it('tells the node which side is missing — `from === null` leading, `to === null` trailing', () => {
     clock.frame = 5;
-    render(tree(EDGE()));
-    const live = seen.filter((p) => p.progress === 0.25);
-    expect(live[0].from).toBeNull();
-    expect(live[0].to).toEqual({ source: 'clip', range: [0, 20] });
+    const { rerender } = render(tree(LEADING()));
+    const leading = seen.filter((p) => p.progress === 0.25);
+    expect(leading[0].from).toBeNull();
+    expect(leading[0].to).toEqual({ source: 'clip', range: [0, 20] });
+
+    seen.length = 0;
+    clock.frame = 75;
+    rerender(tree(TRAILING()));
+    const trailing = seen.filter((p) => p.progress === 0.25);
+    expect(trailing[0].to).toBeNull();
+    // The outgoing clip's own Sequence ends at frame 89, one before the window
+    // does — `[0, 19]`, not `[0, 20]`.
+    expect(trailing[0].from).toEqual({ source: 'clip', range: [0, 19] });
   });
 });
 
 describe('`post` applies to the whole video track, narrowly', () => {
   const wrapper = (c: HTMLElement) => c.firstElementChild as HTMLElement;
 
-  it('carries the live boundary\'s filter, and nothing but filter/transform', () => {
+  it('carries the live boundary\'s filter AND transform, and nothing else', () => {
     clock.frame = 95; // progress 0.75 — the plan sets post above 0.5
     const { container } = render(tree());
     expect(wrapper(container).style.filter).toBe('blur(2px)');
+    expect(wrapper(container).style.transform).toBe('scale(1.02)');
+    // Not carried: `opacity` on the whole track is a reel-level change no
+    // boundary is entitled to make.
     expect(wrapper(container).style.opacity).toBe('');
   });
 

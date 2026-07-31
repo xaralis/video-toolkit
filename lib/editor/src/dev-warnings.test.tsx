@@ -633,21 +633,30 @@ describe('warnings 10 and 11 — the single-mount assembly', () => {
   ];
   const messages = () => warn.mock.calls.map((c) => String(c[0]));
 
-  it('10 — warns when `ghosts.length` varies with progress, naming the boundary and the counts', () => {
+  // BOTH SIDES, one warning each: `from` and `to` are axis-symmetric twins, and
+  // pinning one of a symmetric pair is exactly how review round 1's CRITICAL 1
+  // (a trailing-edge plate deletable green, with the leading one pinned)
+  // shipped. Varying the counts differently per side also pins that the message
+  // reports THAT side's counts rather than one side's twice.
+  it('10 — warns when `ghosts.length` varies with progress, once per side, naming the boundary and the counts', () => {
     clock.frame = 90;
     render(
       <LayeredReelComposition
         reel={reelWith(twoClips())}
         theme={planned(({ progress }: { progress: number }) => ({
+          from: { ghosts: progress > 0.25 ? [{ opacity: 0.9 }] : [] },
           to: { ghosts: progress > 0.25 ? [{ opacity: 0.5 }, { opacity: 0.2 }] : [] },
         }) as never)}
       />,
     );
     const ghostWarnings = messages().filter((m) => m.includes('ghosts'));
-    expect(ghostWarnings.length).toBe(1);
+    expect(ghostWarnings.length).toBe(2);
     // The boundary is owned by the item ENTERING it — `b--in`, not `a--out`.
-    expect(ghostWarnings[0]).toContain('b--in');
-    expect(ghostWarnings[0]).toContain('0, 2');
+    expect(ghostWarnings.every((m) => m.includes('b--in'))).toBe(true);
+    const fromWarning = ghostWarnings.find((m) => m.includes('`from.ghosts`'))!;
+    const toWarning = ghostWarnings.find((m) => m.includes('`to.ghosts`'))!;
+    expect(fromWarning).toContain('0, 1');
+    expect(toWarning).toContain('0, 2');
   });
 
   it('10 — does NOT warn for a CONSTANT ghost count, nor for no ghosts at all', () => {
