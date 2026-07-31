@@ -22,8 +22,9 @@ import { resolveRegistered, registrationConfig } from '../theming/registry';
 import { isTransitionNode } from '../theming/transitions';
 import type {
   AnyPresentation, ResolvedTransition, TransitionNode, TransitionNodeProps,
-  TransitionRegistry, TransitionRenderer,
+  TransitionRegistry, TransitionRenderer, TransitionComposite,
 } from '../theming/transitions';
+import { useActiveTransitionProgress } from './video-track-plan';
 import { warnOnce } from './warn-once';
 import { CUT_KIND } from '../reel-config-base/transition-schema';
 import type { CoreTransition, TransitionKind } from '../reel-config-base/transition-schema';
@@ -446,6 +447,107 @@ export function fromRemotionPresentation(p: AnyPresentation): TransitionNode {
   return { composite };
 }
 
+/** LIFTS a one-sided Remotion presentation into the SINGLE-MOUNT `plan` arm
+ *  (Phase 5 Task 2.1) — the `LayerOp.wrap` counterpart of
+ *  `fromRemotionPresentation` above, for exactly the kinds `transitionNodeFor`
+ *  gates to it (`WRAP_PLAN_KINDS`, below). `fromRemotionPresentation` itself
+ *  is UNCHANGED and stays the lift for every kind that has not migrated yet
+ *  (Stage 2.2/2.3) — this is a SEPARATE function, not a mode switch on it,
+ *  because the generic lift must keep producing a `composite` for those
+ *  kinds; only `transitionNodeFor`'s call site decides which lift a given
+ *  kind gets.
+ *
+ *  THE SAME PRESENTATION, DRIVEN THE SAME WAY, THROUGH A DIFFERENT MEDIUM.
+ *  `@remotion/transitions`' own presentations style `children`; they never
+ *  re-render them (design §1.1, verified from `dist/types.d.ts`), which is
+ *  exactly `LayerOp.wrap`'s contract. `TransitionLayer` (above) is reused
+ *  unchanged — same `presentation`, same `direction`, same `progress`, same
+ *  `durationInFrames` — so a migrated kind's picture is a pure function of
+ *  the same inputs the old composite fed it; only WHERE those inputs come
+ *  from differs (a per-frame `ActiveTransitionProgressContext` value instead
+ *  of a prop on a freshly-instantiated subtree).
+ *
+ *  BUILT ONCE PER RESOLVED NODE, NOT PER PLAN CALL. `Wrap`'s own contract
+ *  (`LayerOp.wrap`'s doc comment) requires a STABLE component reference for
+ *  an item's whole life; `plan` is invoked fresh every live frame
+ *  (`VideoTrackHost`), so the two `Wrap` components are created HERE, outside
+ *  `plan`, and `plan` only ever returns references to these two closures —
+ *  never a new component. */
+export function wrapRemotionPresentation(p: AnyPresentation): TransitionNode {
+  const makeWrap = (
+    direction: 'entering' | 'exiting',
+  ): React.ComponentType<{ active: boolean; children: React.ReactNode }> => {
+    // THE NEUTRAL PROGRESS, PER DIRECTION — chosen so `TransitionLayer` is
+    // MOUNTED UNCONDITIONALLY, active or not, and only its `progress` prop
+    // varies. An earlier version of this function returned `<>{children}</>`
+    // (no wrapper at all) while inactive and `<TransitionLayer>…</TransitionLayer>`
+    // (a real wrapping element) while active — a Fragment-to-component TYPE
+    // CHANGE at `children`'s own tree position the instant `active` flips,
+    // which is a genuine remount (proven RED: `video-track-remount.test.tsx`'s
+    // derived ratchet failed `persists` on every one of the six migrated
+    // kinds' eight cases). `LayerOp.wrap`'s contract requires the element type
+    // at that position to be CONSTANT; varying only `style`/props on an
+    // always-mounted `TransitionLayer` is what actually satisfies it — the
+    // same rule `ItemBody`/`LayerShell` already follow elsewhere in this file
+    // and `video-track.tsx`/`video-track-plan.tsx`.
+    //
+    // EXITING neutral is progress 0, ENTERING neutral is progress 1 — the
+    // boundary the transition has not yet reached / has already finished —
+    // and this is EXACT (not merely close) for all six migrated kinds:
+    //   - `fade`/`dissolve`: exiting's opacity is 1 at ANY progress (no
+    //     kind here ever sets `shouldFadeOutExitingScene`); entering's
+    //     opacity is `progress`, so 1 at progress 1.
+    //   - `clock-wipe`/`iris`: exiting's `clipPath` is `undefined` at ANY
+    //     progress; entering's clip circle at progress 1 has radius
+    //     `sqrt(w²+h²)/2` — exactly the half-diagonal, so the circle
+    //     circumscribes the whole rectangular frame and clips nothing a
+    //     rectangular layer wasn't already confined to.
+    //   - `flip`: both directions' rotation is `interpolate(progress,[0,1],
+    //     [x,0])`-shaped, landing on 0° (no rotation) at their own neutral
+    //     endpoint.
+    //   - `slide`: exact at progress 1 for ALL FOUR authored directions
+    //     (`@remotion/transitions`' own `presentationProgress === 1` branch
+    //     removes its anti-seam epsilon exactly at that endpoint); at
+    //     progress 0 two of the four directions carry that same epsilon
+    //     (a 0.01% sub-pixel translate — `slide.js`'s own deliberate
+    //     anti-seam fudge, not something this lift introduces), which is
+    //     the one kind/direction pair not bit-exact at rest. Immaterial in
+    //     practice: sub-pixel, and the pixel harness never samples a frame
+    //     outside a live window in the first place.
+    const NEUTRAL_PROGRESS = direction === 'exiting' ? 0 : 1;
+
+    const Wrap: React.FC<{ active: boolean; children: React.ReactNode }> = ({ active, children }) => {
+      // A hook is legal here — `wrap` is a real React component, unlike
+      // `plan` itself (design §5: "a node that genuinely needs a hook uses
+      // `wrap`"). `useActiveTransitionProgress` is what makes this SAFE to
+      // share across boundaries (see its own doc comment): it is scoped by
+      // the TREE position `LayerShell` renders this instance at, not by this
+      // closure or by `p`.
+      const live = useActiveTransitionProgress();
+      const progress = active ? live.progress : NEUTRAL_PROGRESS;
+      return (
+        <TransitionLayer presentation={p} direction={direction} progress={progress} durationInFrames={live.durationInFrames}>
+          {children}
+        </TransitionLayer>
+      );
+    };
+    return Wrap;
+  };
+  const WrapFrom = makeWrap('exiting');
+  const WrapTo = makeWrap('entering');
+  // The plan itself ignores every prop it is given: both sides' pictures are
+  // driven entirely by the STABLE `wrap` references above, which read their
+  // own live progress off context rather than off `plan`'s own arguments.
+  // Nothing about "which boundary this is" needs to reach `plan` at all —
+  // the same property that makes the two `Wrap` references safe to share
+  // across boundaries in the first place.
+  const plan = (): TransitionComposite => ({
+    from: { wrap: WrapFrom },
+    to: { wrap: WrapTo },
+  });
+  return { plan };
+}
+
 // TASK R1 — FIX 3, UNIVERSAL (not preview-gated: this is pure caching of a
 // pure function's result, so it changes nothing about what gets drawn, in
 // preview OR at render time).
@@ -514,6 +616,33 @@ export function resetTransitionNodeCache(): void {
   transitionNodeCacheByRegistry = new WeakMap();
 }
 
+/** PHASE 5 TASK 2.1 — exactly the kinds migrated to `LayerOp.wrap`: the five
+ *  official `@remotion/transitions` presentations `fade`/`dissolve` alias
+ *  (`fade`, `dissolve`, `slide`, `flip`, `clock-wipe`, `iris`) plus
+ *  `fade-to-color`'s NO-COLOUR fallback (design §3 row 4 — with the catalog
+ *  default it renders through the plain `fade()`, so it is bucket A too).
+ *
+ *  Deliberately a KIND gate at the `transitionNodeFor` call site, not a
+ *  change to `PRESENTATIONS`/`resolveTransition`/`fromRemotionPresentation`
+ *  themselves: `resolveTransition` (and therefore `presentationFor`, the
+ *  compatibility surface both brand repos call directly with
+ *  `TransitionSeries`) must keep returning the plain one-sided
+ *  `AnyPresentation` for these kinds UNCHANGED — only the render path
+ *  (`transitionNodeFor`, which `AtCutTransition`/`buildVideoNodes` actually
+ *  use) lifts them differently. Gating inside `resolveTransition` instead
+ *  would have made `isTransitionNode(resolved)` true for these kinds
+ *  everywhere, which would have made `presentationFor` warn-and-hard-cut for
+ *  six extremely common kinds it has always served correctly — a real
+ *  regression for the six PP `web-program-intro` files design §8.5 measured
+ *  calling `presentationFor` directly. `fade-to-color` WITH a resolved
+ *  colour is unaffected either way: it already returns a `TransitionNode`
+ *  (native `composite`) straight out of `resolveTransition`, so
+ *  `isTransitionNode(resolved)` is true and this set is never consulted for
+ *  that branch. */
+const WRAP_PLAN_KINDS: ReadonlySet<string> = new Set([
+  'fade', 'dissolve', 'slide', 'flip', 'clock-wipe', 'iris', 'fade-to-color',
+]);
+
 /** THE RENDER PATH. Resolves a kind to the two-input node the boundary drives,
  *  lifting a one-sided presentation on the way when that is what it resolved
  *  to. Memoized — see the block above — so repeated calls with an unchanged
@@ -562,7 +691,14 @@ export function transitionNodeFor(t: TransitionRecord | undefined, dims: Dims): 
     return cached;
   }
 
-  const node = isTransitionNode(resolved) ? resolved : fromRemotionPresentation(resolved);
+  // `t` is guaranteed non-null here (`resolveTransition` only ever returns
+  // non-null when its own `t` argument was), so `t.kind` is safe to read for
+  // the WRAP_PLAN_KINDS gate below.
+  const node = isTransitionNode(resolved)
+    ? resolved
+    : WRAP_PLAN_KINDS.has(t!.kind)
+      ? wrapRemotionPresentation(resolved)
+      : fromRemotionPresentation(resolved);
   if (cache.size >= TRANSITION_NODE_CACHE_LIMIT) {
     const leastRecentlyUsedKey = cache.keys().next().value;
     if (leastRecentlyUsedKey !== undefined) cache.delete(leastRecentlyUsedKey);

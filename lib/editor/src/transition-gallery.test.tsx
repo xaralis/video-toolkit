@@ -41,6 +41,7 @@ import {
   type TransitionRecord,
 } from '@video-toolkit/lib/render/at-cut-transitions';
 import { TRANSITIONS, transitionMap } from '@video-toolkit/lib/transitions/TransitionGallery';
+import { ActiveTransitionProgressContext } from '@video-toolkit/lib/render/video-track-plan';
 
 /** The gallery's composition size. Stated here rather than imported, so this
  *  file's RED is an assertion about behaviour and not a missing export. */
@@ -58,17 +59,62 @@ const normalizeMountIds = (html: string): string =>
   html.replace(/(\bid="|url\(#)[^"')]*/g, '$1UID');
 
 // Phase 5 Task 1.1 widened `TransitionNode` into a `plan`/`composite` union.
-// Every node this file resolves is still composite-only — narrow once here
-// instead of at each call site.
+// Task 2.1 is the first to make a CATALOG kind resolve to `plan`
+// (`fade`/`dissolve`/`slide`/`flip`/`clock-wipe`/`iris`/colourless
+// `fade-to-color`), so `pictureOf` below now branches on the arm instead of
+// assuming composite-only.
 function compositeOf(node: TransitionNode): React.ComponentType<TransitionNodeProps> {
   if (typeof node.plan === 'function') throw new Error('expected a composite-arm TransitionNode in this test');
   return node.composite;
 }
 
+/** The picture a `plan`-arm node draws across its whole window — mirrors what
+ *  `LayerShell` (`lib/render/video-track-plan.tsx`) actually applies to an
+ *  already-mounted layer: `op.style`/`op.z` as the shell's own style, `op.wrap`
+ *  (when declared) mounted `active` around the content, and the live
+ *  progress delivered through `ActiveTransitionProgressContext` — the same
+ *  context a real `wrap` reads, not a prop. */
+const planPictureOf = (node: TransitionNode, durationInFrames = 40): string =>
+  [0, 0.25, 0.5, 0.75, 1]
+    .map((progress) => {
+      const frame = Math.round(progress * durationInFrames);
+      const composite = node.plan!({
+        from: { range: [0, durationInFrames] },
+        to: { range: [0, durationInFrames] },
+        progress,
+        frame,
+        durationInFrames,
+        params: {},
+        dims: { width: GALLERY_DIMS.width, height: GALLERY_DIMS.height, fps: GALLERY_DIMS.fps },
+        palette: [],
+        background: 'transparent',
+      });
+      const renderSide = (side: 'from' | 'to', content: React.ReactNode) => {
+        const op = composite[side];
+        const style: React.CSSProperties = {
+          ...(op?.style ?? {}),
+          ...(op?.z === undefined ? {} : { zIndex: op.z }),
+        };
+        const Wrap = op?.wrap;
+        return <div style={style}>{Wrap ? <Wrap active>{content}</Wrap> : content}</div>;
+      };
+      const { container, unmount } = render(
+        <ActiveTransitionProgressContext.Provider value={{ progress, frame, durationInFrames }}>
+          {renderSide('from', <div data-testid="a" />)}
+          {renderSide('to', <div data-testid="b" />)}
+        </ActiveTransitionProgressContext.Provider>,
+      );
+      const html = normalizeMountIds(container.innerHTML);
+      unmount();
+      return `p=${progress} ${html}`;
+    })
+    .join('\n');
+
 /** The picture a node draws across its whole window, as one comparable string.
  *  Both inputs are inert markers, so any difference is the TRANSITION's. */
-const pictureOf = (node: TransitionNode): string =>
-  [0, 0.25, 0.5, 0.75, 1]
+const pictureOf = (node: TransitionNode): string => {
+  if (typeof node.plan === 'function') return planPictureOf(node);
+  return [0, 0.25, 0.5, 0.75, 1]
     .map((progress) => {
       const Composite = compositeOf(node);
       const { container, unmount } = render(
@@ -89,6 +135,7 @@ const pictureOf = (node: TransitionNode): string =>
       return `p=${progress} ${html}`;
     })
     .join('\n');
+};
 
 /** What a REEL draws for this kind — the production resolver, at the gallery's
  *  own dimensions and with the kind's catalog defaults. */

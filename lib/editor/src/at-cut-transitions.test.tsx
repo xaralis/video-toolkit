@@ -66,6 +66,8 @@ import {
   type TransitionRecord,
 } from '@video-toolkit/lib/render/at-cut-transitions';
 import { resetWarnOnce } from '@video-toolkit/lib/render/warn-once';
+import { ActiveTransitionProgressContext } from '@video-toolkit/lib/render/video-track-plan';
+import { EdgePlate } from '@video-toolkit/lib/transitions/edge-plate';
 import type { AccentSlot } from '@video-toolkit/lib/theming/palette';
 import { paramChoices, type ParamOption } from '@video-toolkit/lib/reel-config-base/param-field';
 
@@ -83,6 +85,54 @@ const DIMS = { width: 1080, height: 1920 };
 function compositeOf(node: TransitionNode): React.ComponentType<TransitionNodeProps> {
   if (typeof node.plan === 'function') throw new Error('expected a composite-arm TransitionNode in this test');
   return node.composite;
+}
+
+/** Drives a `plan`-arm node's `wrap`s directly, mirroring what `LayerShell`
+ *  (`lib/render/video-track-plan.tsx`) applies to an already-mounted layer:
+ *  `op.style`/`op.z` as the shell's own style, `op.wrap` (when declared)
+ *  mounted `active` around the content, and the live progress delivered
+ *  through `ActiveTransitionProgressContext` — the same context a real
+ *  `wrap` reads, never a prop. Used wherever the OLD `compositeOf`-based
+ *  render no longer applies because a migrated kind has no `.composite`
+ *  (Task 2.1 moved `fade`, `dissolve`, `slide`, `flip`, `clock-wipe`, `iris`
+ *  and colourless `fade-to-color` onto `plan`). */
+function mountPlan(
+  node: TransitionNode,
+  inputs: { from?: React.ReactNode | null; to?: React.ReactNode | null },
+  progress: number,
+  background = 'transparent',
+  durationInFrames = 20,
+) {
+  const frame = Math.round(progress * durationInFrames);
+  const composite = node.plan!({
+    from: { range: [0, durationInFrames] },
+    to: { range: [0, durationInFrames] },
+    progress,
+    frame,
+    durationInFrames,
+    params: {},
+    dims: { width: 1080, height: 1920, fps: 30 },
+    palette: [],
+    background,
+  });
+  const renderSide = (side: 'from' | 'to', content: React.ReactNode) => {
+    const op = composite[side];
+    const style: React.CSSProperties = {
+      ...(op?.style ?? {}),
+      ...(op?.z === undefined ? {} : { zIndex: op.z }),
+    };
+    const Wrap = op?.wrap;
+    return <div style={style}>{Wrap ? <Wrap active>{content}</Wrap> : content}</div>;
+  };
+  const CLIP = <div data-testid="clip" />;
+  const fromContent = inputs.from === null ? <EdgePlate background={background} /> : (inputs.from ?? CLIP);
+  const toContent = inputs.to === null ? <EdgePlate background={background} /> : (inputs.to ?? CLIP);
+  return render(
+    <ActiveTransitionProgressContext.Provider value={{ progress, frame, durationInFrames }}>
+      {renderSide('from', fromContent)}
+      {renderSide('to', toContent)}
+    </ActiveTransitionProgressContext.Provider>,
+  );
 }
 
 // A brand's palette, invented here — core owns no colour vocabulary, so the
@@ -301,9 +351,13 @@ describe.each(KINDS)('transition kind %s', (kind) => {
       return;
     }
     expect(node).not.toBeNull();
-    expect(typeof compositeOf(node!)).toBe('function');
+    const isPlan = typeof node!.plan === 'function';
+    expect(typeof (isPlan ? node!.plan : compositeOf(node!))).toBe('function');
     // A native node has NO one-sided form to hand back; every other kind still
-    // does, and brands' `presentationFor` call sites still get it.
+    // does (a `plan`-arm kind included — it started as one, and
+    // `WRAP_PLAN_KINDS` in at-cut-transitions.tsx deliberately keeps
+    // `resolveTransition`/`presentationFor` unaware of the lift), and brands'
+    // `presentationFor` call sites still get it.
     const p = presentationFor(transition as never, DIMS);
     expect({ kind, oneSided: p !== null }).toEqual({ kind, oneSided: !isNode });
     if (p) {
@@ -316,7 +370,6 @@ describe.each(KINDS)('transition kind %s', (kind) => {
     const { transition } = probeTransitionFor(kind);
     const node = transitionNodeFor(transition as never, DIMS);
     if (!node) return; // cut
-    const Composite = compositeOf(node);
     const inputs: Array<[React.ReactNode | null, React.ReactNode | null]> = [
       [<div key="a" />, <div key="b" />],
       // The reel's leading and trailing edges — a node must survive a missing
@@ -324,23 +377,32 @@ describe.each(KINDS)('transition kind %s', (kind) => {
       [null, <div key="b" />],
       [<div key="a" />, null],
     ];
-    for (const progress of [0, 0.5, 1]) {
-      for (const [from, to] of inputs) {
-        expect(() =>
-          render(
-            <Composite
-              from={from}
-              to={to}
-              progress={progress}
-              durationInFrames={15}
-              width={1080}
-              height={1920}
-              fps={30}
-              palette={[]}
-              background="transparent"
-            />,
-          ).unmount(),
-        ).not.toThrow();
+    if (typeof node.plan === 'function') {
+      for (const progress of [0, 0.5, 1]) {
+        for (const [from, to] of inputs) {
+          expect(() => mountPlan(node, { from, to }, progress).unmount()).not.toThrow();
+        }
+      }
+    } else {
+      const Composite = compositeOf(node);
+      for (const progress of [0, 0.5, 1]) {
+        for (const [from, to] of inputs) {
+          expect(() =>
+            render(
+              <Composite
+                from={from}
+                to={to}
+                progress={progress}
+                durationInFrames={15}
+                width={1080}
+                height={1920}
+                fps={30}
+                palette={[]}
+                background="transparent"
+              />,
+            ).unmount(),
+          ).not.toThrow();
+        }
       }
     }
     // One-sided kinds are additionally driven through the layer core lifts them
@@ -1142,7 +1204,22 @@ describe('a reel edge resolves the missing input to the theme background', () =>
     palette: readonly AccentSlot[] = [],
   ) => {
     const t = { ...(defaultTransition(kind, { frames: 20 }) as object), ...extra } as unknown as TransitionRecord;
-    const Composite = compositeOf(transitionNodeFor(t, { ...DIMS, palette })!);
+    const node = transitionNodeFor(t, { ...DIMS, palette })!;
+    // Task 2.1 moved `fade`/`dissolve`/`slide`/`flip`/`clock-wipe`/`iris`/
+    // colourless `fade-to-color` onto the `plan` arm, which has no
+    // `.composite` — `mountPlan` (defined near `compositeOf`, above)
+    // exercises the SAME picture through `LayerOp.wrap`, the way `LayerShell`
+    // actually drives it.
+    if (typeof node.plan === 'function') {
+      return mountPlan(
+        node,
+        { from: inputs.from === undefined ? CLIP : inputs.from, to: inputs.to === undefined ? CLIP : inputs.to },
+        progress,
+        background,
+        20,
+      );
+    }
+    const Composite = compositeOf(node);
     return render(
       <Composite
         from={inputs.from === undefined ? CLIP : inputs.from}
@@ -1424,6 +1501,13 @@ describe('a fade’s colour is a parameter (fade-to-color)', () => {
     palette: readonly AccentSlot[] = PALETTE,
   ) => {
     const node = transitionNodeFor(t as unknown as TransitionRecord, { ...DIMS, palette })!;
+    // `fade`, `dissolve` and colourless `fade-to-color` are `plan`-arm since
+    // Task 2.1 (see `mountPlan`, defined near `compositeOf`, above) — only a
+    // COLOURED `fade-to-color` is still the native two-input `composite` node
+    // this block was built around.
+    if (typeof node.plan === 'function') {
+      return mountPlan(node, { from: A, to: B }, progress, 'transparent', 15);
+    }
     const Composite = compositeOf(node);
     return render(
       <Composite

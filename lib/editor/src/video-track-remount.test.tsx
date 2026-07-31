@@ -89,10 +89,26 @@ import type { VideoItem } from '@video-toolkit/lib/reel-config-base/layered-sche
 const clip = (id: string, startMs: number, endMs: number, extra: Record<string, unknown> = {}): VideoItem =>
   ({ id, kind: 'clip', startMs, endMs, source: `${id}.mp4`, sourceInMs: 0, sourceOutMs: endMs - startMs, ...extra }) as VideoItem;
 
-// a: 0-3000ms with a 20-frame fade out. b: 3000-6000ms. 30fps -> cut at frame
-// 90, `fade`'s default (center) alignment gives a window of [80, 100].
+// a: 0-3000ms with a 20-frame burn out. b: 3000-6000ms. 30fps -> cut at frame
+// 90, the default (center) alignment gives a window of [80, 100].
+//
+// PHASE 5 TASK 2.1 changed this fixture's KIND from `fade` to `burn` —
+// deliberately, not incidentally. Every hand-written test below (Fix 1/2/3,
+// R2, and the Task 1.2 shell-parity test) exercises `composite`-arm
+// mechanics specifically: the boundary Sequence, `rebased()` copies,
+// `ItemBody`'s blanking, the R1/R2 mount-count floors. `fade` migrated to
+// the `plan` arm this task, which does not blank, has no boundary Sequence
+// and no rebased copies at all — so this whole file's geometry, counts and
+// identities would silently start asserting something else entirely (or
+// simply fail, which is what happened here first: confirmed RED against the
+// unchanged fixture, `npx vitest run --no-file-parallelism
+// video-track-remount.test.tsx` failing exactly these 5 composite-arm
+// tests). `burn` is Stage 2.3's, not this task's, and keeps this file
+// pinning the arm it says it pins. The DERIVED section below (Task 1.3)
+// still names `fade` directly where it means to — this substitution is
+// scoped to the hand-written fixture alone.
 const reel = (): VideoItem[] => [
-  clip('a', 0, 3000, { transitionOut: { kind: 'fade', frames: 20 } }),
+  clip('a', 0, 3000, { transitionOut: { kind: 'burn', frames: 20 } }),
   clip('b', 3000, 6000),
 ];
 
@@ -229,10 +245,11 @@ describe('media elements alive around a footage cut (Task R2)', () => {
 //
 // Every video item is now wrapped in two always-mounted, style-only shells and
 // the whole track in one wrapper (lib/render/video-track-plan.tsx), so that a
-// `plan`-arm boundary has something to style. `fade` is a `composite`-arm kind
-// and every kind in the catalog still is, so this file's geometry, counts and
-// identities above must be UNCHANGED by their arrival — which is what makes
-// them a parity statement for the shells rather than only for R1/R2.
+// `plan`-arm boundary has something to style. `burn` (this file's fixture
+// kind since Task 2.1 moved `fade` to the `plan` arm) is still a
+// `composite`-arm kind, so this file's geometry, counts and identities above
+// must be UNCHANGED by the shells' arrival — which is what makes them a
+// parity statement for the shells rather than only for R1/R2.
 //
 // The single-mount path's own identity assertions live in
 // `single-mount-assembly.test.tsx`; this file stays the pin for the composite
@@ -365,14 +382,26 @@ describe('DERIVED — the plan/composite partition over the catalog is pinned', 
     expect(CATALOG_KINDS.length).toBe(TRANSITION_CATALOG.length - 1);
   });
 
-  // THE PIN ITSELF. Deliberately `toEqual([])`, not `toHaveLength(0)`: a
-  // failure here prints the offending kind NAMES, which is what a Stage 2
+  // THE PIN ITSELF. Deliberately a literal array, not a `.length` count: a
+  // failure here prints the offending kind NAMES, which is what the NEXT
   // migration needs to see to update this line deliberately, rather than a
   // bare count telling it only that something moved.
-  it('is EMPTY today — zero catalog kinds resolve to a plan node (re-derive; do not carry forward)', () => {
+  //
+  // PHASE 5 TASK 2.1 moved exactly SEVEN catalog kinds across this
+  // partition — `fromRemotionPresentation` → `LayerOp.wrap` for the five
+  // official `@remotion/transitions` presentations, the `fade`/`dissolve`
+  // alias, and `fade-to-color` AT ITS CATALOG DEFAULT: `defaultTransition`
+  // seeds no `color` (only booleans get seeded — `transition-schema.ts`'s
+  // own note), so the record `armOf` builds for it has none, which resolves
+  // through the plain `fade()` exactly like `fade` and `dissolve` do (see
+  // `WRAP_PLAN_KINDS` in `at-cut-transitions.tsx`). Order matches
+  // `CATALOG_KINDS`' own order (`TRANSITION_CATALOG`'s declaration order:
+  // `dissolve`, `fade`, `fade-to-color`, …, `slide`, `flip`, …, `clock-wipe`,
+  // `iris`, …), not the brief's prose order.
+  it('is exactly the six Task 2.1 migrated kinds — re-derive; do not carry forward', () => {
     expect.hasAssertions();
-    expect(PLAN_KINDS).toEqual([]);
-    expect(COMPOSITE_KINDS.length).toBe(CATALOG_KINDS.length);
+    expect(PLAN_KINDS).toEqual(['dissolve', 'fade', 'fade-to-color', 'slide', 'flip', 'clock-wipe', 'iris']);
+    expect(COMPOSITE_KINDS.length).toBe(CATALOG_KINDS.length - PLAN_KINDS.length);
   });
 });
 

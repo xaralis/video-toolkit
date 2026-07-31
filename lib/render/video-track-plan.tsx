@@ -98,6 +98,53 @@ const PlanCompositesContext = React.createContext<ReadonlyMap<string, Transition
 const EMPTY_WRAPS: ReadonlyMap<string, PlanBoundary['wrap']> = new Map();
 const PlanWrapContext = React.createContext<ReadonlyMap<string, PlanBoundary['wrap']>>(EMPTY_WRAPS);
 
+/** PHASE 5 TASK 2.1 — the live progress a `wrap` needs, delivered by CONTEXT
+ *  rather than by a prop or a closure.
+ *
+ *  `LayerOp.wrap`'s prop type is fixed at `{active, children}` (see its own
+ *  doc comment) — deliberately, because a `wrap` must be a STABLE reference
+ *  for an item's whole life, and `transitionNodeFor`'s memoization
+ *  (`at-cut-transitions.tsx`) can hand the IDENTICAL cached `TransitionNode`
+ *  — and therefore the identical `wrap` reference — to TWO DIFFERENT
+ *  boundaries whose authored config happens to be byte-identical (same
+ *  `kind`+`frames`+params). A `wrap` implementation that needs the live
+ *  progress (e.g. a lifted `@remotion/transitions` presentation driven via
+ *  `TransitionLayer`, Stage 2.1) cannot close over it either, for the same
+ *  reason: two SIMULTANEOUSLY MOUNTED boundaries sharing that one cached
+ *  node would corrupt each other's state through a shared closure. Context
+ *  sidesteps this because each `LayerShell` instance provides its OWN value
+ *  at its OWN tree position — scoped by the TREE, never by the `Wrap`
+ *  component's identity, so two instances of the same component reference
+ *  read two different values correctly. */
+export interface ActiveTransitionProgress {
+  /** 0..1, clamped — the same value `LayerShell`'s own boundary saw this
+   *  frame from `plan()`. Meaningless while `active` is false; a `wrap` must
+   *  not read it then (and every migrated `wrap` in this repo does not). */
+  readonly progress: number;
+  /** Boundary-relative frame — mirrors `TransitionPlanProps.frame`. */
+  readonly frame: number;
+  readonly durationInFrames: number;
+}
+const INACTIVE_PROGRESS: ActiveTransitionProgress = { progress: 0, frame: 0, durationInFrames: 0 };
+export const ActiveTransitionProgressContext =
+  React.createContext<ActiveTransitionProgress>(INACTIVE_PROGRESS);
+/** Read by a `wrap` implementation that needs this frame's live progress —
+ *  see the context's own doc comment for why this is a context, not a prop
+ *  or a closure. */
+export function useActiveTransitionProgress(): ActiveTransitionProgress {
+  return React.useContext(ActiveTransitionProgressContext);
+}
+
+/** Boundary-keyed, LIVE-ONLY (same population rule as `PlanCompositesContext`
+ *  — empty outside every window) — `LayerShell` reads its own boundary's
+ *  entry off this map and republishes it locally (scoped to just its own
+ *  `Wrap`) through `ActiveTransitionProgressContext` above. Not exported: a
+ *  `wrap` implementation never needs to know ITS OWN boundary key, only its
+ *  own live progress, which is exactly what the plain-value context gives
+ *  it. */
+const EMPTY_PROGRESS: ReadonlyMap<string, ActiveTransitionProgress> = new Map();
+const PlanProgressMapContext = React.createContext<ReadonlyMap<string, ActiveTransitionProgress>>(EMPTY_PROGRESS);
+
 /** THE STACKING RULE.
  *
  *  The DEFAULT — `to` over `from` — needs no `z-index` at all, and deliberately
@@ -240,6 +287,12 @@ export const VideoTrackHost: React.FC<{
     : new Map(boundaries.map((b) => [b.key, b.wrap] as const));
 
   let composites: Map<string, TransitionComposite> | null = null;
+  // PHASE 5 TASK 2.1 — the live progress alongside each live composite, keyed
+  // and populated identically (LIVE boundaries only; see
+  // `ActiveTransitionProgressContext`'s doc comment for why this exists as a
+  // separate map rather than a field on `TransitionComposite`: it is
+  // ASSEMBLY bookkeeping a node never sees, not part of what a node returns).
+  let progresses: Map<string, ActiveTransitionProgress> | null = null;
   let post: React.CSSProperties | undefined;
   let postFrom: string | undefined;
 
@@ -249,8 +302,10 @@ export const VideoTrackHost: React.FC<{
     // has to draw, the same reason the `composite` arm's boundary Sequence is
     // `frames + BOUNDARY_TAIL` long.
     if (local < 0 || local > b.frames) continue;
-    const composite = b.plan({ ...b.props, progress: planProgress(local, b.frames), frame: local });
+    const progress = planProgress(local, b.frames);
+    const composite = b.plan({ ...b.props, progress, frame: local });
     (composites ??= new Map()).set(b.key, composite);
+    (progresses ??= new Map()).set(b.key, { progress, frame: local, durationInFrames: b.frames });
     auditGhosts(b, composite);
     if (composite.post) {
       // DEV WARNING — at most one live boundary may set `post`. Two overlapping
@@ -281,7 +336,9 @@ export const VideoTrackHost: React.FC<{
     <div style={style}>
       <PlanWrapContext.Provider value={wraps}>
         <PlanCompositesContext.Provider value={composites ?? EMPTY_COMPOSITES}>
-          {children}
+          <PlanProgressMapContext.Provider value={progresses ?? EMPTY_PROGRESS}>
+            {children}
+          </PlanProgressMapContext.Provider>
         </PlanCompositesContext.Provider>
       </PlanWrapContext.Provider>
     </div>
@@ -362,6 +419,7 @@ export const LayerShell: React.FC<{
 }> = ({ boundaryKey, side, children }) => {
   const composites = React.useContext(PlanCompositesContext);
   const wraps = React.useContext(PlanWrapContext);
+  const progresses = React.useContext(PlanProgressMapContext);
   const op = boundaryKey === null ? undefined : composites.get(boundaryKey)?.[side];
   // `active` — the boundary is LIVE this frame, independent of whether this
   // particular SIDE's op happens to be present (a plan that sets only `to`
@@ -386,9 +444,22 @@ export const LayerShell: React.FC<{
   // disagreement that could otherwise flicker the element type for one
   // frame at the window's opening edge.
   const Wrap = boundaryKey === null ? undefined : wraps.get(boundaryKey)?.[side];
+  // PHASE 5 TASK 2.1 — the live progress, republished LOCALLY (scoped to just
+  // this `Wrap`) rather than left for `Wrap` to look up itself: `Wrap` cannot
+  // know its own `boundaryKey` (see `ActiveTransitionProgressContext`'s doc
+  // comment for why it must not, either — a cached node shared across two
+  // boundaries has ONE `Wrap` reference answering for BOTH). Reading nothing
+  // (`INACTIVE_PROGRESS`) when there is no live entry is safe: a `wrap` must
+  // not consult progress while `active` is false, and this is exactly the
+  // frames where that is true.
+  const liveProgress = boundaryKey === null ? undefined : progresses.get(boundaryKey);
   return (
     <div style={style}>
-      {Wrap ? <Wrap active={active}>{children}</Wrap> : children}
+      {Wrap ? (
+        <ActiveTransitionProgressContext.Provider value={liveProgress ?? INACTIVE_PROGRESS}>
+          <Wrap active={active}>{children}</Wrap>
+        </ActiveTransitionProgressContext.Provider>
+      ) : children}
       {/* Ghosts are appended AFTER the real child, never before it: an
           appearing or disappearing ghost must not shift the child's tree
           position, or the child remounts and the extra mount costs the very

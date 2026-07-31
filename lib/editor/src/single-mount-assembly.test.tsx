@@ -101,12 +101,17 @@ const plan = (p: TransitionPlanProps): TransitionComposite => {
 
 const REGISTRY: TransitionRegistry = { planned: { renderer: () => ({ plan }) } };
 
-// a --planned--> b --fade--> c. 30fps, 3s each: cuts at frames 90 and 180,
+// a --planned--> b --burn--> c. 30fps, 3s each: cuts at frames 90 and 180,
 // both transitions 20 frames and centre-aligned, so the windows are [80, 100]
 // (plan) and [170, 190] (composite).
+//
+// `burn`, not `fade` — Phase 5 Task 2.1 moved `fade` onto the `plan` arm via
+// `LayerOp.wrap`, which would make BOTH of this fixture's boundaries `plan`,
+// destroying the whole "mixed reel" premise this describe block exists to
+// exercise. `burn` is Stage 2.3's and stays `composite`.
 const MIXED = (): VideoItem[] => [
   clip('a', 0, 3000, { transitionOut: { kind: 'planned', frames: 20 } }),
-  clip('b', 3000, 6000, { transitionOut: { kind: 'fade', frames: 20 } }),
+  clip('b', 3000, 6000, { transitionOut: { kind: 'burn', frames: 20 } }),
   clip('c', 6000, 9000),
 ];
 
@@ -431,9 +436,10 @@ describe('`post` applies to the whole video track, narrowly', () => {
     expect(wrapper(container).style.isolation).toBe('isolate');
 
     // A composite-only reel is byte-identical to before this task: no
-    // stacking context, so nothing about blending changes.
+    // stacking context, so nothing about blending changes. `burn`, not
+    // `fade` — see MIXED's own comment above for why.
     rerender(tree([
-      clip('x', 0, 3000, { transitionOut: { kind: 'fade', frames: 20 } }),
+      clip('x', 0, 3000, { transitionOut: { kind: 'burn', frames: 20 } }),
       clip('y', 3000, 6000),
     ]));
     expect(wrapper(container).style.isolation).toBe('');
@@ -694,6 +700,100 @@ describe('a plate\'s `content` and the window\'s progress-1 frame', () => {
     expect(container.querySelectorAll('[data-testid="plate-content"]').length).toBe(0);
     expect([...container.querySelectorAll('div')]
       .some((d) => d.style.backgroundColor === 'rgb(16, 16, 16)')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PHASE 5 TASK 2.1 — a REAL catalog kind through the REAL pipeline, no test
+// registry.
+//
+// Every other test in this file builds its `plan` node out of a test-only
+// brand registry — the right way to test the SEAM (a boundary either takes
+// the plan route or the composite one), but none of them prove core's OWN
+// `fromRemotionPresentation` → `wrap` lift (this task's actual deliverable,
+// `wrapRemotionPresentation` in at-cut-transitions.tsx) is wired end to end:
+// `VideoTrackHost` computing live progress → `LayerShell` publishing it
+// through `ActiveTransitionProgressContext`, scoped to just its own `Wrap`
+// instance → the migrated kind's own `Wrap` reading it and driving
+// `TransitionLayer`. `fade` is core's own catalog kind, resolved with NO
+// registry at all — the ordinary path every brand repo already exercises.
+// ---------------------------------------------------------------------------
+describe('a REAL catalog kind (`fade`) reaches the shells through the real pipeline (Task 2.1)', () => {
+  // a: 0-3000ms with a 20-frame fade out. b: 3000-6000ms. 30fps -> cut at
+  // frame 90, `fade`'s default (center) alignment gives a window of [80, 100]
+  // — both items' own Sequences already span it (design §1.2), so neither
+  // clip is duplicated or blanked; the shells just style the one mount.
+  const FADE_REEL = (): VideoItem[] => [
+    clip('a', 0, 3000, { transitionOut: { kind: 'fade', frames: 20 } }),
+    clip('b', 3000, 6000),
+  ];
+  const fadeTree = () => (
+    <>
+      {buildVideoNodes(FADE_REEL(), {
+        renderItem: (item) => <video data-testid={`vid-${item.id}`} />,
+        width: 540, height: 960, fps: 30, palette: undefined,
+      })}
+    </>
+  );
+  // The opacity-carrying element is `FadePresentation`'s own `AbsoluteFill`,
+  // reached through `TransitionLayer` inside whichever of the item's two
+  // shells declares the live `wrap` — the OUTER (exit) shell for `a`, the
+  // INNER (enter) shell for `b`, since a `wrap` styles everything BELOW it
+  // and the two items' active sides sit at different nesting depths. Walking
+  // up to the first ancestor with a non-empty `opacity` style finds it either
+  // way, rather than hard-coding a level count that only holds for one side.
+  const opacityAncestor = (el: Element): HTMLElement => {
+    for (let cur = el.parentElement; cur; cur = cur.parentElement) {
+      if (cur.style.opacity !== '') return cur;
+    }
+    throw new Error('no ancestor with an opacity style');
+  };
+  const shellOf = (container: HTMLElement, id: string) =>
+    opacityAncestor(container.querySelector(`[data-testid="vid-${id}"]`)!);
+
+  // `fade`'s EXITING branch is the identity function (opacity 1 at ANY
+  // progress — `@remotion/transitions/fade` never sets
+  // `shouldFadeOutExitingScene`), so `a` (the outgoing side) is expected to
+  // stay opacity 1 throughout; `b` (the incoming side) is the one whose
+  // opacity is a live function of progress. This is the exact asymmetry
+  // `edge-plate.tsx`'s module docblock names as the historic defect
+  // (`fade` "did nothing as a transitionOut") that the reel-edge background
+  // now answers — unaffected by this task, still visible here as a property
+  // of the presentation itself, not of the lift.
+  it('the incoming clip fades in at the LIVE progress the assembly computed, not a stale or default one', () => {
+    clock.frame = 85; // local 5 of 20 -> progress 0.25
+    const { container, rerender } = render(fadeTree());
+    expect(shellOf(container, 'a').style.opacity).toBe('1');
+    expect(shellOf(container, 'b').style.opacity).toBe('0.25');
+
+    clock.frame = 95; // local 15 of 20 -> progress 0.75
+    rerender(fadeTree());
+    expect(shellOf(container, 'a').style.opacity).toBe('1');
+    expect(shellOf(container, 'b').style.opacity).toBe('0.75');
+  });
+
+  // `b`'s own Sequence starts exactly at the window's own start (design
+  // §1.2's "`b.start === entry.seqFrom` for the `to` side by construction"),
+  // so it has no PRE-window life to sample here — only POST. `a` has the
+  // opposite shape (full pre-window life, no life after its own Sequence
+  // ends), which is why each side is sampled on the edge it actually has.
+  it('outside the window the shell is neutral (opacity 1 — no visible effect), not absent or stuck at a stale progress', () => {
+    clock.frame = 50; // long before `a`'s exit window opens; `a` is on screen
+    const { container, rerender } = render(fadeTree());
+    expect(shellOf(container, 'a').style.opacity).toBe('1');
+
+    clock.frame = 150; // well after the window has closed; `b` is on screen
+    rerender(fadeTree());
+    expect(shellOf(container, 'b').style.opacity).toBe('1');
+  });
+
+  it('does not remount the incoming clip’s DOM node as progress advances', () => {
+    clock.frame = 85;
+    const { container, rerender } = render(fadeTree());
+    const first = container.querySelector('[data-testid="vid-b"]');
+    clock.frame = 95;
+    rerender(fadeTree());
+    expect(container.querySelector('[data-testid="vid-b"]')).toBe(first);
   });
 });
 
