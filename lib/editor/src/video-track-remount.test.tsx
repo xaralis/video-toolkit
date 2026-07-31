@@ -412,6 +412,18 @@ function instancesOf(container: HTMLElement, testid: string): Element[] {
   return Array.from(container.querySelectorAll(`[data-testid="${testid}"]`));
 }
 
+/** Two element arrays name the SAME SET of DOM references — order-independent,
+ *  reference identity, not structural equality. Used only for the IN-WINDOW
+ *  constancy check below (Review Round 2): a plain `.every(includes)` in one
+ *  direction is not enough there, because it would not notice a reference
+ *  being replaced by another of equal count (the exact "destroyed and
+ *  recreated, count constant" case Review Round 2 flagged as the flaw in a
+ *  count-only check). Both directions, at equal length, is what actually
+ *  pins "the same references, no more, no fewer". */
+function sameElements(a: readonly Element[], b: readonly Element[]): boolean {
+  return a.length === b.length && a.every((el) => b.includes(el));
+}
+
 /** Sweeps EVERY frame in `[window.start - PAD, window.start + window.frames +
  *  PAD]` (clamped at 0) — not spot samples — and returns TWO metrics, used by
  *  DIFFERENT buckets below for a reason (Review Round 1, Important 1):
@@ -427,70 +439,117 @@ function instancesOf(container: HTMLElement, testid: string): Element[] {
  *  (main + a red-shifted copy + a cyan-shifted copy,
  *  `lib/transitions/presentations/rgb-split.tsx`) — the SAME element
  *  reference reused at three tree positions, which React mounts as three
- *  separate DOM nodes — so `distinct === 3` there, correctly flagged.
+ *  separate DOM nodes, PLUS the item's own hidden copy (Fix 1) — so
+ *  `distinct === 4` there (measured; an earlier version of this comment said
+ *  3, counting only the presentation's own internal copies and missing the
+ *  item's own — the assertion was never affected, only this count), and
+ *  `distinct > 1` correctly flags it either way.
  *
- *  `persists` — whether every reference present on the FIRST frame the item
- *  is observed at all (`baseline`) is still present — by reference, via
- *  `Array.includes`, not structural equality — on every LATER frame the item
- *  is on screen (a frame with zero matches is not "on screen" and is not
- *  checked). This is what the PLAN bucket (and the ghost-tolerance proof)
- *  assert on: a `plan`'s `LayerOp.ghosts` is a documented, DELIBERATE
- *  feature — "each entry is one extra MOUNT of the clip" — whose only
- *  invariant is a progress-INVARIANT count, so a stable ghost must not fail
- *  the plan bucket. `distinct > 1` would fail it anyway (a ghost is a real
- *  second element); `persists` does not, because nothing that was already on
- *  screen had to leave for the ghost to appear. A reference that WAS there
- *  and stops answering — the composite arm's own copy being released (Task
- *  R2's `drawnThrough`), or a REBASED copy being swapped in behind it — DOES
- *  fail `persists`, because `baseline` still names it.
+ *  `persists` — REVIEW ROUND 2, IMPORTANT 1 REWRITE. The original
+ *  formulation ("every reference on the first observed frame survives to
+ *  every later on-screen frame") is FALSE on 4 of a kind's 8 derived plan-arm
+ *  cases whenever a legal, stable ghost sits on the SIDE WHOSE OWN SEQUENCE
+ *  STARTS EXACTLY AT `window.start`: `interior/incoming`, `leading` (and,
+ *  symmetrically, any ghost authored on `to` — the axis the first
+ *  ghost-tolerance proof happened not to exercise, having been built on
+ *  `from` instead). On that side there are no PRE-window on-screen frames, so
+ *  `baseline` is captured on the window's own first frame — WITH the ghost
+ *  already in it — and the ghost's mandatory disappearance at window close
+ *  then reads, correctly by the old rule but WRONGLY in intent, as a lost
+ *  baseline reference. Measured: `interior/incoming` and `leading` both
+ *  report `persists === false` for a plan with one stable ghost on `to`,
+ *  while `interior/outgoing` and `trailing` (ghost on `from`, which DOES have
+ *  pre-window life) report `true` — the same plan, the same invariant, one
+ *  formulation, inconsistent by which side happens to have run-up frames.
  *
- *  WHY THE COMPOSITE BUCKET CANNOT JUST USE `persists` TOO — the finding that
- *  drove this split. `wipe` (a native two-input node, one-sided-per-half:
- *  "ONE continuous sheet motion... the swap happens behind the sheet at the
- *  midpoint", `lib/transitions/presentations/wipe.tsx`) renders only ONE of
- *  its two inputs at a time. Measured directly (`interior/center/incoming`,
- *  30fps, 20-frame window at [80,100]): `vid-b` has 0 matches at frames
- *  75-79, 1 match (b's own hidden copy via Fix 1) at 80-89 (progress < 0.5,
- *  only `from` renders), 2 matches at 90-100 (progress >= 0.5, the rebased
- *  `to` copy joins it), back to 1 at 101+. `baseline` is captured at frame
- *  80 — the FIRST frame with any match — where only b's own copy exists, so
- *  the REBASED copy that appears later is, from `persists`' point of view,
- *  indistinguishable from a legitimate ghost: it was never in baseline, so
- *  its later disappearance is not a violation. `persists` reports `true` for
- *  a kind that plainly duplicates the mount (`distinct === 2` on the very
- *  same sweep). This is exactly the class the task brief warned about
- *  ("stop and report" an unexpectedly-passing composite kind) — reported
- *  here, and resolved by NOT using `persists` for the composite bucket at
- *  all, rather than special-casing `wipe`.
+ *  `rgb-split` is why this cannot be dismissed as an edge case nobody hits:
+ *  it is Stage 3, its whole migration IS `ghosts`, and `@remotion/
+ *  transitions` applies a per-SIDE presentation — meaning the migrated node
+ *  puts its ghosts on `to`, exactly the axis the old formulation broke on.
+ *
+ *  The fix is two SEPARATE criteria, both required, each catching a
+ *  different half of "did this item genuinely remount":
+ *
+ *  1. BASE-MOUNT PERSISTENCE, across EVERY on-screen frame (not just
+ *     in-window ones): the running INTERSECTION of every observed frame's
+ *     matches. A reference survives in this intersection only if it appears
+ *     at EVERY frame the item is on screen anywhere in the sweep — before,
+ *     during, and after the window. Non-empty at the end means the item had
+ *     ONE mount that was never destroyed. This is what fails the composite
+ *     arm's own copy being released (R2's `drawnThrough`, or a REBASED copy
+ *     swapped in behind it): neither the pre-window "own" reference nor a
+ *     window-only "rebased" reference can be in EVERY frame's matches, so the
+ *     intersection collapses to empty. It does NOT fail a ghost — a ghost is
+ *     never expected to survive OUTSIDE the window, so it was never going to
+ *     be in this intersection regardless of whether it behaves.
+ *  2. IN-WINDOW REFERENCE-SET CONSTANCY: the exact SET of matches (by
+ *     reference, via `sameElements`, not merely by COUNT — Review Round 2's
+ *     explicit warning: a ghost destroyed and recreated mid-window keeps the
+ *     count constant while the identity changes, which a count-only check
+ *     would miss entirely) must be IDENTICAL across every frame WITHIN
+ *     `[window.start, window.start + window.frames]`. A stable ghost is
+ *     present on every in-window frame with the same reference, so this
+ *     holds; a ghost whose COUNT varies with progress, or whose identity
+ *     changes frame to frame while the count stays fixed, both break it.
+ *     This check says nothing about frames outside the window, which is
+ *     exactly why a ghost legitimately appearing at window-open and vanishing
+ *     at window-close never trips it — those transitions happen AT the
+ *     window boundary, never observed as an in-window inconsistency.
+ *
+ *  `persists` is the AND of both. Verified against all four axis shapes with
+ *  a stable ghost (ghost on whichever side is under test): all four now
+ *  report `persists === true` — see the ghost-tolerance proofs below, one per
+ *  axis. Verified against an UNSTABLE `wrap` (a fresh component reference
+ *  every call, forcing a real remount): criterion 1 collapses to an empty
+ *  intersection within two frames, `persists === false`, unchanged from
+ *  before. Verified against a ghost whose COUNT varies with progress:
+ *  criterion 2 breaks the moment the in-window set size changes, `persists
+ *  === false` — see the "varying ghost count" pin below, closing a coverage
+ *  gap Review Round 2 flagged: after Round 1's fix, nothing in this file
+ *  could see a varying ghost count at all (it was covered only as collateral
+ *  of failing EVERY ghost under the old rule).
  *
  *  `observed` is the VACUITY GUARD every caller must check before trusting
- *  either metric: a query matching nothing makes `observed === 0` (and both
- *  `distinct === 0` and `persists === true` trivially, since nothing was
- *  ever checked), and a query matching on exactly ONE frame also leaves both
- *  trivially "nothing happened" — Task R1's "compare a captured reference to
- *  itself" trap, one level up. `observed`'s own floor is derived from the
- *  window's geometry (see `IDENTITY_OBSERVED_FLOOR`), not a fixed constant —
- *  Review Round 1, Important 2: a fixed `>= 2` left a wide corridor (measured
- *  values on this fixture run 15-31 in a 26-31-frame sweep) where a refactor
- *  collapsing real coverage down to a handful of frames would still pass. */
+ *  either metric: a query matching nothing makes `observed === 0`,
+ *  `distinct === 0`, and `persists === false` (the base intersection is
+ *  never established, so it defaults to size 0 — deliberately NOT a
+ *  trivial pass; a broken query should never read as a clean result on
+ *  either metric). A query matching on exactly ONE frame is the more
+ *  dangerous case — Task R1's "compare a captured reference to itself" — and
+ *  IS trivially a pass on both metrics (one frame is its own intersection
+ *  and its own in-window baseline), which is exactly why `observed` must be
+ *  checked before either metric is trusted, every time. `observed`
+ *  has PER-ARM floors (see `IDENTITY_OBSERVED_FLOOR_COMPOSITE` /
+ *  `_PLAN`), not one shared constant — Review Round 2's "consider, not
+ *  require" note: the composite arm's own copy can be released mid-window
+ *  (R2's `drawnThrough`) and `wipe` additionally shows only one side per
+ *  half, so its floor stays loose (`Math.ceil(frames / 2)`, Review Round 1);
+ *  the PLAN arm never blanks at all (`video-track.tsx`'s `blanked` map is
+ *  built from composite boundaries only), so its measured minimum on this
+ *  fixture is `window.frames + IDENTITY_PAD` exactly (25 of 20+5, the
+ *  tightest of the four axes) — a floor roughly 3x tighter than the
+ *  composite one is both correct and cheap to state precisely, so it is
+ *  stated precisely rather than left at the loose shared constant. */
 const IDENTITY_PAD = 5;
 
-/** The conservative floor for `observed`, derived from `window.frames`
- *  rather than a magic number — `Math.ceil(window.frames / 2)`, not
- *  `window.frames` itself. A first draft used the full window length and
- *  broke on `wipe`'s OUTGOING side: its own copy is released (Task R2)
- *  exactly when the window opens, and `wipe` only renders `from` for the
- *  FIRST HALF of the window (see `sweepIdentity`'s docblock) — so the
- *  measured floor for that axis is `IDENTITY_PAD` (5, guaranteed pre-window)
- *  plus half the window (10), i.e. 15 on this fixture, genuinely below
- *  `window.frames` (20). Half the window is what survives that: SOME frame
- *  in each half of the window draws something (a two-beat design still has
- *  to show each side at least once), so at least half the window plus
- *  whatever pre/post-window life the item has is a safe lower bound for
- *  every kind measured — while remaining far tighter than the old fixed `2`,
- *  high enough that a sweep collapsing to a handful of frames still fails
- *  it. */
-const IDENTITY_OBSERVED_FLOOR = (window: { frames: number }) => Math.ceil(window.frames / 2);
+/** See `sweepIdentity`'s docblock, "`observed` is the VACUITY GUARD...". A
+ *  first draft used this same formula (`Math.ceil(window.frames / 2)`) for
+ *  BOTH arms; kept here for the composite bucket specifically because it is
+ *  the one arm whose own copy can be released mid-window (R2) and whose
+ *  `wipe` axis is measured at 15 of a 20-frame window (5 pre-window PAD +
+ *  half the window, `wipe` rendering only one side per half). */
+const IDENTITY_OBSERVED_FLOOR_COMPOSITE = (window: { frames: number }) => Math.ceil(window.frames / 2);
+
+/** The PLAN arm never blanks (`video-track.tsx`: `blanked` is built from
+ *  composite boundaries only), so an item is on screen for essentially the
+ *  ENTIRE sweep bar the one side of PAD it genuinely has no life in (a
+ *  leading-edge item has no pre-window frames; a trailing/outgoing item has
+ *  no post-window frames). `window.frames + IDENTITY_PAD` is therefore a
+ *  safe, precise floor — measured minimum on this fixture is exactly 25 (a
+ *  20-frame window + 5-frame PAD), the tightest of the four axis shapes —
+ *  roughly 3x tighter than the composite floor, stated as its own constant
+ *  rather than left at the shared, looser one. */
+const IDENTITY_OBSERVED_FLOOR_PLAN = (window: { frames: number }) => window.frames + IDENTITY_PAD;
 
 function sweepIdentity(
   items: VideoItem[],
@@ -510,8 +569,9 @@ function sweepIdentity(
   clock.frame = from;
   const { container, rerender } = render(identityTree(items, registry));
   const seen = new Set<Element>();
-  let baseline: Element[] | null = null;
-  let persists = true;
+  let baseIntersection: Set<Element> | null = null;
+  let inWindowBaseline: Element[] | null = null;
+  let inWindowConstant = true;
   let observed = 0;
   for (let f = from; f <= to; f += 1) {
     clock.frame = f;
@@ -520,13 +580,25 @@ function sweepIdentity(
     if (matches.length === 0) continue;
     observed += 1;
     for (const el of matches) seen.add(el);
-    if (baseline === null) {
-      baseline = matches;
-      continue;
+
+    // Criterion 1: base-mount persistence, over the WHOLE sweep.
+    if (baseIntersection === null) {
+      baseIntersection = new Set(matches);
+    } else {
+      for (const el of baseIntersection) if (!matches.includes(el)) baseIntersection.delete(el);
     }
-    if (!baseline.every((el) => matches.includes(el))) persists = false;
+
+    // Criterion 2: in-window reference-set constancy, IN-WINDOW frames only.
+    if (f >= window.start && f <= window.start + window.frames) {
+      if (inWindowBaseline === null) {
+        inWindowBaseline = matches;
+      } else if (!sameElements(inWindowBaseline, matches)) {
+        inWindowConstant = false;
+      }
+    }
   }
-  return { distinct: seen.size, persists, observed };
+  const basePersists = (baseIntersection?.size ?? 0) > 0;
+  return { distinct: seen.size, persists: basePersists && inWindowConstant, observed };
 }
 
 interface IdentityCase {
@@ -621,7 +693,7 @@ describe.each(COMPOSITE_KINDS)('DERIVED — composite-arm "%s" remounts across t
   it.each(casesFor(kind).map((c): [string, IdentityCase] => [c.label, c]))('%s', (_label, c) => {
     expect.hasAssertions();
     const { distinct, observed } = sweepIdentity(c.items, c.testid, c.window);
-    expect(observed).toBeGreaterThanOrEqual(IDENTITY_OBSERVED_FLOOR(c.window));
+    expect(observed).toBeGreaterThanOrEqual(IDENTITY_OBSERVED_FLOOR_COMPOSITE(c.window));
     expect(distinct).toBeGreaterThan(1);
   });
 });
@@ -639,7 +711,7 @@ describe.each(PLAN_KINDS)('DERIVED — plan-arm "%s" never remounts across the c
   it.each(casesFor(kind).map((c): [string, IdentityCase] => [c.label, c]))('%s', (_label, c) => {
     expect.hasAssertions();
     const { persists, observed } = sweepIdentity(c.items, c.testid, c.window);
-    expect(observed).toBeGreaterThanOrEqual(IDENTITY_OBSERVED_FLOOR(c.window));
+    expect(observed).toBeGreaterThanOrEqual(IDENTITY_OBSERVED_FLOOR_PLAN(c.window));
     expect(persists).toBe(true);
   });
 });
@@ -718,7 +790,7 @@ describe('DERIVED proof — the identity sweep is capable of PASSING, not only o
     planCalls = 0;
     for (const c of buildCases('single-mount-probe')) {
       const { persists, observed } = sweepIdentity(c.items, c.testid, c.window, REGISTRY);
-      expect(observed, c.label).toBeGreaterThanOrEqual(IDENTITY_OBSERVED_FLOOR(c.window));
+      expect(observed, c.label).toBeGreaterThanOrEqual(IDENTITY_OBSERVED_FLOOR_PLAN(c.window));
       expect(persists, c.label).toBe(true);
     }
     // The positive check: the plan actually ran. Without this, a broken
@@ -728,53 +800,174 @@ describe('DERIVED proof — the identity sweep is capable of PASSING, not only o
     expect(planCalls).toBeGreaterThan(0);
   });
 
-  // REVIEW ROUND 1, IMPORTANT 1 — THE TOLERANCE PROOF. A stable, legal
-  // `ghosts` entry (count does not vary with progress, exactly the
-  // `LayerOp.ghosts` invariant) must PASS, because nothing that was already
-  // on screen had to leave for the ghost to appear. This is the case that
-  // would have failed `rgb-split`'s eventual migration under the old
-  // distinct-count formulation.
-  // The ghost is on the `from` (outgoing, `a`) side deliberately, not `to`:
-  // `a`'s own Sequence starts at composition frame 0, well before this
-  // boundary's window, so the sweep observes several genuine PRE-window
-  // frames (no ghost yet) before `baseline` is captured. `b` (incoming) would
-  // be the wrong choice here — its own Sequence is borrowed to start exactly
-  // AT the window's opening frame (same coincidence documented in
-  // `sweepIdentity`'s `wipe` finding above), so `baseline` would capture the
-  // ghost as part of the FIRST observed frame, and its later disappearance
-  // (once the window closes) would then — correctly, by the same rule — read
-  // as a violation. That is not a bug in `persists`; it is why this proof
-  // is built on the side that actually has pre-window life to establish a
-  // ghost-free baseline against.
-  const ghostPlan = (p: TransitionPlanProps): TransitionComposite => ({
+});
+
+// ---------------------------------------------------------------------------
+// REVIEW ROUND 1, IMPORTANT 1 (the tolerance proof) → REVIEW ROUND 2,
+// IMPORTANT 1 (the same proof, rewritten, run on all four axis shapes).
+//
+// A stable, legal `ghosts` entry (count does not vary with progress, exactly
+// the `LayerOp.ghosts` invariant) must PASS on every axis, because nothing
+// that was already on screen had to leave for the ghost to appear. Round 1's
+// proof was built ONLY on the `from` (outgoing) side, which is the one shape
+// where tolerance was never structurally in doubt (that side always has
+// genuine pre-window on-screen frames to establish a ghost-free baseline
+// against). Round 2's re-review added a ghost on `to` and found the OLD
+// `persists` formulation false on `interior/incoming` and `leading` — the two
+// axes whose item Sequence starts exactly AT `window.start`, so there is no
+// pre-window frame at all and the ghost is present on the very first frame
+// ever observed. `sweepIdentity`'s current two-criterion formulation (base
+// intersection over the WHOLE sweep + in-window set constancy) fixes this by
+// construction — a ghost is never expected to survive OUTSIDE the window
+// (criterion 1 doesn't require it to), and it IS present, stably, on EVERY
+// in-window frame regardless of which side or axis it is authored on
+// (criterion 2 only compares within the window). This is not asserted, it is
+// run: all four axis shapes below, ghost on whichever side is actually under
+// test.
+//
+// `rgb-split` — Stage 3, whose entire migration IS `ghosts`, applied per SIDE
+// by `@remotion/transitions` — is why the `to`-side axes are not optional
+// coverage: the migrated node's ghosts land on `to`, exactly the shape Round
+// 1's proof did not exercise.
+describe('DERIVED proof — a stable, legal ghost is tolerated on every axis shape', () => {
+  const ghostPlanFrom = (p: TransitionPlanProps): TransitionComposite => ({
     from: { style: { opacity: 1 - p.progress }, ghosts: [{ opacity: 0.5 }] },
     to: { style: { opacity: p.progress } },
   });
-  const GHOST_REGISTRY: TransitionRegistry = { 'single-mount-ghost-probe': { renderer: () => ({ plan: ghostPlan }) } };
-  const ghostLayoutOpts = { brandKinds: new Set(Object.keys(GHOST_REGISTRY)) };
+  const ghostPlanTo = (p: TransitionPlanProps): TransitionComposite => ({
+    from: { style: { opacity: 1 - p.progress } },
+    to: { style: { opacity: p.progress }, ghosts: [{ opacity: 0.5 }] },
+  });
+  const GHOST_FROM_REGISTRY: TransitionRegistry = { 'single-mount-ghost-from-probe': { renderer: () => ({ plan: ghostPlanFrom }) } };
+  const GHOST_TO_REGISTRY: TransitionRegistry = { 'single-mount-ghost-to-probe': { renderer: () => ({ plan: ghostPlanTo }) } };
+  const fromOpts = { brandKinds: new Set(Object.keys(GHOST_FROM_REGISTRY)) };
+  const toOpts = { brandKinds: new Set(Object.keys(GHOST_TO_REGISTRY)) };
 
-  it('tolerates a stable, legal ghost — persists === true even though a second element genuinely exists', () => {
-    expect.hasAssertions();
-    const interior: VideoItem[] = [
-      clip('a', 0, 3000, { transitionOut: { kind: 'single-mount-ghost-probe', frames: IDENTITY_FRAMES } }),
+  interface GhostCase extends IdentityCase { registry: TransitionRegistry }
+
+  const ghostCases = (): GhostCase[] => {
+    const interiorFrom: VideoItem[] = [
+      clip('a', 0, 3000, { transitionOut: { kind: 'single-mount-ghost-from-probe', frames: IDENTITY_FRAMES } }),
       clip('b', 3000, 6000),
     ];
-    const layout = computeVideoLayout(interior, IDENTITY_FPS, ghostLayoutOpts);
+    const layoutFrom = computeVideoLayout(interiorFrom, IDENTITY_FPS, fromOpts);
+    const outWindow = {
+      start: layoutFrom[0].seqFrom + layoutFrom[0].seqDuration - layoutFrom[0].outFrames,
+      frames: layoutFrom[0].outFrames,
+    };
+
+    const interiorTo: VideoItem[] = [
+      clip('a', 0, 3000, { transitionOut: { kind: 'single-mount-ghost-to-probe', frames: IDENTITY_FRAMES } }),
+      clip('b', 3000, 6000),
+    ];
+    const layoutTo = computeVideoLayout(interiorTo, IDENTITY_FPS, toOpts);
+    const inWindow = { start: layoutTo[1].seqFrom, frames: layoutTo[1].inFrames };
+
+    const leading: VideoItem[] = [
+      clip('solo', 0, 3000, { transitionIn: { kind: 'single-mount-ghost-to-probe', frames: IDENTITY_FRAMES } }),
+    ];
+    const layoutLeading = computeVideoLayout(leading, IDENTITY_FPS, toOpts);
+
+    const trailing: VideoItem[] = [
+      clip('solo', 0, 3000, { transitionOut: { kind: 'single-mount-ghost-from-probe', frames: IDENTITY_FRAMES } }),
+    ];
+    const layoutTrailing = computeVideoLayout(trailing, IDENTITY_FPS, fromOpts);
+
+    return [
+      {
+        label: 'interior/outgoing (ghost on from — the one Round 1 already proved)',
+        items: interiorFrom, testid: 'vid-a', window: outWindow, registry: GHOST_FROM_REGISTRY,
+      },
+      {
+        label: 'interior/incoming (ghost on to — the one that was false)',
+        items: interiorTo, testid: 'vid-b', window: inWindow, registry: GHOST_TO_REGISTRY,
+      },
+      {
+        label: 'leading (ghost on to — the other one that was false)',
+        items: leading, testid: 'vid-solo',
+        window: { start: layoutLeading[0].seqFrom, frames: layoutLeading[0].inFrames },
+        registry: GHOST_TO_REGISTRY,
+      },
+      {
+        label: 'trailing (ghost on from)',
+        items: trailing, testid: 'vid-solo',
+        window: {
+          start: layoutTrailing[0].seqFrom + layoutTrailing[0].seqDuration - layoutTrailing[0].outFrames,
+          frames: layoutTrailing[0].outFrames,
+        },
+        registry: GHOST_FROM_REGISTRY,
+      },
+    ];
+  };
+
+  it.each(ghostCases().map((c): [string, GhostCase] => [c.label, c]))(
+    '%s — persists === true even though a second element genuinely exists',
+    (_label, c) => {
+      expect.hasAssertions();
+      // Vacuity guard of its own: confirm the ghost is actually mounted
+      // before trusting a green `persists` — a query matching nothing would
+      // make this proof meaningless in the OTHER direction.
+      clock.preview = true;
+      clock.frame = c.window.start + Math.floor(c.window.frames / 2);
+      const { container } = render(identityTree(c.items, c.registry));
+      expect(instancesOf(container, c.testid).length).toBeGreaterThanOrEqual(2);
+
+      const { persists, observed } = sweepIdentity(c.items, c.testid, c.window, c.registry);
+      expect(observed).toBeGreaterThanOrEqual(IDENTITY_OBSERVED_FLOOR_PLAN(c.window));
+      expect(persists).toBe(true);
+    },
+  );
+});
+
+// ---------------------------------------------------------------------------
+// REVIEW ROUND 2 — THE COVERAGE GAP LEFT BY TOLERATING GHOSTS AT ALL.
+//
+// `auditGhosts` (`lib/render/video-track-plan.tsx:161`) dev-warns at runtime
+// when a boundary's `ghosts.length` varies with progress — the ONE invariant
+// `LayerOp.ghosts` actually has. Before Review Round 1's fix, this file's
+// `distinct === 1` formulation covered that defect class as pure collateral:
+// EVERY ghost failed identity, varying or not, so nothing was lost by not
+// naming the case explicitly. After tolerating a STABLE ghost, that
+// collateral coverage is gone — nothing in this file could tell a varying
+// ghost count from a stable one anymore. This pin closes that gap directly,
+// independent of `auditGhosts`'s own dev-warning mechanism: a varying ghost
+// count must fail `persists` HERE, on the identity ratchet, not only produce
+// a console warning elsewhere.
+describe('DERIVED proof — a ghost whose count VARIES with progress is NOT tolerated', () => {
+  const varyingGhostPlan = (p: TransitionPlanProps): TransitionComposite => ({
+    from: { style: { opacity: 1 - p.progress }, ghosts: p.progress < 0.5 ? [] : [{ opacity: 0.5 }] },
+    to: { style: { opacity: p.progress } },
+  });
+  const VARYING_GHOST_REGISTRY: TransitionRegistry = {
+    'single-mount-varying-ghost-probe': { renderer: () => ({ plan: varyingGhostPlan }) },
+  };
+  const varyingOpts = { brandKinds: new Set(Object.keys(VARYING_GHOST_REGISTRY)) };
+
+  it('reports persists === false — the in-window reference SET is not constant', () => {
+    expect.hasAssertions();
+    const interior: VideoItem[] = [
+      clip('a', 0, 3000, { transitionOut: { kind: 'single-mount-varying-ghost-probe', frames: IDENTITY_FRAMES } }),
+      clip('b', 3000, 6000),
+    ];
+    const layout = computeVideoLayout(interior, IDENTITY_FPS, varyingOpts);
     const outWindow = {
       start: layout[0].seqFrom + layout[0].seqDuration - layout[0].outFrames,
       frames: layout[0].outFrames,
     };
-    // `a` (the `from` side) is the one carrying the ghost — confirm the ghost
-    // is actually there (a vacuity guard of its own: a query that happens to
-    // match nothing would make this proof meaningless), then confirm
-    // `persists` is still `true` despite it.
+    // Vacuity guard of its own: confirm the count genuinely DOES differ
+    // across the window before trusting a red `persists` — this is the proof
+    // that the fixture exercises the defect this test claims to catch.
     clock.preview = true;
-    clock.frame = outWindow.start + Math.floor(outWindow.frames / 2);
-    const { container } = render(identityTree(interior, GHOST_REGISTRY));
-    expect(instancesOf(container, 'vid-a').length).toBeGreaterThanOrEqual(2);
+    clock.frame = outWindow.start + Math.floor(outWindow.frames * 0.25); // progress < 0.5
+    const { container, rerender } = render(identityTree(interior, VARYING_GHOST_REGISTRY));
+    const early = instancesOf(container, 'vid-a').length;
+    clock.frame = outWindow.start + Math.floor(outWindow.frames * 0.75); // progress >= 0.5
+    rerender(identityTree(interior, VARYING_GHOST_REGISTRY));
+    const late = instancesOf(container, 'vid-a').length;
+    expect(late).toBeGreaterThan(early);
 
-    const { persists, observed } = sweepIdentity(interior, 'vid-a', outWindow, GHOST_REGISTRY);
-    expect(observed).toBeGreaterThanOrEqual(IDENTITY_OBSERVED_FLOOR(outWindow));
-    expect(persists).toBe(true);
+    const { persists, observed } = sweepIdentity(interior, 'vid-a', outWindow, VARYING_GHOST_REGISTRY);
+    expect(observed).toBeGreaterThanOrEqual(IDENTITY_OBSERVED_FLOOR_PLAN(outWindow));
+    expect(persists).toBe(false);
   });
 });
