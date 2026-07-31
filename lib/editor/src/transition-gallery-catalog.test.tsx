@@ -11,7 +11,46 @@
 // DERIVED: a kind the catalog gains shows up in the gallery with no gallery
 // edit at all.
 import React from 'react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { render } from '@testing-library/react';
+
+const clock = vi.hoisted(() => ({ frame: 0 }));
+
+// Fix round 1 (Task 2.1 review, Important 1): `NodeTransitionDemo` now goes
+// through `buildVideoNodes` — a real Remotion assembly — instead of
+// forwarding a pre-resolved node as a prop, so exercising its render path
+// (below) needs the same `Sequence` mock every other suite touching
+// `buildVideoNodes` uses (the REAL `Sequence` calls `useVideoConfig()`
+// internally in a way overriding the hook alone does not satisfy outside a
+// registered `<Composition>` — jsdom has none).
+vi.mock('remotion', async () => {
+  const actual = await vi.importActual<typeof import('remotion')>('remotion');
+  const react = await import('react');
+  const Offset = react.createContext(0);
+
+  const Sequence: React.FC<{
+    from?: number;
+    durationInFrames?: number;
+    layout?: 'none' | 'absolute-fill';
+    children?: React.ReactNode;
+  }> = ({ from = 0, durationInFrames = Number.POSITIVE_INFINITY, children }) => {
+    const parentOffset = react.useContext(Offset);
+    const offset = parentOffset + from;
+    const local = clock.frame - offset;
+    if (local < 0 || local >= durationInFrames) return null;
+    return react.createElement(Offset.Provider, { value: offset }, children);
+  };
+
+  return {
+    ...actual,
+    Sequence,
+    useCurrentFrame: () => clock.frame - react.useContext(Offset),
+    useVideoConfig: () => ({
+      width: 1920, height: 1080, fps: 30, durationInFrames: 300, id: 'test', defaultProps: {}, props: {},
+    }),
+    staticFile: (s: string) => s,
+  };
+});
 
 import {
   TRANSITION_CATALOG,
@@ -79,9 +118,22 @@ describe('the gallery table is DERIVED, not listed', () => {
 
   it('and it appears with the node ITS OWN renderer resolved', () => {
     expect(entry?.node).toBe(fakeNode);
-    // Not just present in the array: the demo the gallery renders is handed
-    // that same node.
-    expect((entry?.render().props as { node?: TransitionNode } | undefined)?.node).toBe(fakeNode);
+    // Not just present in the array: the demo the gallery ACTUALLY RENDERS
+    // resolves through the SAME registry — `entry.node` alone would also be
+    // satisfied by a demo that silently re-resolved through core's kinds
+    // instead of the fixture's `dimsWithFake.transitions` (this is exactly
+    // the fix round 1 regression: `NodeTransitionDemo` no longer takes a
+    // pre-resolved `node` prop, it re-resolves via `buildVideoNodes`, so the
+    // registry has to reach that call too — see `NodeTransitionDemo`'s own
+    // `dims` prop). Rendering and finding the fixture's own marker is what
+    // proves the registry-fed resolution actually ran, not merely that
+    // `galleryTransitionNode` (used only to populate `entry.node`) can see it.
+    // Frame 90 is the cut point itself (`sceneADuration`, the default 90
+    // frames, converted to ms and back) — inside the boundary window under
+    // any alignment, so the live composite is guaranteed to be mounted.
+    clock.frame = 90;
+    const { container } = render(<>{entry?.render()}</>);
+    expect(container.querySelectorAll('[data-testid="fake-transition"]').length).toBeGreaterThan(0);
   });
 
   it('a kind with no prose falls back to its catalog label, so it still reads', () => {

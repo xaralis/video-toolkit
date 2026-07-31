@@ -15,8 +15,10 @@ import { AbsoluteFill, useCurrentFrame, interpolate, Sequence } from 'remotion';
 // THE RENDER PATH, imported deliberately. A gallery whose whole job is to show
 // what a reel looks like must resolve a kind the way a reel resolves it — see
 // `galleryTransitionNode` below.
-import { AtCutTransition, transitionNodeFor } from '../render/at-cut-transitions';
+import { transitionNodeFor } from '../render/at-cut-transitions';
 import type { TransitionNode, TransitionRecord } from '../render/at-cut-transitions';
+import { buildVideoNodes } from '../render/video-track';
+import type { VideoItem } from '../reel-config-base/layered-schema';
 import { defaultTransition, isCut, TRANSITION_CATALOG } from '../reel-config-base/transition-schema';
 import type { TransitionKind } from '../reel-config-base/transition-schema';
 
@@ -300,46 +302,87 @@ export function galleryTransitionNode(kind: TransitionKind, dims: GalleryDims = 
 
 /** ONE demo component for every kind.
  *
- *  It drives the boundary the way `lib/render/video-track.tsx` does: scene A
- *  alone, then a boundary Sequence of `transitionDuration` frames in which
- *  `AtCutTransition` composites BOTH scenes, then scene B alone. Total length
- *  is `sceneA + sceneB - transitionDuration`.
+ *  FIX ROUND 1 (Task 2.1 review, Important 1) — REWRITTEN TO GO THROUGH
+ *  `buildVideoNodes`, THE SAME ASSEMBLY A REEL USES, rather than hand-rolling
+ *  a 3-`Sequence` mini-assembly around `AtCutTransition` directly.
+ *  `AtCutTransition` is the `composite` ARM's boundary compositor — its
+ *  `plan` branch is a defined dead end (it warns
+ *  `at-cut-transition:plan-arm-wrong-entry-point` and hard-cuts, "reached
+ *  through the wrong entry point", not "not built yet"). Since Task 2.1 seven
+ *  kinds (`fade`, `dissolve`, `slide`, `flip`, `clock-wipe`, `iris`,
+ *  colourless `fade-to-color`) resolve to `plan`, so driving them through
+ *  `AtCutTransition` directly silently hard-cut the commonest transitions in
+ *  the showcase — exactly the regression the task brief's "do not regress
+ *  it" line named, and nothing caught it because the test comparing the
+ *  gallery's picture to the reel's picture routed BOTH sides through the same
+ *  hand-rolled helper, so the comparison held by construction while the
+ *  gallery's OWN render path (this component) went untested.
  *
- *  This replaced a `TransitionSeries`-based sibling in Task 2.6. The sibling
- *  could not show a two-input node at all (that is why four kinds had no entry),
- *  and keeping both would have meant the gallery deciding per kind which
- *  contract to use — one more parallel table, in the shape of an if.
+ *  `buildVideoNodes` already contains the per-boundary arm dispatch
+ *  (`typeof node.plan === 'function'`), so driving the demo through it means
+ *  the gallery shows EXACTLY what a reel would show for `name` — real
+ *  boundary-overlap geometry (`computeVideoLayout`'s own handle borrowing,
+ *  default `center` alignment) included, not an approximation of it. Two
+ *  synthetic `VideoItem`s (`kind: 'outro'`, the one video-item kind needing
+ *  no `source`/trim fields) stand in for scenes A and B; `renderItem` is the
+ *  seam that swaps in `GalleryScene` for whatever a real reel would put
+ *  there. The resolved `TransitionNode` this component used to receive as a
+ *  prop is no longer needed for RENDERING (re-resolving it via `name` inside
+ *  `buildVideoNodes` is the same call `galleryTransitionNode` already makes,
+ *  so there is no second source of truth) — `GalleryEntry.node` still carries
+ *  it, for `pictureOf`/`reelPictureFor`'s own direct comparison.
  *
- *  The scenes' own clocks restart at the boundary (each Sequence is its own
- *  timeline), which is cosmetic here: `GalleryScene`'s only animation is a
- *  10-frame label fade-in. */
+ *  `dims` DEFAULTS TO `GALLERY_DIMS` BUT MUST BE THE CALLER'S OWN — the seam
+ *  `transition-gallery-catalog.test.tsx`'s derivation proof rides in on: a
+ *  probe-only kind reaches this component only through `dims.transitions`
+ *  (a brand-style registry), the same way `galleryTransitionNode` resolved
+ *  `entry.node` from it. Hardcoding `GALLERY_DIMS` here (no `transitions`)
+ *  would resolve every demo through CORE's kinds only, silently dropping any
+ *  registry a caller threaded through `buildGalleryEntries`. */
 function NodeTransitionDemo({
   name,
   note,
-  node,
+  dims = GALLERY_DIMS,
   transitionDuration = DEMO_TRANSITION_FRAMES,
   sceneADuration = DEFAULT_SCENE_DURATION,
   sceneBDuration = DEFAULT_SCENE_DURATION,
 }: {
-  name: string;
+  name: TransitionKind;
   note: string;
-  node: TransitionNode;
+  dims?: GalleryDims;
   transitionDuration?: number;
   sceneADuration?: number;
   sceneBDuration?: number;
 }) {
   const a = <GalleryScene color={SCENE_A_COLOR} label={name} note={note} />;
   const b = <GalleryScene color={SCENE_B_COLOR} label={name} note={note} isAfter />;
-  const cutAt = sceneADuration - transitionDuration;
+
+  // Frames -> ms at the gallery's own fps, for the synthetic items'
+  // `startMs`/`endMs` — `computeVideoLayout` converts back with
+  // `Math.round((ms/1000)*fps)`, which round-trips exactly for the small
+  // integer frame counts this file uses.
+  const framesToMs = (frames: number) => Math.round((frames * 1000) / dims.fps);
+  const cutMs = framesToMs(sceneADuration);
+  const items: VideoItem[] = [
+    {
+      id: `${name}-a`, kind: 'outro', startMs: 0, endMs: cutMs,
+      transitionOut: { kind: name, frames: transitionDuration },
+    } as unknown as VideoItem,
+    {
+      id: `${name}-b`, kind: 'outro', startMs: cutMs, endMs: cutMs + framesToMs(sceneBDuration),
+    } as unknown as VideoItem,
+  ];
+
   return (
     <AbsoluteFill>
-      <Sequence durationInFrames={cutAt}>{a}</Sequence>
-      <Sequence from={cutAt} durationInFrames={transitionDuration}>
-        <AtCutTransition node={node} from={a} to={b} frames={transitionDuration} dims={GALLERY_DIMS} />
-      </Sequence>
-      <Sequence from={sceneADuration} durationInFrames={sceneBDuration - transitionDuration}>
-        {b}
-      </Sequence>
+      {buildVideoNodes(items, {
+        renderItem: (item) => (item.id === `${name}-a` ? a : b),
+        width: dims.width,
+        height: dims.height,
+        fps: dims.fps,
+        palette: dims.palette,
+        transitions: dims.transitions,
+      })}
     </AbsoluteFill>
   );
 }
@@ -452,7 +495,7 @@ export function buildGalleryEntries(
           <NodeTransitionDemo
             name={kind}
             note={note}
-            node={node}
+            dims={dims}
             transitionDuration={DEMO_TRANSITION_FRAMES}
             sceneADuration={DEFAULT_SCENE_DURATION}
             sceneBDuration={DEFAULT_SCENE_DURATION}

@@ -19,9 +19,33 @@ const clock = vi.hoisted(() => ({ frame: 0 }));
 
 vi.mock('remotion', async () => {
   const actual = await vi.importActual<typeof import('remotion')>('remotion');
+  const react = await import('react');
+  const Offset = react.createContext(0);
+
+  // A minimal frame-gating/time-rebasing `Sequence`, additive to this file's
+  // existing coverage: every test before fix round 1 drove a `TransitionNode`
+  // directly (`pictureOf`), never through `NodeTransitionDemo`/
+  // `buildVideoNodes`, so the REAL `Sequence` (which needs a registered
+  // `<Composition>` jsdom has none of) was never exercised here. Task 2.1 fix
+  // round 1's "the gallery composition renders every kind" pin (below) is the
+  // first thing in this file that does.
+  const Sequence: React.FC<{
+    from?: number;
+    durationInFrames?: number;
+    layout?: 'none' | 'absolute-fill';
+    children?: React.ReactNode;
+  }> = ({ from = 0, durationInFrames = Number.POSITIVE_INFINITY, children }) => {
+    const parentOffset = react.useContext(Offset);
+    const offset = parentOffset + from;
+    const local = clock.frame - offset;
+    if (local < 0 || local >= durationInFrames) return null;
+    return react.createElement(Offset.Provider, { value: offset }, children);
+  };
+
   return {
     ...actual,
-    useCurrentFrame: () => clock.frame,
+    Sequence,
+    useCurrentFrame: () => clock.frame - react.useContext(Offset),
     useVideoConfig: () => ({
       width: 1920, height: 1080, fps: 30, durationInFrames: 300,
       id: 'test', defaultProps: {}, props: {},
@@ -42,6 +66,7 @@ import {
 } from '@video-toolkit/lib/render/at-cut-transitions';
 import { TRANSITIONS, transitionMap } from '@video-toolkit/lib/transitions/TransitionGallery';
 import { ActiveTransitionProgressContext } from '@video-toolkit/lib/render/video-track-plan';
+import { resetWarnOnce } from '@video-toolkit/lib/render/warn-once';
 
 /** The gallery's composition size. Stated here rather than imported, so this
  *  file's RED is an assertion about behaviour and not a missing export. */
@@ -195,5 +220,59 @@ describe('the gallery shows what reels render', () => {
   it('does NOT show @remotion/transitions/wipe, which is a different component', () => {
     const official = pictureOf(fromRemotionPresentation(officialWipe() as never));
     expect(reelPictureFor('wipe')).not.toBe(official);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FIX ROUND 1 (Task 2.1 review, Important 1).
+//
+// `NodeTransitionDemo` used to drive every kind through `AtCutTransition`
+// directly — the `composite` arm's own boundary compositor. Its `plan`
+// branch is a DEFINED DEAD END (`at-cut-transition:plan-arm-wrong-entry-point`,
+// warn-and-hard-cut — "reached through the wrong entry point", not "not built
+// yet"). Task 2.1 moved seven catalog kinds (`fade`, `dissolve`, `slide`,
+// `flip`, `clock-wipe`, `iris`, colourless `fade-to-color`) onto `plan`, so
+// the showcase (`showcase/transitions/src/Root.tsx` renders `TransitionGallery`)
+// silently stopped demonstrating seven of its commonest entries — and nothing
+// in this file caught it, because `pictureOf`'s plan branch and
+// `reelPictureFor` both drove the SAME hand-rolled harness, so their equality
+// held by construction while the gallery's OWN render path
+// (`NodeTransitionDemo`) went completely untested.
+//
+// FIXED by routing `NodeTransitionDemo` through `buildVideoNodes` (the actual
+// per-boundary arm dispatch a reel uses) instead of `AtCutTransition`
+// directly. This is the test that PROVES it, rather than inferring it from
+// the implementation: render the ACTUAL gallery composition's own entries —
+// `TRANSITIONS`, derived from the catalog, not a hand-picked subset — and
+// assert the `plan-arm-wrong-entry-point` warning never fires for any of
+// them. A silent hard cut has no OTHER reliable signature to assert on here
+// (a hard cut still shows scene A or scene B — a real, non-blank picture —
+// it just never shows the TRANSITION between them), which is exactly why
+// this warning existing and being asserted-absent is the right instrument:
+// the alternative (asserting a specific pixel per kind) would re-litigate
+// `pictureOf`'s existing per-kind coverage instead of closing this file's
+// actual gap, which is about the GALLERY'S OWN RENDER PATH, not the node's
+// picture.
+describe('the gallery composition renders every catalog kind through its OWN render path (fix round 1, Important 1)', () => {
+  it('never emits the plan-arm-wrong-entry-point warning, for any TRANSITIONS entry', () => {
+    expect.hasAssertions();
+    resetWarnOnce();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      for (const entry of TRANSITIONS) {
+        // `entry.sceneA` (90 frames, the demo's own default) is the cut point
+        // every entry shares — inside the boundary window under any
+        // alignment, so a live plan OR composite boundary is guaranteed to be
+        // mounted, not merely scene A or B playing alone either side of it.
+        clock.frame = entry.sceneA;
+        const { unmount } = render(<>{entry.render()}</>);
+        unmount();
+      }
+      const wrongEntryPoint = warn.mock.calls.filter(([m]) => String(m).includes('supplied `plan` instead of `composite`'));
+      expect(wrongEntryPoint).toEqual([]);
+    } finally {
+      warn.mockRestore();
+      resetWarnOnce();
+    }
   });
 });
