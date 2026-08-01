@@ -7,10 +7,12 @@
  * Best for: Playful reveals, retro aesthetics, creative transitions
  *
  * PHASE 5 TASK 4 — `composite` → `plan`, THE LAST COMPOSITE KIND. Stages 2-3
- * migrated nineteen of the catalog's twenty kinds; `checkerboard` was the one
- * kind design's own bucket-C carve-out names as "expressible with a
- * carve-out" rather than a plain lift. After this task every catalog kind
- * resolves to a `plan`; Stage 5 owns deleting the (now dead) composite arm.
+ * migrated eighteen of the catalog's nineteen NON-`cut` kinds (`cut` itself
+ * never had a composite/plan arm to migrate — it is a hard cut, excluded from
+ * this count both before and after); `checkerboard` was the one kind design's
+ * own bucket-C carve-out names as "expressible with a carve-out" rather than
+ * a plain lift. After this task every non-`cut` catalog kind resolves to a
+ * `plan`; Stage 5 owns deleting the (now dead) composite arm.
  *
  * THE DEFAULT PATH — `squareAnimation: 'fade'` — is Task 0.1's SVG alpha
  * mask, moved onto the `plan` contract UNCHANGED in mechanism: one mounted

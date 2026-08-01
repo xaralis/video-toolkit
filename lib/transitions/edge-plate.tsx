@@ -1,10 +1,13 @@
-// THE REEL'S EDGES, as a picture (Phase 4 Task 2.2).
+// THE REEL'S EDGES, as a picture (Phase 4 Task 2.2; props updated for Phase 5
+// Task 5's flip to `plan` — see the footer note below for what changed).
 //
 // A transition is an operation on TWO pictures. At the reel's leading edge
 // there is no outgoing clip, and at its trailing edge no incoming one — which
-// is why `TransitionNodeProps.from`/`to` are nullable. Until this task the
-// missing side was simply not drawn, and every kind whose EXITING branch is
-// the identity function therefore did NOTHING as a `transitionOut`: `fade`,
+// is why `TransitionPlanProps.from`/`to` (today's node-props type; the
+// deleted `TransitionNodeProps` was Task 2.2's name for the same nullability)
+// are nullable. Before Task 2.2 the missing side was simply not drawn, and
+// every kind whose EXITING branch is the identity function therefore did
+// NOTHING as a `transitionOut`: `fade`,
 // `dissolve`, `fade-to-color` with no colour, `burn`, `clock-wipe`, `iris`,
 // `gradient-wipe`, and
 // `checkerboard` (which drew no grid there at all).
@@ -17,8 +20,9 @@
 // THE COLOUR IS ALWAYS PASSED IN, never chosen here. Core owns no colour
 // vocabulary — a literal `#000` in this file would be precisely the brand leak
 // the theming programme exists to remove. It arrives as
-// `TransitionNodeProps.background`, threaded from `CompositionTheme.background`
-// (layered-composition → buildVideoNodes → AtCutTransition → the node). A
+// `TransitionPlanProps.background`, threaded from `CompositionTheme.background`
+// (layered-composition → buildVideoNodes → the node's `plan`, no boundary
+// compositor in between since Task 5 deleted `AtCutTransition`). A
 // caller with no background in scope gets `transparent`, which paints nothing
 // and leaves whatever sits behind the video track showing — the pre-2.2 pixel.
 //

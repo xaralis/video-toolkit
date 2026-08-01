@@ -104,13 +104,18 @@ const clip = (id: string, startMs: number, endMs: number, extra: Record<string, 
 // partition, not a hand-copied list, so this file tracks that one rather than
 // drifting from it.
 const CATALOG_KINDS = TRANSITION_CATALOG.map((e) => e.kind).filter((k) => !isCut(k));
-function armOf(kind: string): 'plan' | 'composite' {
+// PHASE 5 TASK 5 — `TransitionNode` has only ONE arm now, so this no longer
+// DISTINGUISHES an arm; it proves the kind resolves to a real node at all
+// (as opposed to `null` — an unrecognised kind or a resolution regression),
+// which is why the filter below is kept rather than replaced with a bare
+// alias to `CATALOG_KINDS`.
+function resolvesToNode(kind: string): boolean {
   const record = getTransitionRecord(defaultTransition(kind, { frames: FRAMES }));
   const node = transitionNodeFor(record, DIMS);
-  return typeof node?.plan === 'function' ? 'plan' : 'composite';
+  return typeof node?.plan === 'function';
 }
 resetTransitionNodeCache();
-const PLAN_KINDS = CATALOG_KINDS.filter((k) => armOf(k) === 'plan');
+const PLAN_KINDS = CATALOG_KINDS.filter((k) => resolvesToNode(k));
 
 beforeEach(() => {
   clock.preview = false;
@@ -119,17 +124,19 @@ beforeEach(() => {
 });
 
 // THE PIN'S OWN VACUITY GUARD. `describe.each(PLAN_KINDS)` below silently
-// shrinks — with NO red anywhere — if a kind falls off `WRAP_PLAN_KINDS`
+// shrinks — with NO red anywhere — if a kind stops resolving to a node
 // entirely (it would just stop appearing in this derived list, the same
 // "empty describe.each passes trivially" trap `video-track-remount.test.tsx`
 // already guards against for the identity ratchet). A literal array, not a
 // count, so a shrink prints exactly which kind went missing.
-// PHASE 5 TASK 3 adds `rgb-split` and `scanline-glitch`, bringing the
-// partition to EIGHTEEN — the same derivation `video-track-remount.test.tsx`
-// pins, re-derived here rather than imported, per that file's own note.
-// PHASE 5 TASK 4 adds `checkerboard` — the catalog's last composite kind —
-// bringing the partition to NINETEEN, the WHOLE catalog.
-it('PLAN_KINDS is exactly the nineteen Task 2.1+2.2+2.3+3+4 migrated kinds — re-derive; do not carry forward', () => {
+// HISTORICAL — PHASE 5 TASK 3 added `rgb-split` and `scanline-glitch` to the
+// partition (bringing it to eighteen of nineteen), and TASK 4 added
+// `checkerboard`, the catalog's last composite kind, completing it at
+// NINETEEN — the whole non-`cut` catalog. `TransitionNode`'s `composite` arm
+// was deleted in Task 5, so `PLAN_KINDS` is now simply `CATALOG_KINDS` (an
+// identity filter, verified by `resolvesToNode`) rather than a migrated
+// subset.
+it('PLAN_KINDS is exactly the catalog\'s nineteen non-cut kinds — re-derive; do not carry forward', () => {
   expect.hasAssertions();
   expect(PLAN_KINDS).toEqual([
     'dissolve', 'fade', 'fade-to-color', 'glitch', 'rgb-split', 'scanline-glitch', 'burn', 'light-leak',

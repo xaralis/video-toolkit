@@ -108,8 +108,11 @@ const PlanCompositesContext = React.createContext<ReadonlyMap<string, Transition
  *  identity — nothing in this module relies on `React.memo` or a stable
  *  Context value to skip work, so a fresh `Map` costs one allocation per
  *  plan boundary per frame and nothing more. `EMPTY_WRAPS` exists only to
- *  skip that allocation on the (today, universal) case of zero plan
- *  boundaries, not to provide a memoization guarantee. */
+ *  skip that allocation when a track has zero plan boundaries — the case
+ *  when Task 1.2 wrote this line, since nothing resolved to `plan` yet;
+ *  post-flip every catalog kind does, so this is the exceptional case now
+ *  (a track with no transitions at all), not the universal one — not to
+ *  provide a memoization guarantee. */
 const EMPTY_WRAPS: ReadonlyMap<string, PlanBoundary['wrap']> = new Map();
 const PlanWrapContext = React.createContext<ReadonlyMap<string, PlanBoundary['wrap']>>(EMPTY_WRAPS);
 
@@ -353,8 +356,11 @@ export const VideoTrackHost: React.FC<{
  *  dependency.
  *
  *  NO `z-index` UNLESS THE NODE ASKS FOR ONE (see THE STACKING RULE above):
- *  the default order is tree order, so an inert shell — which today is every
- *  shell in every reel — adds no stacking context of its own.
+ *  the default order is tree order, so an inert shell (a shell outside its
+ *  boundary's live window, or one with no boundary at all — Task 1.2
+ *  vintage, when nothing resolved to `plan` yet, so every shell was inert;
+ *  post-flip a shell is active whenever its transition is live) adds no
+ *  stacking context of its own.
  *
  *  THE `wrap` HAZARD, SOLVED HERE (Phase 5 Task 1.4; recorded but left open by
  *  Task 1.2's report). `wrap` is now mounted for the SAME item's-whole-life
@@ -398,8 +404,10 @@ export const VideoTrackHost: React.FC<{
  *  output. */
 export const LayerShell: React.FC<{
   /** The plan boundary this shell's side belongs to, or `null` when this item
-   *  has no plan boundary on this side — the inert case, which is every item
-   *  in the repo today. */
+   *  has no plan boundary on this side — the inert case. That was every item
+   *  in the repo when Task 1.2 wrote this (nothing resolved to `plan` yet);
+   *  post-flip it's only a reel edge or a hard cut, since every catalog kind
+   *  now produces a boundary here. */
   boundaryKey: string | null;
   side: 'from' | 'to';
   children: React.ReactNode;

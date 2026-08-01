@@ -177,8 +177,14 @@ count or order. Media-free layers a node needs *between* the two clips are emitt
 Sequences between the two item Sequences, which is already how `buildVideoNodes` controls paint
 order (`video-track.tsx:410-431`, a boundary is emitted right after its owner).
 
-`ItemBody`'s blanking, `rebased()`, the boundary `Sequence` and `BOUNDARY_TAIL` all disappear.
-Nothing is ever relocated, so nothing ever remounts.
+~~`ItemBody`'s blanking, `rebased()`, the boundary `Sequence` and `BOUNDARY_TAIL` all disappear.~~
+**CORRECTED IN PLACE — `BOUNDARY_TAIL` does NOT disappear.** `ItemBody`'s blanking, `rebased()`
+and the boundary `Sequence` are deleted, as this section said. `BOUNDARY_TAIL` survives
+(`video-track.tsx:64`), repurposed to size the PLAN boundary's own Sequence
+(`durationInFrames={b.frames + BOUNDARY_TAIL}`, `:278`) — the same inclusive progress-1 frame this
+section's own `PlanBoundary.frames` doc comment describes (`video-track-plan.tsx:69-71`), so the
+constant that used to extend the old boundary Sequence now extends the new one instead of
+disappearing with it. Nothing is ever relocated, so nothing ever remounts.
 
 ### 2.3 The contract
 
@@ -609,7 +615,8 @@ Nothing in the catalog, in core, or in either brand repo becomes **impossible**.
 | R1 Fix 2 — the boundary premount | `video-track.tsx:182-199`, `:420` | There is no boundary Sequence to premount. |
 | R2 — `drawnThrough` / `lastDrawnFrame` | `video-track.tsx:121-149`, `:364-384` | There is no second copy to release. |
 | `isPreviewEnvironment()` and its module | `lib/render/preview-environment.ts` | **Its only production consumer is `video-track.tsx`** (verified: `git grep -n isPreviewEnvironment -- lib examples` → `preview-environment.ts:31`, `video-track.tsx:64,88,159,420`, plus one test). **The preview/render divergence goes away entirely**, which is the single largest maintenance win here. |
-| `rebased()`, the boundary `Sequence`, `BOUNDARY_TAIL` | `video-track.tsx:172-180`, `:386-398`, `:414-430` | The mount that made them necessary is gone. |
+| `rebased()`, the boundary `Sequence` | `video-track.tsx:172-180`, `:386-398`, `:414-430` | The mount that made them necessary is gone. |
+| ~~`BOUNDARY_TAIL`~~ **CORRECTED IN PLACE — this row was wrong; it survives.** | `video-track.tsx:64` | **NOT deleted.** It sizes the `plan` boundary's own Sequence now (`:278`, `durationInFrames={b.frames + BOUNDARY_TAIL}`) — the inclusive progress-1 frame is still a real frame something has to draw, whichever assembly owns the Sequence. |
 | `TransitionLayer` as a public component | `at-cut-transitions.tsx:353-371` | Folds into `wrap`. |
 | ~~`presentationFor`'s two-input warning~~ **CORRECTED IN PLACE — Task 5 measured this row false, do not follow it.** | `at-cut-transitions.tsx:394-410` | ~~Every kind resolves to a node; there is no one-sided render path left to warn about.~~ **WRONG.** This conflates `resolveTransition`'s shape with `transitionNodeFor`'s arm. `resolveTransition` — which `presentationFor` calls, and which this task does not touch — still returns a plain one-sided `AnyPresentation` for 13 kinds (`fade`, `dissolve`, `slide`, `flip`, `clock-wipe`, `iris`, `fade-to-color`-no-colour, `burn`, `glitch`, `light-leak`, `whip-pan`, `zoom-through`, `zoom-blur`); the lift to `plan` happens one call later, inside `transitionNodeFor`, which `presentationFor` never calls. The SIX native two-input kinds (`wipe`, `checkerboard`, `pixelate`, `gradient-wipe`, `rgb-split`, `scanline-glitch`) plus coloured `fade-to-color` still resolve straight to a two-input node out of `resolveTransition` and still have no one-sided form — exactly as before this task. Deleting the warning, as this row instructed, would have silently hard-cut those seven kinds at every `presentationFor`/`TransitionSeries` call site with no diagnostic — including the 6 live PP `web-program-intro` call sites §8.5 itself records — which is precisely the regression class Task 2.3's own brief named and this warning exists to prevent. **Task 5 kept the warning, unchanged in behaviour; only its message text changed** (it no longer names the also-deleted `AtCutTransition` as an alternative render path, and its doc pointer moved to `phase5-migrations.md`). `presentationFor` itself is kept as an accessor, for the same reason — it has real, working, non-test consumers this row did not weigh. Full measurement: `.superpowers/sdd/phase5-single-mount-design/task-5-report.md` §7. |
 | `NodeTransitionDemo`'s separate gallery path | `lib/transitions/TransitionGallery.tsx` | It exists because a node cannot go through `TransitionSeries` (`HANDOFF.md`, Workstream 2 finding 4). Shells can. |
@@ -640,11 +647,19 @@ initially; measure before removing.
 - **Tasks 1.4 / 1.5 / 1.6 / 2.2 / 2.3 / 2.4 / 2.5**: alignment, `enabled`/`config`/`cut`, the
   accent mark, the edge background, the honest vocabulary and the forwarded params are all
   either upstream of the node or in the layout. Untouched.
-- **The 11-param differential coverage** in `at-cut-transitions.test.tsx`
-  (`CLAUDE.md`'s gate table). It renders a kind twice with one param changed and requires the
-  output to differ. It survives the strategy change unchanged in *intent*, and it is the test
-  that catches a param dropped in the plan-forwarding table — the hole that was real once
-  already.
+- **The differential param coverage** in `at-cut-transitions.test.tsx` (`describe.each(NODE_KINDS)`
+  `'two-input node %s delivers every authored param'`, `CLAUDE.md`'s gate table). It renders a
+  kind twice with one param changed and requires the output to differ. It survives the strategy
+  change unchanged in *intent*, and it is the test that catches a param dropped in the
+  plan-forwarding table — the hole that was real once already. ~~11-param~~ **CORRECTED IN
+  PLACE — stale count.** This was 11 when `NODE_KINDS` had four members; Task 3 added `rgb-split`
+  (`direction`, `displacement`) and `scanline-glitch` (`rgbShiftPx`) as native two-input nodes and
+  Task 2.2 had already added `gradient-wipe` (`direction`, `softness`), so at this HEAD the block
+  covers **15** tunable params across `NODE_KINDS`' six kinds (`pixelate` ×5, `checkerboard` ×4,
+  `gradient-wipe` ×2, `rgb-split` ×2, `scanline-glitch` ×1, `wipe` ×1) — re-derived by running
+  `npx vitest run --no-file-parallelism src/at-cut-transitions.test.tsx -t "changes what the node
+  renders"`, which reports 15 passing. `wipe.color` and `fade-to-color.color` remain outside this
+  count, covered by the separate accent-slot resolution tests, as before.
 
 ---
 
@@ -740,10 +755,16 @@ anything not yet surveyed.
   neutral before any kind moves — but "expected" is not "verified", and every cell gets looked
   at. `frameFor()` places `enter`/`exit` windows inside the clip's own Sequence, so the
   non-`cut` modes are not exempt.
-- **The 24 bimodal cells need re-seeding at `--repeat=24`.** Their second recorded picture comes
-  from a DOM arrangement that will no longer exist. They sit in `clock-wipe` (9), `iris` (7) and
-  `light-leak` (8) — all bucket A, so the *first* hash is expected to hold and only the second
-  needs re-sampling (§8.6). Expect `knownDefective` and `semanticXfail` to stay empty.
+- ~~**The 24 bimodal cells need re-seeding at `--repeat=24`.**~~ **CORRECTED IN PLACE — stale
+  count, and already corrected once before (CLAUDE.md's I5 fix wave).** `bimodalCells.length` in
+  `examples/layered-minimal/goldens/transition-matrix.json` is **18** at this HEAD, not 24: `clock-wipe`
+  (9), `iris` (7), `light-leak` (2) — re-derived directly from the goldens file, not carried
+  forward from CLAUDE.md's own gate table (which already agrees: "`bimodalCells` unchanged at 18
+  … this task touched neither list nor any of those three kinds' rendering"). Their second
+  recorded picture comes from a DOM arrangement that will no longer exist once Stage 5 lands, so
+  they still need re-seeding — only the target count was wrong here. All bucket A, so the *first*
+  hash is expected to hold and only the second needs re-sampling (§8.6). Expect `knownDefective`
+  and `semanticXfail` to stay empty.
 - **Use the filter while iterating.** `node scripts/render-transition-matrix.mjs <kinds>` — each
   Stage-2 task touches 4-6 kinds, i.e. 60-90 stills instead of 300. Full unfiltered run only
   before each commit.
@@ -775,13 +796,28 @@ Ordered by coupling depth:
 | `video-track-layout.test.ts` | 1 | 84 | 1 hit; layout is untouched |
 | `conformance-example.test.tsx` | 1 | 424 | 1 hit |
 
-**The 4 skipped tests change meaning.** They are one `it.skipIf(isNode)` declaration
+~~**The 4 skipped tests change meaning.** They are one `it.skipIf(isNode)` declaration
 (`at-cut-transitions.test.tsx:356`) × the four kinds in `NODE_KINDS` (pinned at `:221` to
 `checkerboard`, `pixelate`, `scanline-glitch`, `wipe`). Once every kind is a plan, *every* kind
 loses its one-sided props bag, so either all 20 skip or — better — the differential
 `two-input node <kind> delivers every authored param` block (`:387`) becomes the **only** param
-test and the `skipIf` is deleted. That is a strictly stronger suite: the differential test is
-derived and catches a param dropped in the forwarding table, which the props-bag test never did.
+test and the `skipIf` is deleted.~~ **CORRECTED IN PLACE — neither prescribed outcome shipped, and
+the count is stale.** `NODE_KINDS` is pinned at `at-cut-transitions.test.tsx:343` to **six** kinds
+now, not four: Task 3 added `rgb-split` and `scanline-glitch` as native two-input nodes (this
+section was written before that task ran), so the current pin is `checkerboard`, `gradient-wipe`,
+`pixelate`, `rgb-split`, `scanline-glitch`, `wipe`. `fade-to-color` still does NOT join this list
+even when its colour resolves — the pin covers only kinds that are *unconditionally* nodes; see
+the note two paragraphs below, unchanged. The suite runs the full `109 files / 1788 tests`
+gate at **6 skipped**, one `it.skipIf(isNode)` per `NODE_KINDS` member — matching six skips, not
+four. Neither of this section's two prescribed endings shipped: the `skipIf` was **not** deleted,
+and not every kind skips — only the six that are unconditionally native nodes do; every other
+catalog kind still goes through the props-bag test because `presentationFor` still resolves it to
+a plain `AnyPresentation` (see §6's corrected `presentationFor` row: the lift to `plan` happens
+one level up, in `transitionNodeFor`, which this props-bag test does not call). The differential
+`two-input node <kind> delivers every authored param` block (`:494` at this HEAD) was kept
+ALONGSIDE the props-bag test, not as its sole replacement — both survive, covering disjoint kind
+sets. That is still the stronger suite this paragraph argued for: the differential test is derived
+and catches a param dropped in the forwarding table, which the props-bag test never did.
 `it.fails` count remains **0** (verified).
 
 Note also: **`fade-to-color` is not in `NODE_KINDS`.** It is a node only when its colour

@@ -60,22 +60,26 @@ points; the catalog that connects them is `lib/reel-config-base/transition-schem
 The `Seen` column records where a presentation has actually been *looked at*, which is not
 the same as being wired up. `Series` means it renders correctly when hand-driven through
 `<TransitionSeries>` — that is what `showcase/transitions/` exercises, and what this table's
-old "✅ Validated" column meant, back when hand-driving was the only integration path. **No
-kind is yet visually confirmed through the at-cut engine**, which composites differently
-(handle-borrowed overlap rather than a shrinking sequence), so a presentation that looks right
-in the gallery can still misbehave at a cut. **Core can render** —
-`examples/layered-minimal` is a complete, installed Remotion project (`npx remotion still
-src/index.ts MinimalReel out/probe.png --frame=45` bundles and renders a real PNG there, exit
-0; `out/` is gitignored). Closing this gap is therefore a concrete core task, not something
-that needs a brand repo: author a reel literal in `examples/layered-minimal` that exercises
-each of the 11 unconfirmed kinds at a cut and render stills. See the risk entry in
-`docs/superpowers/HANDOFF.md` for the full picture, including two defects a still render would
-directly confirm or refute.
+old "✅ Validated" column meant, back when hand-driving was the only integration path.
+
+**CORRECTED IN PLACE — every kind IS now visually confirmed through the at-cut engine.** This
+paragraph used to say "no kind is yet visually confirmed through the at-cut engine" and named
+"the 11 unconfirmed kinds", true when it was written, before the pixel harness existed. Since
+Phase 4, `examples/layered-minimal`'s pixel harness
+(`node scripts/render-transition-matrix.mjs`, `docs/superpowers/transition-pixel-harness.md`)
+renders every catalog kind × mode (`enter`/`exit`/`cut`) × 5 progress points through the real
+at-cut engine (`buildVideoNodes`, the same assembly a reel uses) and hash-compares the result
+against committed goldens — closing exactly the gap this paragraph used to flag as open. That
+settles *pixel parity against a recorded baseline*, not aesthetic judgement; a kind rendering
+the same bytes as last time says nothing about whether those bytes look right, which is a
+separate, human call. **Core can render** — `examples/layered-minimal` is a complete, installed
+Remotion project (`npx remotion still src/index.ts MinimalReel out/probe.png --frame=45` bundles
+and renders a real PNG there, exit 0; `out/` is gitignored).
 
 | Transition | Kind | Seen | Description | Best For |
 |------------|------|------|-------------|----------|
 | `glitch()` | `glitch` | Series | Digital distortion with slice displacement and RGB separation | Tech demos, cyberpunk, edgy reveals |
-| `rgbSplit()` | `rgb-split` | Series | Chromatic aberration with color fringing | Modern tech, energetic transitions |
+| `rgbSplit()` | `rgb-split` | **Two-input node** | Chromatic aberration with color fringing | Modern tech, energetic transitions |
 | `zoomBlur()` | `zoom-blur` | Series | Radial motion blur with scale | CTAs, reveals, high-energy moments |
 | `lightLeak()` | `light-leak` | Series | Cinematic lens flare and overexposure | Emotional moments, celebrations, film aesthetic |
 | `pixelate()` | `pixelate` | **Two-input node** | Digital mosaic dissolution | Retro/gaming, digital transformations |
@@ -84,15 +88,14 @@ directly confirm or refute.
 | `whipPan()` | `whip-pan` | — | Directional motion blur — fast camera move | Energetic cuts, fast-paced reels |
 | `zoomThrough()` | `zoom-through` | — | Zoom out of outgoing, zoom into incoming | Product reveals, fast-cut edits |
 | `wipe()` | `wipe` | **Two-input node** | Directional sweep in a brand colour | Brand-consistent directional reveals |
-| `gradientWipe()` | `gradient-wipe` | — | Feathered diagonal blend band | Soft corner-to-corner reveals |
+| `gradientWipe()` | `gradient-wipe` | **Two-input node** | Feathered diagonal blend band | Soft corner-to-corner reveals |
 | `burn()` | `burn` | At-cut | Cloud-masked burn-through with a hot edge | Organic reveals, warm brand moments |
 | `fadeToColor()` | `fade-to-color` | **Two-input node** (with a colour) | Dip to a colour the BRAND names; with no colour, the plain crossfade | Section breaks, a beat of brand colour between clips |
 
 **Six kinds are ALWAYS NATIVE TWO-INPUT NODES** (`wipe`, `checkerboard`, `pixelate`,
-`scanline-glitch`, `gradient-wipe`, `rgb-split` — this table is stale on the count in
-several rows above; re-derive with `lib/editor/src/at-cut-transitions.test.tsx`'s `NODE_KINDS`
-rather than trusting this prose, per Phase 5 Task 5's finding that this exact paragraph had
-drifted); `fade-to-color` is one **only when a colour actually resolves** — with none it
+`scanline-glitch`, `gradient-wipe`, `rgb-split` — the table above is now current on this; re-derive
+with `lib/editor/src/at-cut-transitions.test.tsx`'s `NODE_KINDS` if it drifts again);
+`fade-to-color` is one **only when a colour actually resolves** — with none it
 hands back Remotion's own `fade()`, so its arity is conditional on the brand's palette.
 Their factories return a `TransitionNode` — `{ plan }` (PHASE 5: this used to be
 `{ composite }`, a React component invoked once per boundary with `(from, to, progress)`

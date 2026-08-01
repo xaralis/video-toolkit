@@ -744,8 +744,11 @@ describe('DERIVED proof — the identity sweep is capable of PASSING, not only o
   // Built exactly the way a Stage 2 brand registration would build one — a
   // `plan` returning ops on the already-mounted shells, nothing more — and
   // registered under a kind that is NOT in `TRANSITION_CATALOG`, so this can
-  // never be confused with a catalog kind quietly migrating. `PLAN_KINDS`
-  // stays empty; this is scaffolding for the assertion, not a fifth bucket.
+  // never be confused with a catalog kind quietly migrating and never appears
+  // in the `CATALOG_KINDS`-derived sweep above. It is scaffolding for this
+  // one assertion, not a fifth bucket — `PLAN_KINDS`/`COMPOSITE_KINDS`, the
+  // split this comment used to describe, are both deleted (see the note
+  // above this block).
   //
   // `planCalls` closes a vacuity gap `persists` alone cannot: a HARD CUT
   // (unrecognised kind, or a typo the registry doesn't match) ALSO produces

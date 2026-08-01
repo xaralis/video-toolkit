@@ -401,12 +401,16 @@ const TransitionLayer: React.FC<{
  *  PHASE 5 TASK 5 — THE WARNING STAYS; ONLY ITS WORDING CHANGED, AND THE
  *  BRIEF'S OWN PRESCRIPTION TO DELETE IT WAS WRONG. §6's deletion table
  *  reasoned "every kind resolves to a node; no one-sided render path is left
- *  to warn about" — true of the SIX kinds `wrapRemotionPresentation` lifts
- *  from a one-sided presentation (`fade`, `dissolve`, `slide`, `flip`,
- *  `clock-wipe`, `iris`, `fade-to-color`'s no-colour fallback), because
- *  `resolveTransition` still hands THOSE back as a plain `AnyPresentation` —
- *  the lift to `plan` happens one level up, in `transitionNodeFor`, which
- *  `presentationFor` never calls. But `wipe`, `checkerboard`, `pixelate`,
+ *  to warn about" — true of every kind `wrapRemotionPresentation` lifts from
+ *  a one-sided presentation. Post-flip that lift is UNGATED (the old
+ *  `WRAP_PLAN_KINDS` allowlist is gone, see `transitionNodeFor` below), so it
+ *  covers core's 13 one-sided kinds today (`fade`, `dissolve`, `slide`,
+ *  `flip`, `clock-wipe`, `iris`, `fade-to-color`'s no-colour fallback,
+ *  `burn`, `glitch`, `light-leak`, `whip-pan`, `zoom-through`, `zoom-blur`)
+ *  plus any brand-registered kind that likewise resolves to a plain
+ *  presentation — because `resolveTransition` still hands THOSE back as a
+ *  plain `AnyPresentation` — the lift to `plan` happens one level up, in
+ *  `transitionNodeFor`, which `presentationFor` never calls. But `wipe`, `checkerboard`, `pixelate`,
  *  `gradient-wipe`, `rgb-split`, `scanline-glitch` and `fade-to-color` WITH a
  *  resolved colour are NATIVE two-input nodes straight out of
  *  `resolveTransition` — unaffected by this task, since their factories

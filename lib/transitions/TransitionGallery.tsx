@@ -323,8 +323,11 @@ export function galleryTransitionNode(kind: TransitionKind, dims: GalleryDims = 
  *  hand-rolled helper, so the comparison held by construction while the
  *  gallery's OWN render path (this component) went untested.
  *
- *  `buildVideoNodes` already contains the per-boundary arm dispatch
- *  (`typeof node.plan === 'function'`), so driving the demo through it means
+ *  `buildVideoNodes` already IS the assembly a reel drives every boundary
+ *  through (Phase 5 Task 5 deleted the `composite` arm — `TransitionNode` has
+ *  only `plan` now, so there is no per-boundary arm dispatch left inside
+ *  `buildVideoNodes` to route through; it always reads `node.plan` directly,
+ *  `video-track.tsx:209`), so driving the demo through it means
  *  the gallery shows EXACTLY what a reel would show for `name` — real
  *  boundary-overlap geometry (`computeVideoLayout`'s own handle borrowing,
  *  default `center` alignment) included, not an approximation of it. Two
