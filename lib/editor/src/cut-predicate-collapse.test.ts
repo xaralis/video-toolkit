@@ -27,7 +27,7 @@ import {
   TRANSITION_CATALOG,
 } from '@video-toolkit/lib/reel-config-base/transition-schema';
 import { getTransitionRecord } from '@video-toolkit/lib/render/transition-record';
-import { presentationFor } from '@video-toolkit/lib/render/at-cut-transitions';
+import { resolveTransition } from '@video-toolkit/lib/render/at-cut-transitions';
 import { computeVideoLayout } from '@video-toolkit/lib/render/video-track-layout';
 import { layeredToTimeline } from './timeline/layered-adapter';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
@@ -87,7 +87,14 @@ describe('sites 1 + 5 — the catalog entry and the render map are keyed by CUT_
   it('resolves to no presentation — a hard cut, not a missing renderer', () => {
     // Reached directly (not via the gate) because the gate filters `cut` out
     // long before here; this is the map entry's own behaviour.
-    expect(presentationFor({ kind: CUT_KIND } as never, DIMS)).toBeNull();
+    //
+    // PORTED from `presentationFor` (deleted — see
+    // docs/superpowers/specs/2026-08-01-unified-transition-contract-design.md):
+    // `presentationFor` was a thin wrapper over `resolveTransition`, unwrapping
+    // to null for a native two-input node too; `cut` never reaches that branch
+    // (its render-map entry is `() => null` directly), so the assertion is
+    // identical against the function underneath.
+    expect(resolveTransition({ kind: CUT_KIND } as never, DIMS)).toBeNull();
   });
 });
 

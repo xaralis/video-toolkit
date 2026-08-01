@@ -55,7 +55,7 @@ const VideoContainerBase = {
   // The at-the-cut boundary transitions. These carry the SHARED TransitionSchema
   // (not a permissive record): a missing required field or a bad value on a CORE
   // kind used to parse cleanly and then degrade silently to a hard cut at render
-  // time, because `presentationFor` returns null for anything it doesn't
+  // time, because `resolveTransition` returns null for anything it doesn't
   // recognise. That half of the guarantee is intact — a core kind is still
   // validated field by field.
   //

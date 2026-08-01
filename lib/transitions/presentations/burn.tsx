@@ -7,8 +7,9 @@
  * band (mask B, run `glowBand` ahead of the reveal) paints a hot edge in the
  * ring B\A. Generalized from roost's outro burn so it works as a real at-cut
  * transition between any two clips; the mask asset + glow color are supplied by
- * the brand via the transition record (see presentationFor), keeping this core
- * component brand-agnostic. Renders `children` exactly once (no video re-mount).
+ * the brand via the transition record (see `resolveTransition` in
+ * lib/render/at-cut-transitions.tsx), keeping this core component
+ * brand-agnostic. Renders `children` exactly once (no video re-mount).
  */
 import type {
   TransitionPresentation,

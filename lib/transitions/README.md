@@ -103,9 +103,12 @@ as already-instantiated subtrees; every catalog kind is `plan` now, and there is
 `composite` shape left at all — see `lib/render/at-cut-transitions.tsx`'s own note). They
 cannot be used with `TransitionSeries`, which hands a presentation one clip at a time;
 drive them through `transitionNodeFor()` + `buildVideoNodes` (`AtCutTransition`, the old
-alternative render path, is deleted). `presentationFor()` returns `null` for them and warns.
-Every other kind is still one-sided at the `resolveTransition`/`presentationFor` level and
-core lifts it (through `wrapRemotionPresentation`, universally, since Task 5). See
+alternative render path, is deleted — and so is `presentationFor()`, the one-sided accessor
+that used to null these out with a warning; its only consumer, PP's `web-program-intro`
+template, is on `buildVideoNodes` now too — see
+`docs/superpowers/specs/2026-08-01-unified-transition-contract-design.md`).
+Every other kind is still one-sided at the `resolveTransition` level and core lifts it
+(through `wrapRemotionPresentation`, universally, since Task 5). See
 `docs/superpowers/phase4-migrations.md` § Task 2.1 and `docs/superpowers/phase5-migrations.md`.
 
 **One name per concept** (Task 2.5). Every kind spells the in/out or 4-way axis `direction` —

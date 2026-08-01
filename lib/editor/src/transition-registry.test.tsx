@@ -34,7 +34,7 @@ vi.mock('remotion', async () => {
   };
 });
 
-import { presentationFor, type TransitionRecord } from '@video-toolkit/lib/render/at-cut-transitions';
+import { resolveTransition, type TransitionRecord } from '@video-toolkit/lib/render/at-cut-transitions';
 import { buildVideoNodes } from '@video-toolkit/lib/render/video-track';
 import { resetWarnOnce } from '@video-toolkit/lib/render/warn-once';
 import { registrationParams } from '@video-toolkit/lib/theming/registry';
@@ -62,13 +62,20 @@ function brandRenderer(seen?: TransitionRenderProps[]) {
   };
 }
 
+// PORTED throughout this file from `presentationFor` (deleted — see
+// docs/superpowers/specs/2026-08-01-unified-transition-contract-design.md).
+// None of these tests exercised `presentationFor`'s own two-input null-and-warn
+// behaviour — every kind here (`sand-sweep`, `fade`, `dissolve`) is one-sided,
+// so `resolveTransition` is the exact same call `presentationFor` made
+// internally and returns the identical `AnyPresentation | null`; the cast
+// stands in for `presentationFor`'s narrower return type.
 describe('a brand-registered transition kind (the capability this task adds)', () => {
   it('resolves to the BRAND’s renderer for a kind core has never heard of', () => {
     const seen: TransitionRenderProps[] = [];
     const transitions: TransitionRegistry = { 'sand-sweep': { renderer: brandRenderer(seen) } };
     const t = { kind: 'sand-sweep', frames: 20, grains: 7 } as unknown as TransitionRecord;
 
-    const p = presentationFor(t, { ...DIMS, transitions });
+    const p = resolveTransition(t, { ...DIMS, transitions }) as AnyPresentation | null;
 
     expect(p).not.toBeNull();
     expect(p!.component).toBe(BrandSweep);
@@ -80,7 +87,7 @@ describe('a brand-registered transition kind (the capability this task adds)', (
 
   it('is a hard cut when NO registry is threaded — the same kind, minus the tier', () => {
     const t = { kind: 'sand-sweep', frames: 20, grains: 7 } as unknown as TransitionRecord;
-    expect(presentationFor(t, DIMS)).toBeNull();
+    expect(resolveTransition(t, DIMS)).toBeNull();
   });
 
   it('receives the composition size, the brand palette and its registration config', () => {
@@ -88,7 +95,7 @@ describe('a brand-registered transition kind (the capability this task adds)', (
     const transitions: TransitionRegistry = {
       'sand-sweep': { renderer: brandRenderer(seen), config: { softness: 0.4 } },
     };
-    presentationFor({ kind: 'sand-sweep', frames: 20 } as unknown as TransitionRecord, {
+    resolveTransition({ kind: 'sand-sweep', frames: 20 } as unknown as TransitionRecord, {
       ...DIMS,
       palette: PALETTE,
       transitions,
@@ -101,7 +108,7 @@ describe('a brand-registered transition kind (the capability this task adds)', (
   it('hands a renderer an EMPTY palette rather than undefined when the composition has none', () => {
     const seen: TransitionRenderProps[] = [];
     const transitions: TransitionRegistry = { 'sand-sweep': { renderer: brandRenderer(seen) } };
-    presentationFor({ kind: 'sand-sweep', frames: 20 } as unknown as TransitionRecord, { ...DIMS, transitions });
+    resolveTransition({ kind: 'sand-sweep', frames: 20 } as unknown as TransitionRecord, { ...DIMS, transitions });
     expect(seen[0].palette).toEqual([]);
   });
 });
@@ -111,16 +118,18 @@ describe('registry semantics — the same four the other axes settled', () => {
     const transitions: TransitionRegistry = { fade: { renderer: brandRenderer() } };
     const t = { kind: 'fade', frames: 15 } as TransitionRecord;
 
-    expect(presentationFor(t, { ...DIMS, transitions })!.component).toBe(BrandSweep);
+    expect((resolveTransition(t, { ...DIMS, transitions }) as AnyPresentation).component).toBe(BrandSweep);
     // …and only for the kind it registered.
-    expect(presentationFor({ kind: 'dissolve', frames: 15 } as TransitionRecord, { ...DIMS, transitions })!.component)
-      .not.toBe(BrandSweep);
+    expect(
+      (resolveTransition({ kind: 'dissolve', frames: 15 } as TransitionRecord, { ...DIMS, transitions }) as AnyPresentation)
+        .component,
+    ).not.toBe(BrandSweep);
   });
 
   it('a CONFIG-ONLY registration does NOT mask the core generic', () => {
     const transitions: TransitionRegistry = { fade: { config: { note: 'tuning only' } } };
-    const withRegistry = presentationFor({ kind: 'fade', frames: 15 } as TransitionRecord, { ...DIMS, transitions });
-    const without = presentationFor({ kind: 'fade', frames: 15 } as TransitionRecord, DIMS);
+    const withRegistry = resolveTransition({ kind: 'fade', frames: 15 } as TransitionRecord, { ...DIMS, transitions }) as AnyPresentation | null;
+    const without = resolveTransition({ kind: 'fade', frames: 15 } as TransitionRecord, DIMS) as AnyPresentation | null;
 
     expect(withRegistry).not.toBeNull();
     expect(withRegistry!.component).not.toBe(BrandSweep);
@@ -131,9 +140,9 @@ describe('registry semantics — the same four the other axes settled', () => {
   it('a config-only registration for a kind core CANNOT draw resolves to nothing (hard cut), never throws', () => {
     const transitions: TransitionRegistry = { 'sand-sweep': { config: { softness: 0.4 } } };
     expect(() =>
-      presentationFor({ kind: 'sand-sweep', frames: 20 } as unknown as TransitionRecord, { ...DIMS, transitions }),
+      resolveTransition({ kind: 'sand-sweep', frames: 20 } as unknown as TransitionRecord, { ...DIMS, transitions }),
     ).not.toThrow();
-    expect(presentationFor({ kind: 'sand-sweep', frames: 20 } as unknown as TransitionRecord, { ...DIMS, transitions })).toBeNull();
+    expect(resolveTransition({ kind: 'sand-sweep', frames: 20 } as unknown as TransitionRecord, { ...DIMS, transitions })).toBeNull();
   });
 
   it('declares its editable fields with the SHARED param descriptor (one vocabulary, both axes)', () => {
@@ -150,15 +159,15 @@ describe('registry semantics — the same four the other axes settled', () => {
 
   it('an unknown kind still SKIPS silently with a registry in scope', () => {
     const transitions: TransitionRegistry = { 'sand-sweep': { renderer: brandRenderer() } };
-    expect(presentationFor({ kind: 'no-such-kind', frames: 20 } as unknown as TransitionRecord, { ...DIMS, transitions })).toBeNull();
+    expect(resolveTransition({ kind: 'no-such-kind', frames: 20 } as unknown as TransitionRecord, { ...DIMS, transitions })).toBeNull();
   });
 
   it('an Object.prototype member is still not a renderer, registry or not', () => {
     const transitions: TransitionRegistry = { 'sand-sweep': { renderer: brandRenderer() } };
     for (const kind of ['constructor', 'toString', 'hasOwnProperty', '__proto__', 'valueOf']) {
       const bogus = { kind, frames: 15 } as unknown as TransitionRecord;
-      expect(presentationFor(bogus, { ...DIMS, transitions }), kind).toBeNull();
-      expect(presentationFor(bogus, DIMS), kind).toBeNull();
+      expect(resolveTransition(bogus, { ...DIMS, transitions }), kind).toBeNull();
+      expect(resolveTransition(bogus, DIMS), kind).toBeNull();
     }
   });
 });

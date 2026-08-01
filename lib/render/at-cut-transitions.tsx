@@ -390,71 +390,28 @@ const TransitionLayer: React.FC<{
   );
 };
 
-/** The ONE-SIDED view of a resolved kind: the `{component, props}` presentation,
- *  or null when the kind resolves to nothing OR to a natively two-input node
- *  (which has no one-sided form to hand back).
+/** `presentationFor` — DELETED (the "one transition contract" task, see
+ *  docs/superpowers/specs/2026-08-01-unified-transition-contract-design.md).
  *
- *  Kept as a named export because it is the accessor brands and the editor's
- *  wiring suite have used since the engine was extracted. The RENDER path does
- *  not go through it any more — see `transitionNodeFor`.
+ *  It was the ONE-SIDED view of a resolved kind: `resolveTransition(t, dims)`,
+ *  null'd out (with a dev `warnOnce`) whenever the kind resolved to a native
+ *  two-input node instead of a plain `{component, props}` presentation. Phase
+ *  5 Task 5 kept it — and its warning — because six live call sites in the PP
+ *  brand repo's `web-program-intro` template (and its five vendored project
+ *  copies) drove `TransitionSeries.Transition` off it, and a silent hard cut
+ *  on any of `wipe`/`checkerboard`/`pixelate`/`gradient-wipe`/`rgb-split`/
+ *  `scanline-glitch`/coloured-`fade-to-color` would have been a real,
+ *  undiagnosed regression for them.
  *
- *  PHASE 5 TASK 5 — THE WARNING STAYS; ONLY ITS WORDING CHANGED, AND THE
- *  BRIEF'S OWN PRESCRIPTION TO DELETE IT WAS WRONG. §6's deletion table
- *  reasoned "every kind resolves to a node; no one-sided render path is left
- *  to warn about" — true of every kind `wrapRemotionPresentation` lifts from
- *  a one-sided presentation. Post-flip that lift is UNGATED (the old
- *  `WRAP_PLAN_KINDS` allowlist is gone, see `transitionNodeFor` below), so it
- *  covers core's 13 one-sided kinds today (`fade`, `dissolve`, `slide`,
- *  `flip`, `clock-wipe`, `iris`, `fade-to-color`'s no-colour fallback,
- *  `burn`, `glitch`, `light-leak`, `whip-pan`, `zoom-through`, `zoom-blur`)
- *  plus any brand-registered kind that likewise resolves to a plain
- *  presentation — because `resolveTransition` still hands THOSE back as a
- *  plain `AnyPresentation` — the lift to `plan` happens one level up, in
- *  `transitionNodeFor`, which `presentationFor` never calls. But `wipe`, `checkerboard`, `pixelate`,
- *  `gradient-wipe`, `rgb-split`, `scanline-glitch` and `fade-to-color` WITH a
- *  resolved colour are NATIVE two-input nodes straight out of
- *  `resolveTransition` — unaffected by this task, since their factories
- *  already returned `{ plan }` since Stages 2-4 — and have no one-sided form
- *  today, same as before this task. Deleting this warning would silently
- *  hard-cut those seven kinds at every `presentationFor` call site with NO
- *  diagnostic, which is the exact regression Task 2.3's brief named and this
- *  warning exists to prevent; measured (not assumed) against
- *  `examples/layered-minimal`'s `web-program-intro`-shaped call: `wipe`,
- *  `checkerboard`, `pixelate`, `gradient-wipe`, `rgb-split` and
- *  `scanline-glitch` still hit `isTransitionNode(resolved) === true` here at
- *  this HEAD (`at-cut-transitions.test.tsx`'s `presentationFor` block pins
- *  it). Only the MESSAGE'S mention of `AtCutTransition` — deleted this task,
- *  see the module docblock — is stale; it now names only `buildVideoNodes`.
- *
- *  WHY THE WARNING AT ALL. Every caller of this function feeds the result to
- *  `TransitionSeries.Transition`, and every one of them treats `null` as "no
- *  transition" — a HARD CUT. That was harmless while `null` only ever meant
- *  `cut` or an unrecognised kind. Since Task 2.1 it also means "this kind is a
- *  two-input node", which is a real, authored transition silently degrading to
- *  nothing, with no type error to catch it (the signature never changed and
- *  `null` was always legal).
- *
- *  There is deliberately NO compatibility shim faking a one-sided form for a
- *  two-input node: a wrong picture rendered silently is worse than a visible
- *  degradation. The caller has to move to `transitionNodeFor` (or
- *  `buildVideoNodes`), and this says so out loud, once per kind, in dev. */
-export function presentationFor(t: TransitionRecord | undefined, dims: Dims): AnyPresentation | null {
-  const resolved = resolveTransition(t, dims);
-  if (!resolved) return null;
-  if (isTransitionNode(resolved)) {
-    const kind = t!.kind;
-    warnOnce(
-      `presentationFor:two-input:${kind}`,
-      () =>
-        `[video-toolkit] transition kind "${kind}" is a TWO-INPUT node and has no one-sided ` +
-        'presentation, so presentationFor() returns null and this boundary will render as a ' +
-        'HARD CUT. Drive it through transitionNodeFor() + buildVideoNodes instead of ' +
-        'TransitionSeries. See docs/superpowers/phase5-migrations.md.',
-    );
-    return null;
-  }
-  return resolved;
-}
+ *  That reason is gone: `WebProgramIntro.tsx` (core template + all five
+ *  project copies) was rewritten onto `buildVideoNodes` the same day this was
+ *  deleted, and a repo-wide sweep of core and both brand repos found zero
+ *  remaining production callers. `buildVideoNodes` already renders all 20
+ *  catalog kinds — one-sided and two-input alike — through `transitionNodeFor`,
+ *  so there is no one-sided render path left to adapt down to, and nothing
+ *  left to warn about it degrading. `resolveTransition` and `getTransitionRecord`
+ *  are UNCHANGED and remain the shared resolution/gate functions every path
+ *  (this one included, formerly) is built on. */
 
 /** PHASE 5 TASK 5 — `fromRemotionPresentation` DELETED. It lifted a one-sided
  *  Remotion presentation into the OLD `composite` model: render `from`
@@ -657,12 +614,11 @@ export function resetTransitionNodeCache(): void {
  *  straight out of `resolveTransition`, so the lift branch never runs for
  *  them, exactly as before this task.
  *
- *  `resolveTransition`/`presentationFor` are UNCHANGED by this deletion —
- *  they still hand back the plain `AnyPresentation` for these lifted kinds,
- *  because the lift happens one level up, in this function, which
- *  `presentationFor` never calls (see that function's own updated doc
- *  comment for why deleting ITS warning, as §6's table originally
- *  prescribed, would have been a real regression). */
+ *  `resolveTransition` is UNCHANGED by this deletion — it still hands back
+ *  the plain `AnyPresentation` for these lifted kinds, because the lift
+ *  happens one level up, in this function. (`presentationFor` used to be the
+ *  other caller of `resolveTransition` that never reached this lift — it is
+ *  itself deleted now, see its own former doc comment just above `wrapRemotionPresentation`'s.) */
 
 /** THE RENDER PATH. Resolves a kind to the two-input node the boundary drives,
  *  lifting a one-sided presentation on the way when that is what it resolved
@@ -742,6 +698,7 @@ export function transitionNodeFor(t: TransitionRecord | undefined, dims: Dims): 
 // be handed, which made it warn-and-hard-cut unconditionally — a component
 // with zero production callers that could only ever produce one outcome is
 // not a capability worth keeping alive, it is exactly the "shipped vacuous"
-// failure mode this phase's own laws warn against. `presentationFor`'s
-// still-live two-input warning (above) now names only `buildVideoNodes` as
-// the render path, not this deleted alternative.
+// failure mode this phase's own laws warn against. (`presentationFor`'s own
+// two-input warning, which at this point in history still named
+// `buildVideoNodes` as the one live render path, is itself deleted now — see
+// the doc comment above `wrapRemotionPresentation`.)

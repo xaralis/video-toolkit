@@ -16,8 +16,10 @@
 //   TRANSITION_KINDS     = catalog kinds + labels (lib/editor/app/transitions)
 //   subOptionsFor(kind)  = read STRUCTURALLY off the kind's own zod shape
 //   defaultTransition()  = catalog defaults, checked against the schema by test
-//   presentationFor      = a Record keyed by TransitionKind, so the compiler
-//                          demands a mapping for every kind (lib/render)
+//   resolveTransition    = backed by a Record keyed by TransitionKind, so the
+//                          compiler demands a mapping for every kind (lib/render;
+//                          `presentationFor` used to be this Record's public
+//                          name — deleted, see lib/render/README.md)
 //
 // ADDING A CORE KIND: append one entry below. The union, the editor dropdown,
 // its sub-option controls and its defaults all follow; the only other edit the

@@ -50,7 +50,6 @@ import {
   type TransitionKind,
 } from '@video-toolkit/lib/reel-config-base/transition-schema';
 import {
-  presentationFor,
   resolveTransition,
   transitionNodeFor,
   resetTransitionNodeCache,
@@ -275,13 +274,19 @@ describe('the catalog is fully mapped', () => {
     expect(new Set(KINDS).size).toBe(KINDS.length);
   });
 
+  // PORTED from `presentationFor` (deleted — see
+  // docs/superpowers/specs/2026-08-01-unified-transition-contract-design.md).
+  // `presentationFor` was a thin wrapper: `resolveTransition(t, dims)` then
+  // null-out a two-input node. For "nothing resolves at all" the gate this
+  // pins lives entirely in `resolveTransition` (the `known` check below), so
+  // the assertion carries over unchanged onto the function underneath.
   it('returns null for an absent transition', () => {
-    expect(presentationFor(undefined, DIMS)).toBeNull();
+    expect(resolveTransition(undefined, DIMS)).toBeNull();
   });
 
   it('returns null for a kind the renderer does not know (hand-edited Root.tsx)', () => {
     const bogus = { kind: 'not-a-real-kind', frames: 15 } as unknown as Transition;
-    expect(presentationFor(getTransitionRecord(bogus), DIMS)).toBeNull();
+    expect(resolveTransition(getTransitionRecord(bogus), DIMS)).toBeNull();
   });
 
   // Reachable only since Phase 4 opened the schema. While the union was closed
@@ -292,7 +297,7 @@ describe('the catalog is fully mapped', () => {
   it('returns null for a kind that names an Object.prototype member', () => {
     for (const kind of ['constructor', 'toString', 'hasOwnProperty', '__proto__', 'valueOf']) {
       const bogus = { kind, frames: 15 } as unknown as Transition;
-      expect(presentationFor(getTransitionRecord(bogus), DIMS), kind).toBeNull();
+      expect(resolveTransition(getTransitionRecord(bogus), DIMS), kind).toBeNull();
     }
   });
 
@@ -354,42 +359,27 @@ describe('one-sided presentations vs native two-input nodes', () => {
     expect([isTransitionNode(withColor!), isTransitionNode(without!)]).toEqual([true, false]);
   });
 
-  // THE LIVE TRAP. Six files in the PP brand repo call `presentationFor` and
-  // feed the result to `TransitionSeries.Transition`, where `null` means "no
-  // transition" — a hard cut. For these four kinds `null` is now the only
-  // honest answer (there IS no one-sided form), so the degradation has to be
-  // AUDIBLE. No shim fakes a one-sided form: a wrong picture rendered silently
-  // is worse than a visible degradation.
-  it('presentationFor WARNS once per two-input kind instead of degrading silently', () => {
-    resetWarnOnce();
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      for (const kind of NODE_KINDS) {
-        const { transition } = probeTransitionFor(kind);
-        // Called twice: the warning must be de-duplicated, not per-frame.
-        expect(presentationFor(transition as never, DIMS)).toBeNull();
-        expect(presentationFor(transition as never, DIMS)).toBeNull();
-      }
-      // Filtered on HARD CUT rather than counting every call: a kind may
-      // legitimately emit other, unrelated warnings. What is pinned is exactly
-      // one degradation warning per node kind.
-      const hardCut = warn.mock.calls.filter(([m]) => String(m).includes('HARD CUT'));
-      expect(hardCut).toHaveLength(NODE_KINDS.length);
-      for (const kind of NODE_KINDS) {
-        expect(hardCut.filter(([m]) => String(m).includes(`"${kind}"`))).toHaveLength(1);
-      }
-    } finally {
-      warn.mockRestore();
-      resetWarnOnce();
-    }
-  });
+  // DELETED (not ported): `presentationFor WARNS once per two-input kind
+  // instead of degrading silently`. This pinned `presentationFor`'s OWN
+  // null-and-warn behaviour for a two-input kind — the exact capability this
+  // task removes, now that its only consumer (PP's `web-program-intro`, the
+  // six-call-site "LIVE TRAP" the comment above named) is off the one-sided
+  // `TransitionSeries` path and onto `buildVideoNodes`. There is no
+  // replacement assertion: `resolveTransition` returns the real
+  // `TransitionNode` for these kinds (proven by "exactly six kinds are
+  // native two-input nodes" and "fade-to-color joins them the moment a
+  // colour resolves" above), not null, so this test could no longer fail —
+  // keeping it (even reworded) would pin nothing.
 
+  // PORTED. "No transition at all" (absent / `cut`-shaped / genuinely
+  // unrecognised-but-not-a-node) must stay silent — this is `resolveTransition`'s
+  // `known` gate, unrelated to the two-input warning just removed above.
   it('does not warn for a kind that legitimately has no transition at all', () => {
     resetWarnOnce();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
-      expect(presentationFor(undefined, DIMS)).toBeNull();
-      expect(presentationFor({ kind: 'nope', frames: 15 } as unknown as TransitionRecord, DIMS)).toBeNull();
+      expect(resolveTransition(undefined, DIMS)).toBeNull();
+      expect(resolveTransition({ kind: 'nope', frames: 15 } as unknown as TransitionRecord, DIMS)).toBeNull();
       expect(warn).not.toHaveBeenCalled();
     } finally {
       warn.mockRestore();
@@ -406,7 +396,7 @@ describe.each(KINDS)('transition kind %s', (kind) => {
     const node = transitionNodeFor(transition as never, DIMS);
     if (kind === 'cut') {
       expect(node).toBeNull();
-      expect(presentationFor(transition as never, DIMS)).toBeNull();
+      expect(resolveTransition(transition as never, DIMS)).toBeNull();
       return;
     }
     expect(node).not.toBeNull();
@@ -414,13 +404,17 @@ describe.each(KINDS)('transition kind %s', (kind) => {
     // branch on any more; this just confirms the boundary got something
     // callable back.
     expect(typeof node!.plan).toBe('function');
-    // A native node has NO one-sided form to hand back; every other kind still
-    // does (a `plan`-arm kind included — it started as one, and
-    // `wrapRemotionPresentation` in at-cut-transitions.tsx lifts it
-    // unconditionally), and brands' `presentationFor` call sites still get it.
-    const p = presentationFor(transition as never, DIMS);
-    expect({ kind, oneSided: p !== null }).toEqual({ kind, oneSided: !isNode });
-    if (p) {
+    // PORTED from `presentationFor` (deleted). A native two-input node has NO
+    // one-sided form; every other kind still resolves to one — a `plan`-arm
+    // kind included, since `wrapRemotionPresentation` lifts it unconditionally
+    // before `transitionNodeFor` hands it to the boundary. `resolveTransition`
+    // is the same call `presentationFor` made internally; `isTransitionNode`
+    // is what used to gate its null-out, now inlined here directly.
+    const resolved = resolveTransition(transition as never, DIMS);
+    const oneSided = resolved !== null && !isTransitionNode(resolved);
+    expect({ kind, oneSided }).toEqual({ kind, oneSided: !isNode });
+    if (oneSided) {
+      const p = resolved as AnyPresentation;
       expect(typeof p.component).not.toBe('undefined');
       expect(p.props).toBeTypeOf('object');
     }
@@ -462,8 +456,13 @@ describe.each(KINDS)('transition kind %s', (kind) => {
   // this exit quietly.
   it.skipIf(isNode)('carries its authored params through to the presentation', () => {
     const { transition, probes } = probeTransitionFor(kind);
-    const p = presentationFor(transition as never, DIMS);
-    if (!p) return; // cut
+    // PORTED from `presentationFor` (deleted): `isNode` is skipped, so `resolved`
+    // here is always the one-sided `AnyPresentation` `resolveTransition` itself
+    // returns for a non-node kind — the same value `presentationFor` used to
+    // hand back unchanged.
+    const resolved = resolveTransition(transition as never, DIMS);
+    if (!resolved) return; // cut
+    const p = resolved as AnyPresentation;
     for (const [prop, value] of Object.entries(probes)) {
       const expected = VALUE_MAP[kind]?.[prop] ? VALUE_MAP[kind]![prop](value) : value;
       expect({ prop, got: (p.props as Record<string, unknown>)[prop] }).toEqual({ prop, got: expected });
@@ -560,8 +559,10 @@ describe.each(NODE_KINDS)('two-input node %s delivers every authored param', (ki
 });
 
 describe('composition-size-dependent kinds', () => {
+  // PORTED from `presentationFor` (deleted): both kinds are one-sided, so
+  // `resolveTransition` hands back the same `AnyPresentation` it always did.
   it.each(['clock-wipe', 'iris'] as const)('%s receives the composition dimensions', (kind) => {
-    const p = presentationFor(defaultTransition(kind) as never, DIMS)!;
+    const p = resolveTransition(defaultTransition(kind) as never, DIMS)! as AnyPresentation;
     expect(p.props).toMatchObject({ width: 1080, height: 1920 });
   });
 });
@@ -648,9 +649,10 @@ describe('accent-slot resolution', () => {
 });
 
 describe('burn’s string params (no sub-option control, so nothing else pins them)', () => {
+  // PORTED from `presentationFor` (deleted): `burn` is one-sided.
   it('forwards mask and glowColor verbatim', () => {
     const t = { kind: 'burn', frames: 20, mask: 'masks/cloud.png', glowColor: '#ff8800', edgeContrast: 9, glowBand: 0.2 } as TransitionRecord;
-    const p = presentationFor(t, DIMS)!;
+    const p = resolveTransition(t, DIMS)! as AnyPresentation;
     expect(p.props).toMatchObject({ mask: 'masks/cloud.png', glowColor: '#ff8800', edgeContrast: 9, glowBand: 0.2 });
   });
 });
@@ -998,35 +1000,40 @@ describe('Task 2.4 — the orphan knobs reach the presentation', () => {
   // `direction`, not the deprecated `from` — Task 2.5 unified the spelling.
   const zoomThroughBase = { kind: 'zoom-through', frames: 15, direction: 'in' };
 
+  // PORTED from `presentationFor` (deleted): `glitch`/`whip-pan`/`zoom-through`
+  // are all one-sided, so `resolveTransition` returns the exact same
+  // `AnyPresentation` `presentationFor` used to hand back unchanged.
+  const oneSided = (t: unknown) => resolveTransition(t as never, DIMS)! as AnyPresentation;
+
   // DELIVERY half — an authored, non-default value must reach the
   // presentation's props bag under its own name.
   it('glitch.intensity reaches the presentation', () => {
-    const p = presentationFor({ ...glitchBase, intensity: 0.35 } as never, DIMS)!;
+    const p = oneSided({ ...glitchBase, intensity: 0.35 });
     expect((p.props as Record<string, unknown>).intensity).toBe(0.35);
   });
 
   it('glitch.slices reaches the presentation', () => {
-    const p = presentationFor({ ...glitchBase, slices: 20 } as never, DIMS)!;
+    const p = oneSided({ ...glitchBase, slices: 20 });
     expect((p.props as Record<string, unknown>).slices).toBe(20);
   });
 
   it('glitch.rgbShift reaches the presentation', () => {
-    const p = presentationFor({ ...glitchBase, rgbShift: false } as never, DIMS)!;
+    const p = oneSided({ ...glitchBase, rgbShift: false });
     expect((p.props as Record<string, unknown>).rgbShift).toBe(false);
   });
 
   it('glitch.scanLines reaches the presentation', () => {
-    const p = presentationFor({ ...glitchBase, scanLines: false } as never, DIMS)!;
+    const p = oneSided({ ...glitchBase, scanLines: false });
     expect((p.props as Record<string, unknown>).scanLines).toBe(false);
   });
 
   it('whip-pan.blurAmount reaches the presentation', () => {
-    const p = presentationFor({ ...whipPanBase, blurAmount: 65 } as never, DIMS)!;
+    const p = oneSided({ ...whipPanBase, blurAmount: 65 });
     expect((p.props as Record<string, unknown>).blurAmount).toBe(65);
   });
 
   it('zoom-through.zoomAmount reaches the presentation', () => {
-    const p = presentationFor({ ...zoomThroughBase, zoomAmount: 2.4 } as never, DIMS)!;
+    const p = oneSided({ ...zoomThroughBase, zoomAmount: 2.4 });
     expect((p.props as Record<string, unknown>).zoomAmount).toBe(2.4);
   });
 
@@ -1047,7 +1054,7 @@ describe('Task 2.4 — the orphan knobs reach the presentation', () => {
     ['whip-pan', whipPanBase, 'blurAmount'],
     ['zoom-through', zoomThroughBase, 'zoomAmount'],
   ] as const)('%s: an omitted %s forwards undefined (parity)', (_kind, base, prop) => {
-    const p = presentationFor(base as never, DIMS)!;
+    const p = oneSided(base);
     expect((p.props as Record<string, unknown>)[prop]).toBeUndefined();
   });
 });
@@ -1920,9 +1927,11 @@ describe('a fade’s colour is a parameter (fade-to-color)', () => {
     expect(htmlAt({ kind: 'dissolve', frames: 15 })).toBe(htmlAt({ kind: 'fade', frames: 15 }));
     expect(htmlAt(dip)).not.toBe(htmlAt({ kind: 'fade', frames: 15 }));
     for (const kind of ['fade', 'dissolve'] as const) {
-      // Still ONE-SIDED presentations, so the six `presentationFor` call sites
-      // in the PP repo keep working for both.
-      expect({ kind, oneSided: presentationFor({ kind, frames: 15 } as TransitionRecord, DIMS) !== null }).toEqual({
+      // PORTED from `presentationFor` (deleted): still one-sided presentations
+      // — `resolveTransition` resolves both straight to an `AnyPresentation`,
+      // never a `TransitionNode`.
+      const resolved = resolveTransition({ kind, frames: 15 } as TransitionRecord, DIMS);
+      expect({ kind, oneSided: resolved !== null && !isTransitionNode(resolved) }).toEqual({
         kind,
         oneSided: true,
       });
@@ -1966,8 +1975,10 @@ describe('a fade’s colour is a parameter (fade-to-color)', () => {
 // meaning crossfade).
 // ---------------------------------------------------------------------------
 describe('zoom-through says `direction`, like every other kind', () => {
+  // PORTED from `presentationFor` (deleted): `zoom-through` is one-sided.
   const directionOf = (t: Record<string, unknown>) =>
-    (presentationFor(t as unknown as TransitionRecord, DIMS)!.props as Record<string, unknown>).direction;
+    ((resolveTransition(t as unknown as TransitionRecord, DIMS)! as AnyPresentation).props as Record<string, unknown>)
+      .direction;
 
   it('parses and forwards `direction`', () => {
     const t = { kind: 'zoom-through', frames: 15, direction: 'out' };
@@ -2000,8 +2011,8 @@ describe('zoom-through says `direction`, like every other kind', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       const t = { kind: 'zoom-through', frames: 15, from: 'out' } as unknown as TransitionRecord;
-      expect(presentationFor(t, DIMS)).not.toBeNull();
-      expect(presentationFor(t, DIMS)).not.toBeNull();
+      expect(resolveTransition(t, DIMS)).not.toBeNull();
+      expect(resolveTransition(t, DIMS)).not.toBeNull();
       expect(warn.mock.calls).toHaveLength(1);
       const message = String(warn.mock.calls[0][0]);
       expect(message).toContain('zoom-through');
@@ -2017,7 +2028,7 @@ describe('zoom-through says `direction`, like every other kind', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       const t = { kind: 'zoom-through', frames: 15, direction: 'out' } as unknown as TransitionRecord;
-      expect(presentationFor(t, DIMS)).not.toBeNull();
+      expect(resolveTransition(t, DIMS)).not.toBeNull();
       expect(warn).not.toHaveBeenCalled();
     } finally {
       warn.mockRestore();

@@ -42,7 +42,7 @@ export interface TransitionRecordOptions extends WarnOnceOptions {
  * cannot tell them apart and no longer tries. This gate re-establishes the
  * signal instead: it sees EVERY record on its way to the renderer, so an
  * unrecognised kind gets one dev-only warning naming it, rather than the silent
- * degrade-to-hard-cut that `presentationFor` produced before (and still
+ * degrade-to-hard-cut that `resolveTransition` produced before (and still
  * produces, only now with something on stderr saying why).
  *
  * What it catches: any kind that is neither a core catalog kind nor a declared

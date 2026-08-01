@@ -20,8 +20,13 @@
 //     because the palette never arrived and the colour was never read.
 //
 //     Every other silent degrade on this path already warns — an unrecognised
-//     kind, a two-input node fetched through `presentationFor`, overlapping
-//     boundaries. This one did not, and it is the one that cost a migration.
+//     kind, overlapping boundaries. (A third used to be here: `presentationFor`
+//     warned when a two-input node was fetched through its one-sided accessor;
+//     that accessor is deleted now — see
+//     docs/superpowers/specs/2026-08-01-unified-transition-contract-design.md —
+//     because `buildVideoNodes` drives one-sided and two-input kinds alike, so
+//     there is no arity mismatch left to warn about.) This one did not, and it
+//     is the one that cost a migration.
 //
 // jsdom, so this says nothing about pixels; `examples/layered-minimal`'s pixel
 // harness covers those. `Sequence` is a passthrough (the stub

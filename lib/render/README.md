@@ -1,6 +1,17 @@
 # lib/render
 
-Shared "at-the-cut" transition engine for layered-model reel renderers (every brand template consumes it), split into two files: `transition-record.ts` is the pure, Remotion-free "is this a real transition?" gate (`TransitionRecord`, `getTransitionRecord`) and is unit-tested here in core (`lib/editor/src/transition-record.test.ts`); `at-cut-transitions.tsx` is the Remotion engine (`resolveTransition`/`transitionNodeFor`/`presentationFor`, `wrapRemotionPresentation`, plus a re-export of the pure gate so consumers can import everything from one path).
+Shared "at-the-cut" transition engine for layered-model reel renderers (every brand template consumes it), split into two files: `transition-record.ts` is the pure, Remotion-free "is this a real transition?" gate (`TransitionRecord`, `getTransitionRecord`) and is unit-tested here in core (`lib/editor/src/transition-record.test.ts`); `at-cut-transitions.tsx` is the Remotion engine (`resolveTransition`/`transitionNodeFor`, `wrapRemotionPresentation`, plus a re-export of the pure gate so consumers can import everything from one path).
+
+**`presentationFor` is DELETED** (the "one transition contract" task — see
+`docs/superpowers/specs/2026-08-01-unified-transition-contract-design.md`). It
+was the one-sided view of a resolved kind (`resolveTransition` null'd out,
+with a warning, whenever the kind was a native two-input node), kept alive
+through Phase 5 only because six call sites in the PP brand repo's
+`web-program-intro` template still drove `TransitionSeries.Transition` off
+it. That template is rewritten onto `buildVideoNodes` now, same as every
+other template, and a repo-wide sweep found zero remaining production
+callers. `resolveTransition` and `getTransitionRecord` are untouched by the
+deletion; `buildVideoNodes`/`transitionNodeFor` is the one render path left.
 
 **PHASE 5 TASK 5 — THE FLIP. There is only ONE arm now: `plan`.** A transition node is `{ plan: (props) => TransitionComposite }`, called through `buildVideoNodes` (`video-track.tsx`), which applies the returned description to the mounts that ALREADY EXIST — two always-mounted, style-only shells (`video-track-plan.tsx`'s `LayerShell`) that wrap every item for its whole life — rather than instantiating the clip a second time. Nothing is ever relocated in the tree, so nothing ever remounts. A plan's media-free `PlateLayer`s and its materialised reel-edge plate are emitted as real timeline siblings between the two item Sequences; its `post` (`filter`/`transform` only) goes on the track wrapper. `buildVideoNodes` keeps its `React.ReactNode[]` signature and returns a **single-element array** holding the always-mounted wrapper — unchanged, because 12 hand-rolled brand call sites depend on it.
 
@@ -21,7 +32,7 @@ The engine half is unit-tested here too, in `lib/editor/src/at-cut-transitions.t
 
 ~~**Four** known defects are recorded as `it.fails` rather than fixed: `checkerboard` is a no-op in the exiting direction; `pixelate`'s root is unconditionally opaque black, which at a cut hides the neighbouring clip for the duration of the transition window instead of blending with it; and `scanline-glitch` and `wipe` both paint opaquely at entering progress 0, so at a cut they replace the outgoing clip instead of dissolving into it.~~ Appearance *was* settled separately, by rendering: see `docs/superpowers/at-cut-transition-findings.md` (20 kinds after the Phase 4 removal of the brand-named fade kind, both directions) and the at-cut entry in `docs/superpowers/HANDOFF.md`.
 
-Neither file defines what a transition *is*: the vocabulary lives in `lib/reel-config-base/transition-schema.ts` (the catalog `TransitionSchema` and the editor's `TRANSITION_KINDS` are both built from). `presentationFor` maps it to Remotion via a `Record<TransitionKind, …>`, so adding a kind to the catalog produces a **compile error** here until the renderer handles it — rather than a kind that silently plays as a hard cut.
+Neither file defines what a transition *is*: the vocabulary lives in `lib/reel-config-base/transition-schema.ts` (the catalog `TransitionSchema` and the editor's `TRANSITION_KINDS` are both built from). `resolveTransition`'s internal `PRESENTATIONS` map maps it to Remotion via a `Record<TransitionKind, …>`, so adding a kind to the catalog produces a **compile error** here until the renderer handles it — rather than a kind that silently plays as a hard cut.
 
 `layered-composition-props.ts` is on the pure side of that split too — it deliberately has no `remotion` import. It is the one definition of the `<Composition>` prop bundle every layered reel needs (`layeredCompositionProps`, `layeredDurationInFrames`): id/component/fps/width/height passthrough, the placeholder `durationInFrames`, and the `calculateMetadata` that derives the real duration from `meta.totalDurationMs` with the exported `MIN_FRAMES` (60-frame) floor. A brand `Root.tsx` spreads it onto `<Composition>` alongside its own `defaultProps` literal. Unit-tested in `lib/editor/src/layered-composition-props.test.ts`. The editor's own `lib/editor/host/host-duration.ts` (`framesForReel`) deliberately does NOT reuse `layeredDurationInFrames` — the editor's timeline must extend past the authored total when an item is dragged beyond it — but it imports this file's `MIN_FRAMES` rather than hardcoding a second copy of the floor.
 
