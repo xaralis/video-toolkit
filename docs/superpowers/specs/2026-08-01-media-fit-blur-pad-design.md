@@ -40,7 +40,15 @@ One optional field on the three footage kinds (clip / broll / photo) in
 
 ```ts
 fit: z.enum(['cover', 'blur-pad']).optional().default('cover')
+backdropBlur: z.number().min(0).max(80).optional().default(32)   // px
+backdropDim:  z.number().min(0).max(1).optional().default(0.45)  // 0 = untouched, 1 = black
 ```
+
+The backdrop's look is **authored, not constant** — both values are ordinary schema
+fields and both are editable in the editor. `backdropDim` stores the dimming directly
+rather than storing `brightness` and inverting it for display: the render computes
+`brightness(1 - backdropDim)`, so what is in the config reads the same direction as what
+is on the slider, and there is no conversion to get backwards.
 
 `'contain'` is deliberately **not** in the enum. Bare black bars are never what a
 non-technical editor wants; if a use for them appears, the day it appears is when the
@@ -54,9 +62,9 @@ byte-identically with no migration.
 `fit: 'blur-pad'` — two copies of the same `OffthreadVideo`, same `src`, same
 `startFrom`/`endAt`:
 
-1. **backdrop** — `objectFit: 'cover'`, blurred and darkened (`filter: blur(32px)
-   brightness(0.55)`, scaled slightly past the edges so the blur doesn't sample
-   transparent margin), filling the frame. Carries
+1. **backdrop** — `objectFit: 'cover'`, blurred and darkened (`filter:
+   blur(${backdropBlur}px) brightness(${1 - backdropDim})`, scaled slightly past the
+   edges so the blur doesn't sample transparent margin), filling the frame. Carries
    *nothing* else: no crop, no focal, no ken burns, no grade, no style effects, no media
    effects. It is dumb fill.
 2. **foreground** — `objectFit: 'contain'`, right-aligned (`objectPosition: '100% 50%'`),
@@ -106,6 +114,9 @@ A **Framing** group in the inspector, for clip / broll / photo:
 - **Zoom** — relabelled from `Zoom (1 = fit)` to `Zoom (1 = none)`. The word "fit" is now
   the name of the control above it and cannot mean two things on one row.
 - **Crop focus X / Crop focus Y** — renamed from `Focal X` / `Focal Y`.
+- **Backdrop blur** (px) and **Backdrop dim** (0–1) — the backdrop's two knobs, disabled
+  under `fit = cover` by the same grey-out pattern (value preserved, re-enabled on
+  switching back), since there is no backdrop to tune.
 
 When `fit = blur-pad` and zoom = 1, `Crop focus X/Y` are **disabled, not hidden and not
 cleared**, with a one-line reason beneath: *"Nothing is cropped — the whole shot is
@@ -137,8 +148,12 @@ heavy lifting, the editor is for final tuning.
   as `mediaStyle`.
 - `scope: 'clip'` effect still wraps the whole output, backdrop included.
 - Zoom > 1 under `blur-pad` reaches the foreground's transform.
+- `backdropBlur` / `backdropDim` reach the backdrop's filter, and `backdropDim` inverts
+  into `brightness` exactly once (a dim of 0.45 must render `brightness(0.55)`, not
+  `brightness(0.45)`).
 - Inspector: disabled state and its reason line appear exactly under `blur-pad` + zoom 1;
-  the stored `focalX/focalY` survive being greyed.
+  the stored `focalX/focalY` survive being greyed, and so do the backdrop knobs when
+  greyed under `cover`.
 - `FrameOverlay` hidden under the same condition.
 
 ## Gates
@@ -151,6 +166,7 @@ fitting, so it is untouched by this work and can be skipped with that reason sta
 ## Out of scope
 
 - `objectFit: 'contain'` without a backdrop.
-- Per-segment control of the backdrop's blur radius or darkening. One tuned constant
-  pair, until someone needs otherwise.
 - Vertical alignment. Right-aligned horizontally, centred vertically, fixed.
+- A brand-level default for `backdropBlur` / `backdropDim`. The schema defaults are the
+  only defaults; a brand wanting its own look sets them per item until a second brand
+  needs otherwise.
