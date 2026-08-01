@@ -552,6 +552,30 @@ something core-worthy, Claude flags it and offers to upstream it — without blo
 leaving an easy path to swap the local copy for core's once it lands (see a brand repo's own
 CLAUDE.md, and `.claude/superpowers/specs/2026-07-18-core-upstreaming-convention-design.md`).
 
+### The `toolkit/` submodule is a checkout, not your working copy
+
+**A brand repo's `toolkit/` is a separate clone parked on a pinned commit. It is NOT the
+core repo you are editing.** Editing `core/lib/...` and then restarting a brand repo's dev
+server changes nothing: the project still reads `<brand-repo>/toolkit/lib/...` at the old
+pin. Symptoms are maddening rather than obvious — a fix that "doesn't apply", a CSS change
+that never lands, an editor that keeps rendering the previous behaviour after `--force`.
+
+Any core change reaches a brand repo only by: **commit in core → push → `git -C toolkit
+fetch && git -C toolkit checkout <sha>` → commit the submodule bump.** All four steps.
+
+**Never `git checkout main` inside `toolkit/`.** The submodule carries its own stale local
+`main` — on 2026-08-01 it sat on `0c45236` while core's `main` was at `95c8e0c`, so the
+checkout silently moved the pin *backwards* onto an unrelated commit. Check out the
+**explicit SHA** you just pushed, and verify it landed:
+
+```bash
+git -C toolkit log --oneline -1     # must equal core's HEAD
+```
+
+The same rule protects the reverse direction: if a brand repo seems to disagree with core
+about what the code says, compare `git -C toolkit rev-parse HEAD` against core's HEAD
+before debugging anything else.
+
 ## Documentation
 
 - `docs/tools-reference.md` - CLI cheat sheet for every Python tool
