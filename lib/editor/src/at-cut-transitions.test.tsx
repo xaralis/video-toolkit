@@ -104,9 +104,21 @@ function mountPlan(
   durationInFrames = 20,
 ) {
   const frame = Math.round(progress * durationInFrames);
+  // PHASE 5 TASK 2.2 FIX ROUND — the `LayerHandle` passed to `plan()` must
+  // agree with `inputs.from`/`inputs.to`'s own nullability. Before this fix
+  // the handle was ALWAYS non-null regardless of `inputs`, which is not what
+  // the real pipeline does (`handleFor` in `video-track.tsx` returns `null`
+  // whenever the side has no item — a reel edge) and made it IMPOSSIBLE for
+  // any test built on this helper to exercise a node's own `from === null` /
+  // `to === null` branching, exactly the contract §2.5 explicitly grants a
+  // node the right to use. Found while chasing `pixelate`'s reel-edge defect
+  // (see the "pixelate does not let a materialised edge plate curtain over
+  // real content" test below) — the first draft of that test passed on the
+  // BUGGY code because this helper silently fed the node a real handle even
+  // when the test asked for `to: null`.
   const composite = node.plan!({
-    from: { range: [0, durationInFrames] },
-    to: { range: [0, durationInFrames] },
+    from: inputs.from === null ? null : { range: [0, durationInFrames] },
+    to: inputs.to === null ? null : { range: [0, durationInFrames] },
     progress,
     frame,
     durationInFrames,
@@ -127,10 +139,33 @@ function mountPlan(
   const CLIP = <div data-testid="clip" />;
   const fromContent = inputs.from === null ? <EdgePlate background={background} /> : (inputs.from ?? CLIP);
   const toContent = inputs.to === null ? <EdgePlate background={background} /> : (inputs.to ?? CLIP);
+  // PLATES (Phase 5 Task 2.2) — mirrors `PlateHost`
+  // (lib/render/video-track-plan.tsx): `under`/`over` carry an explicit
+  // z-index, `between` is placed by TREE POSITION alone (between the two
+  // shells, exactly where `video-track.tsx`'s `plates(b)` Sequence sits
+  // relative to the two item Sequences). `wipe`'s sheet, `fade-to-color`'s
+  // dip and `pixelate`'s overlays are all media-free `layers` this helper
+  // would otherwise never render — a real gap, since none of those kinds'
+  // pictures live on `from`/`to` alone.
+  const renderPlates = (z: 'under' | 'between' | 'over') =>
+    (composite.layers ?? []).filter((l) => l.z === z).map((l) => (
+      <div
+        key={l.key}
+        style={{
+          ...(z === 'under' ? { zIndex: -1 } : z === 'over' ? { zIndex: 1 } : {}),
+          ...l.style,
+        }}
+      >
+        {l.content}
+      </div>
+    ));
   return render(
     <ActiveTransitionProgressContext.Provider value={{ progress, frame, durationInFrames }}>
+      {renderPlates('under')}
       {renderSide('from', fromContent)}
+      {renderPlates('between')}
       {renderSide('to', toContent)}
+      {renderPlates('over')}
     </ActiveTransitionProgressContext.Provider>,
   );
 }
@@ -267,7 +302,15 @@ const NODE_KINDS = KINDS.filter((k) => {
 });
 
 describe('one-sided presentations vs native two-input nodes', () => {
-  // FOUR, and the count is a measurement of the PROBE, not of the catalog.
+  // FIVE, and the count is a measurement of the PROBE, not of the catalog.
+  // PHASE 5 TASK 2.2 added `gradient-wipe` to this set: it used to be a
+  // one-sided `TransitionPresentation` core lifted (`wrapRemotionPresentation`);
+  // it is now a native `plan` node returning `to.style.maskImage` directly, so
+  // it resolves to a `TransitionNode` straight out of `resolveTransition` like
+  // the other four. `wipe` and `pixelate` were ALREADY native nodes before this
+  // task (Phase 4) and stay in this set — migrating their ARM (`composite` →
+  // `plan`) does not change whether `isTransitionNode()` is true for them.
+  //
   // `fade-to-color` is a node only when its `color` key resolves — a dip has no
   // one-sided form, but a colourless `fade-to-color` is not a dip at all, it is
   // the plain `fade()`. `probeTransitionFor` deliberately skips `accent`-typed
@@ -277,11 +320,11 @@ describe('one-sided presentations vs native two-input nodes', () => {
   // directly — with and without a colour — in "a fade’s colour is a parameter"
   // below, so it cannot drift unnoticed just because this list does not name it.
   //
-  // The fifth entry used to be a brand-named fade kind hardwired to a black
+  // The sixth entry used to be a brand-named fade kind hardwired to a black
   // core had chosen for it. It was removed from core entirely; the colour is
   // the brand's to name now, which is why the arity became conditional.
-  it('exactly four kinds are native two-input nodes AT THEIR CATALOG DEFAULT — not a statement about the catalog', () => {
-    expect([...NODE_KINDS].sort()).toEqual(['checkerboard', 'pixelate', 'scanline-glitch', 'wipe']);
+  it('exactly five kinds are native two-input nodes AT THEIR CATALOG DEFAULT — not a statement about the catalog', () => {
+    expect([...NODE_KINDS].sort()).toEqual(['checkerboard', 'gradient-wipe', 'pixelate', 'scanline-glitch', 'wipe']);
   });
 
   // The other half of the conditional arity, stated where the list above is —
@@ -477,26 +520,50 @@ describe.each(NODE_KINDS)('two-input node %s delivers every authored param', (ki
   const stripGeneratedIds = (html: string) =>
     html.replace(/id="[^"]*"/g, 'id="ID"').replace(/url\(#[^)]*\)/g, 'url(#ID)');
 
-  const renderedFor = (t: Record<string, unknown>) =>
-    PROBE_PROGRESS.map((progress) => {
-      const Composite = compositeOf(transitionNodeFor(t as TransitionRecord, { ...DIMS, palette: PALETTE })!);
-      const { container, unmount } = render(
-        <Composite
-          from={<div data-testid="a" />}
-          to={<div data-testid="b" />}
-          progress={progress}
-          durationInFrames={15}
-          width={1080}
-          height={1920}
-          fps={30}
-          palette={PALETTE}
-          background="transparent"
-        />,
-      );
+  // PHASE 5 TASK 2.2 — branches on ARM. `wipe`/`pixelate`/`gradient-wipe` moved
+  // `composite` → `plan` this task; `checkerboard`/`scanline-glitch` (Stage
+  // 3/4) have not. `mountPlan` (defined near `compositeOf`, above) renders
+  // `layers` (plates) TOO — load-bearing here specifically, since `pixelate`'s
+  // grid/glitch-slice/RGB-split/scanline/vignette/noise overlays all moved
+  // onto `layers` this task; a plan-arm render that skipped plates would make
+  // every one of those params' differential checks below vacuously pass on
+  // NOTHING (the plate never rendered at all, so two renders' stripped HTML
+  // would both be the empty string from that layer, not merely equal to each
+  // other for the right reason).
+  const renderedFor = (t: Record<string, unknown>) => {
+    const node = transitionNodeFor(t as TransitionRecord, { ...DIMS, palette: PALETTE })!;
+    return PROBE_PROGRESS.map((progress) => {
+      let container: HTMLElement;
+      let unmount: () => void;
+      if (typeof node.plan === 'function') {
+        ({ container, unmount } = mountPlan(
+          node,
+          { from: <div data-testid="a" />, to: <div data-testid="b" /> },
+          progress,
+          'transparent',
+          15,
+        ));
+      } else {
+        const Composite = compositeOf(node);
+        ({ container, unmount } = render(
+          <Composite
+            from={<div data-testid="a" />}
+            to={<div data-testid="b" />}
+            progress={progress}
+            durationInFrames={15}
+            width={1080}
+            height={1920}
+            fps={30}
+            palette={PALETTE}
+            background="transparent"
+          />,
+        ));
+      }
       const html = stripGeneratedIds(container.innerHTML);
       unmount();
       return html;
     }).join('\n');
+  };
 
   // `accent` (and the dual `accent-or-color`) is pinned by the palette tests
   // below; `string`/`color` are brand-supplied assets with no in-bounds probe
@@ -535,12 +602,28 @@ describe('composition-size-dependent kinds', () => {
 // These assert the colour where it actually matters — on the sweeping sheet the
 // node paints — which is a stronger pin than the props bag ever was.
 describe('accent-slot resolution', () => {
+  // `wipe` moved `composite` → `plan` (Phase 5 Task 2.2); `mountPlan` renders
+  // its sheet as an `over` PLATE now, not a JSX sibling.
   const sheetColorFor = (t: TransitionRecord, dims: Parameters<typeof transitionNodeFor>[1]) => {
-    const Composite = compositeOf(transitionNodeFor(t, dims)!);
-    const { container, unmount } = render(
-      <Composite from={null} to={null} progress={0.5} durationInFrames={15} width={1080} height={1920} fps={30} palette={[]} background="transparent" />,
+    const node = transitionNodeFor(t, dims)!;
+    let container: HTMLElement;
+    let unmount: () => void;
+    if (typeof node.plan === 'function') {
+      ({ container, unmount } = mountPlan(node, { from: null, to: null }, 0.5, 'transparent', 15));
+    } else {
+      const Composite = compositeOf(node);
+      ({ container, unmount } = render(
+        <Composite from={null} to={null} progress={0.5} durationInFrames={15} width={1080} height={1920} fps={30} palette={[]} background="transparent" />,
+      ));
+    }
+    // Excludes `'transparent'` — `mountPlan` materialises a NULL side as a real
+    // `EdgePlate` now (Phase 5 Task 2.2's edge-plate contract), which also
+    // carries a non-empty `backgroundColor`. The sheet's own colour is always a
+    // resolved accent or the node's literal neutral, never the string
+    // `'transparent'`, so this stays unambiguous.
+    const sheet = [...container.querySelectorAll('div')].find(
+      (d) => d.style.backgroundColor !== '' && d.style.backgroundColor !== 'transparent',
     );
-    const sheet = [...container.querySelectorAll('div')].find((d) => d.style.backgroundColor !== '');
     const color = sheet?.style.backgroundColor;
     unmount();
     return color;
@@ -635,11 +718,22 @@ describe('the four two-input nodes render what their name promises', () => {
   const nodeFor = (t: Partial<TransitionRecord> & { kind: string }, palette?: readonly AccentSlot[]) =>
     transitionNodeFor(t as TransitionRecord, palette ? { ...DIMS, palette } : DIMS)!;
 
+  // PHASE 5 TASK 2.2 — branches on arm: `wipe`/`pixelate` moved `composite` →
+  // `plan` this task, `checkerboard`/`scanline-glitch` (Stage 3/4) have not.
   const mountNode = (
     node: TransitionNode,
     progress: number,
     inputs: { from?: React.ReactNode | null; to?: React.ReactNode | null } = {},
   ) => {
+    if (typeof node.plan === 'function') {
+      return mountPlan(
+        node,
+        { from: inputs.from === undefined ? A : inputs.from, to: inputs.to === undefined ? B : inputs.to },
+        progress,
+        'transparent',
+        15,
+      );
+    }
     const Composite = compositeOf(node);
     return render(
       <Composite
@@ -663,19 +757,32 @@ describe('the four two-input nodes render what their name promises', () => {
     [...container.querySelectorAll('div')].filter((d) => d.style.transformOrigin === 'center center');
 
   // ---- wipe ---------------------------------------------------------------
-  // WAS: both beats ran over the SAME window, entering drawn on top, so its
-  // sheet already sat at translateX(0%) at progress 0 and the whole frame
-  // flashed to the accent colour on the transition's first frame.
-  // IS: two SEQUENTIAL beats over one window — sheet in over A across the first
-  // half, sheet out off B across the second.
+  // WAS (Phase 4): both beats ran over the SAME window, entering drawn on top,
+  // so its sheet already sat at translateX(0%) at progress 0 and the whole
+  // frame flashed to the accent colour on the transition's first frame.
+  // IS (Phase 4 fix): two SEQUENTIAL beats over one window — sheet in over A
+  // across the first half, sheet out off B across the second.
+  //
+  // PHASE 5 TASK 2.2 — `shows` is now read off OPACITY, not mount presence.
+  // Both `a` and `b` are ALWAYS mounted under the `plan` arm (the single-mount
+  // contract this task migrates onto) — the old "only one side is even in the
+  // DOM" behaviour was itself the pre-Phase-5 defect class (two mounts of
+  // whichever side toggled), and the design's own argument for why the OPACITY
+  // swap is pixel-identical (§3 row 17: the occluded side is always fully
+  // covered by the sheet) is exactly what this rewritten assertion measures
+  // directly instead of inferring from mount presence.
   it('wipe sweeps its sheet IN over the outgoing clip, then OUT to reveal the incoming one', () => {
     const node = nodeFor({ kind: 'wipe', frames: 15, color: 'secondary', direction: 'left' }, PALETTE);
+    const opacityOf = (container: HTMLElement, id: 'a' | 'b') =>
+      container.querySelector(`[data-testid="${id}"]`)!.parentElement!.style.opacity;
     const sample = (progress: number) => {
       const { container, unmount } = mountNode(node, progress);
       const sheet = [...container.querySelectorAll('div')].find((d) => d.style.backgroundColor !== '');
+      const aOp = opacityOf(container, 'a');
+      const bOp = opacityOf(container, 'b');
       const out = {
         progress,
-        shows: count(container, 'a') ? 'outgoing' : count(container, 'b') ? 'incoming' : 'neither',
+        shows: aOp === '1' && bOp === '0' ? 'outgoing' : bOp === '1' && aOp === '0' ? 'incoming' : 'neither',
         sheet: sheet?.style.transform,
       };
       unmount();
@@ -777,6 +884,97 @@ describe('the four two-input nodes render what their name promises', () => {
       { progress: 0, opaqueBlack: 0, from: '1', to: '0' },
       { progress: 0.5, opaqueBlack: 0, from: '1', to: '1' },
     ]);
+  });
+
+  // PHASE 5 TASK 2.2 — a DEDICATED pin for "the same filter/transform string on
+  // BOTH `LayerOp.style`s, differing only in opacity" (design §2.4's `pixelate`
+  // row). Found NECESSARY by the deletion-mutation sweep: `maxBlockSize`'s own
+  // differential test (the generic `NODE_KINDS` param-delivery block) stays
+  // green even with the shared `filter` deleted entirely, because
+  // `maxBlockSize` ALSO drives the grid-lines plate's `backgroundSize` — a
+  // second, independent observable of the same param that the differential
+  // check happily latches onto instead. Nothing else in this file asserted the
+  // blur filter reaches `from`/`to` at all before this test existed.
+  it('pixelate applies the SAME blur filter to both from/to, differing only in opacity', () => {
+    const node = nodeFor({ kind: 'pixelate', frames: 15 });
+    const { container, unmount } = mountNode(node, 0.5);
+    const filterOf = (id: 'a' | 'b') =>
+      (container.querySelector(`[data-testid="${id}"]`)?.parentElement as HTMLElement | null)?.style.filter;
+    const fromFilter = filterOf('a');
+    const toFilter = filterOf('b');
+    unmount();
+    expect(fromFilter).toBeTruthy();
+    expect(fromFilter).toContain('blur(');
+    expect(fromFilter).toBe(toFilter);
+  });
+
+  // PHASE 5 TASK 2.2 FIX ROUND — a reel-edge regression `mountNode`'s default
+  // inputs (real `a`/`b` on both sides) can never exercise, and the pixel
+  // harness caught: `pixelate`'s `to`-opacity curve reaches 1 by progress 0.4
+  // (`toOpacity = interpolate(progress, [0, 0.4, 1], [0, 1, 1])`), which is
+  // exactly right when `to` is a REAL incoming clip crossfading in — but at a
+  // TRAILING reel edge `to === null`, so core materialises it as an `EdgePlate`
+  // (a flat background-colour rectangle, design §2.5) and stacks it ABOVE the
+  // outgoing clip (`video-track.tsx`: "a trailing-edge one's materialised `to`
+  // plate sits above that item"). Feeding THAT plate the same rising opacity
+  // curve makes a flat background rectangle go fully opaque by progress 0.4
+  // and sit on top of the still-fading-out `from` clip for the entire back
+  // half of the transition — a visible premature curtain the old `composite`
+  // arm never had, because it rendered NOTHING at all for a null side
+  // (`{to === null ? null : plate(to, toOpacity)}`), leaving `from` to fade
+  // out on its own and reveal the true background only once it actually
+  // finished. Measured on the real pipeline: `pixelate__exit__p05` (a
+  // trailing-edge probe reel sampled at progress 0.5) moved from a warm
+  // orange numeral clearly visible to a flat, differently-toned picture with
+  // no numeral at all — max 8×8 cell delta 124 of 255, not a rounding-level
+  // drift. `wipe`/`fade-to-color`/`gradient-wipe` do not share this defect:
+  // `wipe`'s swap instant is covered by its own opaque sheet plate, `fade-to
+  // -color`'s dip plate is already opaque by the time its `to` opacity needs
+  // to rise, and `gradient-wipe` never touches `to`'s opacity at all (only
+  // `maskImage`, which is 0%-revealed at progress 0) — confirmed by the
+  // golden diff, which named only `pixelate` cells.
+  it('pixelate does not let a materialised reel-edge plate curtain over the real clip that is still fading out', () => {
+    const node = nodeFor({ kind: 'pixelate', frames: 15 });
+    const EDGE_BG = '#123456';
+    const EDGE_RGB = 'rgb(18, 52, 86)';
+    // The EdgePlate is the ONLY thing painted with this exact background —
+    // pixelate's own overlay plates (grid cells, RGB-split ghosts, …) use
+    // their own hardcoded colours, never a caller-supplied background, so this
+    // locates the materialised edge plate without depending on DOM shape (the
+    // same technique `platesOf` in the "reel edge" describe below uses).
+    const edgePlateOpacity = (container: HTMLElement) => {
+      const plate = [...container.querySelectorAll('div')].find((d) => d.style.backgroundColor === EDGE_RGB);
+      return plate?.parentElement?.style.opacity ?? null;
+    };
+    const fromOpacityOf = (container: HTMLElement) =>
+      (container.querySelector('[data-testid="a"]')?.parentElement as HTMLElement | null)?.style.opacity;
+
+    // Trailing edge: `to` is the reel edge (nothing follows this clip).
+    // Progress 0.7 is well past the 0.4 knot where `toOpacity` already
+    // reached 1 for a real incoming clip — exactly the region where a
+    // materialised edge plate must NOT do the same.
+    const { container, unmount } = mountPlan(node, { from: A, to: null }, 0.7, EDGE_BG, 15);
+    const fromOpacity = fromOpacityOf(container);
+    const toEdgeOpacity = edgePlateOpacity(container);
+    unmount();
+    // The real `from` clip must still be visibly fading per its OWN curve
+    // (not already at 0 — that would be a different defect), and the
+    // materialised edge plate standing in for the missing `to` must not be
+    // opaque enough to hide it.
+    expect(Number(fromOpacity)).toBeGreaterThan(0);
+    expect(Number(toEdgeOpacity)).toBe(0);
+
+    // Symmetric check — leading edge (`from === null`, nothing precedes this
+    // clip). Structurally this side is stacked BENEATH the real `to` clip
+    // (`video-track.tsx`: "a leading-edge plan boundary's materialised `from`
+    // plate belongs BELOW the incoming clip"), so an opaque edge plate here
+    // does not visibly curtain anything — but the node should still treat a
+    // null side as "nothing to show" for the same reason the trailing edge
+    // must, rather than relying on z-order alone to hide the inconsistency.
+    const { container: c2, unmount: u2 } = mountPlan(node, { from: null, to: B }, 0.2, EDGE_BG, 15);
+    const fromEdgeOpacity = edgePlateOpacity(c2);
+    u2();
+    expect(Number(fromEdgeOpacity)).toBe(0);
   });
 
   // ---- scanline-glitch ----------------------------------------------------

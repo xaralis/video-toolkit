@@ -36,10 +36,25 @@ vi.mock('remotion', async () => {
   const actual = await vi.importActual<typeof import('remotion')>('remotion');
   return {
     ...actual,
-    // Frame 10 of a 20-frame boundary — progress 0.5, the midpoint, which is
+    // Frame 10 of the 20-frame boundary — progress 0.5, the midpoint, which is
     // exactly where `fade-to-color`'s colour is at FULL opacity and nothing of
     // either input shows through. If the colour paints anywhere, it paints here.
-    useCurrentFrame: () => 10,
+    //
+    // PHASE 5 TASK 2.2 — an ABSOLUTE composition frame now, not a boundary-local
+    // one. `fade-to-color`'s COLOURED route moved from the `composite` arm
+    // (whose boundary Sequence, real in production, is a dumb passthrough HERE
+    // that ignores `from`/`durationInFrames` — so `AtCutTransition`'s own
+    // `useCurrentFrame()` read this mock's flat return directly, with no
+    // subtraction, and "10" WAS boundary-local by construction) to the `plan`
+    // arm, whose `VideoTrackHost` computes `local = frame - boundary.start`
+    // itself and is NEVER inside a Sequence of its own — so it needs the REAL
+    // absolute frame. `reelEndingWith`'s fixture is constant across this whole
+    // file (one 2000ms item, a 20-frame `transitionOut`, no predecessor to
+    // borrow a handle from), so the boundary's start is the same for every test
+    // here: `seqFrom(0) + seqDuration(60) - outFrames(20) = 40` — confirmed via
+    // `computeVideoLayout` directly, not assumed. Boundary-local frame 10 is
+    // therefore absolute frame 50.
+    useCurrentFrame: () => 50,
     useVideoConfig: () => ({
       width: 1080, height: 1920, fps: 30, durationInFrames: 300, id: 'test', defaultProps: {}, props: {},
     }),

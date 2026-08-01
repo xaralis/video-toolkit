@@ -124,9 +124,12 @@ beforeEach(() => {
 // "empty describe.each passes trivially" trap `video-track-remount.test.tsx`
 // already guards against for the identity ratchet). A literal array, not a
 // count, so a shrink prints exactly which kind went missing.
-it('PLAN_KINDS is exactly the seven Task 2.1 migrated kinds — re-derive; do not carry forward', () => {
+it('PLAN_KINDS is exactly the ten Task 2.1+2.2 migrated kinds — re-derive; do not carry forward', () => {
   expect.hasAssertions();
-  expect(PLAN_KINDS).toEqual(['dissolve', 'fade', 'fade-to-color', 'slide', 'flip', 'clock-wipe', 'iris']);
+  expect(PLAN_KINDS).toEqual([
+    'dissolve', 'fade', 'fade-to-color', 'slide', 'flip', 'clock-wipe', 'iris',
+    'wipe', 'gradient-wipe', 'pixelate',
+  ]);
 });
 
 /** The style value the nearest ancestor carrying `prop` sets — `''` if none
@@ -135,7 +138,17 @@ it('PLAN_KINDS is exactly the seven Task 2.1 migrated kinds — re-derive; do no
  *  actually rendered into, without assuming which nesting depth that is (it
  *  differs between the exiting/outer and entering/inner shell — see
  *  `single-mount-assembly.test.tsx`'s `opacityAncestor`, the same technique). */
-function findStyle(el: Element, prop: 'opacity' | 'transform' | 'clipPath'): string {
+// PHASE 5 TASK 2.2 — widened with `filter` and `maskImage`. `pixelate` (its
+// native `plan`) sets `filter` on both sides, and `gradient-wipe` sets
+// `maskImage` on `to` alone; neither is `opacity`/`transform`/`clipPath`, so
+// without this widening this pin would be BLIND to both — a genuinely inert
+// mask/filter and a genuinely live one would read identically, which is
+// exactly the "obviously the identity" trap the brief calls out for these two
+// props.
+function findStyle(
+  el: Element,
+  prop: 'opacity' | 'transform' | 'clipPath' | 'filter' | 'maskImage',
+): string {
   for (let cur = el.parentElement; cur; cur = cur.parentElement) {
     const v = (cur as HTMLElement).style[prop];
     if (v) return v;
@@ -193,6 +206,15 @@ function expectedNeutralClipPath(kind: string): string | null {
  *  and `clock-wipe`/`iris`'s EXITING branch (`opacity: 1`/`clipPath:
  *  undefined` regardless of progress), so there is genuinely nothing to
  *  differ there. */
+// PHASE 5 TASK 2.2 — three more rows. `wipe` sets `opacity` on both sides
+// (like the Task 2.1 crossfades); `gradient-wipe`'s EXITING side is `from: {}`
+// (untouched, so `false` — nothing widened OR pre-existing differs there) and
+// its ENTERING side sets `maskImage` only (no opacity/transform/clipPath at
+// all — this is the row that NEEDS the `findStyle` widening above, or it would
+// read as `false` for the wrong reason: not "genuinely inert" but "this pin
+// couldn't see the property that changes"); `pixelate` sets `opacity` AND
+// (once `pixelIntensity` clears its own thresholds) `filter`/`transform` on
+// both sides, so both are `true`.
 const EXPECT_LIVE_DIFFERS: Record<string, { exiting: boolean; entering: boolean }> = {
   dissolve: { exiting: false, entering: true },
   fade: { exiting: false, entering: true },
@@ -201,10 +223,21 @@ const EXPECT_LIVE_DIFFERS: Record<string, { exiting: boolean; entering: boolean 
   flip: { exiting: true, entering: true },
   'clock-wipe': { exiting: false, entering: true },
   iris: { exiting: false, entering: true },
+  wipe: { exiting: true, entering: true },
+  'gradient-wipe': { exiting: false, entering: true },
+  pixelate: { exiting: true, entering: true },
 };
 
-function pictureOf(el: Element): { opacity: string; transform: string; clipPath: string } {
-  return { opacity: findStyle(el, 'opacity'), transform: findStyle(el, 'transform'), clipPath: findStyle(el, 'clipPath') };
+function pictureOf(
+  el: Element,
+): { opacity: string; transform: string; clipPath: string; filter: string; maskImage: string } {
+  return {
+    opacity: findStyle(el, 'opacity'),
+    transform: findStyle(el, 'transform'),
+    clipPath: findStyle(el, 'clipPath'),
+    filter: findStyle(el, 'filter'),
+    maskImage: findStyle(el, 'maskImage'),
+  };
 }
 
 describe.each(PLAN_KINDS)(
@@ -269,6 +302,13 @@ describe.each(PLAN_KINDS)(
       expect(neutral.opacity === '' || neutral.opacity === '1').toBe(true);
       assertInertTransform(kind, 'exiting', neutral.transform);
       expect(neutral.clipPath).toBe(''); // no kind's EXITING branch ever sets a clip-path
+      // No `plan`-arm kind's EXITING side sets `filter`/`maskImage` either —
+      // `pixelate`'s shared filter/transform IS applied to `from` too, but
+      // only while the boundary is LIVE (a bare `LayerOp.style`, unlike
+      // `wrap`, is never even attempted outside the window — see
+      // `LayerShell`'s `op` lookup), so far outside it there is nothing here.
+      expect(neutral.filter).toBe('');
+      expect(neutral.maskImage).toBe('');
 
       if (EXPECT_LIVE_DIFFERS[kind].exiting) {
         clock.frame = window.start + Math.floor(window.frames / 2);
@@ -288,6 +328,11 @@ describe.each(PLAN_KINDS)(
       expect(neutral.opacity === '' || neutral.opacity === '1').toBe(true);
       assertInertTransform(kind, 'entering', neutral.transform);
       expect(neutral.clipPath).toBe(expectedNeutralClipPath(kind) ?? '');
+      // `gradient-wipe`'s ENTERING side is the ONLY thing in this whole file
+      // that sets `maskImage` at all — well outside its window it must be
+      // absent, exactly like every other kind's opacity/transform/clip-path.
+      expect(neutral.filter).toBe('');
+      expect(neutral.maskImage).toBe('');
 
       if (EXPECT_LIVE_DIFFERS[kind].entering) {
         clock.frame = window.start + Math.floor(window.frames / 2);

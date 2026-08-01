@@ -394,13 +394,29 @@ describe('DERIVED — the plan/composite partition over the catalog is pinned', 
   // seeds no `color` (only booleans get seeded — `transition-schema.ts`'s
   // own note), so the record `armOf` builds for it has none, which resolves
   // through the plain `fade()` exactly like `fade` and `dissolve` do (see
-  // `WRAP_PLAN_KINDS` in `at-cut-transitions.tsx`). Order matches
+  // `WRAP_PLAN_KINDS` in `at-cut-transitions.tsx`).
+  //
+  // PHASE 5 TASK 2.2 adds THREE more — `wipe`, `gradient-wipe`, `pixelate` —
+  // by a DIFFERENT mechanism: these are native two-input nodes whose factory
+  // now returns `{ plan }` instead of `{ composite }` directly (no
+  // `WRAP_PLAN_KINDS` entry needed or added for them; a native node is
+  // `isTransitionNode(resolved)` straight out of `resolveTransition`, so
+  // `transitionNodeFor`'s wrap-lift branch never runs for them at all).
+  // `fade-to-color`'s COLOUR route also migrated this task, but
+  // `defaultTransition('fade-to-color', …)` seeds no colour, so THIS derived
+  // list — built off the catalog DEFAULT — still only ever reaches the
+  // no-colour fallback already counted above; the colour route's own arm is
+  // pinned separately in `at-cut-transitions.test.tsx`. Order matches
   // `CATALOG_KINDS`' own order (`TRANSITION_CATALOG`'s declaration order:
   // `dissolve`, `fade`, `fade-to-color`, …, `slide`, `flip`, …, `clock-wipe`,
-  // `iris`, …), not the brief's prose order.
-  it('is exactly the six Task 2.1 migrated kinds — re-derive; do not carry forward', () => {
+  // `iris`, `wipe`, `gradient-wipe`, `pixelate`, …), not the brief's prose
+  // order.
+  it('is exactly the ten Task 2.1+2.2 migrated kinds — re-derive; do not carry forward', () => {
     expect.hasAssertions();
-    expect(PLAN_KINDS).toEqual(['dissolve', 'fade', 'fade-to-color', 'slide', 'flip', 'clock-wipe', 'iris']);
+    expect(PLAN_KINDS).toEqual([
+      'dissolve', 'fade', 'fade-to-color', 'slide', 'flip', 'clock-wipe', 'iris',
+      'wipe', 'gradient-wipe', 'pixelate',
+    ]);
     expect(COMPOSITE_KINDS.length).toBe(CATALOG_KINDS.length - PLAN_KINDS.length);
   });
 });

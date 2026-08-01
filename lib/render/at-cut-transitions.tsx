@@ -233,7 +233,11 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
     ) ?? undefined,
     direction: t.direction,
   }),
-  'gradient-wipe': (t) => gradientWipe({ direction: t.direction, softness: t.softness }) as AnyPresentation,
+  // PHASE 5 TASK 2.2 — `gradientWipe` is now a NATIVE two-input `plan` node
+  // (see lib/transitions/presentations/gradient-wipe.tsx), not a one-sided
+  // `TransitionPresentation` core lifts. No `as AnyPresentation` cast: the
+  // factory's return type IS `TransitionNode` now.
+  'gradient-wipe': (t) => gradientWipe({ direction: t.direction, softness: t.softness }),
   // Every param below is optional on both sides: the schema member makes it
   // optional, and the presentation destructures it with its own default — so
   // passing an explicit `undefined` through is exactly "use your default", the
@@ -638,8 +642,19 @@ export function resetTransitionNodeCache(): void {
  *  colour is unaffected either way: it already returns a `TransitionNode`
  *  (native `composite`) straight out of `resolveTransition`, so
  *  `isTransitionNode(resolved)` is true and this set is never consulted for
- *  that branch. */
-const WRAP_PLAN_KINDS: ReadonlySet<string> = new Set([
+ *  that branch.
+ *
+ *  TYPED `ReadonlySet<TransitionKind>` (Phase 5 Task 2.2 — deferred from Task
+ *  2.1, which left this `ReadonlySet<string>` with the note that a typo would
+ *  not be a compile error). This set is not the only registration surface for
+ *  the `plan` arm any more — `wipe`, `pixelate`, `gradient-wipe` and
+ *  `fade-to-color`'s COLOUR route are native nodes returning `plan` directly
+ *  from `PRESENTATIONS`, never gated here at all (a native node is
+ *  `isTransitionNode(resolved)` already, so `transitionNodeFor`'s branch below
+ *  never consults this set for them). `WRAP_PLAN_KINDS` names ONLY the kinds
+ *  still reached via `wrapRemotionPresentation` — the lift for a one-sided
+ *  `@remotion/transitions` presentation this task did not touch. */
+const WRAP_PLAN_KINDS: ReadonlySet<TransitionKind> = new Set<TransitionKind>([
   'fade', 'dissolve', 'slide', 'flip', 'clock-wipe', 'iris', 'fade-to-color',
 ]);
 
@@ -693,10 +708,16 @@ export function transitionNodeFor(t: TransitionRecord | undefined, dims: Dims): 
 
   // `t` is guaranteed non-null here (`resolveTransition` only ever returns
   // non-null when its own `t` argument was), so `t.kind` is safe to read for
-  // the WRAP_PLAN_KINDS gate below.
+  // the WRAP_PLAN_KINDS gate below. `t.kind` is `string` (a BRAND kind widens
+  // `TransitionRecord['kind']` past the closed `TransitionKind` union), so the
+  // `.has()` call needs a cast to satisfy the now-tightened
+  // `ReadonlySet<TransitionKind>` — safe, because a brand kind that is not
+  // actually a `TransitionKind` simply misses the set at runtime, exactly as
+  // before this task's typing fix; what changed is that a TYPO inside the SET
+  // LITERAL above is now a compile error, which is the gap Task 2.1 deferred.
   const node = isTransitionNode(resolved)
     ? resolved
-    : WRAP_PLAN_KINDS.has(t!.kind)
+    : WRAP_PLAN_KINDS.has(t!.kind as TransitionKind)
       ? wrapRemotionPresentation(resolved)
       : fromRemotionPresentation(resolved);
   if (cache.size >= TRANSITION_NODE_CACHE_LIMIT) {

@@ -1,7 +1,11 @@
 // lib/transitions/presentations/fade-to-color.tsx
 //
 // A DIP TO COLOUR — the outgoing clip is covered by a colour, and the incoming
-// one resolves out of it. A native two-input node (Phase 4 Task 2.3).
+// one resolves out of it. A native two-input node (Phase 4 Task 2.3), and one
+// only when its colour resolves (see `lib/render/at-cut-transitions.tsx`'s
+// `PRESENTATIONS['fade-to-color']`) — with no colour there is no dip, so the
+// renderer falls back to the plain one-sided `fade()` instead of building this
+// node at all.
 //
 // WHY THIS EXISTS. Core's catalog used to carry a fade kind named after ONE
 // BRAND'S COLOUR WORD — its own near-black — frozen permanently into core's
@@ -24,10 +28,17 @@
 // back to the plain `fade()` presentation otherwise. Core inventing a colour for
 // a key the brand never declared — including a "neutral" default of its own —
 // is the brand leak this programme exists to remove.
-import React from 'react';
-import { AbsoluteFill } from 'remotion';
-import type { TransitionNode, TransitionNodeProps } from '../../theming/transitions';
-import { edgeInput } from '../edge-plate';
+//
+// PHASE 5 TASK 2.2 — `composite` → `plan`. Both inputs are ALREADY MOUNTED;
+// the node styles them instead of instantiating them. The colour dip is no
+// longer a JSX `<AbsoluteFill>` SIBLING between two others — it is a media-free
+// `between` PLATE (placed by tree position between the two item Sequences,
+// exactly where the old sibling sat), carrying the SAME
+// `Math.min(1, progress*2)` opacity curve. `from` is untouched (`{}`) — the
+// pre-migration composite's outgoing side had no style of its own either
+// (`edgeInput(from, background)` with no wrapper styling), so there is nothing
+// for the exiting side's `LayerOp` to carry.
+import type { TransitionNode, TransitionPlanProps, TransitionComposite } from '../../theming/transitions';
 
 export type FadeToColorProps = {
   /** The colour dipped through, as a CSS colour (hex, `rgb()`, …). Already
@@ -58,15 +69,15 @@ function fadeToColorOpacities(progress: number): { color: number; incoming: numb
 }
 
 export const fadeToColor = ({ color }: FadeToColorProps): TransitionNode => {
-  const composite: React.FC<TransitionNodeProps> = ({ from, to, progress, background }) => {
+  const plan = ({ progress }: TransitionPlanProps): TransitionComposite => {
     const opacity = fadeToColorOpacities(progress);
-    return (
-      <AbsoluteFill>
-        <AbsoluteFill>{edgeInput(from, background)}</AbsoluteFill>
-        <AbsoluteFill style={{ backgroundColor: color, opacity: opacity.color }} />
-        <AbsoluteFill style={{ opacity: opacity.incoming }}>{edgeInput(to, background)}</AbsoluteFill>
-      </AbsoluteFill>
-    );
+    return {
+      from: {},
+      to: { style: { opacity: opacity.incoming } },
+      layers: [
+        { key: 'dip', z: 'between', style: { backgroundColor: color, opacity: opacity.color } },
+      ],
+    };
   };
-  return { composite };
+  return { plan };
 };
