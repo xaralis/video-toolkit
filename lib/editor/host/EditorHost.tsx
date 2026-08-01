@@ -245,6 +245,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   return (
     <EditorShell
       projectName={projectName}
+      aspectRatio={`${width} / ${height}`}
       renderControls={<RenderButton />}
       onSave={handleSave}
       onDiscard={() => savedReel && setReel(savedReel)}

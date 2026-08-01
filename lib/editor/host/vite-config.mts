@@ -118,6 +118,13 @@ export function createEditorViteConfig(opts: EditorViteConfigOptions): Record<st
       port,
     },
     resolve: {
+      // The editor's own components are served from the TOOLKIT submodule
+      // (`@fs/…/toolkit/lib/editor/…`) while the app they mount into resolves
+      // from the PROJECT — two module graphs that can each reach a different
+      // `react`, which React reports as "Invalid hook call … more than one copy
+      // of React" and which kills the timeline outright. Deduping pins one copy
+      // for both graphs.
+      dedupe: ['react', 'react-dom'],
       alias: {
         '@': path.resolve(templateRoot, 'src'),
         ...toolkitAliases(templateRoot, { brandLib }),

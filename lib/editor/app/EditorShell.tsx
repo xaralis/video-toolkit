@@ -45,6 +45,12 @@ export interface EditorShellProps {
   timeline?: ReactNode;
   /** Prominent render controls (e.g. Preview/Full) shown at the top of the header. */
   renderControls?: ReactNode;
+  /** The preview stage's aspect ratio, as a CSS `aspect-ratio` value (e.g.
+   *  `'16 / 9'`). Defaults to `'9 / 16'` — the shell was built for vertical
+   *  reels and hard-coded that, which letterboxed a 1920×1080 web-program-intro
+   *  into a portrait box. The caller knows its composition's dimensions; this
+   *  is how it says so. */
+  aspectRatio?: string;
   /** Undo/redo (multi-step). Buttons show when the handlers are provided. */
   onUndo?: () => void;
   onRedo?: () => void;
@@ -63,6 +69,7 @@ export interface EditorShellProps {
  */
 export function EditorShell({
   preview,
+  aspectRatio = '9 / 16',
   projectName,
   onSave,
   onDiscard,
@@ -138,7 +145,7 @@ export function EditorShell({
 
       <div className={styles.main}>
         <div className={styles.stage}>
-          <div className={styles.stageFrame}>{preview}</div>
+          <div className={styles.stageFrame} style={{ aspectRatio }}>{preview}</div>
         </div>
         <div className={styles.inspector}>{inspector ?? 'Inspector (coming soon)'}</div>
       </div>

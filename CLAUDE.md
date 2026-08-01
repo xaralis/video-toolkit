@@ -299,6 +299,44 @@ Consider how visual intensity builds across scenes:
 - **Stats**: Build credibility
 - **CTA**: Climax - maximum visual energy
 
+## HARD RULE — one layered model, no exceptions
+
+**Everything goes through `LayeredReel`. There is no second model, no
+"simpler" per-template shape, and no config-that-derives-at-render-time.**
+
+`LayeredReel` (`lib/reel-config-base/layered-schema.ts`) is the source of truth a
+composition renders from. The segment/cut format is an **authoring input** that
+`/toolkit:cut` compiles into it — it is never what a `<Composition>` receives, never
+what `defaultProps` stores, and never what a brand renderer reads.
+
+Concretely, for every template, in every brand repo:
+
+| | Required |
+|---|---|
+| Composition props | `{ reel: LayeredReel }` — nothing else |
+| `defaultProps` | the `LayeredReel` literal, inline |
+| Composition schema | `LayeredReelSchema` |
+| `deriveLayered` runs | at **cut time**, writing the literal — never inside a component |
+| Brand renderers | take a `VideoItem`, never a config segment |
+| Audio / overlays | read from the audio + overlay tracks, never off a video item |
+
+**Why this is a hard rule and not a preference.** Every consumer of the model —
+the reel editor, `buildVideoNodes`, the transition contract, the effect axes, the
+timeline — is written against `LayeredReel`. A template that keeps a second shape
+does not merely differ stylistically: it silently opts out of all of them. This
+has now cost real time twice. The `presentationFor` / one-sided-transition path
+was retired (2026-08-01, `ad7165b`) after the same discovery, and hours later
+`web-program-intro` turned out to still render from a segment config and derive
+internally — which is why it could not open in the editor at all, and why what
+looked like a missing `package.json` script was a template-shaped architectural
+debt. **Each time, the thing looked finished and wasn't.**
+
+So: when adding a template, a renderer, or a brand component, the question is not
+"does this work" but **"does this read `LayeredReel`, and only `LayeredReel`?"** If
+some field is missing from the model, extend the model — do not route around it
+with a parallel shape. A conversion that leaves one consumer on the old shape has
+not converted anything; it has added a second model.
+
 ## Quality Gates
 
 Run these before considering `lib/` or `examples/` work done. **All are manual, and that is a
