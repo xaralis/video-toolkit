@@ -35,7 +35,7 @@
 // (lib/render/at-cut-transitions.tsx), so nothing that already worked has to
 // change. `TransitionNode` is the shape a natively two-input presentation
 // returns instead.
-import type React from 'react';
+import React from 'react';
 import type { Registration, Registry } from './registry';
 import type { AccentSlot } from './palette';
 import type { Transition } from '../reel-config-base/transition-schema';
@@ -169,6 +169,54 @@ export interface TransitionPlanProps {
   background: string;
 }
 
+/** The live progress a `wrap` needs, delivered by CONTEXT rather than a prop or
+ *  a closure.
+ *
+ *  MOVED HERE FROM `lib/render/video-track-plan.tsx` (Phase 5 Task 4). Until
+ *  this task, every `wrap`-needing kind was a LIFTED one-sided
+ *  `@remotion/transitions` presentation, and the lift (`wrapRemotionPresentation`
+ *  in `lib/render/at-cut-transitions.tsx`) is what built the `Wrap` component —
+ *  entirely inside `lib/render`, so the context never had to be reachable from
+ *  `lib/transitions/presentations`. `checkerboard` (Task 4) is the first NATIVE
+ *  node whose OWN factory needs to build a `wrap` (its `'fade'` path masks the
+ *  incoming clip with an SVG `<mask>`, which only `wrap` can express — see
+ *  `LayerOp.wrap`'s doc comment) — and a native node's factory lives in
+ *  `lib/transitions/presentations`, a layer BELOW `lib/render` by this file's
+ *  own stated rule ("`lib/theming` is imported BY `lib/render`, never the
+ *  reverse", this file's header comment). Defining the context here, where
+ *  `TransitionPlanProps`/`LayerOp` already live, keeps that direction intact:
+ *  `lib/render/video-track-plan.tsx` re-exports both symbols unchanged, so
+ *  every existing import path (`@video-toolkit/lib/render/video-track-plan`)
+ *  still resolves.
+ *
+ *  `LayerOp.wrap`'s prop type is fixed at `{active, children}` — deliberately,
+ *  because a `wrap` must be a STABLE reference for an item's whole life, and
+ *  `transitionNodeFor`'s memoization can hand the IDENTICAL cached
+ *  `TransitionNode` — and therefore the identical `wrap` reference — to TWO
+ *  DIFFERENT boundaries whose authored config happens to be byte-identical. A
+ *  `wrap` implementation that needs the live progress cannot close over it
+ *  either, for the same reason. Context sidesteps this because each
+ *  `LayerShell` instance provides its OWN value at its OWN tree position —
+ *  scoped by the TREE, never by the `Wrap` component's identity. */
+export interface ActiveTransitionProgress {
+  /** 0..1, clamped — the same value `LayerShell`'s own boundary saw this frame
+   *  from `plan()`. Meaningless while `active` is false; a `wrap` must not
+   *  read it then. */
+  readonly progress: number;
+  /** Boundary-relative frame — mirrors `TransitionPlanProps.frame`. */
+  readonly frame: number;
+  readonly durationInFrames: number;
+}
+const INACTIVE_PROGRESS: ActiveTransitionProgress = { progress: 0, frame: 0, durationInFrames: 0 };
+export const ActiveTransitionProgressContext =
+  React.createContext<ActiveTransitionProgress>(INACTIVE_PROGRESS);
+/** Read by a `wrap` implementation that needs this frame's live progress —
+ *  see the context's own doc comment for why this is a context, not a prop or
+ *  a closure. */
+export function useActiveTransitionProgress(): ActiveTransitionProgress {
+  return React.useContext(ActiveTransitionProgressContext);
+}
+
 /** How one already-mounted layer is treated. */
 export interface LayerOp {
   /** Merged onto the layer's shell. */
@@ -178,9 +226,14 @@ export interface LayerOp {
   /** EXTRA styled copies of this layer. Each entry is one extra MOUNT of the
    *  clip. `ghosts.length` MUST NOT vary with `progress` — a varying count is
    *  an element-count change mid-window, i.e. the remount this whole phase
-   *  exists to remove. Nothing consumes `ghosts` yet (Stage 4 is the first
-   *  presentation to need it); the invariant will get a dev warning and a
-   *  test once something does. */
+   *  exists to remove. STALE AS OF PHASE 5 TASK 4 (corrected in place): this
+   *  comment used to say "nothing consumes `ghosts` yet" — `rgb-split` (Task
+   *  3) was the first to, and `checkerboard`'s `'scale'`/`'flip'` carve-out
+   *  (Task 4, `gridSize²` entries) is the second. The invariant IS enforced —
+   *  `auditGhosts` in `lib/render/video-track-plan.tsx` dev-warns when a live
+   *  boundary's `ghosts.length` varies with `progress` — and is exercised by
+   *  `lib/editor/src/video-track-remount.test.tsx`'s identity ratchet and
+   *  `dev-warnings.test.tsx`. */
   ghosts?: readonly React.CSSProperties[];
   /** Component form, for a shell no style can express (an SVG `mask`/
    *  `foreignObject`; the route `fromRemotionPresentation` uses starting at

@@ -73,7 +73,7 @@ import { buildVideoNodes } from '@video-toolkit/lib/render/video-track';
 import { resetWarnOnce } from '@video-toolkit/lib/render/warn-once';
 import type { VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import type {
-  TransitionComposite, TransitionPlanProps, TransitionRegistry,
+  TransitionComposite, TransitionPlanProps, TransitionRegistry, TransitionNodeProps,
 } from '@video-toolkit/lib/theming/transitions';
 
 const clip = (id: string, startMs: number, endMs: number, extra: Record<string, unknown> = {}): VideoItem =>
@@ -99,22 +99,28 @@ const plan = (p: TransitionPlanProps): TransitionComposite => {
   };
 };
 
-const REGISTRY: TransitionRegistry = { planned: { renderer: () => ({ plan }) } };
+// PHASE 5 TASK 4 — `checkerboard` (this fixture's composite kind since Task
+// 3) migrates to the `plan` arm this task, and was the catalog's LAST
+// composite kind. `composite-probe` is a test-only composite node — the
+// SIMPLEST possible one (`({from, to}) => <>{from}{to}</>`) — built the same
+// way a brand registration would build one, exactly as the same substitution
+// was made in `video-track-remount.test.tsx` (see that file's own comment on
+// `COMPOSITE_PROBE`). Every test below that uses it exercises the GENERIC
+// "a plan boundary and a composite boundary coexist in one reel" seam, not
+// `checkerboard`'s own picture, so this substitution changes nothing about
+// what these tests pin.
+const composeProbe: React.FC<TransitionNodeProps> = ({ from, to }) => <>{from}{to}</>;
+const REGISTRY: TransitionRegistry = {
+  planned: { renderer: () => ({ plan }) },
+  'composite-probe': { renderer: () => ({ composite: composeProbe }) },
+};
 
-// a --planned--> b --checkerboard--> c. 30fps, 3s each: cuts at frames 90 and
-// 180, both transitions 20 frames and centre-aligned, so the windows are
+// a --planned--> b --composite-probe--> c. 30fps, 3s each: cuts at frames 90
+// and 180, both transitions 20 frames and centre-aligned, so the windows are
 // [80, 100] (plan) and [170, 190] (composite).
-//
-// `checkerboard`, not `fade`/`burn`/`scanline-glitch` — Phase 5 Task 2.1 moved
-// `fade` onto the `plan` arm via `LayerOp.wrap`, Task 2.3 moved `burn` the
-// same way, and Task 3 moved `scanline-glitch` to a native `plan` (`post`),
-// any of which would make BOTH of this fixture's boundaries `plan`,
-// destroying the whole "mixed reel" premise this describe block exists to
-// exercise. `checkerboard` is Stage 4's and stays `composite` — the ONLY
-// catalog kind that does, after Task 3.
 const MIXED = (): VideoItem[] => [
   clip('a', 0, 3000, { transitionOut: { kind: 'planned', frames: 20 } }),
-  clip('b', 3000, 6000, { transitionOut: { kind: 'checkerboard', frames: 20 } }),
+  clip('b', 3000, 6000, { transitionOut: { kind: 'composite-probe', frames: 20 } }),
   clip('c', 6000, 9000),
 ];
 
@@ -439,10 +445,10 @@ describe('`post` applies to the whole video track, narrowly', () => {
     expect(wrapper(container).style.isolation).toBe('isolate');
 
     // A composite-only reel is byte-identical to before this task: no
-    // stacking context, so nothing about blending changes. `checkerboard`, not
-    // `fade`/`burn`/`scanline-glitch` — see MIXED's own comment above for why.
+    // stacking context, so nothing about blending changes. `composite-probe`,
+    // not a real catalog kind — see MIXED's own comment above for why.
     rerender(tree([
-      clip('x', 0, 3000, { transitionOut: { kind: 'checkerboard', frames: 20 } }),
+      clip('x', 0, 3000, { transitionOut: { kind: 'composite-probe', frames: 20 } }),
       clip('y', 3000, 6000),
     ]));
     expect(wrapper(container).style.isolation).toBe('');

@@ -42,6 +42,21 @@ import React from 'react';
 import { useCurrentFrame } from 'remotion';
 import { warnOnce, isDevEnvironment } from './warn-once';
 import type { TransitionComposite, TransitionPlanProps, LayerOp, PlateLayer } from '../theming/transitions';
+import {
+  ActiveTransitionProgressContext,
+  useActiveTransitionProgress,
+  type ActiveTransitionProgress,
+} from '../theming/transitions';
+
+// PHASE 5 TASK 4 — `ActiveTransitionProgressContext` / `useActiveTransitionProgress`
+// / `ActiveTransitionProgress` MOVED to `lib/theming/transitions.ts` (see that
+// file's own doc comment on the context for why: `checkerboard`'s native
+// `'fade'` node needs to build a `wrap` from `lib/transitions/presentations`,
+// a layer BELOW `lib/render`, and this repo's own layering rule is that
+// `lib/theming` is imported BY `lib/render`, never the reverse). Re-exported
+// here, unchanged, so every existing import of
+// `@video-toolkit/lib/render/video-track-plan` still resolves.
+export { ActiveTransitionProgressContext, useActiveTransitionProgress, type ActiveTransitionProgress };
 
 /** Everything the assembly needs to drive ONE plan-arm boundary. Built by
  *  `buildVideoNodes`; the components below never resolve a node themselves. */
@@ -98,42 +113,11 @@ const PlanCompositesContext = React.createContext<ReadonlyMap<string, Transition
 const EMPTY_WRAPS: ReadonlyMap<string, PlanBoundary['wrap']> = new Map();
 const PlanWrapContext = React.createContext<ReadonlyMap<string, PlanBoundary['wrap']>>(EMPTY_WRAPS);
 
-/** PHASE 5 TASK 2.1 — the live progress a `wrap` needs, delivered by CONTEXT
- *  rather than by a prop or a closure.
- *
- *  `LayerOp.wrap`'s prop type is fixed at `{active, children}` (see its own
- *  doc comment) — deliberately, because a `wrap` must be a STABLE reference
- *  for an item's whole life, and `transitionNodeFor`'s memoization
- *  (`at-cut-transitions.tsx`) can hand the IDENTICAL cached `TransitionNode`
- *  — and therefore the identical `wrap` reference — to TWO DIFFERENT
- *  boundaries whose authored config happens to be byte-identical (same
- *  `kind`+`frames`+params). A `wrap` implementation that needs the live
- *  progress (e.g. a lifted `@remotion/transitions` presentation driven via
- *  `TransitionLayer`, Stage 2.1) cannot close over it either, for the same
- *  reason: two SIMULTANEOUSLY MOUNTED boundaries sharing that one cached
- *  node would corrupt each other's state through a shared closure. Context
- *  sidesteps this because each `LayerShell` instance provides its OWN value
- *  at its OWN tree position — scoped by the TREE, never by the `Wrap`
- *  component's identity, so two instances of the same component reference
- *  read two different values correctly. */
-export interface ActiveTransitionProgress {
-  /** 0..1, clamped — the same value `LayerShell`'s own boundary saw this
-   *  frame from `plan()`. Meaningless while `active` is false; a `wrap` must
-   *  not read it then (and every migrated `wrap` in this repo does not). */
-  readonly progress: number;
-  /** Boundary-relative frame — mirrors `TransitionPlanProps.frame`. */
-  readonly frame: number;
-  readonly durationInFrames: number;
-}
+// `ActiveTransitionProgress` / `ActiveTransitionProgressContext` /
+// `useActiveTransitionProgress` moved to `lib/theming/transitions.ts` (Phase 5
+// Task 4) and are re-exported at the top of this file. Kept here: the one
+// local constant the `<Provider>` below still needs.
 const INACTIVE_PROGRESS: ActiveTransitionProgress = { progress: 0, frame: 0, durationInFrames: 0 };
-export const ActiveTransitionProgressContext =
-  React.createContext<ActiveTransitionProgress>(INACTIVE_PROGRESS);
-/** Read by a `wrap` implementation that needs this frame's live progress —
- *  see the context's own doc comment for why this is a context, not a prop
- *  or a closure. */
-export function useActiveTransitionProgress(): ActiveTransitionProgress {
-  return React.useContext(ActiveTransitionProgressContext);
-}
 
 /** Boundary-keyed, LIVE-ONLY (same population rule as `PlanCompositesContext`
  *  — empty outside every window) — `LayerShell` reads its own boundary's

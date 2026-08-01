@@ -443,7 +443,9 @@ describe('subOptionsFor', () => {
       'sequential', 'random', 'diagonal', 'alternating', 'spiral',
       'rows', 'columns', 'center-out', 'corners-in',
     ]);
-    expect(optValues(byProp.squareAnimation.options)).toEqual(['fade', 'scale', 'flip']);
+    // Phase 5 Task 4 adds `'mask-scale'` (option 2 of the design's carve-out)
+    // — additive, so this list grows by one rather than replacing a value.
+    expect(optValues(byProp.squareAnimation.options)).toEqual(['fade', 'scale', 'flip', 'mask-scale']);
   });
 
   it('returns scanline-glitch’s single shift knob under a readable label', () => {

@@ -127,12 +127,14 @@ beforeEach(() => {
 // PHASE 5 TASK 3 adds `rgb-split` and `scanline-glitch`, bringing the
 // partition to EIGHTEEN — the same derivation `video-track-remount.test.tsx`
 // pins, re-derived here rather than imported, per that file's own note.
-it('PLAN_KINDS is exactly the eighteen Task 2.1+2.2+2.3+3 migrated kinds — re-derive; do not carry forward', () => {
+// PHASE 5 TASK 4 adds `checkerboard` — the catalog's last composite kind —
+// bringing the partition to NINETEEN, the WHOLE catalog.
+it('PLAN_KINDS is exactly the nineteen Task 2.1+2.2+2.3+3+4 migrated kinds — re-derive; do not carry forward', () => {
   expect.hasAssertions();
   expect(PLAN_KINDS).toEqual([
     'dissolve', 'fade', 'fade-to-color', 'glitch', 'rgb-split', 'scanline-glitch', 'burn', 'light-leak',
     'slide', 'flip', 'whip-pan', 'zoom-through', 'zoom-blur',
-    'clock-wipe', 'iris', 'wipe', 'gradient-wipe', 'pixelate',
+    'clock-wipe', 'iris', 'wipe', 'gradient-wipe', 'pixelate', 'checkerboard',
   ]);
 });
 
@@ -314,6 +316,32 @@ const EXPECT_LIVE_DIFFERS: Record<string, { exiting: boolean; entering: boolean 
   wipe: { exiting: true, entering: true },
   'gradient-wipe': { exiting: false, entering: true },
   pixelate: { exiting: true, entering: true },
+  // PHASE 5 TASK 4 — `checkerboard`. BOTH `false`, and — unlike every row
+  // above — NOT because either side is genuinely the identity: this is the
+  // "a 64-rect mask at rest is not obviously the identity" case the task
+  // brief names explicitly. `checkerboard`'s `to.wrap` (`CheckerboardMask`)
+  // renders an SVG `<mask>`/`<foreignObject>` subtree, and the mask is
+  // applied via the `mask="url(#…)"` ATTRIBUTE on `foreignObject` — an SVG
+  // presentation attribute, never a `style.opacity`/`.transform`/`.clipPath`/
+  // `.filter`/`.maskImage` on an ancestor DIV. `findStyle` walks ONLY
+  // `el.parentElement.style[prop]` up the tree, so it is STRUCTURALLY BLIND
+  // to this kind's whole picture on either side — `pictureOf` reports the
+  // identical empty string at the neutral AND the live sample, which is why
+  // both entries are `false` here (there is genuinely nothing THIS
+  // instrument can see differ, not a loosening). `from` carries no op at all
+  // (the outgoing clip is drawn plainly, matching the pre-migration
+  // `fromLayer`), so `exiting: false` there is also a straightforward true
+  // identity, same shape as `dissolve`/`fade`'s own `exiting: false`.
+  //
+  // The REAL positive control this blind spot needs — proving the mask
+  // genuinely differs between a neutral (far outside the window) sample and
+  // a live mid-window one, reading the `<mask>`'s own `<rect fill-opacity>`
+  // values directly rather than through `findStyle` — lives in a DEDICATED
+  // block below (`checkerboard's mask, read directly (not through
+  // findStyle)`), the same way `iris`/`clock-wipe` get `expectedNeutralClipPath`
+  // and `light-leak` gets `expectedNeutralFilter` instead of trying to force
+  // their own bespoke shape through this table.
+  checkerboard: { exiting: false, entering: false },
 };
 
 function pictureOf(
@@ -433,3 +461,98 @@ describe.each(PLAN_KINDS)(
     });
   },
 );
+
+// THE POSITIVE CONTROL `EXPECT_LIVE_DIFFERS['checkerboard']`'s two `false`s
+// CANNOT PROVIDE — see that entry's own comment. `pictureOf`/`findStyle` are
+// structurally blind to an SVG `mask`/`foreignObject` subtree, so the generic
+// describe.each above proves "checkerboard is inert outside its window" only
+// in the degenerate sense that NOTHING it can observe ever differs, live or
+// not. This block reads the `<mask>`'s own `<rect fill-opacity>` values
+// directly instead, closing that gap the same way `expectedNeutralClipPath`/
+// `expectedNeutralFilter` close it for `iris`/`clock-wipe`/`light-leak`.
+describe('checkerboard’s mask, read directly (not through findStyle)', () => {
+  const exitReel = (): VideoItem[] => [
+    clip('a', 0, 3000, { transitionOut: defaultTransition('checkerboard', { frames: FRAMES }) }),
+    clip('b', 3000, 6000),
+  ];
+  const enterReel = (): VideoItem[] => [
+    clip('x', 0, 3000, { transitionOut: defaultTransition('checkerboard', { frames: FRAMES }) }),
+    clip('y', 3000, 6000),
+    clip('z', 6000, 9000),
+  ];
+  const exitTree = () => (
+    <>
+      {buildVideoNodes(exitReel(), {
+        renderItem: (item) => <video data-testid={`vid-${item.id}`} />,
+        width: DIMS.width, height: DIMS.height, fps: FPS, palette: undefined,
+      })}
+    </>
+  );
+  const enterTree = () => (
+    <>
+      {buildVideoNodes(enterReel(), {
+        renderItem: (item) => <video data-testid={`vid-${item.id}`} />,
+        width: DIMS.width, height: DIMS.height, fps: FPS, palette: undefined,
+      })}
+    </>
+  );
+  const enterWindow = () => {
+    const layout = computeVideoLayout(enterReel(), FPS);
+    return { start: layout[1].seqFrom, frames: layout[1].inFrames };
+  };
+  const exitWindow = () => {
+    const layout = computeVideoLayout(exitReel(), FPS);
+    return { start: layout[0].seqFrom + layout[0].seqDuration - layout[0].outFrames, frames: layout[0].outFrames };
+  };
+  const fillOpacitiesIn = (container: HTMLElement) =>
+    [...container.querySelectorAll('mask rect')].map((r) => Number(r.getAttribute('fill-opacity')));
+
+  // EXITING (`from`) carries no `wrap` at all — `checkerboard.tsx`'s own doc
+  // comment: the outgoing clip is drawn plainly. There is therefore no
+  // `<mask>`/`<foreignObject>` as an ANCESTOR of `a` specifically, at rest or
+  // live — asserted here so "checkerboard has no mask on `from`" is a
+  // measured fact, not an unstated assumption riding on
+  // `EXPECT_LIVE_DIFFERS.exiting` being `false` for an unrelated reason.
+  //
+  // Scoped to `a`'s OWN ancestor chain, not "no `<mask>` anywhere in the
+  // container": at the LIVE mid-window frame this same `exitTree()` also has
+  // `b` (the ENTERING side of the SAME boundary) on screen, and `b` DOES
+  // carry the mask — a container-wide query would find it and (wrongly)
+  // fail this test for the wrong reason.
+  it('EXITING (`from`): no mask ancestor at all, at rest or live — this side carries no op', () => {
+    const win = exitWindow();
+    clock.frame = Math.max(0, win.start - FAR);
+    const { container, rerender } = render(exitTree());
+    const aVideo = container.querySelector('[data-testid="vid-a"]')!;
+    expect(aVideo.closest('foreignObject')).toBeNull();
+
+    clock.frame = win.start + Math.floor(win.frames / 2);
+    rerender(exitTree());
+    const aVideoLive = container.querySelector('[data-testid="vid-a"]')!;
+    expect(aVideoLive.closest('foreignObject')).toBeNull();
+  });
+
+  // ENTERING (`to`): `y`'s own Sequence starts EXACTLY at the window (design
+  // §1.2 — the same "no pre-window life" fact the generic describe.each block
+  // above samples around), so the only genuine "at rest, far from any live
+  // window" frame is WELL AFTER it closes — same convention the generic test
+  // uses. AT REST, every rect's `fillOpacity` is exactly `1` — the NEUTRAL
+  // this task's `CheckerboardMask` doc comment argues for: a mask that hides
+  // nothing, i.e. `y` looks exactly as if unmasked. AT A LIVE MID-WINDOW
+  // FRAME, at least one rect's `fillOpacity` is NOT `1` — the real, live
+  // signal `EXPECT_LIVE_DIFFERS`'s two `false`s cannot themselves prove.
+  it('ENTERING (`to`): every rect is fillOpacity 1 well after the window closes, and NOT every rect is 1 live — the real positive control', () => {
+    const win = enterWindow();
+    clock.frame = win.start + win.frames + FAR;
+    const { container, rerender } = render(enterTree());
+    const restOpacities = fillOpacitiesIn(container);
+    expect(restOpacities.length).toBeGreaterThan(0);
+    expect(restOpacities.every((o) => o === 1)).toBe(true);
+
+    clock.frame = win.start + Math.floor(win.frames / 2);
+    rerender(enterTree());
+    const liveOpacities = fillOpacitiesIn(container);
+    expect(liveOpacities.length).toBe(restOpacities.length);
+    expect(liveOpacities.some((o) => o !== 1)).toBe(true);
+  });
+});

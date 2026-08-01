@@ -778,8 +778,16 @@ describe('the four two-input nodes render what their name promises', () => {
   const count = (container: HTMLElement, id: 'a' | 'b') =>
     container.querySelectorAll(`[data-testid="${id}"]`).length;
 
+  // PHASE 5 TASK 4 — `checkerboard`'s `'scale'`/`'flip'` carve-out moved from
+  // a hand-nested clipped-copy `<div>` (outer: `transformOrigin: 'center
+  // center'`; inner: an oversized, offset copy) onto `ghosts`: ONE `<div>`
+  // per cell, `clip-path` doing the cropping `overflow: hidden` used to,
+  // `transformOrigin` now a computed PERCENTAGE (that cell's own centre in
+  // frame-relative terms, not the literal string `'center center'` a
+  // per-cell-sized box could say). `clipPath` is what is unique to a cell div
+  // now — nothing else in this file's fixtures sets it.
   const cellsOf = (container: HTMLElement) =>
-    [...container.querySelectorAll('div')].filter((d) => d.style.transformOrigin === 'center center');
+    [...container.querySelectorAll('div')].filter((d) => d.style.clipPath !== '');
 
   // ---- wipe ---------------------------------------------------------------
   // WAS (Phase 4): both beats ran over the SAME window, entering drawn on top,
@@ -846,15 +854,23 @@ describe('the four two-input nodes render what their name promises', () => {
   // single-mount SVG-mask path (pinned separately in
   // checkerboard-single-mount.test.tsx), so this clipped-copy assertion now
   // names `squareAnimation: 'scale'` explicitly — the one carve-out that
-  // keeps a real per-cell geometric transform and therefore keeps the
-  // original per-cell mount shape this test pins.
+  // keeps a real per-cell geometric transform.
+  //
+  // PHASE 5 TASK 4 — the carve-out itself moved from a hand-nested JSX tree
+  // (`composite`) onto `ghosts` (`plan`): `b` now counts `cells + 1`, not
+  // `cells`. The `+1` is the REAL mounted `to` — always present under the
+  // `ghosts` contract (an element count that varies with progress is exactly
+  // what this phase removes), hidden with `opacity: 0` (see
+  // checkerboard.tsx's own doc comment) rather than absent. The 9 GHOST
+  // copies, one per cell, carry the actual picture.
   it('checkerboard clips the INCOMING clip into every cell over an intact outgoing clip', () => {
     const node = nodeFor({ kind: 'checkerboard', frames: 15, gridSize: 3, squareAnimation: 'scale' });
     const { container, unmount } = mountNode(node, 0.5);
     expect({ cells: cellsOf(container).length, b: count(container, 'b'), a: count(container, 'a') }).toEqual({
       cells: 9,
-      // B is re-drawn once per cell, clipped to it…
-      b: 9,
+      // B is re-drawn once per cell (the 9 ghosts), plus the one real, hidden
+      // mount every `ghosts`-carrying `to` keeps…
+      b: 10,
       // …and A is drawn ONCE, whole, beneath the grid.
       a: 1,
     });
@@ -1799,6 +1815,56 @@ describe('a reel edge resolves the missing input to the theme background', () =>
         return n;
       });
       expect(countsAt).toEqual(countsAt.map(() => 3));
+    });
+  });
+
+  // ---- `checkerboard`'s `'scale'`/`'flip'` carve-out (Phase 5 Task 4) — the
+  // 64-ghost reel-edge answer ------------------------------------------------
+  //
+  // Argued from the carve-out's own arithmetic (the brief's own instruction:
+  // "with 64 ghosts, work out what happens at a reel edge before you write
+  // the test"). `cellEasedProgress` is the SAME clamped `interpolate` every
+  // cell (real or edge) already uses — it reaches its extremes (0 or 1) only
+  // AT the boundary's own progress 0/1, exactly the shape `rgb-split`'s and
+  // `wipe`'s reel-edge arguments rest on. At a NULL `to` (trailing edge), the
+  // materialised `EdgePlate` (a flat, single-colour picture) is what the 64
+  // ghosts clip/transform — since every one of its pixels is the SAME flat
+  // colour, cropping it into 64 rectangles and animating each one's
+  // scale/rotation produces the SAME flat colour at every cell, at every
+  // progress: there is no "premature curtain" failure mode here the way
+  // `pixelate`'s early-saturating curve had, because there is no CONTENT for
+  // a curtain to occlude prematurely — a uniform plate cropped 64 ways is
+  // still uniform. Nothing needs forcing to `0`. At a NULL `from` (leading
+  // edge), `from` carries no op at all (this kind's `from` is always drawn
+  // plainly, real or edge) — so the leading edge is unaffected by the
+  // carve-out entirely, and is really the SAME `platesOf` pin the `'fade'`
+  // default already gets, restated for `'scale'`.
+  describe("checkerboard's carve-out — the 64-`ghosts` reel-edge answer", () => {
+    const cellsOf = (container: HTMLElement) =>
+      [...container.querySelectorAll('div')].filter((d) => d.style.clipPath !== '');
+
+    it('trailing edge: the background plate is ghosted gridSize² times, never curtained, at any progress', () => {
+      const countsAt = [0, 0.1, 0.3, 0.5, 0.7, 0.9, 1].map((p) => {
+        const { container, unmount } = mount(
+          'checkerboard', { to: null }, p, BG, { squareAnimation: 'scale', gridSize: 3 },
+        );
+        // 9 cells, each a copy of the SAME flat-colour edge plate, plus the
+        // real (hidden) edge plate mount itself.
+        const out = { cells: cellsOf(container).length, plates: platesOf(container).length };
+        unmount();
+        return out;
+      });
+      expect(countsAt).toEqual(countsAt.map(() => ({ cells: 9, plates: 9 + 1 })));
+    });
+
+    it('leading edge: `from` carries no ghosts at all — this kind never ghosts its outgoing side', () => {
+      const { container } = mount(
+        'checkerboard', { from: null }, 0.5, BG, { squareAnimation: 'scale', gridSize: 3 },
+      );
+      // Exactly one background plate (the leading edge's own `from` plate,
+      // drawn plainly) — no `clip-path` cells anywhere near it, since only
+      // `to` ever carries the carve-out's ghosts.
+      expect(platesOf(container)).toHaveLength(1);
     });
   });
 

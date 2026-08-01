@@ -576,14 +576,13 @@ describe('warning 9 — a plan-arm TransitionNode reaches AtCutTransition (the w
   });
 
   it('does NOT warn for an ordinary composite-arm node — the false-positive this pin must not become', () => {
-    // `checkerboard`, not `burn`/`scanline-glitch` — Phase 5 Task 2.1 moved
-    // `dissolve` (and `fade`, `slide`, `flip`, `clock-wipe`, `iris`, colourless
-    // `fade-to-color`) onto the `plan` arm via `LayerOp.wrap`; Task 2.3 moved
-    // `burn` (and five more) the same way; Task 3 moved `scanline-glitch` to a
-    // native `plan` (`post`), so neither is an "ordinary composite-arm node"
-    // fixture any more. `checkerboard` is Stage 4's and stays composite — the
-    // ONLY catalog kind that does, after this task.
-    const node = transitionNodeFor({ kind: 'checkerboard', frames: 10 } as never, { width: 1080, height: 1920 })!;
+    // PHASE 5 TASK 4 — `checkerboard` (this pin's fixture kind since Task 3)
+    // migrates to the `plan` arm this task, and was the catalog's LAST
+    // composite kind — there is no real catalog kind left to substitute.
+    // Hand-built, the same way `planNode` just above is (no presentation
+    // returns `{ composite }` as a fresh literal in production either) —
+    // the SIMPLEST possible composite, drawing both inputs once each.
+    const node: TransitionNode = { composite: ({ from, to }) => <>{from}{to}</> };
     render(
       <AtCutTransition
         node={node}

@@ -307,7 +307,7 @@ author's own code, in one function, exactly as it does today. Worked examples:
 | `wipe` | `progress < 0.5 ? from : to` behind a sheet (`wipe.tsx:59`) | `from.style.opacity = p < 0.5 ? 1 : 0`; `to.style.opacity = p < 0.5 ? 0 : 1`; one `over` plate carrying the sheet's `backgroundColor` + `translateX`. Same single `interpolate(p,[0,.5,1],[100,0,-100])` (`wipe.tsx:48-52`). |
 | `fade-to-color` | A, colour plate, B (`fade-to-color.tsx:64-69`) | `from: {}`; one `between` plate at `opacity: min(1, 2p)`; `to.style.opacity = max(0, 2p-1)`. Byte-identical opacity arithmetic (`:51-58`). |
 | `pixelate` | `plate(from, fromOpacity)`, `plate(to, toOpacity)` — identical treatment, different opacity (`pixelate.tsx:117-141`) | the same filter/transform string on **both** `LayerOp.style`s, differing only in `opacity`; the grid / glitch-slice / RGB overlays become `over` plates. |
-| `checkerboard` | 64 clipped copies of `to` over an intact `from` | `from: {}`; `to` wrapped in an SVG-native `<foreignObject mask="url(#cells)">` with `maskUnits="userSpaceOnUse"` and PIXEL (not `%`) `<rect>` geometry — **not** `to.style.mask = url(#cells)`. Task 0.1 measured the CSS-`mask`-on-an-HTML-element form of this row as-originally-written BROKEN under the real renderer (the masked layer came out fully invisible at every progress, not merely drifted); `burn.tsx`'s already-proven `foreignObject`+`maskUnits="userSpaceOnUse"` technique fixed it. One `over`-z-0 plate holding the SVG `<mask>` with `gridSize²` `<rect fill-opacity>`, values unchanged. Stage 4 should build on the `foreignObject` form directly rather than rediscovering this. |
+| `checkerboard` | 64 clipped copies of `to` over an intact `from` | `from: {}`; `to` wrapped in an SVG-native `<foreignObject mask="url(#cells)">` with `maskUnits="userSpaceOnUse"` and PIXEL (not `%`) `<rect>` geometry — **not** `to.style.mask = url(#cells)`. Task 0.1 measured the CSS-`mask`-on-an-HTML-element form of this row as-originally-written BROKEN under the real renderer (the masked layer came out fully invisible at every progress, not merely drifted); `burn.tsx`'s already-proven `foreignObject`+`maskUnits="userSpaceOnUse"` technique fixed it. **CORRECTED IN PLACE BY TASK 4:** the mask/`<foreignObject>` structure lives on `to.wrap` (`LayerOp.wrap`), **not** an `over`-z-0 `PlateLayer` — a plate is media-free by contract and cannot wrap or mask the item's own mounted clip at all. `to.wrap`'s `gridSize²` `<rect fill-opacity>` values are unchanged from Task 0.1. Stage 4 built on the `foreignObject` form directly, exactly as this row already said to, but through `wrap`, the mechanism the contract actually grants for "a shell no style can express." |
 
 The essential property is preserved and is worth stating plainly: **there is no direction
 argument, no second invocation, and no per-side progress.** One function, one `p`, both sides.
@@ -416,7 +416,7 @@ lines: `cut` `:260`, `dissolve` `:269`, `fade` `:270`, `fade-to-color` `:295`, `
 | 17 | `wipe` | native node | **A** | §2.4. The occluded side is fully covered by the sheet at every `p` where it is hidden, so the opacity swap is pixel-identical to the `from`/`to` swap. |
 | 18 | `gradient-wipe` | one-sided, CSS mask | **A** | `to.style.maskImage` directly — no `wrap` needed. `presentationDirection` branch (`gradient-wipe.tsx:41`) is per-side, not per-frame. |
 | 19 | `pixelate` | native node | **A** | §2.4. Overlays are media-free and become `over` plates. |
-| 20 | `checkerboard` | native node, `gridSize²` mounts | **C** | `squareAnimation: 'fade'` (**the default**, `checkerboard.tsx:136`) is per-cell **alpha only** (`:206`) → an SVG `<mask>` with `gridSize²` `<rect fill-opacity>`; 1 media element, and the alpha values are identical. `'scale'` (`:209-211`) and `'flip'` (`:212-215`) apply a **geometric transform to the media pixels per cell** (`:232`) — a mask changes alpha, not geometry, so they are **not** reproducible by masking. **See the carve-out below.** |
+| 20 | `checkerboard` | native node, `gridSize²` mounts | **C** | `squareAnimation: 'fade'` (**the default**, `checkerboard.tsx:136`) is per-cell **alpha only** (`:206`) → an SVG `<mask>` with `gridSize²` `<rect fill-opacity>`; 1 media element, and the alpha values are identical. `'scale'` (`:209-211`) and `'flip'` (`:212-215`) apply a **geometric transform to the media pixels per cell** (`:232`) — a mask changes alpha, not geometry, so they are **not** reproducible by masking. **See the carve-out below.** **CORRECTED IN PLACE BY TASK 4:** the mask cannot live on an `over` `PlateLayer` — a `PlateLayer` is media-free by its own contract (`content?: React.ReactNode`, no access to the item's own mounted clip), so it cannot wrap or mask the REAL `to` mount at all. The mask has to live on `to.wrap` instead (an SVG `<mask>`/`<foreignObject>` wrapping the already-mounted clip), the same slot `LayerOp.wrap`'s own doc comment names for exactly this shape ("a shell no style can express"). This also makes `checkerboard` the FIRST native node to need a `wrap` — every prior `wrap`-carrying kind is a LIFTED one-sided presentation whose `Wrap` is built in `lib/render`; a native node's own factory (`lib/transitions/presentations`) had never needed to reach `ActiveTransitionProgressContext` before, which is why that context moved to `lib/theming/transitions.ts` this task (see its own doc comment there). |
 
 **Buckets: 17 A / 2 B / 1 C / 0 not expressible.**
 
@@ -437,12 +437,17 @@ Three options, and the design **does not force a choice** — the contract suppo
    is available with zero core work beyond the contract.
 2. **Re-specify as mask geometry** — a growing / anisotropically squashed mask rect per cell.
    Visually similar, **not** identical; 1 mount. Requires a golden re-baseline for those
-   sub-options and a migration note.
+   sub-options and a migration note. **CORRECTED IN PLACE BY TASK 4:** a new sub-option value has
+   NO existing golden to re-baseline — the pixel harness renders only each kind's catalog DEFAULT
+   (`squareAnimation: 'fade'`), and a brand-new value is by definition never the default. What it
+   needs instead is its own dedicated test coverage (`checkerboard-single-mount.test.tsx`'s
+   `'mask-scale'` block, Task 4) — there is no golden to move, only new surface to cover.
 3. **Drop the two sub-options.** Smallest code, a breaking schema change.
 
 Recommendation: ship (1) as the mechanical migration so nothing regresses, and offer (2) as a
 new, differently-named sub-option value if a brand wants the cheap version. **Nothing in the
-catalog becomes inexpressible.**
+catalog becomes inexpressible.** Task 4 shipped this as `squareAnimation: 'mask-scale'` (see
+`transition-schema.ts`'s own comment on the value).
 
 ---
 
@@ -679,6 +684,12 @@ threshold/blend is inert.
 
 **Stage 4 — the carve-out.** `checkerboard` to the mask plan; `'scale'`/`'flip'` onto
 `ghosts` (option 1) with option 2 offered as a new sub-option value. Migration note.
+**MEASURED (Task 4): 0 cells moved** (all 15, including the 12 Task 0.1 already re-baselined for
+the mask-seam artifact, byte-identical against the composite-arm goldens) — the mask/`foreignObject`
+mechanism itself is unchanged, only its host (a `LayerOp.wrap` instead of a JSX sibling inside the
+`composite`) moved. `'scale'`/`'flip'` are not the catalog default, so they carry no goldens either
+way. `checkerboard` was the catalog's LAST composite kind; `COMPOSITE_KINDS` is empty after this
+task — every catalog kind now resolves to a `plan`.
 
 **Stage 5 — the flip, once.** Delete the `composite` arm and everything in §6's deletion table;
 move the two diagnostics; migrate the editor suite; full 300-cell re-baseline reviewed; re-seed

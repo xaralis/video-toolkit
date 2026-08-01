@@ -548,10 +548,21 @@ const CATALOG = catalog(
         .max(1)
         .optional()
         .describe('0 = every cell animates at once, 1 = strictly one after another. Default 0.6.'),
+      // PHASE 5 TASK 4 adds `'mask-scale'` — additive, `zod` stays pinned at
+      // `3.22.3` exactly. It is OPTION 2 from the design doc's carve-out
+      // (§3 row 20 / §7 Stage 4): re-specify `'scale'`'s reveal as MASK
+      // geometry (a growing rect per cell, 1 mount) instead of a geometric
+      // transform on the media itself (`'scale'`/`'flip'`, `gridSize²`
+      // mounts via `ghosts`). Visually SIMILAR — a per-cell growing square —
+      // but NOT identical: the media itself never scales, only the window
+      // that reveals it grows, so it is a new, differently-named value
+      // rather than a redefinition of `'scale'`. See
+      // `lib/transitions/presentations/checkerboard.tsx`'s own doc comment
+      // for the exact geometry and the migration note.
       squareAnimation: z
-        .enum(['fade', 'scale', 'flip'])
+        .enum(['fade', 'scale', 'flip', 'mask-scale'])
         .optional()
-        .describe('How an individual cell appears. Default fade.'),
+        .describe('How an individual cell appears. Default fade. `mask-scale` is a cheaper (1-mount) approximation of `scale`: the reveal window grows instead of the media scaling.'),
     }),
     label: 'Checkerboard',
   },

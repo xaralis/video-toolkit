@@ -85,40 +85,53 @@ vi.mock('remotion', async () => {
 
 import { buildVideoNodes, computeVideoLayout } from '@video-toolkit/lib/render/video-track';
 import type { VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
+import type { TransitionNodeProps, TransitionRegistry } from '@video-toolkit/lib/theming/transitions';
 
 const clip = (id: string, startMs: number, endMs: number, extra: Record<string, unknown> = {}): VideoItem =>
   ({ id, kind: 'clip', startMs, endMs, source: `${id}.mp4`, sourceInMs: 0, sourceOutMs: endMs - startMs, ...extra }) as VideoItem;
 
-// a: 0-3000ms with a 20-frame checkerboard out. b: 3000-6000ms. 30fps -> cut at
-// frame 90, the default (center) alignment gives a window of [80, 100].
+// PHASE 5 TASK 4 — `checkerboard` (this fixture's kind since Task 3) migrates
+// to the `plan` arm this task, and it was the catalog's LAST composite kind
+// (Task 3's own comment on this fixture named the coming collision
+// explicitly: "the NEXT migration (Stage 4, `checkerboard` itself) collides
+// with this fixture directly and has to introduce a test-only composite node
+// instead of substituting a real catalog kind, because none will be left").
+// That collision has now happened. `COMPOSITE_PROBE` is that test-only node —
+// the SIMPLEST possible composite (`({from, to}) => <>{from}{to}</>`, drawing
+// both inputs once each, unconditionally) — built the same way a brand
+// registration would build one, via `TransitionRegistry`. Every hand-written
+// test below exercises the GENERIC composite-arm assembly (the boundary
+// Sequence, `rebased()` copies, `ItemBody`'s blanking, the R1/R2 mount-count
+// floors) — none of it depends on what a composite draws internally beyond
+// "both inputs, once each", so this substitution changes nothing about what
+// these tests pin.
+const COMPOSITE_PROBE: TransitionRegistry = {
+  'composite-probe': {
+    renderer: () => ({
+      composite: ({ from, to }: TransitionNodeProps) => <>{from}{to}</>,
+    }),
+  },
+};
+
+// a: 0-3000ms with a 20-frame composite-arm transition out. b: 3000-6000ms.
+// 30fps -> cut at frame 90, the default (center) alignment gives a window of
+// [80, 100].
 //
-// PHASE 5 TASK 2.1 changed this fixture's KIND from `fade` to `burn`; PHASE 5
-// TASK 2.3 changed it again, from `burn` to `scanline-glitch`; PHASE 5 TASK 3
-// changes it a third time, from `scanline-glitch` to `checkerboard` — every
-// time deliberately, not incidentally, for the identical reason. Every
+// PHASE 5 TASK 2.1 changed this fixture's KIND from `fade` to `burn`; TASK 2.3
+// changed it to `scanline-glitch`; TASK 3 changed it to `checkerboard`; TASK 4
+// changes it a fourth and LAST time, from `checkerboard` to the test-only
+// `composite-probe` (see `COMPOSITE_PROBE` above) — every prior swap moved to
+// the last remaining real composite catalog kind; this one has none left to
+// move to, exactly as Task 3's own comment on this fixture predicted. Every
 // hand-written test below (Fix 1/2/3, R2, and the Task 1.2 shell-parity test)
 // exercises `composite`-arm mechanics specifically: the boundary Sequence,
-// `rebased()` copies, `ItemBody`'s blanking, the R1/R2 mount-count floors.
-// `burn` migrated to the `plan` arm at Task 2.3, and `scanline-glitch`
-// migrates to it THIS task (confirmed RED against the unchanged
-// `scanline-glitch` fixture first: `npx vitest run --no-file-parallelism
-// video-track-remount.test.tsx` failed exactly the same 5 composite-arm tests
-// Task 2.1's and Task 2.3's swaps once fixed — see task-3-report.md). Neither
-// migrates the plan/composite ASSEMBLY these hand-written tests pin, which
-// does not blank, has no boundary Sequence and no rebased copies at all — so
-// this whole file's geometry, counts and identities would silently start
-// asserting something else entirely if the fixture's kind kept pace with
-// whichever kind just migrated. `checkerboard` is Stage 4's, not this task's,
-// and keeps this file pinning the arm it says it pins — after this task it
-// is the ONLY catalog kind still composite, so there is no longer a choice to
-// argue: the NEXT migration (Stage 4, `checkerboard` itself) collides with
-// this fixture directly and has to introduce a test-only composite node
-// instead of substituting a real catalog kind, because none will be left.
-// The DERIVED section below (Task 1.3) still names catalog kinds directly
-// where it means to — this substitution is scoped to the hand-written
-// fixture alone.
+// `rebased()` copies, `ItemBody`'s blanking, the R1/R2 mount-count floors —
+// none of it depends on `checkerboard`'s (or any real kind's) own picture, so
+// a test-only composite pins the identical assembly. The DERIVED section
+// below (Task 1.3) still names catalog kinds directly where it means to —
+// this substitution is scoped to the hand-written fixture alone.
 const reel = (): VideoItem[] => [
-  clip('a', 0, 3000, { transitionOut: { kind: 'checkerboard', frames: 20 } }),
+  clip('a', 0, 3000, { transitionOut: { kind: 'composite-probe', frames: 20 } }),
   clip('b', 3000, 6000),
 ];
 
@@ -130,6 +143,7 @@ const tree = () => (
       height: 960,
       fps: 30,
       palette: undefined,
+      transitions: COMPOSITE_PROBE,
     })}
   </>
 );
@@ -255,11 +269,11 @@ describe('media elements alive around a footage cut (Task R2)', () => {
 //
 // Every video item is now wrapped in two always-mounted, style-only shells and
 // the whole track in one wrapper (lib/render/video-track-plan.tsx), so that a
-// `plan`-arm boundary has something to style. `burn` (this file's fixture
-// kind since Task 2.1 moved `fade` to the `plan` arm) is still a
-// `composite`-arm kind, so this file's geometry, counts and identities above
-// must be UNCHANGED by the shells' arrival — which is what makes them a
-// parity statement for the shells rather than only for R1/R2.
+// `plan`-arm boundary has something to style. `composite-probe` (this file's
+// fixture kind, Task 4) is a `composite`-arm node, so this file's geometry,
+// counts and identities above must be UNCHANGED by the shells' arrival —
+// which is what makes them a parity statement for the shells rather than only
+// for R1/R2.
 //
 // The single-mount path's own identity assertions live in
 // `single-mount-assembly.test.tsx`; this file stays the pin for the composite
@@ -285,6 +299,7 @@ describe('Phase 5 Task 1.2 — the shells do not disturb the composite arm', () 
   it('returns ONE node — the always-mounted track wrapper — not one per item', () => {
     const nodes = buildVideoNodes(reel(), {
       renderItem: () => null, width: 540, height: 960, fps: 30, palette: undefined,
+      transitions: COMPOSITE_PROBE,
     });
     expect(nodes.length).toBe(1);
   });
@@ -348,7 +363,7 @@ import {
 } from '@video-toolkit/lib/reel-config-base/transition-schema';
 import { transitionNodeFor, getTransitionRecord, resetTransitionNodeCache } from '@video-toolkit/lib/render/at-cut-transitions';
 import { resetWarnOnce } from '@video-toolkit/lib/render/warn-once';
-import type { TransitionComposite, TransitionPlanProps, TransitionRegistry } from '@video-toolkit/lib/theming/transitions';
+import type { TransitionComposite, TransitionPlanProps } from '@video-toolkit/lib/theming/transitions';
 
 const IDENTITY_FRAMES = 20;
 const IDENTITY_FPS = 30;
@@ -427,24 +442,35 @@ describe('DERIVED — the plan/composite partition over the catalog is pinned', 
   //
   // PHASE 5 TASK 3 adds the two re-baseline kinds — `rgb-split` (native
   // `plan`, `ghosts`) and `scanline-glitch` (native `plan`, `post`) — bringing
-  // the partition to EIGHTEEN. After this task exactly ONE catalog kind
-  // remains composite: `checkerboard` (Stage 4's carve-out).
+  // the partition to EIGHTEEN. After that task exactly ONE catalog kind
+  // remained composite: `checkerboard` (Stage 4's carve-out).
+  //
+  // PHASE 5 TASK 4 adds `checkerboard` itself — the carve-out (§3 row 20):
+  // its default `squareAnimation: 'fade'` moves onto `LayerOp.wrap` (an SVG
+  // mask, the first NATIVE node to need one), `'scale'`/`'flip'` onto
+  // `ghosts`. Bringing the partition to NINETEEN — the WHOLE catalog. This is
+  // the LAST migration: `COMPOSITE_KINDS` is now EMPTY, which is why the
+  // "DERIVED proof" block just below THIS one exists — a `describe.each([])`
+  // over an empty array runs zero tests, silently, and that emptiness is
+  // exactly the trap the task brief calls out ("a derived assertion over an
+  // empty set passes trivially").
   //
   // Order matches `CATALOG_KINDS`' own order (`TRANSITION_CATALOG`'s
   // declaration order: `dissolve`, `fade`, `fade-to-color`, `glitch`,
   // `rgb-split`, `scanline-glitch`, `burn`, `light-leak`, `slide`, `flip`,
   // `whip-pan`, `zoom-through`, `zoom-blur`, `clock-wipe`, `iris`, `wipe`,
-  // `gradient-wipe`, `pixelate`, `checkerboard` — only `checkerboard` stays
-  // composite and is filtered out), not the brief's prose order.
-  it('is exactly the eighteen Task 2.1+2.2+2.3+3 migrated kinds — re-derive; do not carry forward', () => {
+  // `gradient-wipe`, `pixelate`, `checkerboard`), not the brief's prose order.
+  it('is exactly the nineteen Task 2.1+2.2+2.3+3+4 migrated kinds — re-derive; do not carry forward', () => {
     expect.hasAssertions();
     expect(PLAN_KINDS).toEqual([
       'dissolve', 'fade', 'fade-to-color', 'glitch', 'rgb-split', 'scanline-glitch', 'burn', 'light-leak',
       'slide', 'flip', 'whip-pan', 'zoom-through', 'zoom-blur',
-      'clock-wipe', 'iris', 'wipe', 'gradient-wipe', 'pixelate',
+      'clock-wipe', 'iris', 'wipe', 'gradient-wipe', 'pixelate', 'checkerboard',
     ]);
     expect(COMPOSITE_KINDS.length).toBe(CATALOG_KINDS.length - PLAN_KINDS.length);
-    expect(COMPOSITE_KINDS).toEqual(['checkerboard']);
+    // THE WHOLE CATALOG HAS MIGRATED. `COMPOSITE_KINDS` is empty — the
+    // MIGRATION's own success condition, not a gap in this pin.
+    expect(COMPOSITE_KINDS).toEqual([]);
   });
 });
 
@@ -519,8 +545,11 @@ function sameElements(a: readonly Element[], b: readonly Element[]): boolean {
  *  `plan` arm at Task 3, where its 4 ghost mounts (2 per side) are a
  *  LEGITIMATE, authored multi-mount (`LayerOp.ghosts`) — this historical
  *  measurement documents what `distinct > 1` catches on the COMPOSITE arm
- *  specifically, not a claim about `rgb-split`'s current arm; `checkerboard`
- *  is the composite kind this bucket now exercises.
+ *  specifically, not a claim about `rgb-split`'s current arm. `checkerboard`
+ *  (Task 4) was the LAST catalog kind this bucket exercised for real;
+ *  `COMPOSITE_KINDS` is empty now, and `composite-probe` (the "DERIVED proof"
+ *  block below) is what keeps this bucket's own machinery provably capable of
+ *  failing, not merely never asked to.
  *
  *  `persists` — REVIEW ROUND 2, IMPORTANT 1 REWRITE. The original
  *  formulation ("every reference on the first observed frame survives to
@@ -755,17 +784,27 @@ beforeEach(() => {
   resetTransitionNodeCache();
 });
 
-// COMPOSITE kinds are asserted to FAIL — every kind in the catalog, today —
-// on `distinct > 1`, DELIBERATELY NOT `persists` (see `sweepIdentity`'s
-// docblock, "WHY THE COMPOSITE BUCKET CANNOT JUST USE `persists` TOO"): the
-// composite arm has no legitimate multi-mount concept, so any second element
-// it produces is the defect, whether or not it ever displaces the item's
-// original reference (`wipe`'s two-beat design produces exactly that shape).
-// `toBeGreaterThan(1)`, never `.not.toBe(1)`: the latter is satisfied
-// vacuously by `distinct === 0` (a broken query), which is precisely the
-// "empty set passes trivially" trap the task brief calls out. `observed`'s
-// own floor is asserted FIRST and separately, so a broken query fails loudly
-// on ITS OWN assertion rather than being laundered through `distinct`.
+// COMPOSITE kinds are asserted to FAIL on `distinct > 1`, DELIBERATELY NOT
+// `persists` (see `sweepIdentity`'s docblock, "WHY THE COMPOSITE BUCKET
+// CANNOT JUST USE `persists` TOO"): the composite arm has no legitimate
+// multi-mount concept, so any second element it produces is the defect,
+// whether or not it ever displaces the item's original reference (`wipe`'s
+// two-beat design produces exactly that shape). `toBeGreaterThan(1)`, never
+// `.not.toBe(1)`: the latter is satisfied vacuously by `distinct === 0` (a
+// broken query), which is precisely the "empty set passes trivially" trap the
+// task brief calls out. `observed`'s own floor is asserted FIRST and
+// separately, so a broken query fails loudly on ITS OWN assertion rather than
+// being laundered through `distinct`.
+//
+// PHASE 5 TASK 4 — `COMPOSITE_KINDS` IS EMPTY. Every catalog kind has
+// migrated; `describe.each([])` below runs ZERO tests, silently — the exact
+// "a derived assertion over an empty set passes trivially" trap the task
+// brief names as the single most likely place THIS task ships a green suite
+// that means nothing. The block immediately below (`composite-probe`) is
+// what keeps this bucket's own machinery provably capable of catching a real
+// composite-arm remount defect, not merely never asked to — the load-bearing
+// counterpart of the "capable of PASSING" proof `PLAN_KINDS`' own empty run
+// already relies on, one section down.
 describe.each(COMPOSITE_KINDS)('DERIVED — composite-arm "%s" remounts across the crossing (ratchet: RED today)', (kind) => {
   it.each(casesFor(kind).map((c): [string, IdentityCase] => [c.label, c]))('%s', (_label, c) => {
     expect.hasAssertions();
@@ -773,6 +812,89 @@ describe.each(COMPOSITE_KINDS)('DERIVED — composite-arm "%s" remounts across t
     expect(observed).toBeGreaterThanOrEqual(IDENTITY_OBSERVED_FLOOR_COMPOSITE(c.window));
     expect(distinct).toBeGreaterThan(1);
   });
+});
+
+// THE VACUITY GUARD FOR THE (NOW EMPTY) COMPOSITE BUCKET ABOVE. Built exactly
+// the way `rgb-split`'s PRE-TASK-3 composite actually behaved (measured, not
+// invented — see `sweepIdentity`'s own docblock above): the SAME element
+// reference reused at THREE tree positions (main + two "ghost" copies with no
+// `ghosts`-shaped contract to legitimise them), which React mounts as three
+// separate DOM nodes. Registered under a kind NOT in `TRANSITION_CATALOG`, so
+// this can never be confused with a catalog kind quietly staying composite.
+describe('DERIVED proof — the identity sweep is capable of FAILING on a real composite-arm defect, not only of running zero tests', () => {
+  const remountingComposite: React.FC<TransitionNodeProps> = ({ from, to }) => (
+    <>
+      {from}
+      {to}
+      {to}
+    </>
+  );
+  const REMOUNTING_REGISTRY: TransitionRegistry = {
+    'composite-remount-probe': { renderer: () => ({ composite: remountingComposite }) },
+  };
+  const opts = { brandKinds: new Set(Object.keys(REMOUNTING_REGISTRY)) };
+
+  it('reports distinct > 1 for a real (test-only) composite-arm boundary that duplicates its child, interior and both edges', () => {
+    expect.hasAssertions();
+    const interior: VideoItem[] = [
+      clip('a', 0, 3000, { transitionOut: { kind: 'composite-remount-probe', frames: IDENTITY_FRAMES } }),
+      clip('b', 3000, 6000),
+    ];
+    const layoutInterior = computeVideoLayout(interior, IDENTITY_FPS, opts);
+    const outWindow = {
+      start: layoutInterior[0].seqFrom + layoutInterior[0].seqDuration - layoutInterior[0].outFrames,
+      frames: layoutInterior[0].outFrames,
+    };
+    const inWindow = { start: layoutInterior[1].seqFrom, frames: layoutInterior[1].inFrames };
+
+    const leading: VideoItem[] = [
+      clip('solo', 0, 3000, { transitionIn: { kind: 'composite-remount-probe', frames: IDENTITY_FRAMES } }),
+    ];
+    const layoutLeading = computeVideoLayout(leading, IDENTITY_FPS, opts);
+
+    const trailing: VideoItem[] = [
+      clip('solo', 0, 3000, { transitionOut: { kind: 'composite-remount-probe', frames: IDENTITY_FRAMES } }),
+    ];
+    const layoutTrailing = computeVideoLayout(trailing, IDENTITY_FPS, opts);
+
+    const cases: IdentityCase[] = [
+      { label: 'interior/outgoing', items: interior, testid: 'vid-a', window: outWindow },
+      { label: 'interior/incoming', items: interior, testid: 'vid-b', window: inWindow },
+      {
+        label: 'leading', items: leading, testid: 'vid-solo',
+        window: { start: layoutLeading[0].seqFrom, frames: layoutLeading[0].inFrames },
+      },
+      {
+        label: 'trailing', items: trailing, testid: 'vid-solo',
+        window: {
+          start: layoutTrailing[0].seqFrom + layoutTrailing[0].seqDuration - layoutTrailing[0].outFrames,
+          frames: layoutTrailing[0].outFrames,
+        },
+      },
+    ];
+    for (const c of cases) {
+      const { distinct, observed } = sweepIdentity(c.items, c.testid, c.window, REMOUNTING_REGISTRY);
+      expect(observed, c.label).toBeGreaterThanOrEqual(IDENTITY_OBSERVED_FLOOR_COMPOSITE(c.window));
+      expect(distinct, c.label).toBeGreaterThan(1);
+    }
+  });
+
+  // THERE IS NO NEGATIVE CONTROL HERE, AND THAT ABSENCE IS THE FINDING, NOT A
+  // GAP. Tried one: `COMPOSITE_PROBE` (this file's own ordinary, non-
+  // duplicating composite fixture, `({from, to}) => <>{from}{to}</>`) ALSO
+  // reports `distinct > 1` on the SAME cases — measured, not assumed
+  // (`sweepIdentity(interior, 'vid-a', outWindow, COMPOSITE_PROBE)` → distinct
+  // 2, same as the deliberately-duplicating probe above). This is not this
+  // test file being unable to tell them apart: it is `sweepIdentity`'s own
+  // docblock's argument, made concrete — the composite arm's REBASE mechanism
+  // itself (Fix 1/2: the item keeps its own hidden copy AND the boundary
+  // mounts a re-based one) is what produces a second distinct element for
+  // ANY composite, independent of whether that composite's own JSX ALSO
+  // duplicates its child. There is no "well-behaved" composite under this
+  // model — which is exactly why Phase 5 removes the whole arm rather than
+  // fixing kinds one at a time, and exactly why the COMPOSITE bucket's
+  // assertion is worded as "the composite arm has NO legitimate multi-mount
+  // concept AT ALL", not "does not duplicate its own child".
 });
 
 // PLAN kinds are asserted to PASS. Zero iterations today (`PLAN_KINDS` is
