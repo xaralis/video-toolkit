@@ -723,7 +723,7 @@ function LayeredTimelineImpl({
       >
         <span>
           <span style={{ color: ripple ? '#b6ff5a' : '#9a9a95' }}>Ripple {ripple ? 'on' : 'off'}</span>
-          {ripple ? ' — resize shifts the rest; drag re-orders and never leaves a gap' : ' — drag and resize move only what you grab'}
+          {ripple ? ' — resize shifts the rest; drag carries everything behind it' : ' — only what you grab moves'}
         </span>
         <span>
           <span style={{ color: '#9a9a95' }}>Drag the volume line</span> — set level (double-click to reset)

@@ -726,7 +726,7 @@ describe('applyTimelineChange — linked audio (bed follows its video)', () => {
   });
 });
 
-describe('applyTimelineChange — ripple reorder (drag a clip in ripple mode)', () => {
+describe('applyTimelineChange — ripple move (drag a clip in ripple mode)', () => {
   const reel = (): LayeredReel => ({
     ...REEL,
     meta: { topic: 'x', totalDurationMs: 12000 },
@@ -754,28 +754,49 @@ describe('applyTimelineChange — ripple reorder (drag a clip in ripple mode)', 
     return applyTimelineChange(r, changed, { ripple: true });
   };
 
-  it('dragging A after B reorders to B, A, C and re-buts with no gaps', () => {
-    const r = moveVideo(reel(), 'A', 6, 11); // A's centre lands ~8.5s (between B and C)
-    expect(r.tracks.video.map((v) => v.id)).toEqual(['B', 'A', 'C']);
-    expect(r.tracks.video.map((v) => [v.startMs, v.endMs])).toEqual([[0, 4000], [4000, 9000], [9000, 12000]]);
+  it('carries everything after the dragged clip by the same delta', () => {
+    const r = moveVideo(reel(), 'A', 2, 7);
+    expect(r.tracks.video.map((v) => [v.startMs, v.endMs])).toEqual([[2000, 7000], [7000, 11000], [11000, 14000]]);
   });
 
-  it('linked beds follow the reorder into their clip’s new slot', () => {
-    const r = moveVideo(reel(), 'A', 6, 11);
-    const aA = r.tracks.audio.find((a) => a.id === 'a-A')!;
-    expect([aA.startMs, aA.endMs]).toEqual([4000, 9000]); // a-A rode along with A
+  it('leaves the order alone — a drag moves, it does not re-slot', () => {
+    const r = moveVideo(reel(), 'A', 6, 11); // past B's centre: once a reorder
+    expect(r.tracks.video.map((v) => v.id)).toEqual(['A', 'B', 'C']);
   });
 
-  it('dragging C to the front reorders to C, A, B', () => {
-    const r = moveVideo(reel(), 'C', 0, 3);
-    expect(r.tracks.video.map((v) => v.id)).toEqual(['C', 'A', 'B']);
-    expect(r.tracks.video.map((v) => [v.startMs, v.endMs])).toEqual([[0, 3000], [3000, 8000], [8000, 12000]]);
+  it('linked beds ride along with their clip', () => {
+    const r = moveVideo(reel(), 'A', 2, 7);
+    expect(r.tracks.audio.map((a) => [a.startMs, a.endMs])).toEqual([[2000, 7000], [7000, 11000], [11000, 14000]]);
   });
 
-  // A track whose head sits at t > 0 (a gap opened by an earlier edit) used to
-  // be UNRECOVERABLE in ripple mode: the re-butt anchor was the minimum start of
-  // the PRE-DRAG track, so dragging the first clip left always sprang back to
-  // the gap. The head is a position you can drag, not a fixed point.
+  it('moves the LAST clip right — there is nothing behind it to block the drag', () => {
+    const r = moveVideo(reel(), 'C', 11, 14);
+    expect(r.tracks.video.map((v) => [v.startMs, v.endMs])).toEqual([[0, 5000], [5000, 9000], [11000, 14000]]);
+  });
+
+  // The everyday reason to drag left: free space opened mid-track and the whole
+  // tail should come forward into it. One drag does it — no multi-select.
+  it('closes a gap mid-track and pulls the tail forward with it', () => {
+    const r = reel();
+    const gapped = {
+      ...r,
+      tracks: {
+        ...r.tracks,
+        video: r.tracks.video.map((v) => (v.id === 'A' ? { ...v, endMs: 3000 } : v)), // A now ends 2s early
+      },
+    };
+    const moved = moveVideo(gapped, 'B', 3, 7); // drag B back onto A's new end
+    expect(moved.tracks.video.map((v) => [v.startMs, v.endMs])).toEqual([[0, 3000], [3000, 7000], [7000, 10000]]);
+  });
+
+  it('a leftward drag stops at the previous clip’s end rather than overlapping it', () => {
+    const r = moveVideo(reel(), 'C', 2, 5); // C would land on top of A and B
+    expect(r.tracks.video.map((v) => [v.startMs, v.endMs])).toEqual([[0, 5000], [5000, 9000], [9000, 12000]]);
+  });
+
+  // A track whose head sits at t > 0 (a gap opened by an earlier edit) must stay
+  // recoverable: the first clip's floor is 0, not wherever the track happens to
+  // begin, so dragging it left closes the gap and pulls the rest with it.
   const shifted = (byMs: number): LayeredReel => {
     const r = reel();
     const bump = <T extends { startMs: number; endMs: number }>(x: T): T => ({ ...x, startMs: x.startMs + byMs, endMs: x.endMs + byMs });
@@ -797,9 +818,9 @@ describe('applyTimelineChange — ripple reorder (drag a clip in ripple mode)', 
     expect(r.tracks.video[0].startMs).toBe(0);
   });
 
-  it('dragging the first clip right leaves the head where it is (no gap opens)', () => {
+  it('dragging the first clip right opens a head gap — and the rest follows', () => {
     const r = moveVideo(shifted(500), 'A', 1.5, 6.5);
-    expect(r.tracks.video[0].startMs).toBe(500);
+    expect(r.tracks.video.map((v) => v.startMs)).toEqual([1500, 6500, 10500]);
   });
 });
 

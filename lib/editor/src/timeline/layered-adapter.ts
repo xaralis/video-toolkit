@@ -273,34 +273,50 @@ function applyRipple(reel: LayeredReel, resolvedVideo: VideoItem[], newMs: NewMs
   return withTotalDuration({ ...reel, tracks });
 }
 
-// Ripple reorder (a drag in ripple mode): drop the moved clip into the sequence
-// at the position implied by its new start, then re-butt the whole video track
-// from the first clip's anchor so there are no gaps (standard NLE insert edit).
-// The moved clip's index is decided by where its CENTRE lands among the others.
-// Linked audio is realigned afterwards by relinkAudio.
-function rippleReorder(reel: LayeredReel, movedId: string, newStartMs: number): LayeredReel {
+// Ripple MOVE (a drag in ripple mode): the clip goes where you put it and every
+// item behind it comes along by the same delta, so the rest of the reel keeps
+// its relative timing. This is the one meaning the Ripple switch has — "does
+// the rest of the track follow my edit?" — applied to a drag exactly as it is
+// to a resize. Ripple OFF is the ordinary NLE overwrite drag: only the grabbed
+// clip moves.
+//
+// This REPLACES a slot-based insert (re-order by where the clip's centre landed,
+// then re-butt the whole track). That is Final Cut's magnetic timeline, not
+// Premiere's or Resolve's, and it made two thirds of all drags a SILENT no-op:
+// any drag too small to cross a neighbour's centre, and every rightward drag of
+// the LAST clip, since there is no slot beyond it to insert into.
+//
+// The one thing a drag may not do is overlap what is already there, so a
+// leftward drag stops at the previous clip's end (0 for the first clip, which
+// is what keeps a gap at the head recoverable). Rightward is unbounded: opening
+// a gap is a legitimate edit, and it is undoable by dragging back.
+//
+// Linked audio is realigned afterwards by relinkAudio, which re-derives every
+// bound bed from its clip's delta — so the beds are deliberately not shifted
+// here beyond the plain downstream carry.
+function rippleMove(reel: LayeredReel, movedId: string, newStartMs: number): LayeredReel {
   const vids = reel.tracks.video;
-  const moved = vids.find((v) => v.id === movedId);
-  if (!moved) return reel;
-  const others = vids.filter((v) => v.id !== movedId);
-  const dropCentre = newStartMs + (moved.endMs - moved.startMs) / 2;
-  let idx = others.findIndex((v) => (v.startMs + v.endMs) / 2 > dropCentre);
-  if (idx < 0) idx = others.length;
-  const ordered = [...others.slice(0, idx), moved, ...others.slice(idx)];
-  // The track re-buts from its head. The head is the earliest start — INCLUDING
-  // the drop position, so dragging the first clip left pulls the whole track
-  // with it and closes a gap at the head. Anchoring on the pre-drag minimum
-  // alone made that gap permanent: the clip always sprang back to it.
-  // Clamped at 0 — a sequence never starts before its own zero.
-  const anchor = Math.max(0, Math.min(newStartMs, ...vids.map((v) => v.startMs)));
-  let t = anchor;
-  const video = ordered.map((v) => {
-    const span = v.endMs - v.startMs;
-    const nv = { ...v, startMs: t, endMs: t + span };
-    t += span;
-    return nv;
-  });
-  return { ...reel, tracks: { ...reel.tracks, video } };
+  const idx = vids.findIndex((v) => v.id === movedId);
+  if (idx < 0) return reel;
+  const moved = vids[idx];
+  const floor = idx > 0 ? vids[idx - 1].endMs : 0;
+  const delta = Math.max(newStartMs, floor) - moved.startMs;
+  if (delta === 0) return reel;
+  // "Behind it" is measured against the clip's ORIGINAL end, so the carried set
+  // is decided before anything moves.
+  const carried = (item: { id: string; startMs: number }) => item.id === movedId || item.startMs >= moved.endMs;
+  const shift = <T extends { id: string; startMs: number; endMs: number }>(item: T): T =>
+    carried(item) ? { ...item, startMs: item.startMs + delta, endMs: item.endMs + delta } : item;
+  return {
+    ...reel,
+    tracks: {
+      ...reel.tracks,
+      video: vids.map(shift),
+      audio: reel.tracks.audio.map(shift),
+      overlays: reel.tracks.overlays.map(shift),
+      brand: reel.tracks.brand.map(shift),
+    },
+  };
 }
 
 // Snap a dragged item's edges to the nearest beat guide within `thresholdMs`.
@@ -412,15 +428,14 @@ export function applyTimelineChange(
 
   if (opts.ripple) {
     // Ripple MOVE (drag): a video clip whose BOTH edges shifted is a move, not a
-    // trim — reorder it into the sequence and re-butt (standard ripple/insert
-    // edit), so no gaps open. Trims fall through to applyRipple below.
+    // trim — it carries everything behind it. Trims fall through to applyRipple.
     const moved = reelM.tracks.video.find((v) => {
       const np = newMs('video', v.id);
       return np && np.startMs !== v.startMs && np.endMs !== v.endMs;
     });
     if (moved) {
       const np = newMs('video', moved.id)!;
-      return withTotalDuration(relinkAudio(reelM, rippleReorder(reelM, moved.id, np.startMs)));
+      return withTotalDuration(relinkAudio(reelM, rippleMove(reelM, moved.id, np.startMs)));
     }
     const rippled = applyRipple(reelM, resolvedVideo, newMs);
     if (rippled) return withTotalDuration(relinkAudio(reelM, rippled));
