@@ -287,7 +287,12 @@ function rippleReorder(reel: LayeredReel, movedId: string, newStartMs: number): 
   let idx = others.findIndex((v) => (v.startMs + v.endMs) / 2 > dropCentre);
   if (idx < 0) idx = others.length;
   const ordered = [...others.slice(0, idx), moved, ...others.slice(idx)];
-  const anchor = Math.min(...vids.map((v) => v.startMs));
+  // The track re-buts from its head. The head is the earliest start — INCLUDING
+  // the drop position, so dragging the first clip left pulls the whole track
+  // with it and closes a gap at the head. Anchoring on the pre-drag minimum
+  // alone made that gap permanent: the clip always sprang back to it.
+  // Clamped at 0 — a sequence never starts before its own zero.
+  const anchor = Math.max(0, Math.min(newStartMs, ...vids.map((v) => v.startMs)));
   let t = anchor;
   const video = ordered.map((v) => {
     const span = v.endMs - v.startMs;

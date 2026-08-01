@@ -771,6 +771,36 @@ describe('applyTimelineChange — ripple reorder (drag a clip in ripple mode)', 
     expect(r.tracks.video.map((v) => v.id)).toEqual(['C', 'A', 'B']);
     expect(r.tracks.video.map((v) => [v.startMs, v.endMs])).toEqual([[0, 3000], [3000, 8000], [8000, 12000]]);
   });
+
+  // A track whose head sits at t > 0 (a gap opened by an earlier edit) used to
+  // be UNRECOVERABLE in ripple mode: the re-butt anchor was the minimum start of
+  // the PRE-DRAG track, so dragging the first clip left always sprang back to
+  // the gap. The head is a position you can drag, not a fixed point.
+  const shifted = (byMs: number): LayeredReel => {
+    const r = reel();
+    const bump = <T extends { startMs: number; endMs: number }>(x: T): T => ({ ...x, startMs: x.startMs + byMs, endMs: x.endMs + byMs });
+    return { ...r, tracks: { ...r.tracks, video: r.tracks.video.map(bump), audio: r.tracks.audio.map(bump) } };
+  };
+
+  it('dragging the first clip left closes a gap at the head', () => {
+    const r = moveVideo(shifted(500), 'A', 0, 5);
+    expect(r.tracks.video.map((v) => [v.startMs, v.endMs])).toEqual([[0, 5000], [5000, 9000], [9000, 12000]]);
+  });
+
+  it('linked beds ride along when the head gap closes', () => {
+    const r = moveVideo(shifted(500), 'A', 0, 5);
+    expect(r.tracks.audio.map((a) => a.startMs)).toEqual([0, 5000, 9000]);
+  });
+
+  it('never drags the head below 0', () => {
+    const r = moveVideo(reel(), 'A', -2, 3);
+    expect(r.tracks.video[0].startMs).toBe(0);
+  });
+
+  it('dragging the first clip right leaves the head where it is (no gap opens)', () => {
+    const r = moveVideo(shifted(500), 'A', 1.5, 6.5);
+    expect(r.tracks.video[0].startMs).toBe(500);
+  });
 });
 
 describe('deleteItem', () => {
