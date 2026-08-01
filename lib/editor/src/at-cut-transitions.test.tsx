@@ -1454,15 +1454,25 @@ describe('a reel edge resolves the missing input to the theme background', () =>
     return out;
   };
 
-  // ---- the seven lifted one-sided presentations ---------------------------
+  // ---- the lifted one-sided presentations ----------------------------------
   //
   // Their entering branch reveals the incoming picture; at the trailing edge
   // that picture is now the background plate, so the outgoing clip visibly
   // resolves to it. The observable is per-kind on purpose: `opacity` for the
-  // four opacity reveals, a gradient mask for `gradient-wipe`, a clip path for
-  // the two shape wipes.
-
-  it.each(['fade', 'dissolve', 'burn'] as const)(
+  // opacity reveals, a gradient mask for `gradient-wipe`, a clip path for the
+  // two shape wipes.
+  //
+  // PHASE 5 TASK 2.3 adds `glitch`, `light-leak`, `whip-pan`, `zoom-blur` to
+  // this family — measured, not assumed: each one's ENTERING opacity is a
+  // plain `interpolate(presentationProgress, [0, 1], [0, 1])` (verified
+  // against each presentation's own source), the identical shape `fade`'s is,
+  // so the plate's opacity at progress 0.25/0.75 is `0.25`/`0.75` exactly the
+  // same way. `zoom-through` does NOT join this list — its entering opacity
+  // ramps non-linearly (`interpolate(progress, [0, 0.4, 1], [0, 1, 1])`), so
+  // `0.25` reads `0.625`, not `0.25` — it gets its own dedicated test below,
+  // the same shape `wipe`'s got in Task 2.2's fix round for the same reason
+  // (a kind whose curve does not fit the shared numeric expectation).
+  it.each(['fade', 'dissolve', 'burn', 'glitch', 'light-leak', 'whip-pan', 'zoom-blur'] as const)(
     '%s fades the theme background IN over the outgoing clip at the trailing edge',
     (kind) => {
       const at = (p: number) => {
@@ -1475,6 +1485,26 @@ describe('a reel edge resolves the missing input to the theme background', () =>
       ]);
     },
   );
+
+  // `zoom-through`'s own trailing-edge test — see the comment above for why
+  // it cannot join the shared `it.each`. `zoomThrough.tsx`'s entering opacity
+  // is `interpolate(progress, [0, 0.4, 1], [0, 1, 1])`: it reaches full
+  // opacity by progress 0.4 and HOLDS there, so at both 0.25 and 0.75 the
+  // materialised background plate is genuinely visible (opacity rising then
+  // flat), never curtaining prematurely over real content the way a wrong
+  // fix elsewhere in this task (`pixelate`'s Task 2.2 defect) did — there is
+  // no "real content" left to curtain over at a reel edge in the first
+  // place, since the missing side IS the plate.
+  it('zoom-through fades the theme background IN over the outgoing clip at the trailing edge, on its own non-linear curve', () => {
+    const at = (p: number) => {
+      const s = trailingSample('zoom-through', p);
+      return { plates: s.plates, opacity: s.opacity };
+    };
+    expect([at(0.25), at(0.75)]).toEqual([
+      { plates: 1, opacity: '0.625' },
+      { plates: 1, opacity: '1' },
+    ]);
+  });
 
   // A `fade-to-color` WITH a colour is not in that family: it is a two-input
   // node, not a lifted one-sided presentation, so its trailing edge is the DIP
@@ -1655,7 +1685,19 @@ describe('a reel edge resolves the missing input to the theme background', () =>
   // here is purely structural — exactly one background plate exists — which
   // holds regardless of that curve's value, since `EdgePlate` is always
   // materialised whether or not the op currently makes it visible.
-  it.each(['fade', 'dissolve', 'fade-to-color', 'burn', 'gradient-wipe', 'clock-wipe', 'iris', 'wipe'] as const)(
+  //
+  // PHASE 5 TASK 2.3 — `glitch`, `light-leak`, `whip-pan`, `zoom-through`,
+  // `zoom-blur` join for the SAME reason `wipe` did, not for the "identity"
+  // reason the original eight did: none of these five has an identity
+  // EXITING branch (each applies a real, progress-driven opacity/transform to
+  // its own exiting side — see `EXPECT_LIVE_DIFFERS` in
+  // `plan-neutral-progress.test.tsx`, which pins exactly this). The assertion
+  // stays purely structural regardless of the curve's value, for the same
+  // reason `wipe`'s does.
+  it.each([
+    'fade', 'dissolve', 'fade-to-color', 'burn', 'gradient-wipe', 'clock-wipe', 'iris', 'wipe',
+    'glitch', 'light-leak', 'whip-pan', 'zoom-through', 'zoom-blur',
+  ] as const)(
     '%s draws the theme background beneath the incoming clip at the leading edge',
     (kind) => {
       const { container } = mount(kind, { from: null }, 0.5);

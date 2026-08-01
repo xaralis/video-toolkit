@@ -654,8 +654,14 @@ export function resetTransitionNodeCache(): void {
  *  never consults this set for them). `WRAP_PLAN_KINDS` names ONLY the kinds
  *  still reached via `wrapRemotionPresentation` — the lift for a one-sided
  *  `@remotion/transitions` presentation this task did not touch. */
+//  PHASE 5 TASK 2.3 adds six more, all still lifted by
+//  `wrapRemotionPresentation` (none of these six are native two-input nodes):
+//  `burn`, `glitch`, `light-leak`, `whip-pan`, `zoom-through`, `zoom-blur`.
+//  Each writes `children` exactly once (verified against the current tree,
+//  not carried forward from the design document — see task-2.3-report.md).
 const WRAP_PLAN_KINDS: ReadonlySet<TransitionKind> = new Set<TransitionKind>([
   'fade', 'dissolve', 'slide', 'flip', 'clock-wipe', 'iris', 'fade-to-color',
+  'burn', 'glitch', 'light-leak', 'whip-pan', 'zoom-through', 'zoom-blur',
 ]);
 
 /** THE RENDER PATH. Resolves a kind to the two-input node the boundary drives,

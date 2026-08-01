@@ -124,11 +124,12 @@ beforeEach(() => {
 // "empty describe.each passes trivially" trap `video-track-remount.test.tsx`
 // already guards against for the identity ratchet). A literal array, not a
 // count, so a shrink prints exactly which kind went missing.
-it('PLAN_KINDS is exactly the ten Task 2.1+2.2 migrated kinds — re-derive; do not carry forward', () => {
+it('PLAN_KINDS is exactly the sixteen Task 2.1+2.2+2.3 migrated kinds — re-derive; do not carry forward', () => {
   expect.hasAssertions();
   expect(PLAN_KINDS).toEqual([
-    'dissolve', 'fade', 'fade-to-color', 'slide', 'flip', 'clock-wipe', 'iris',
-    'wipe', 'gradient-wipe', 'pixelate',
+    'dissolve', 'fade', 'fade-to-color', 'glitch', 'burn', 'light-leak',
+    'slide', 'flip', 'whip-pan', 'zoom-through', 'zoom-blur',
+    'clock-wipe', 'iris', 'wipe', 'gradient-wipe', 'pixelate',
   ]);
 });
 
@@ -162,13 +163,31 @@ function findStyle(
 // mutation this file exists to catch moves this value to 100).
 const SLIDE_EXITING_EPSILON = 0.02;
 
+// PHASE 5 TASK 2.3 — per-FUNCTION identity, not a single "everything must be
+// near zero" rule. `zoom-through`/`zoom-blur` both write `scale(N)`, whose
+// IDENTITY is `1`, not `0` — a fact this file never had to know before this
+// task, because every earlier plan kind's transform was translate/rotate-
+// shaped (`translateX(N%)`/`rotateY(Ndeg)`), where `0` genuinely is the
+// identity. Parsing per FUNCTION CALL (not just scraping every number in the
+// string) is what lets `scale(1)` read as inert while `scale(1.8)` still
+// fails loudly — a flat "every number near zero" rule would have required
+// `scale`'s neutral to be `0`, which is not a real transform at all (it
+// collapses the layer to nothing), so this was never a viable exception to
+// bolt on to the old rule; it needed its own per-function identity.
+const TRANSFORM_FN_IDENTITY: Record<string, number> = { scale: 1 };
+
 function assertInertTransform(kind: string, side: 'exiting' | 'entering', transform: string): void {
   if (!transform || transform === 'none') return;
   const epsilon = kind === 'slide' && side === 'exiting' ? SLIDE_EXITING_EPSILON : 0;
-  const numbers = [...transform.matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
-  expect(numbers.length).toBeGreaterThan(0); // a transform string with no numbers at all would be a parsing miss, not inertness
-  for (const n of numbers) {
-    expect(Math.abs(n)).toBeLessThanOrEqual(epsilon);
+  const calls = [...transform.matchAll(/([a-zA-Z]+)\(([^)]*)\)/g)];
+  expect(calls.length).toBeGreaterThan(0); // a transform string with no function calls at all would be a parsing miss, not inertness
+  for (const [, fn, argsStr] of calls) {
+    const identity = TRANSFORM_FN_IDENTITY[fn] ?? 0;
+    const numbers = [...argsStr.matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
+    expect(numbers.length).toBeGreaterThan(0);
+    for (const n of numbers) {
+      expect(Math.abs(n - identity)).toBeLessThanOrEqual(epsilon);
+    }
   }
 }
 
@@ -197,6 +216,24 @@ function expectedNeutralClipPath(kind: string): string | null {
   return null;
 }
 
+// PHASE 5 TASK 2.3 — `light-leak` is the one kind whose neutral `filter` is
+// NOT empty. Its `exposure` (the multiplier fed to `brightness(...)`) is
+// computed by `interpolate(progress, [0, 0.4, 0.6, 1], [1, 1.3, 1.3, 1])`
+// (`light-leak.tsx`), which lands on EXACTLY `1` — the numeric identity of
+// `brightness()` — at BOTH endpoints, on both sides (exiting inverts
+// `progress` to `1 - presentationProgress` before feeding it in, so its own
+// neutral endpoint, presentationProgress 0, also lands on the interpolation's
+// `progress === 1` endpoint). So the ancestor's `filter` style is always
+// PRESENT (`light-leak.tsx` sets it unconditionally, unlike `whip-pan`/
+// `zoom-blur`'s `blur > 0.5 ? … : undefined` gate) but is numerically inert
+// at the boundary — the same class of divergence `slide`'s
+// `SLIDE_EXITING_EPSILON` already carries for `transform`, applied here to
+// `filter` instead. Narrow and argued, not a loosening for every kind: every
+// other plan kind's neutral filter is still required to be exactly `''`.
+function expectedNeutralFilter(kind: string): string {
+  return kind === 'light-leak' ? 'brightness(1)' : '';
+}
+
 /** Whether this kind/side's picture is expected to differ between the
  *  neutral (far outside the window) sample and a LIVE mid-window one — the
  *  positive half of the vacuity guard: proving the apparatus (the `wrap`,
@@ -215,12 +252,27 @@ function expectedNeutralClipPath(kind: string): string | null {
 // couldn't see the property that changes"); `pixelate` sets `opacity` AND
 // (once `pixelIntensity` clears its own thresholds) `filter`/`transform` on
 // both sides, so both are `true`.
+// PHASE 5 TASK 2.3 — six more rows. `burn`'s NO-MASK fallback (the default
+// `defaultTransition` seeds, no `mask` field) is `<AbsoluteFill>{children}
+// </AbsoluteFill>` on EXITING — the identity, like `fade`/`dissolve` — and a
+// plain `opacity: presentationProgress` on ENTERING, so `false`/`true` like
+// the rest of that family. The other five (`glitch`, `light-leak`,
+// `whip-pan`, `zoom-through`, `zoom-blur`) all apply a REAL, progress-driven
+// opacity/transform/filter curve on BOTH sides — none of their exiting
+// branches is the identity the way `fade`'s is — so all five are `true`/
+// `true`.
 const EXPECT_LIVE_DIFFERS: Record<string, { exiting: boolean; entering: boolean }> = {
   dissolve: { exiting: false, entering: true },
   fade: { exiting: false, entering: true },
   'fade-to-color': { exiting: false, entering: true },
+  glitch: { exiting: true, entering: true },
+  burn: { exiting: false, entering: true },
+  'light-leak': { exiting: true, entering: true },
   slide: { exiting: true, entering: true },
   flip: { exiting: true, entering: true },
+  'whip-pan': { exiting: true, entering: true },
+  'zoom-through': { exiting: true, entering: true },
+  'zoom-blur': { exiting: true, entering: true },
   'clock-wipe': { exiting: false, entering: true },
   iris: { exiting: false, entering: true },
   wipe: { exiting: true, entering: true },
@@ -302,12 +354,14 @@ describe.each(PLAN_KINDS)(
       expect(neutral.opacity === '' || neutral.opacity === '1').toBe(true);
       assertInertTransform(kind, 'exiting', neutral.transform);
       expect(neutral.clipPath).toBe(''); // no kind's EXITING branch ever sets a clip-path
-      // No `plan`-arm kind's EXITING side sets `filter`/`maskImage` either —
+      // No `plan`-arm kind's EXITING side sets `filter` unconditionally
+      // except `light-leak` (see `expectedNeutralFilter`'s own comment) —
       // `pixelate`'s shared filter/transform IS applied to `from` too, but
       // only while the boundary is LIVE (a bare `LayerOp.style`, unlike
       // `wrap`, is never even attempted outside the window — see
       // `LayerShell`'s `op` lookup), so far outside it there is nothing here.
-      expect(neutral.filter).toBe('');
+      // `maskImage` is absent for every kind, no exception.
+      expect(neutral.filter).toBe(expectedNeutralFilter(kind));
       expect(neutral.maskImage).toBe('');
 
       if (EXPECT_LIVE_DIFFERS[kind].exiting) {
@@ -331,7 +385,7 @@ describe.each(PLAN_KINDS)(
       // `gradient-wipe`'s ENTERING side is the ONLY thing in this whole file
       // that sets `maskImage` at all — well outside its window it must be
       // absent, exactly like every other kind's opacity/transform/clip-path.
-      expect(neutral.filter).toBe('');
+      expect(neutral.filter).toBe(expectedNeutralFilter(kind));
       expect(neutral.maskImage).toBe('');
 
       if (EXPECT_LIVE_DIFFERS[kind].entering) {

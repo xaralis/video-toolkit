@@ -576,11 +576,14 @@ describe('warning 9 — a plan-arm TransitionNode reaches AtCutTransition (the w
   });
 
   it('does NOT warn for an ordinary composite-arm node — the false-positive this pin must not become', () => {
-    // `burn`, not `dissolve` — Phase 5 Task 2.1 moved `dissolve` (and `fade`,
-    // `slide`, `flip`, `clock-wipe`, `iris`, colourless `fade-to-color`) onto
-    // the `plan` arm via `LayerOp.wrap`, so it is no longer an "ordinary
-    // composite-arm node" fixture. `burn` is Stage 2.3's and stays composite.
-    const node = transitionNodeFor({ kind: 'burn', frames: 10 } as never, { width: 1080, height: 1920 })!;
+    // `scanline-glitch`, not `burn` — Phase 5 Task 2.1 moved `dissolve` (and
+    // `fade`, `slide`, `flip`, `clock-wipe`, `iris`, colourless
+    // `fade-to-color`) onto the `plan` arm via `LayerOp.wrap`; Task 2.3 moved
+    // `burn` (and five more) the same way, so `burn` is no longer an
+    // "ordinary composite-arm node" fixture either. `scanline-glitch` is Stage 3's
+    // and stays composite — one of exactly three catalog kinds that do,
+    // after this task.
+    const node = transitionNodeFor({ kind: 'scanline-glitch', frames: 10 } as never, { width: 1080, height: 1920 })!;
     render(
       <AtCutTransition
         node={node}

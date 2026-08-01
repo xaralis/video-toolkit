@@ -101,17 +101,19 @@ const plan = (p: TransitionPlanProps): TransitionComposite => {
 
 const REGISTRY: TransitionRegistry = { planned: { renderer: () => ({ plan }) } };
 
-// a --planned--> b --burn--> c. 30fps, 3s each: cuts at frames 90 and 180,
-// both transitions 20 frames and centre-aligned, so the windows are [80, 100]
-// (plan) and [170, 190] (composite).
+// a --planned--> b --scanline-glitch--> c. 30fps, 3s each: cuts at frames 90 and
+// 180, both transitions 20 frames and centre-aligned, so the windows are
+// [80, 100] (plan) and [170, 190] (composite).
 //
-// `burn`, not `fade` — Phase 5 Task 2.1 moved `fade` onto the `plan` arm via
-// `LayerOp.wrap`, which would make BOTH of this fixture's boundaries `plan`,
+// `scanline-glitch`, not `fade` or `burn` — Phase 5 Task 2.1 moved `fade` onto the
+// `plan` arm via `LayerOp.wrap`, and Task 2.3 moved `burn` the same way,
+// either of which would make BOTH of this fixture's boundaries `plan`,
 // destroying the whole "mixed reel" premise this describe block exists to
-// exercise. `burn` is Stage 2.3's and stays `composite`.
+// exercise. `scanline-glitch` is Stage 3's and stays `composite` — one of exactly
+// three catalog kinds that do, after Task 2.3.
 const MIXED = (): VideoItem[] => [
   clip('a', 0, 3000, { transitionOut: { kind: 'planned', frames: 20 } }),
-  clip('b', 3000, 6000, { transitionOut: { kind: 'burn', frames: 20 } }),
+  clip('b', 3000, 6000, { transitionOut: { kind: 'scanline-glitch', frames: 20 } }),
   clip('c', 6000, 9000),
 ];
 
@@ -436,10 +438,10 @@ describe('`post` applies to the whole video track, narrowly', () => {
     expect(wrapper(container).style.isolation).toBe('isolate');
 
     // A composite-only reel is byte-identical to before this task: no
-    // stacking context, so nothing about blending changes. `burn`, not
-    // `fade` — see MIXED's own comment above for why.
+    // stacking context, so nothing about blending changes. `scanline-glitch`, not
+    // `fade`/`burn` — see MIXED's own comment above for why.
     rerender(tree([
-      clip('x', 0, 3000, { transitionOut: { kind: 'burn', frames: 20 } }),
+      clip('x', 0, 3000, { transitionOut: { kind: 'scanline-glitch', frames: 20 } }),
       clip('y', 3000, 6000),
     ]));
     expect(wrapper(container).style.isolation).toBe('');

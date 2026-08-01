@@ -89,26 +89,32 @@ import type { VideoItem } from '@video-toolkit/lib/reel-config-base/layered-sche
 const clip = (id: string, startMs: number, endMs: number, extra: Record<string, unknown> = {}): VideoItem =>
   ({ id, kind: 'clip', startMs, endMs, source: `${id}.mp4`, sourceInMs: 0, sourceOutMs: endMs - startMs, ...extra }) as VideoItem;
 
-// a: 0-3000ms with a 20-frame burn out. b: 3000-6000ms. 30fps -> cut at frame
-// 90, the default (center) alignment gives a window of [80, 100].
+// a: 0-3000ms with a 20-frame scanline-glitch out. b: 3000-6000ms. 30fps -> cut at
+// frame 90, the default (center) alignment gives a window of [80, 100].
 //
-// PHASE 5 TASK 2.1 changed this fixture's KIND from `fade` to `burn` —
-// deliberately, not incidentally. Every hand-written test below (Fix 1/2/3,
-// R2, and the Task 1.2 shell-parity test) exercises `composite`-arm
-// mechanics specifically: the boundary Sequence, `rebased()` copies,
-// `ItemBody`'s blanking, the R1/R2 mount-count floors. `fade` migrated to
-// the `plan` arm this task, which does not blank, has no boundary Sequence
-// and no rebased copies at all — so this whole file's geometry, counts and
-// identities would silently start asserting something else entirely (or
-// simply fail, which is what happened here first: confirmed RED against the
-// unchanged fixture, `npx vitest run --no-file-parallelism
-// video-track-remount.test.tsx` failing exactly these 5 composite-arm
-// tests). `burn` is Stage 2.3's, not this task's, and keeps this file
-// pinning the arm it says it pins. The DERIVED section below (Task 1.3)
-// still names `fade` directly where it means to — this substitution is
-// scoped to the hand-written fixture alone.
+// PHASE 5 TASK 2.1 changed this fixture's KIND from `fade` to `burn`; PHASE 5
+// TASK 2.3 changes it again, from `burn` to `scanline-glitch` — both deliberately,
+// not incidentally, for the identical reason each time. Every hand-written
+// test below (Fix 1/2/3, R2, and the Task 1.2 shell-parity test) exercises
+// `composite`-arm mechanics specifically: the boundary Sequence, `rebased()`
+// copies, `ItemBody`'s blanking, the R1/R2 mount-count floors. `burn`
+// migrated to the `plan` arm THIS task, which does not blank, has no
+// boundary Sequence and no rebased copies at all — so this whole file's
+// geometry, counts and identities would silently start asserting something
+// else entirely (or simply fail, which is what happened here first:
+// confirmed RED against the unchanged fixture, `npx vitest run
+// --no-file-parallelism video-track-remount.test.tsx` failing exactly the
+// same 5 composite-arm tests Task 2.1's swap once fixed). `scanline-glitch` is
+// Stage 3's, not this task's, and keeps this file pinning the arm it says it
+// pins — after this task it is one of exactly THREE catalog kinds still
+// composite (`rgb-split`, `scanline-glitch`, `checkerboard`), so the choice
+// is nearly forced; whichever of the three is picked, a later stage's
+// migration collides with this fixture the same way this task's did with
+// Task 2.1's. The DERIVED section below (Task 1.3) still names catalog kinds
+// directly where it means to — this substitution is scoped to the
+// hand-written fixture alone.
 const reel = (): VideoItem[] => [
-  clip('a', 0, 3000, { transitionOut: { kind: 'burn', frames: 20 } }),
+  clip('a', 0, 3000, { transitionOut: { kind: 'scanline-glitch', frames: 20 } }),
   clip('b', 3000, 6000),
 ];
 
@@ -402,20 +408,32 @@ describe('DERIVED — the plan/composite partition over the catalog is pinned', 
   // `WRAP_PLAN_KINDS` entry needed or added for them; a native node is
   // `isTransitionNode(resolved)` straight out of `resolveTransition`, so
   // `transitionNodeFor`'s wrap-lift branch never runs for them at all).
-  // `fade-to-color`'s COLOUR route also migrated this task, but
+  // `fade-to-color`'s COLOUR route also migrated Task 2.2, but
   // `defaultTransition('fade-to-color', …)` seeds no colour, so THIS derived
   // list — built off the catalog DEFAULT — still only ever reaches the
   // no-colour fallback already counted above; the colour route's own arm is
-  // pinned separately in `at-cut-transitions.test.tsx`. Order matches
-  // `CATALOG_KINDS`' own order (`TRANSITION_CATALOG`'s declaration order:
-  // `dissolve`, `fade`, `fade-to-color`, …, `slide`, `flip`, …, `clock-wipe`,
-  // `iris`, `wipe`, `gradient-wipe`, `pixelate`, …), not the brief's prose
-  // order.
-  it('is exactly the ten Task 2.1+2.2 migrated kinds — re-derive; do not carry forward', () => {
+  // pinned separately in `at-cut-transitions.test.tsx`.
+  //
+  // PHASE 5 TASK 2.3 adds SIX more — `glitch`, `burn`, `light-leak`,
+  // `whip-pan`, `zoom-through`, `zoom-blur` — by the SAME mechanism as Task
+  // 2.1 (`WRAP_PLAN_KINDS` in `at-cut-transitions.tsx`; none of these six is
+  // a native two-input node). This is Stage 2's last migration: after this
+  // task exactly three catalog kinds remain composite (`rgb-split`,
+  // `scanline-glitch`, `checkerboard`).
+  //
+  // Order matches `CATALOG_KINDS`' own order (`TRANSITION_CATALOG`'s
+  // declaration order: `dissolve`, `fade`, `fade-to-color`, `glitch`,
+  // `rgb-split`, `scanline-glitch`, `burn`, `light-leak`, `slide`, `flip`,
+  // `whip-pan`, `zoom-through`, `zoom-blur`, `clock-wipe`, `iris`, `wipe`,
+  // `gradient-wipe`, `pixelate`, `checkerboard` — `rgb-split`,
+  // `scanline-glitch` and `checkerboard` stay composite and are filtered
+  // out), not the brief's prose order.
+  it('is exactly the sixteen Task 2.1+2.2+2.3 migrated kinds — re-derive; do not carry forward', () => {
     expect.hasAssertions();
     expect(PLAN_KINDS).toEqual([
-      'dissolve', 'fade', 'fade-to-color', 'slide', 'flip', 'clock-wipe', 'iris',
-      'wipe', 'gradient-wipe', 'pixelate',
+      'dissolve', 'fade', 'fade-to-color', 'glitch', 'burn', 'light-leak',
+      'slide', 'flip', 'whip-pan', 'zoom-through', 'zoom-blur',
+      'clock-wipe', 'iris', 'wipe', 'gradient-wipe', 'pixelate',
     ]);
     expect(COMPOSITE_KINDS.length).toBe(CATALOG_KINDS.length - PLAN_KINDS.length);
   });
