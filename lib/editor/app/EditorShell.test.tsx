@@ -60,3 +60,25 @@ describe('EditorShell', () => {
     expect(screen.getByText('Timeline (coming soon)')).toBeInTheDocument();
   });
 });
+
+// The shell was built for 9:16 reels and hard-coded that on the preview frame,
+// which letterboxed a 1920x1080 web-program-intro into a portrait box. The
+// stage must take its shape from the composition, whatever that shape is.
+describe('EditorShell — preview aspect ratio', () => {
+  const frame = (container: HTMLElement) => container.querySelector('[class*="stageFrame"]') as HTMLElement;
+
+  it('takes a landscape aspect ratio from the caller', () => {
+    const { container } = render(<EditorShell preview={<div />} aspectRatio="1920 / 1080" />);
+    expect(frame(container).style.aspectRatio).toBe('1920 / 1080');
+  });
+
+  it('takes a square one just as happily — no orientation is privileged', () => {
+    const { container } = render(<EditorShell preview={<div />} aspectRatio="1 / 1" />);
+    expect(frame(container).style.aspectRatio).toBe('1 / 1');
+  });
+
+  it('falls back to 9 / 16 when the caller says nothing', () => {
+    const { container } = render(<EditorShell preview={<div />} />);
+    expect(frame(container).style.aspectRatio).toBe('9 / 16');
+  });
+});

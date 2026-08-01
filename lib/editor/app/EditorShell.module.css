@@ -130,7 +130,11 @@
 }
 
 .stageFrame {
-  aspect-ratio: 9 / 16;
+  /* aspect-ratio is set INLINE by EditorShell, from the composition's own
+     dimensions — deliberately not defaulted here too. A hard-coded 9 / 16 in
+     this file is what letterboxed a 1920x1080 composition into a portrait box,
+     and a second source of truth for the same property would just wait to do
+     it again. */
   height: 100%;
   max-width: 100%;
   background: #000;
