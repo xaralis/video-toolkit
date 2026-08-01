@@ -50,6 +50,25 @@ const VideoContainerBase = {
   focalY: z.number().min(0).max(1).optional(),
   crop: z.record(z.string(), z.unknown()).optional(),
   grade: z.record(z.string(), z.unknown()).optional(),
+  // How the media meets the frame. `cover` (the default, and every item
+  // authored before this field existed) crops away whatever doesn't fit —
+  // right for a small aspect mismatch, destructive for a large one. `blur-pad`
+  // shows the whole shot over a blurred, dimmed copy of itself, for footage
+  // whose orientation doesn't match the composition's (a portrait phone b-roll
+  // in a 16:9 frame). Left OPTIONAL with no `.default()`: a default would
+  // materialise `fit: 'cover'` onto every item the editor round-trips, turning
+  // an untouched config into a diff. The renderer supplies the same fallback.
+  //
+  // `contain` without a backdrop is deliberately absent — bare black bars are
+  // never the answer to "my shot is cut off". See
+  // docs/superpowers/specs/2026-08-01-media-fit-blur-pad-design.md.
+  fit: z.enum(['cover', 'blur-pad']).optional(),
+  backdropBlur: z.number().min(0).max(80).optional(),
+  // Stored as DIMMING, not brightness: 0 leaves the backdrop alone, 1 is
+  // black. The render inverts it once (`brightness(1 - backdropDim)`), so the
+  // config reads the same direction as the editor's control and there is no
+  // conversion to get backwards.
+  backdropDim: z.number().min(0).max(1).optional(),
   effects: z.array(EffectSchema).optional(),
   musicBoostDb: z.number().optional(),
   // The at-the-cut boundary transitions. These carry the SHARED TransitionSchema

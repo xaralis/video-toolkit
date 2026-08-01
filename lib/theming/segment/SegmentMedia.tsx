@@ -12,6 +12,52 @@ import { anchorTiming } from '../../render/overlay-anchor';
 
 const VIDEO_EXT_RE = /\.(mp4|mov|webm)$/i;
 
+/** Reads a numeric config field tolerantly — same shape as the effect
+ *  primitives' own reader, so a malformed `backdropBlur` renders with the
+ *  default instead of throwing mid-composition. */
+function num(v: unknown, fallback: number): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+}
+
+/** The blurred fill behind a `blur-pad` foreground. Carries NOTHING from the
+ *  item — no crop, no grade, no ken burns, no effects. That emptiness is the
+ *  contract, not an oversight: the clip's own look belongs on the clip, and
+ *  applying it here too would grade one picture twice. */
+function backdropStyle(blurPx: number, dim: number): React.CSSProperties {
+  return {
+    position: 'absolute',
+    // Oversized rather than scaled with a transform: a blur radius samples
+    // past the element's edge, and an exactly-inset element has nothing there
+    // but transparency, which reads as a pale border. Bleeding 5% out on every
+    // side gives the blur real pixels to sample. Deliberately NOT
+    // `transform: scale()` — the backdrop's `transform` staying undefined is
+    // what makes "the crop never reached the backdrop" checkable.
+    inset: '-5%',
+    width: '110%',
+    height: '110%',
+    objectFit: 'cover',
+    filter: `blur(${blurPx}px) brightness(${1 - dim})`,
+  };
+}
+
+/** The whole shot, contained over the backdrop, carrying the item's entire
+ *  computed style chain (crop, grade, ken burns, style effects). */
+function foregroundStyle(base: React.CSSProperties): React.CSSProperties {
+  return {
+    ...base,
+    objectFit: 'contain',
+    // Right-aligned, matching where the speaker sits in the talking-head
+    // segments, so a cut from clip to b-roll doesn't move the picture's centre
+    // of gravity — and leaving the left of the frame to the blurred backdrop,
+    // which is where the website draws its headline.
+    //
+    // This is also why `focalX/focalY` are inert under blur-pad: they steer
+    // this exact property, and the right-alignment owns it. `crop`'s zoom (a
+    // transform) still applies, inherited from `base`.
+    objectPosition: '100% 50%',
+  };
+}
+
 /** `item.source` → a URL Remotion can load, through core's ONE media-path rule
  *  (../media-source.ts) and then `staticFile`.
  *
@@ -58,6 +104,16 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
   const mediaEffects = useMediaEffects();
 
   if (item.kind !== 'clip' && item.kind !== 'broll' && item.kind !== 'photo') return null;
+
+  // How this item's media meets the frame. `cover` (the default, and every
+  // item authored before this field existed) crops the mismatch away;
+  // `blur-pad` shows the whole shot over a blurred copy of itself. Read
+  // permissively — a malformed value falls back to the default rather than
+  // throwing, the same tolerance `crop` and the effect bags get.
+  const fitRaw = (item as { fit?: unknown }).fit;
+  const fit = fitRaw === 'blur-pad' ? 'blur-pad' : 'cover';
+  const backdropBlur = num((item as { backdropBlur?: unknown }).backdropBlur, 32);
+  const backdropDim = num((item as { backdropDim?: unknown }).backdropDim, 0.45);
 
   // `item.kind` maps 1:1 onto MediaRole for the three footage kinds.
   const src = resolveSrc(item.source, item.kind, override);
@@ -160,8 +216,34 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
     );
   };
 
-  if (useImg) {
-    const mediaNode = wrapWithMediaEffects(<Img src={src} style={style} />);
+  /** Final assembly, shared by the Img and OffthreadVideo paths: apply the
+   *  media-effect and anchored-overlay wrappers and prepend the white-balance
+   *  `defs` fragment when a grade needs one. `element(style)` builds the media
+   *  element itself — called once for `cover`, twice for `blur-pad`. */
+  const assemble = (element: (s: React.CSSProperties) => React.ReactNode): React.ReactNode => {
+    // `fit: 'blur-pad'` — for footage whose aspect doesn't match the
+    // composition (a portrait phone b-roll in a 16:9 frame), where `cover`
+    // would crop most of the picture away. Renders the SAME source twice: a
+    // blurred cover backdrop filling the frame, and the whole shot contained
+    // on top of it.
+    //
+    // The division of labour is the contract (see the design spec): everything
+    // that belongs to the CLIP — grade, ken burns, crop, style effects,
+    // media-scope effects — goes on the foreground. The backdrop is dumb fill
+    // and carries none of it, or every grade would be applied twice to one
+    // picture. Frame-level looks (`scope: 'clip'` effects — grain, vignette)
+    // wrap this whole output from outside and so cover both, which is correct:
+    // a vignette is a look on the frame, not on the clip.
+    const mediaNode =
+      fit === 'blur-pad' ? (
+        <>
+          {element(backdropStyle(backdropBlur, backdropDim))}
+          {wrapWithMediaEffects(element(foregroundStyle(style)))}
+        </>
+      ) : (
+        wrapWithMediaEffects(element(style))
+      );
+
     return wrapWithAnchoredOverlays(
       wbDef ? (
         <>
@@ -172,7 +254,9 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
         mediaNode
       ),
     );
-  }
+  };
+
+  if (useImg) return assemble((s) => <Img src={src} style={s} />);
 
   // clip/broll (and a video-as-photo) all render via OffthreadVideo. Only
   // clip/broll carry a source trim — photo has no sourceInMs (its full span
@@ -188,16 +272,5 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
   // (the 1× playback case), so nothing visible changes.
   const endAt = item.kind === 'photo' ? undefined : Math.round((item.sourceOutMs / 1000) * fps) + handles.outHalf;
 
-  const video = <OffthreadVideo src={src} muted startFrom={startFrom} endAt={endAt} style={style} />;
-  const mediaNode = wrapWithMediaEffects(video);
-  return wrapWithAnchoredOverlays(
-    wbDef ? (
-      <>
-        {wbDef}
-        {mediaNode}
-      </>
-    ) : (
-      mediaNode
-    ),
-  );
+  return assemble((s) => <OffthreadVideo src={src} muted startFrom={startFrom} endAt={endAt} style={s} />);
 };

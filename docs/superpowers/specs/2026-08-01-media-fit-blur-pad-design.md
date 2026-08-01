@@ -98,8 +98,14 @@ on one picture. Applying it to neither would silently drop a brand's look.
 | `fit` | Zoom (`crop.width`) | Crop focus X/Y |
 |---|---|---|
 | `cover` | zooms within the crop | chooses **what gets cropped away** |
-| `blur-pad`, zoom = 1 | — | **inert** — nothing is cropped |
-| `blur-pad`, zoom > 1 | zooms the foreground | active again, within the narrower frame |
+| `blur-pad` | zooms the foreground | **inert, at any zoom** |
+
+Crop focus is inert under blur-pad at *every* zoom level, not only at zoom 1 — a
+simplification found while implementing, not a compromise. The foreground is
+right-aligned via `objectPosition`, and `objectPosition` is the exact property
+`focalX/focalY` steer. Both cannot own it. Zoom is a `transform`, so it is unaffected
+and still works. The UI is simpler for it: greyed whenever `fit = blur-pad`, with no
+second condition to explain.
 
 ### Editor UI
 
@@ -118,17 +124,19 @@ A **Framing** group in the inspector, for clip / broll / photo:
   under `fit = cover` by the same grey-out pattern (value preserved, re-enabled on
   switching back), since there is no backdrop to tune.
 
-When `fit = blur-pad` and zoom = 1, `Crop focus X/Y` are **disabled, not hidden and not
-cleared**, with a one-line reason beneath: *"Nothing is cropped — the whole shot is
+When `fit = blur-pad`, `Crop focus X/Y` are **disabled, not hidden and not cleared**, with a one-line reason beneath: *"Nothing is cropped — the whole shot is
 visible."* This is the pattern the grade panel already uses when an authored `grade`
 effect takes over (`LayeredInspector.tsx`, Phase 4 Task 3.4) — greyed, value preserved,
 re-enabled when the condition lifts. A dead control that doesn't say why it is dead is
 the specific thing this design is trying not to ship.
 
-`FrameOverlay` draws a draggable focus dot for `focalX/focalY`. Under the same condition
-it must be hidden — nothing is cropped, so the dot would be pointing at a decision that
-isn't being made. It already takes a `visible` prop; this is one condition, not new
-machinery.
+**`FrameOverlay` is out of scope, and the reason is a finding.** It draws a draggable
+focus dot for `focalX/focalY`, and under blur-pad it would be pointing at a decision
+nobody is making — so it looked like it needed the same treatment. It does not:
+`FrameOverlay` is **mounted nowhere**. Grepping core and the PP brand repo finds it only
+in its own 12-test file. Adding a `visible` condition to an unmounted component would be
+writing dead code to satisfy a spec. Whoever wires it into the preview stage owns that
+condition; it is noted here so the omission is a decision rather than an oversight.
 
 ### The control most users should never find
 
@@ -151,10 +159,9 @@ heavy lifting, the editor is for final tuning.
 - `backdropBlur` / `backdropDim` reach the backdrop's filter, and `backdropDim` inverts
   into `brightness` exactly once (a dim of 0.45 must render `brightness(0.55)`, not
   `brightness(0.45)`).
-- Inspector: disabled state and its reason line appear exactly under `blur-pad` + zoom 1;
-  the stored `focalX/focalY` survive being greyed, and so do the backdrop knobs when
-  greyed under `cover`.
-- `FrameOverlay` hidden under the same condition.
+- Inspector: the disabled state and its reason line appear exactly under `blur-pad`; the
+  stored `focalX/focalY` survive being greyed, and so do the backdrop knobs when greyed
+  under `cover`.
 
 ## Gates
 

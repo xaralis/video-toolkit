@@ -101,3 +101,24 @@ it('accepts an optional per-item props bag and meta.guidesMs', () => {
   expect(parsed.meta.guidesMs).toEqual([0, 500, 1000]);
   expect((parsed.tracks.video[0] as { props?: Record<string, unknown> }).props).toEqual({ displayMode: 'paper-frame' });
 });
+
+describe('VideoItemSchema — media fit', () => {
+  const base = { id: 'v1', kind: 'broll' as const, startMs: 0, endMs: 3000, source: 'b.mp4', sourceInMs: 0, sourceOutMs: 3000 };
+
+  it('accepts fit with its backdrop knobs', () => {
+    const parsed = VideoItemSchema.parse({ ...base, fit: 'blur-pad', backdropBlur: 12, backdropDim: 0.3 });
+    expect(parsed).toMatchObject({ fit: 'blur-pad', backdropBlur: 12, backdropDim: 0.3 });
+  });
+
+  it('leaves fit absent rather than defaulting it, so an untouched item stays untouched', () => {
+    expect(VideoItemSchema.parse(base)).not.toHaveProperty('fit');
+  });
+
+  it('rejects a fit value that is not a known mode', () => {
+    expect(() => VideoItemSchema.parse({ ...base, fit: 'contain' })).toThrow();
+  });
+
+  it('rejects a backdropDim outside 0..1', () => {
+    expect(() => VideoItemSchema.parse({ ...base, backdropDim: 1.5 })).toThrow();
+  });
+});

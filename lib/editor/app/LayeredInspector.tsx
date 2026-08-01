@@ -55,6 +55,11 @@ const section: React.CSSProperties = { fontSize: 10, color: '#5f626a', textTrans
 
 const Row = ({ children }: { children: ReactNode }) => <div style={{ display: 'flex', gap: 8 }}>{children}</div>;
 
+// A one-line reason printed under a control that has gone inert, so a disabled
+// field explains itself instead of reading as a bug. Deliberately quiet — it is
+// an answer to "why can't I type here", not a warning.
+const note: React.CSSProperties = { fontSize: 11, color: '#7a7d85', margin: '-4px 0 8px' };
+
 // Live-commit field state: controlled local text that commits on every valid
 // keystroke (preview updates immediately, not on blur), and resyncs from the
 // external `value` only while UNFOCUSED (external edit / undo / item switch) so
@@ -838,22 +843,83 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
               <NumberField lbl="Trim in (s)" step={0.05} value={v.sourceInMs / 1000} onCommit={(n) => patchItem('video', id, { sourceInMs: Math.round(n * 1000) })} />
               <NumberField lbl="Trim out (s)" step={0.05} value={v.sourceOutMs / 1000} onCommit={(n) => patchItem('video', id, { sourceOutMs: Math.round(n * 1000) })} />
             </Row>
-            <Row>
-              <NumberField
-                lbl="Zoom (1 = fit)"
-                step={0.05}
-                // Round the display — width is stored as 1/zoom, so the round-trip
-                // otherwise shows e.g. 3.0003 instead of 3.
-                value={Math.round((1 / ((v.crop as { width?: number } | undefined)?.width ?? 1)) * 100) / 100}
-                onCommit={(z) =>
-                  patchItem('video', id, {
-                    crop: z > 1 ? { ...((v.crop as object) ?? {}), width: 1 / z } : undefined,
-                  })
-                }
-              />
-              <NumberField lbl="Focal X" step={0.01} value={v.focalX} onCommit={(n) => patchItem('video', id, { focalX: n })} />
-              <NumberField lbl="Focal Y" step={0.01} value={v.focalY} onCommit={(n) => patchItem('video', id, { focalY: n })} />
-            </Row>
+            {/* Framing — how this shot meets the frame. `Fit` comes FIRST
+                because it decides what the controls under it mean: under
+                blur-pad the whole shot is visible, so there is no crop to
+                focus and the crop controls go inert (greyed, value kept, with
+                a reason printed — the same pattern the grade panel below uses
+                when an authored grade effect takes over). */}
+            {(() => {
+              const isBlurPad = (v as { fit?: string }).fit === 'blur-pad';
+              const backdrop = v as { backdropBlur?: number; backdropDim?: number };
+              return (
+                <>
+                  <SelectField
+                    lbl="Fit"
+                    value={isBlurPad ? 'blur-pad' : 'cover'}
+                    options={['cover', 'blur-pad']}
+                    optionLabel={(o) => (o === 'blur-pad' ? 'Whole shot + blurred backdrop' : 'Fill frame')}
+                    // `cover` clears the field rather than writing it: the
+                    // schema leaves `fit` optional precisely so an untouched
+                    // item doesn't grow a `fit: 'cover'` key on every
+                    // round-trip through the editor.
+                    onChange={(s) => patchItem('video', id, { fit: s === 'blur-pad' ? 'blur-pad' : undefined })}
+                  />
+                  <Row>
+                    <NumberField
+                      lbl="Zoom (1 = none)"
+                      step={0.05}
+                      // Round the display — width is stored as 1/zoom, so the round-trip
+                      // otherwise shows e.g. 3.0003 instead of 3.
+                      value={Math.round((1 / ((v.crop as { width?: number } | undefined)?.width ?? 1)) * 100) / 100}
+                      onCommit={(z) =>
+                        patchItem('video', id, {
+                          crop: z > 1 ? { ...((v.crop as object) ?? {}), width: 1 / z } : undefined,
+                        })
+                      }
+                    />
+                    <NumberField
+                      lbl="Crop focus X"
+                      step={0.01}
+                      value={v.focalX}
+                      disabled={isBlurPad}
+                      onCommit={(n) => patchItem('video', id, { focalX: n })}
+                    />
+                    <NumberField
+                      lbl="Crop focus Y"
+                      step={0.01}
+                      value={v.focalY}
+                      disabled={isBlurPad}
+                      onCommit={(n) => patchItem('video', id, { focalY: n })}
+                    />
+                  </Row>
+                  {isBlurPad && <p style={note}>Nothing is cropped — the whole shot is visible.</p>}
+                  <Row>
+                    <NumberField
+                      lbl="Backdrop blur"
+                      step={1}
+                      min={0}
+                      max={80}
+                      // Shows the value the RENDERER will use, not an empty box
+                      // — the defaults live in two places by necessity (schema
+                      // and render), and a blank field would suggest "none".
+                      value={backdrop.backdropBlur ?? 32}
+                      disabled={!isBlurPad}
+                      onCommit={(n) => patchItem('video', id, { backdropBlur: n })}
+                    />
+                    <NumberField
+                      lbl="Backdrop dim"
+                      step={0.05}
+                      min={0}
+                      max={1}
+                      value={backdrop.backdropDim ?? 0.45}
+                      disabled={!isBlurPad}
+                      onCommit={(n) => patchItem('video', id, { backdropDim: n })}
+                    />
+                  </Row>
+                </>
+              );
+            })()}
           </>
         )}
         {/* Per-clip colour grade (brightness/contrast/saturation/sepia/hue

@@ -138,6 +138,24 @@ export const ClipSegmentBaseSchema = z.object({
   grade: GradeSchema.optional().describe(
     'Per-clip colour correction — brightness / contrast / saturation / white balance. Applied before the brand LUT (rule #32); for matching shots, not the look.',
   ),
+  fit: z
+    .enum(['cover', 'blur-pad'])
+    .optional()
+    .describe(
+      'How the shot meets the frame. cover (default): fill it, cropping whatever does not fit. blur-pad: show the WHOLE shot over a blurred, dimmed copy of itself — for footage whose orientation does not match the composition (a portrait phone b-roll in a 16:9 frame), where cover would crop most of the picture away. /toolkit:cut sets this itself when it probes a mismatched source.',
+    ),
+  backdropBlur: z
+    .number()
+    .min(0)
+    .max(80)
+    .optional()
+    .describe('blur-pad only: backdrop blur radius in px (default 32).'),
+  backdropDim: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe('blur-pad only: how far the backdrop is darkened — 0 leaves it alone, 1 is black (default 0.45).'),
   transitionOut: TransitionSchema.optional().describe(
     'Transition to the next segment. Omit for hard cut.',
   ),
@@ -202,6 +220,24 @@ export const BrollSegmentBaseSchema = z.object({
   grade: GradeSchema.optional().describe(
     'Per-clip colour correction — brightness / contrast / saturation / white balance. Applied before the brand LUT (rule #32); for matching shots, not the look.',
   ),
+  fit: z
+    .enum(['cover', 'blur-pad'])
+    .optional()
+    .describe(
+      'How the shot meets the frame. cover (default): fill it, cropping whatever does not fit. blur-pad: show the WHOLE shot over a blurred, dimmed copy of itself — for footage whose orientation does not match the composition (a portrait phone b-roll in a 16:9 frame), where cover would crop most of the picture away. /toolkit:cut sets this itself when it probes a mismatched source.',
+    ),
+  backdropBlur: z
+    .number()
+    .min(0)
+    .max(80)
+    .optional()
+    .describe('blur-pad only: backdrop blur radius in px (default 32).'),
+  backdropDim: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe('blur-pad only: how far the backdrop is darkened — 0 leaves it alone, 1 is black (default 0.45).'),
   transitionOut: TransitionSchema.optional(),
 });
 

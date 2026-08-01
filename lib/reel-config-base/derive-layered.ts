@@ -48,6 +48,12 @@ export interface CutSegment {
   focalY?: number;
   crop?: Record<string, unknown>;
   grade?: Record<string, unknown>;
+  // How the media meets the frame — see VideoContainerBase in layered-schema.ts.
+  // Authored per segment by /toolkit:cut when a source's orientation doesn't
+  // match the composition's.
+  fit?: 'cover' | 'blur-pad';
+  backdropBlur?: number;
+  backdropDim?: number;
   // Typed with the shared catalog, not a loose record — the layered item this
   // compiles into validates against TransitionSchema.
   transitionOut?: Transition;
@@ -135,6 +141,12 @@ function buildVideoItem(seg: CutSegment, startMs: number, endMs: number): VideoI
         ...(seg.focalY !== undefined ? { focalY: seg.focalY } : {}),
         ...(seg.crop !== undefined ? { crop: seg.crop } : {}),
         ...(seg.grade !== undefined ? { grade: seg.grade } : {}),
+        // Media fit — forwarded here, at the seam a dropped field survives
+        // silently (schema still accepts it, renderer still honours it,
+        // nothing else looks). Pinned by derive-layered.test.ts.
+        ...(seg.fit !== undefined ? { fit: seg.fit } : {}),
+        ...(seg.backdropBlur !== undefined ? { backdropBlur: seg.backdropBlur } : {}),
+        ...(seg.backdropDim !== undefined ? { backdropDim: seg.backdropDim } : {}),
         ...(effects.length ? { effects } : {}),
         ...(seg.transitionOut !== undefined ? { transitionOut: seg.transitionOut } : {}),
         musicBoostDb,
@@ -152,6 +164,12 @@ function buildVideoItem(seg: CutSegment, startMs: number, endMs: number): VideoI
         ...(seg.focalY !== undefined ? { focalY: seg.focalY } : {}),
         ...(seg.crop !== undefined ? { crop: seg.crop } : {}),
         ...(seg.grade !== undefined ? { grade: seg.grade } : {}),
+        // Media fit — forwarded here, at the seam a dropped field survives
+        // silently (schema still accepts it, renderer still honours it,
+        // nothing else looks). Pinned by derive-layered.test.ts.
+        ...(seg.fit !== undefined ? { fit: seg.fit } : {}),
+        ...(seg.backdropBlur !== undefined ? { backdropBlur: seg.backdropBlur } : {}),
+        ...(seg.backdropDim !== undefined ? { backdropDim: seg.backdropDim } : {}),
         ...(seg.aiGenerated !== undefined ? { aiGenerated: seg.aiGenerated } : {}),
         ...(effects.length ? { effects } : {}),
         ...(seg.transitionOut !== undefined ? { transitionOut: seg.transitionOut } : {}),
@@ -202,6 +220,12 @@ function buildVideoItem(seg: CutSegment, startMs: number, endMs: number): VideoI
         ...(seg.focalY !== undefined ? { focalY: seg.focalY } : {}),
         ...(seg.crop !== undefined ? { crop: seg.crop } : {}),
         ...(seg.grade !== undefined ? { grade: seg.grade } : {}),
+        // Media fit — forwarded here, at the seam a dropped field survives
+        // silently (schema still accepts it, renderer still honours it,
+        // nothing else looks). Pinned by derive-layered.test.ts.
+        ...(seg.fit !== undefined ? { fit: seg.fit } : {}),
+        ...(seg.backdropBlur !== undefined ? { backdropBlur: seg.backdropBlur } : {}),
+        ...(seg.backdropDim !== undefined ? { backdropDim: seg.backdropDim } : {}),
         ...(seg.aiGenerated !== undefined ? { aiGenerated: seg.aiGenerated } : {}),
         ...(effects.length ? { effects } : {}),
         ...(seg.transitionOut !== undefined ? { transitionOut: seg.transitionOut } : {}),

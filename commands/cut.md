@@ -145,6 +145,23 @@ For each segment, derive the config fields:
 
 - **outro segment**: `{ id, type: 'outro' }` only.
 
+- **any segment whose source orientation doesn't match the composition's**: set
+  `fit: 'blur-pad'`. Probe each mapped source:
+
+  ```bash
+  ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 <file>
+  ```
+
+  Portrait source (`height > width`, after `ingest_media` has baked any rotation
+  — prefer the `_upright` sibling) in a landscape composition, or the reverse:
+  `cover` would crop most of the picture away, so author `fit: 'blur-pad'` and
+  the whole shot renders over a blurred copy of itself. Matching orientation:
+  leave `fit` unset — do NOT write `fit: 'cover'`, which is the default and
+  would only add noise to every segment.
+
+  **Report what you set, per segment.** A reframing decision made silently is
+  the one nobody reviews. The editor's Framing panel is the override.
+
 ### Step 6: Generate `defaultProps={...}` literal
 
 Build the full `defaultProps` object:

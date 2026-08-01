@@ -317,3 +317,37 @@ describe('deriveLayered', () => {
     expect(LayeredReelSchema.parse(r)).toBeTruthy();
   });
 });
+
+// The forwarding table (derive-layered's per-kind spreads) is the known hole
+// class in this repo: a field dropped THERE passes every other gate, because
+// the schema still accepts it, the renderer still honours it, and nothing else
+// looks at the seam. `fit` is authored on a config segment and must survive
+// into the VideoItem the renderer actually reads.
+describe('deriveLayered — media fit', () => {
+  const withFit = (type: string, extra: Record<string, unknown> = {}) => ({
+    topic: 't',
+    segments: [
+      { id: 'seg-001', type, source: 'a.mp4', trimIn: 0, trimOut: 3, audioMode: 'silent',
+        fit: 'blur-pad', backdropBlur: 12, backdropDim: 0.3, ...extra },
+    ],
+  });
+
+  it.each(['clip', 'broll', 'photo'])('carries fit and both backdrop knobs onto a %s item', (type) => {
+    const reel = deriveLayered(withFit(type) as never, OPTS);
+    expect(reel.tracks.video[0]).toMatchObject({ fit: 'blur-pad', backdropBlur: 12, backdropDim: 0.3 });
+  });
+
+  it('leaves the keys off an item that authored none, so nothing grows a default', () => {
+    const reel = deriveLayered(
+      { topic: 't', segments: [{ id: 'seg-001', type: 'clip', source: 'a.mp4', trimIn: 0, trimOut: 3, audioMode: 'silent' }] } as never,
+      OPTS,
+    );
+    expect(reel.tracks.video[0]).not.toHaveProperty('fit');
+    expect(reel.tracks.video[0]).not.toHaveProperty('backdropBlur');
+  });
+
+  it('still parses as a valid layered reel with the fields set', () => {
+    const reel = deriveLayered(withFit('broll') as never, OPTS);
+    expect(() => LayeredReelSchema.parse(reel)).not.toThrow();
+  });
+});
