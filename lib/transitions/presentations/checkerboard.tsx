@@ -84,7 +84,7 @@
  * cost rather than its exact picture, `'mask-scale'` is the cheaper knob;
  * `'scale'`'s own picture never changes underneath you.
  */
-import React from 'react';
+import React, { useState } from 'react';
 import { useVideoConfig, interpolate, Easing, random } from 'remotion';
 import type {
   TransitionNode,
@@ -246,19 +246,35 @@ export const checkerboard = (props: CheckerboardProps = {}): TransitionNode => {
   const cellSize = 100 / gridSize; // percent
 
   if (squareAnimation === 'fade' || squareAnimation === 'mask-scale') {
-    // Stable, per-instance, unique-per-boundary id — `burn.tsx`/`glitch.tsx`'s
-    // `random(null)`-derived pattern, not `React.useId()` (root-scoped, so
-    // two Player/Studio roots could mint the same id — see Task 0.1's fix
-    // round 1). Minted ONCE here, at factory time, exactly like
-    // `scanline-glitch.tsx`'s `filterId`: `wrap` must be a STABLE reference
-    // for the node's whole life, and a fresh id per render would defeat that.
-    const uid = String(random(null)).slice(2, 10);
-    const maskId = `checkerboard-mask-${uid}`;
-
     // THE WRAP. Reads the live progress off context (never a prop — `wrap`'s
     // signature is fixed at `{active, children}`) and the composition's
     // pixel size off `useVideoConfig()` — both hooks, both legal here because
     // this is a real mounted component, not `plan` itself.
+    //
+    // PHASE 5 TASK 4, FIX ROUND 1 (opus review, Critical 2) — `uid` MOVED
+    // FROM FACTORY TIME INTO `useState`, INSIDE THE COMPONENT. The first
+    // submission minted `uid` once at factory time (`checkerboard(props)`),
+    // reasoning (WRONGLY) that a fresh id per render would defeat the `wrap`
+    // reference's required stability. That conflated the REFERENCE (which
+    // `useState` never touches — the `CheckerboardMask` function identity is
+    // exactly as stable either way) with the mask's own ID (which needs to be
+    // unique per MOUNT, not per node). `transitionNodeFor` caches nodes per
+    // (record, dims, palette), so any two boundaries with byte-identical
+    // config share the SAME node and therefore the SAME `wrap` reference —
+    // and `LayerShell` mounts a `wrap` for the item's WHOLE LIFE (Task 1.4),
+    // not only inside its own window. Concretely: in the ordinary reel
+    // `a --checkerboard--> b --checkerboard--> c` at the CATALOG DEFAULT
+    // (byte-identical params on both cuts), during the b→c window BOTH `b`
+    // (inactive, mounted life-long) and `c` (active) render simultaneously —
+    // a factory-time id made them emit the SAME `<mask id="...">`, and
+    // `url(#id)` resolves to whichever is first in document order (`b`'s,
+    // inactive, fully open) — destroying `c`'s reveal in a plainly legal
+    // reel with no unusual authoring. `useState(() => …)` mints once per
+    // MOUNT (exactly `burn.tsx:40`/`glitch.tsx:46`'s own pattern for the
+    // identical problem — neither is a fresh id per RENDER, both are stable
+    // across a mount's whole life and unique to that mount), which is what
+    // actually restores per-boundary uniqueness while the `wrap` reference
+    // itself stays exactly as shared as the cache requires.
     //
     // NEUTRAL PROGRESS = 1 (fully revealed: every mask rect at its "cell
     // fully visible" state). This is `to`'s own "arrived" endpoint — the same
@@ -272,6 +288,14 @@ export const checkerboard = (props: CheckerboardProps = {}): TransitionNode => {
     // therefore renders EXACTLY as if unmasked, whether that is because its
     // own boundary hasn't opened yet or has long since closed.
     const CheckerboardMask: React.FC<{ active: boolean; children: React.ReactNode }> = ({ active, children }) => {
+      // Not `React.useId()`: it is unique only WITHIN one React root, so two
+      // roots on one document (two `<Player>`s, or Studio's editor root
+      // beside a preview root) could each mint the same id — the exact
+      // collision class Task 0.1's own fix round 1 already corrected for
+      // this kind once. `random(null)`'s output has no such root-scoping
+      // caveat.
+      const [uid] = useState(() => String(random(null)).slice(2, 10));
+      const maskId = `checkerboard-mask-${uid}`;
       const live = useActiveTransitionProgress();
       const { width, height } = useVideoConfig();
       const progress = active ? live.progress : 1;
@@ -352,11 +376,35 @@ export const checkerboard = (props: CheckerboardProps = {}): TransitionNode => {
   // `ghosts` on `to`, each a single wrapping `<div>` styled with `clip-path`
   // (the crop) + `transform`/`transformOrigin` (the per-cell geometric
   // animation) — see this file's own header comment for the equivalence
-  // argument. The REAL mounted `to` carries `opacity: 0`: with this many
-  // opaque, exactly-tiling ghosts on top of it, nothing depends on the real
-  // mount being visible, and hiding it keeps this path's only visible
-  // picture on the (progress-invariant-count) ghosts, matching the old
-  // composite's grid-only picture for this path.
+  // argument.
+  //
+  // THE REAL MOUNTED `to` MUST BE HIDDEN VIA `wrap`, NOT `style.opacity`.
+  // PHASE 5 TASK 4, FIX ROUND 1 (opus review, Critical 1) — the first
+  // submission set `to: { style: { opacity: 0 }, ghosts }`, which is WRONG:
+  // `LayerShell` (`lib/render/video-track-plan.tsx`) puts `op.style` on the
+  // SAME `<div>` that also holds the ghosts (`ghosts` are appended AS
+  // CHILDREN of that div, not as siblings of it) — CSS `opacity` is a GROUP
+  // property, so `opacity: 0` on that shell makes the WHOLE SUBTREE,
+  // including all `gridSize²` ghosts, unpaintable. The measured effect: a
+  // `'scale'`/`'flip'` checkerboard drew NOTHING of the incoming clip for the
+  // entire window and then hard-cut — the exact opposite of this carve-out's
+  // whole purpose, and invisible to every structural assertion this task
+  // shipped (they count elements or read one element's own `style`, never an
+  // ancestor-multiplied EFFECTIVE opacity).
+  //
+  // `wrap` only ever wraps `children` (the real mount), never the ghosts
+  // (`LayerShell` appends ghosts as siblings of `{Wrap ? <Wrap>… : children}`,
+  // not inside it) — so hiding the real mount through `wrap` cannot touch the
+  // ghosts at all, structurally. Built ONCE, outside `plan`, same discipline
+  // as `CheckerboardMask` above: a stable reference for the node's whole
+  // life. `active` is exactly what "hide only while this boundary owns the
+  // frame" needs — while inactive (well outside the window, or before this
+  // kind is even live) the real mount renders unchanged, which is the
+  // `wrap` contract's own "must be inert when active is false" rule.
+  const HideRealWhileActive: React.FC<{ active: boolean; children: React.ReactNode }> = ({ active, children }) => (
+    <div style={{ position: 'absolute', inset: 0, opacity: active ? 0 : 1 }}>{children}</div>
+  );
+
   const plan = ({ progress }: TransitionPlanProps): TransitionComposite => {
     const ghosts = cells.map(({ row, col, order }) => {
       const eased = cellEasedProgress(order, progress, stagger, easing);
@@ -393,7 +441,7 @@ export const checkerboard = (props: CheckerboardProps = {}): TransitionNode => {
     });
 
     return {
-      to: { style: { opacity: 0 }, ghosts },
+      to: { wrap: HideRealWhileActive, ghosts },
     };
   };
 

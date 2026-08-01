@@ -260,43 +260,68 @@ describe('checkerboard the mask id is stable across frames and unique per DISTIN
     expect(idA).not.toBe(idB);
   });
 
-  // THE REAL, MEASURED NARROWING (flagged, not fixed — same class Task 3
-  // documented for `scanline-glitch`'s `filterId`, but NOT benign the same
-  // way here). Two SIMULTANEOUSLY LIVE boundaries with BYTE-IDENTICAL config
-  // resolve to the SAME cached node, hence the SAME mask id — two `<mask
-  // id="...">` elements sharing one id in the DOM, which is invalid, and
-  // `url(#id)` resolves to whichever is first in document order. Task 3's
-  // `scanline-glitch` argued this is benign for the one legally-shared frame
-  // between two ABUTTING windows, because both sides' filter graphs are the
-  // identity there. That argument does NOT transfer to checkerboard's mask:
-  // at the one frame two abutting checkerboard boundaries could share, the
-  // CLOSING boundary is at progress 1 (every cell's fillOpacity 1, mask
-  // fully open) while the OPENING one is at progress 0 (every cell's
-  // fillOpacity 0, mask fully closed) — two genuinely DIFFERENT mask states,
-  // not a converging one. Whichever `<mask>` the browser resolves `url(#id)`
-  // to would give the OTHER boundary the wrong picture at that shared frame.
-  // This is measured here (same node ⇒ same id) and left UNFIXED, per this
-  // task's scope (a per-boundary id would need the wrap to know its own
-  // `boundaryKey`, which `LayerOp.wrap`'s contract deliberately does not
-  // grant it — see `ActiveTransitionProgress`'s own doc comment in
-  // `lib/theming/transitions.ts`) — flagged for a human to decide whether a
-  // follow-up (a boundary-stable id source) is worth it.
-  it('two SAME-CONFIG live boundaries share the identical cached node — and therefore the identical mask id (measured, not fixed)', () => {
+  // PHASE 5 TASK 4, FIX ROUND 1 (opus review, Critical 2) — CORRECTED. The
+  // first submission minted `uid` at FACTORY time (`checkerboard(props)`),
+  // reasoning that `wrap` must be a stable reference and "a fresh id per
+  // render would defeat that." That reasoning conflated a component's IDENTITY
+  // (which the `wrap` reference itself carries, and which minting `uid` per
+  // MOUNT does not touch) with its STATE (`useState`'s own job, which mints
+  // once per mount and is stable across every re-render of that SAME mount —
+  // exactly what `burn.tsx:40`/`glitch.tsx:46` already do for the identical
+  // problem). The measured consequence of the factory-time mistake: since
+  // `transitionNodeFor` caches nodes per (record, dims, palette) — so the SAME
+  // node, and therefore the SAME `wrap` reference, is handed to any two
+  // boundaries whose config is byte-identical — every MOUNT of that shared
+  // reference got the SAME mask id, not just within one boundary's own life
+  // but across every DIFFERENT SIMULTANEOUSLY-LIVE boundary that happens to
+  // share config. Two `<mask id="...">` elements sharing one id is invalid,
+  // and `url(#id)` resolves to whichever is first in document order — in the
+  // ordinary reel `a --checkerboard--> b --checkerboard--> c` (default,
+  // byte-identical params on both cuts), during the b→c window BOTH `b`
+  // (inactive, `wrap` mounted life-long per Task 1.4) and `c` (active) are
+  // mounted simultaneously, each rendering `<mask id="checkerboard-mask-XXXX">`
+  // with the SAME id — `c`'s reveal is destroyed by `b`'s (inactive, fully
+  // open) mask, in the DEFAULT configuration, with no unusual authoring at
+  // all. The fix: move `uid` into `useState` INSIDE `CheckerboardMask`, so it
+  // mints once per MOUNT — restoring per-boundary uniqueness while the `wrap`
+  // reference itself stays exactly as shared (and exactly as stable across
+  // the node's whole life) as the cache already requires.
+  it('two mounts of the SAME shared `wrap` reference (same cached node) get DIFFERENT mask ids', () => {
     resetTransitionNodeCache();
     const t = { kind: 'checkerboard', frames: 15, gridSize: 4 } as TransitionRecord;
     const nodeA = transitionNodeFor(t, DIMS)!;
     const nodeB = transitionNodeFor(t, DIMS)!;
-    expect(nodeA).toBe(nodeB);
+    expect(nodeA).toBe(nodeB); // the cache's own, unchanged behaviour
     if (typeof nodeA.plan !== 'function') throw new Error('expected a plan-arm node in this test');
-    const compositeA = nodeA.plan({
-      from: { range: [0, 15] }, to: { range: [0, 15] }, progress: 1, frame: 15,
+    const planArgs = (progress: number, frame: number): Parameters<typeof nodeA.plan>[0] => ({
+      from: { range: [0, 15] }, to: { range: [0, 15] }, progress, frame,
       durationInFrames: 15, params: {}, dims: { width: 1080, height: 1920, fps: 30 }, palette: [], background: 'transparent',
     });
-    // Same `wrap` reference — the shared cache's own consequence.
-    expect(compositeA.to!.wrap).toBe(nodeB.plan!({
-      from: { range: [0, 15] }, to: { range: [0, 15] }, progress: 0, frame: 0,
-      durationInFrames: 15, params: {}, dims: { width: 1080, height: 1920, fps: 30 }, palette: [], background: 'transparent',
-    }).to!.wrap);
+    // Same `wrap` reference — the shared cache's own consequence, unchanged.
+    const wrapA = nodeA.plan(planArgs(1, 15)).to!.wrap!;
+    const wrapB = nodeB.plan!(planArgs(0, 0)).to!.wrap!;
+    expect(wrapA).toBe(wrapB);
+    // Two SEPARATE MOUNTS of that ONE shared reference — the shape of `b` and
+    // `c` both being mounted simultaneously in the reel above. Each is its
+    // own React component instance, so each must get its OWN id.
+    const WrapA = wrapA;
+    const { container: containerA, unmount: unmountA } = render(
+      <ActiveTransitionProgressContext.Provider value={{ progress: 1, frame: 15, durationInFrames: 15 }}>
+        <WrapA active={false}>{B}</WrapA>
+      </ActiveTransitionProgressContext.Provider>,
+    );
+    const { container: containerB, unmount: unmountB } = render(
+      <ActiveTransitionProgressContext.Provider value={{ progress: 0, frame: 0, durationInFrames: 15 }}>
+        <WrapA active>{B}</WrapA>
+      </ActiveTransitionProgressContext.Provider>,
+    );
+    const idA = containerA.querySelector('mask')?.id;
+    const idB = containerB.querySelector('mask')?.id;
+    expect(idA).toBeTruthy();
+    expect(idB).toBeTruthy();
+    expect(idA).not.toBe(idB);
+    unmountA();
+    unmountB();
   });
 });
 
@@ -342,14 +367,58 @@ describe("checkerboard's carve-out ('scale'/'flip') keeps a pixel-exact per-cell
 
   // The real, un-ghosted `to` mount is hidden, not absent — so hiding it can
   // never itself be a remount (an element-count change).
-  it('the real `to` mount is opacity: 0, not removed', () => {
+  it('the real `to` mount is opacity: 0 via its `wrap`, not removed, and not via the shell', () => {
     const { container, unmount } = mountCheckerboard(
       { kind: 'checkerboard', frames: 15, gridSize: 3, squareAnimation: 'scale' }, 0.5,
     );
-    const toShell = container.querySelector('[data-testid="b"]')!.parentElement!;
-    expect(toShell.style.opacity).toBe('0');
+    // The real mount's DIRECT parent (the `wrap`'s own div) is what carries
+    // `opacity: 0` — PHASE 5 TASK 4, FIX ROUND 1 (Critical 1): the SHELL
+    // itself (one level further up, the div this helper gives `op.style`)
+    // must NOT carry it — that shell is also an ancestor of the ghosts, and
+    // `opacity: 0` there would multiply out every one of them too (a group
+    // property, not a per-element one). See `effectiveOpacity` below, the
+    // instrument that actually catches this class of mistake.
+    const bVideo = container.querySelector('[data-testid="b"]')!;
+    const wrapDiv = bVideo.parentElement!;
+    const shellDiv = wrapDiv.parentElement!;
+    expect(wrapDiv.style.opacity).toBe('0');
+    expect(shellDiv.style.opacity).not.toBe('0');
     unmount();
   });
+
+  // THE INSTRUMENT PHASE 5 TASK 4's FIRST SUBMISSION DID NOT HAVE. Every
+  // other assertion in this describe block counts elements or reads ONE
+  // element's own `style` — neither can see a GROUP-opacity mistake (an
+  // ancestor's `opacity: 0` silently multiplying out every descendant,
+  // ghosts included). This walks the real ancestor chain and multiplies,
+  // exactly the way a renderer actually composites opacity.
+  const effectiveOpacity = (el: Element): number => {
+    let opacity = 1;
+    for (let cur: Element | null = el; cur; cur = cur.parentElement) {
+      const raw = (cur as HTMLElement).style?.opacity;
+      if (raw !== undefined && raw !== '') {
+        const n = Number(raw);
+        if (!Number.isNaN(n)) opacity *= n;
+      }
+    }
+    return opacity;
+  };
+
+  it.each(['scale', 'flip'] as const)(
+    '%s: every ghost cell has a nonzero EFFECTIVE opacity mid-window — not multiplied out by the real mount being hidden',
+    (squareAnimation) => {
+      const { container, unmount } = mountCheckerboard(
+        { kind: 'checkerboard', frames: 15, gridSize: 3, squareAnimation }, 0.5,
+      );
+      const ghostCells = ghostCellsOf(container);
+      expect(ghostCells.length).toBeGreaterThan(0);
+      // Individual cells may legitimately be at `opacity: 0` (the
+      // `eased > 0`/`> 0.1` gate before a cell's own reveal begins) — the
+      // claim is that the SET is not uniformly zeroed by an ancestor.
+      expect(ghostCells.some((c) => effectiveOpacity(c) > 0)).toBe(true);
+      unmount();
+    },
+  );
 
   // Each cell's clip-path crops exactly its own (row, col) rectangle, in
   // percentages of the full frame — the direct structural analogue of the

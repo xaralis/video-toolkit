@@ -823,3 +823,68 @@ describe('buildVideoNodes still returns React.ReactNode[]', () => {
     expect(container.querySelectorAll('div').length).toBeGreaterThan(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// PHASE 5 TASK 4, FIX ROUND 1 (opus review, Critical 1) — `checkerboard`'s
+// `'scale'`/`'flip'` carve-out through the REAL `buildVideoNodes`/`LayerShell`
+// path, not `checkerboard-single-mount.test.tsx`'s hand-rolled mirror.
+//
+// THE GAP THIS CLOSES. Every existing carve-out assertion either counted
+// elements (`b: 17`, `cells: 16`) or read a SINGLE element's own `style`
+// (`toShell.style.opacity === '0'`) — neither notices that CSS `opacity` is a
+// GROUP property: `LayerShell` puts the ghosts INSIDE the very div carrying
+// `op.style`, so `to: { style: { opacity: 0 }, ghosts }` makes `opacity: 0`
+// apply to the ghosts too, multiplicatively, not just to the real hidden
+// mount. A single-element read of either div's own `style.opacity` cannot see
+// this — it has to walk the ancestor chain and multiply. That is what
+// `effectiveOpacity` below does, and it is run through the REAL tree (no
+// hand-rolled `LayerShell` mirror), because a faithful-looking mirror is
+// exactly what let this ship unnoticed the first time.
+import { buildVideoNodes as buildVideoNodesForCheckerboard } from '@video-toolkit/lib/render/video-track';
+
+describe("checkerboard's `'scale'`/`'flip'` carve-out through the REAL tree — effective opacity", () => {
+  /** The product of every `style.opacity` from `el` up to (and including) the
+   *  document root, treating an absent/empty value as `1` (CSS's own
+   *  identity for group opacity). `0` anywhere in the chain makes the whole
+   *  subtree unpaintable — this is what a single element's own `style.opacity`
+   *  reading can never see. */
+  const effectiveOpacity = (el: Element): number => {
+    let opacity = 1;
+    for (let cur: Element | null = el; cur; cur = cur.parentElement) {
+      const raw = (cur as HTMLElement).style?.opacity;
+      if (raw !== undefined && raw !== '') {
+        const n = Number(raw);
+        if (!Number.isNaN(n)) opacity *= n;
+      }
+    }
+    return opacity;
+  };
+
+  const CHECKERBOARD_REEL = (squareAnimation: 'scale' | 'flip'): VideoItem[] => [
+    { id: 'a', kind: 'clip', startMs: 0, endMs: 3000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 3000,
+      transitionOut: { kind: 'checkerboard', frames: 20, gridSize: 4, squareAnimation } } as VideoItem,
+    { id: 'b', kind: 'clip', startMs: 3000, endMs: 6000, source: 'b.mp4', sourceInMs: 0, sourceOutMs: 3000 } as VideoItem,
+  ];
+
+  it.each(['scale', 'flip'] as const)(
+    '%s: a ghost cell is actually PAINTABLE mid-window (effective opacity > 0) — not multiplied out by the shell',
+    (squareAnimation) => {
+      clock.preview = false;
+      clock.frame = 90; // mid-window of the centred 20-frame boundary at frame 90
+      const { container } = render(
+        <>
+          {buildVideoNodesForCheckerboard(CHECKERBOARD_REEL(squareAnimation), {
+            renderItem: (item) => <video data-testid={`vid-${item.id}`} />,
+            width: 540, height: 960, fps: 30, palette: undefined,
+          })}
+        </>,
+      );
+      const ghostCells = [...container.querySelectorAll('div')].filter((d) => d.style.clipPath !== '');
+      expect(ghostCells.length).toBeGreaterThan(0);
+      // At least one ghost cell must be genuinely paintable — a checkerboard
+      // whose every cell is multiplied to 0 draws NOTHING of the incoming
+      // clip for the whole window, the exact regression this pins.
+      expect(ghostCells.some((c) => effectiveOpacity(c) > 0)).toBe(true);
+    },
+  );
+});
