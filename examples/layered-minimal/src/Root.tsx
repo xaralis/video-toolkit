@@ -12,6 +12,7 @@ import React from 'react';
 import { Composition } from 'remotion';
 import { layeredCompositionProps } from '@video-toolkit/lib/render/layered-composition-props';
 import { MinimalReel } from './MinimalReel';
+import { ConformanceReel } from './ConformanceReel';
 import { TransitionProbeCompositions } from './TransitionMatrix';
 
 export const RemotionRoot: React.FC = () => (
@@ -62,18 +63,19 @@ export const RemotionRoot: React.FC = () => (
               // brand ACCENT SLOT key, never a hex — core does not own the
               // palette.
               //
-              // WHAT THIS ACTUALLY RENDERS TODAY, since a comment claiming
-              // otherwise is worse than none: `wipe` is a KNOWN DEFECT. Its
-              // entering sheet already covers the frame at progress 0, so the
-              // cut below reads as a hard flash to the accent colour rather
-              // than a sweep, and the outgoing clip's own half of the wipe is
-              // never seen. The handle-borrow machinery this comment describes
-              // is working correctly — the defect is in the presentation, and
-              // fixing it is an open look decision. Measured, with stills, in
-              // docs/superpowers/at-cut-transition-findings.md; pinned as an
-              // `it.fails` in lib/editor/src/at-cut-transitions.test.tsx.
-              // Left as-is deliberately: this literal is also the frame-45
-              // still gate's fixture.
+              // WHAT THIS ACTUALLY RENDERS, since a comment claiming otherwise
+              // is worse than none: since Phase 4 Task 2.1 `wipe` is a native
+              // TWO-INPUT node and plays its two beats in SEQUENCE — the accent
+              // sheet sweeps in over `v-dawn` across the first half of the
+              // window, then sweeps out off `v-dusk` across the second. It used
+              // to be a known defect (both beats over the same window, entering
+              // on top, so the frame flashed to the accent colour on the
+              // transition's first frame); the before/after is graded in
+              // docs/superpowers/phase4-migrations.md, and the old measurements
+              // are in docs/superpowers/at-cut-transition-findings.md.
+              //
+              // Left as-is deliberately: this literal is also the still gate's
+              // fixture, and its window is frames 80-100 (see CONSTRAINTS.md).
               transitionOut: { kind: 'wipe', frames: 20, direction: 'left', color: 'accent' },
             },
             {
@@ -175,5 +177,88 @@ export const RemotionRoot: React.FC = () => (
   {/* At-cut transition probes — one composition per catalog kind per direction.
       Registration only; nothing here can change what MinimalReel renders. */}
   <TransitionProbeCompositions />
+  {/* Phase 4 Task 6.2 — the CONFORMANCE fixture: a SEPARATE composition, its
+      own theme (./conformance-theme.tsx) and its own reel literal, exercising
+      all seven extension axes with a deliberately non-core look. Additive
+      only — MinimalReel above and the pixel harness's own inputs are
+      untouched. */}
+  <Composition
+    {...layeredCompositionProps({
+      id: 'ConformanceReel',
+      component: ConformanceReel,
+      fps: 30,
+      width: 1080,
+      height: 1920,
+    })}
+    defaultProps={{
+      reel: {
+        version: 'layered-1',
+        meta: { topic: 'Phase 4 conformance fixture', totalDurationMs: 6000 },
+        tracks: {
+          video: [
+            {
+              id: 'v-photo',
+              kind: 'photo',
+              startMs: 0,
+              endMs: 3000,
+              // A BARE filename, deliberately: core's own resolveMediaSource
+              // leaves 'photo' unprefixed (see lib/theming/media-source.ts),
+              // so this resolves to a real asset ONLY because the theme's
+              // AXIS 6 registration (resolveMediaSource) prefixes it —
+              // remove that registration and this item points at a file that
+              // does not exist.
+              source: 'dawn.jpg',
+              // AXIS 3 — both effect scopes on the same item: 'glitch-frame'
+              // (scope: 'clip', wraps the whole item) and 'ghost-echo'
+              // (scope: 'media', builds a second media element). AXIS 7 —
+              // 'ink-wash', a STYLE-axis effect merged onto the same media
+              // element's style ken-burns/grade would compose onto.
+              effects: [{ type: 'glitch-frame' }, { type: 'ghost-echo' }, { type: 'ink-wash', strength: 0.7 }],
+              // AXIS 5 — the brand-authored transition kind, WITH its
+              // registered param ('teeth') authored to a non-default value.
+              transitionOut: { kind: 'shard-cut', frames: 18, teeth: 9 },
+            },
+            {
+              id: 'v-card',
+              kind: 'card',
+              startMs: 3000,
+              endMs: 6000,
+              // AXIS 1 — a registered video kind: this renders through
+              // ConformanceCard, never core's GenericCard.
+              cardKind: 'claim-plate',
+              cardProps: { lines: ['Seven axes.', 'One theme.'] },
+            },
+          ],
+          audio: [],
+          music: { baseVolumeDb: -8 },
+          overlays: [
+            {
+              id: 'o-badge',
+              startMs: 400,
+              endMs: 2800,
+              // AXIS 2 — a non-'text' kind, routed 'anchored' by the theme's
+              // registration, drawn via the item-level `render` escape hatch.
+              content: { kind: 'badge', label: 'BRAND' },
+              anchorVideoId: 'v-photo',
+            },
+          ],
+          brand: [
+            {
+              id: 'b-sticker',
+              // AXIS 4 — a brand-layer renderer replacing core's generic for
+              // an existing kind. (Not a THIRD kind name — see the CONTRACT
+              // FINDING in conformance-theme.tsx: BrandLayerItemSchema.kind
+              // is a closed 2-literal enum, so a schema-valid literal here
+              // cannot name one core has never heard of.)
+              kind: 'disclaimer',
+              startMs: 0,
+              endMs: 6000,
+              props: { text: 'v6.2' },
+            },
+          ],
+        },
+      },
+    }}
+  />
   </>
 );

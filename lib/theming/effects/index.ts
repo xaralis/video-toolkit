@@ -11,9 +11,10 @@
 // a config with a typo'd effect must keep rendering rather than fail the render.
 import type React from 'react';
 import { createElement } from 'react';
-import { resolveRegistered, registrationConfig, type Registry } from '../registry';
+import { resolveRegistered, registrationConfig, type Registration, type Registry } from '../registry';
 import type { BrandTheme } from '../types';
 import type { Effect, VideoItem } from '../../reel-config-base/layered-schema';
+import { isNodeEnabled } from '../../reel-config-base/node-enabled';
 import {
   GrainEffect,
   ScanlinesEffect,
@@ -21,6 +22,13 @@ import {
   GradeEffect,
   TransformEffect,
 } from './primitives';
+import { isReservedEffectType } from './style-effect';
+// Cross-layer import, precedent already set by Task 4.1's `anchorTiming`
+// (`lib/theming/segment/SegmentMedia.tsx` etc. import from `lib/render`):
+// `warn-once.ts` lives in `lib/render` because that directory is inside all
+// three typecheck gates (see its own docblock) — Task 6.3 reuses it rather
+// than duplicating the de-duplication bookkeeping in `lib/theming`.
+import { warnOnce } from '../../render/warn-once';
 
 export interface EffectRenderProps {
   /** The effect entry off the item's `effects[]`, minus nothing — `type` included. */
@@ -35,42 +43,97 @@ export interface EffectRenderProps {
   handles: { inHalf: number; outHalf: number };
   /** Opaque brand config off the registration for this effect type. */
   config?: unknown;
+  /** The MEDIA-scope wrapper's own reason to exist (Phase 4 Task 3.3): the
+   *  CSS style `SegmentMedia` (or a brand's own hand-rolled media element via
+   *  `useMediaEffects`) computed for its media element — crop + style-effects
+   *  (ken-burns) + grade, already merged. Present ONLY for a `scope: 'media'`
+   *  effect, applied from inside the media element's own position; a
+   *  `scope: 'clip'` effect (the default, applied by `applyEffects` around the
+   *  whole item renderer's output) has no single media style to hand over and
+   *  leaves this `undefined`. This is what lets a media-scope wrapper build a
+   *  SECOND media element carrying the exact same crop/grade/ken-burns
+   *  treatment as the first (PP's `blend`) without recomputing that transform
+   *  itself and drifting from it the moment either input changes. This is the
+   *  SAME object reference the media element itself renders with (not a
+   *  clone) — spread it (`{ ...mediaStyle, … }`) onto a second element as the
+   *  sample above does; mutating it in place would mutate the first
+   *  element's own style too. */
+  mediaStyle?: React.CSSProperties;
   children: React.ReactNode;
 }
 
 export type EffectRenderer = React.FC<EffectRenderProps>;
 
-/** One effect type's registration. No axis-specific fields yet — the shared
- *  Registration primitive is the whole contract. */
-export type EffectRegistration = Registry<EffectRenderProps>[string];
+/** One effect type's registration. `scope` (Phase 4 Task 3.3) is the ONE
+ *  axis-specific field: 'clip' (default, unset) applies the effect the way
+ *  every effect has always applied — `applyEffects` wraps the WHOLE item
+ *  renderer's output, from outside it. 'media' routes the SAME renderer shape
+ *  (still `EffectRenderer`: children in, node out) to wrap the media element
+ *  itself instead, delivered via `MediaEffectsContext` (./media-effects-context.tsx)
+ *  rather than through `applyEffects` — see that module for why a context and
+ *  not a new prop. Nothing about the wrapper CONTRACT changes between the two
+ *  scopes; only WHERE core calls it and what `mediaStyle` carries. */
+export interface EffectRegistration extends Registration<EffectRenderProps> {
+  scope?: 'clip' | 'media';
+}
+
+/** One resolved media-scope effect entry, ready for `SegmentMedia` (or
+ *  `useMediaEffects`) to apply around its own media element with its OWN
+ *  `item`/`handles` and computed style — see `collectMediaEffects`. */
+export interface MediaEffectEntry {
+  effect: Effect;
+  index: number;
+  Renderer: EffectRenderer;
+  config?: unknown;
+}
 
 /** Effect types that are RESERVED: applied elsewhere in the pipeline, so
  *  applyEffects must never wrap them however they are registered.
  *
  *  `ken-burns` is a STYLE effect, not a wrapper: it composes into the media
  *  element's own transform/objectPosition/transformOrigin alongside the crop,
- *  inside SegmentMedia (see ./ken-burns.ts). If applyEffects ALSO wrapped it,
- *  every ken-burns item would get the movement twice.
+ *  inside SegmentMedia (see ./ken-burns.ts and ./style-effect.ts). If
+ *  applyEffects ALSO wrapped it, every ken-burns item would get the movement
+ *  twice.
  *
- *  This list is the real invariant. Core not registering a `ken-burns` generic
- *  is NOT sufficient: the registry is open-keyed, so a brand writing
- *  `effects: { 'ken-burns': { renderer: X } }` would otherwise resolve and
- *  double-apply. A brand that genuinely wants its own ken-burns replaces it on
- *  the VIDEO axis (its own renderer, which owns the media transform), not here.
+ *  `grade` joined it at Phase 4 Task 3.4, for the same reason: `item.grade`
+ *  merges into the media element's own `filter` inside SegmentMedia (via
+ *  `applyStyleEffects`'s synthetic entry, ./style-effect.ts), and an authored
+ *  `type: 'grade'` effect now resolves through that SAME renderer. Before
+ *  this task `grade` was a WRAPPER generic here (`primitives.tsx`'s
+ *  `GradeEffect`, a separate mechanism — an enclosing div with its own
+ *  filter) that a hand-edited item carrying both `item.grade` and a
+ *  `type:'grade'` effect would silently double up against. `GradeEffect`
+ *  and `gradeFromEffect` are still exported below for their own direct-render
+ *  tests, but no config resolves them through `applyEffects`/
+ *  `collectMediaEffects` any more — verified by
+ *  effects-registry.test.tsx's "has NO core wrapper generic for grade" case.
  *
- *  EXPORTED since Phase 3 Task 7: a brand registration for a reserved type is
- *  inert at RENDER time, so `editorMetaFromTheme` consults this same set to
- *  keep it inert at EDIT time too, rather than offering params that would
- *  never be applied. One list, both ends. */
-export const RESERVED_EFFECT_TYPES: ReadonlySet<string> = new Set(['ken-burns']);
+ *  Phase 4 Task 3.2: this used to be a hand-maintained `Set` here. It is now
+ *  DERIVED — `isReservedEffectType(theme, type)` (./style-effect.ts) is `true`
+ *  exactly when `type` resolves on the STYLE axis for this theme (core's own
+ *  `ken-burns`, or a brand's own style-effect registration for any type name
+ *  it chooses). Core not registering a `ken-burns` generic on the WRAPPER axis
+ *  was never sufficient on its own — the registry is open-keyed, so a brand
+ *  writing `effects: { 'ken-burns': { renderer: X } }` would otherwise resolve
+ *  and double-apply — and a hand-maintained list is a second source of truth
+ *  that can drift from the style registrations it is supposed to describe.
+ *  Deriving it means `applyEffects` and `editorMetaFromTheme` read the SAME
+ *  registrations and cannot disagree.
+ *
+ *  Since Phase 3 Task 7, and still true: a brand registration for a reserved
+ *  type is inert at RENDER time, so `editorMetaFromTheme` consults the same
+ *  derivation to keep it inert at EDIT time too, rather than offering params
+ *  that would never be applied. */
+export { isReservedEffectType } from './style-effect';
 
-/** Core generic effect renderers, keyed by effect type. `ken-burns` is absent
- *  by the rule above — see RESERVED_EFFECT_TYPES. */
+/** Core generic effect renderers, keyed by effect type. `ken-burns` and
+ *  `grade` (Task 3.4) are both absent by the rule above — see
+ *  `isReservedEffectType`. */
 const CORE_EFFECT_RENDERERS: Record<string, EffectRenderer> = {
   grain: GrainEffect,
   scanlines: ScanlinesEffect,
   vignette: VignetteEffect,
-  grade: GradeEffect,
   transform: TransformEffect,
 };
 
@@ -83,6 +146,14 @@ export function resolveEffectRenderer(theme: BrandTheme, type: string): EffectRe
 /** The brand config registered for an effect type (undefined when none). */
 export function effectConfig(theme: BrandTheme, type: string): unknown {
   return registrationConfig(theme.effects, type);
+}
+
+/** The declared `scope` for one effect type's registration (Phase 4 Task 3.3).
+ *  Absent registration, or a registration with no `scope`, is 'clip' — the
+ *  pre-3.3 behaviour for EVERY existing effect and registration, brand or
+ *  core: nothing moves unless a registration opts in. */
+export function effectScope(theme: BrandTheme, type: string): 'clip' | 'media' {
+  return theme.effects?.[type]?.scope ?? 'clip';
 }
 
 /** Applies every effect on an item, in array order, innermost-first: the first
@@ -103,7 +174,47 @@ export function applyEffects(
   for (const [index, effect] of effects.entries()) {
     // Reserved types are applied elsewhere in the pipeline. Skipped BEFORE
     // resolution, so a brand registration cannot re-open the double-apply.
-    if (RESERVED_EFFECT_TYPES.has(effect.type)) continue;
+    //
+    // NOTE FOR `enabled`: this `continue` runs BEFORE the enable test below, so
+    // a reserved type never reaches it. That is no longer a gap needing a
+    // bespoke per-type probe, though: `applyStyleEffects` (./style-effect.ts)
+    // — the thing that actually renders every reserved type — applies the
+    // SAME generic `isNodeEnabled` test to every style-axis type uniformly,
+    // so a second reserved type gets `enabled: false` support for free.
+    if (isReservedEffectType(theme, effect.type)) {
+      // Task 6.3, warning 3 — a WRAPPER-axis registration for a type that is
+      // reserved (resolves on the STYLE axis instead — core's own `ken-burns`/
+      // `grade`, or a brand's own style-effect registration under this same
+      // type name) is dead: this `continue` skips it before it is ever
+      // resolved through `resolveEffectRenderer`. Warn only when the theme
+      // ACTUALLY carries a `theme.effects[type]` registration — a reserved
+      // type with no wrapper-axis registration at all is the ordinary,
+      // unremarkable case (every reel with a `ken-burns`/`grade` item hits
+      // this line and must not warn).
+      if (theme.effects?.[effect.type] !== undefined) {
+        warnOnce(`effect-reserved-type-registered:${effect.type}`, () =>
+          `[video-toolkit] Effect type "${effect.type}" is registered on \`theme.effects\` (the WRAPPER ` +
+          'axis), but it is RESERVED — it resolves on the STYLE axis instead (core\'s own `ken-burns`/`grade`, ' +
+          'or a brand style-effect registration under this same type name) — so this registration is dead: ' +
+          '`applyEffects` skips a reserved type before ever resolving it. Register the effect on ' +
+          '`theme.styleEffects` instead, or pick a different type name. (Warning only; nothing is blocked, ' +
+          'and this is reported once per type.)');
+      }
+      continue;
+    }
+    // MEDIA-scope types (Phase 4 Task 3.3) are applied elsewhere too — inside
+    // SegmentMedia (or a brand's hand-rolled media element), via
+    // MediaEffectsContext, not wrapped around the WHOLE item renderer here.
+    // Skipped BEFORE resolution and BEFORE the enable test for the same
+    // reason reserved types are: `collectMediaEffects` below applies its own
+    // `isNodeEnabled` test at the point it actually renders.
+    if (effectScope(theme, effect.type) === 'media') continue;
+    // A DISABLED effect is skipped ENTIRELY — no wrapper is allocated, so the
+    // node is referentially what it would be if the entry were deleted, while
+    // the entry's authored params stay in the config for the toggle back. Also
+    // skipped BEFORE resolution, so it costs nothing beyond the test. Absent
+    // means enabled (see `isNodeEnabled`), so no baked literal changes.
+    if (!isNodeEnabled(effect)) continue;
     const Renderer = resolveEffectRenderer(theme, effect.type);
     if (!Renderer) continue;
     // `children` goes in the props bag, not as the third argument: the third
@@ -121,6 +232,37 @@ export function applyEffects(
   return node;
 }
 
+/** Resolves every `scope: 'media'` effect on an item into a ready-to-apply
+ *  `MediaEffectEntry` list, for `renderVideoItemNode` to hand to
+ *  `MediaEffectsContext` — see ./media-effects-context.tsx for the delivery
+ *  mechanism and why it is a context rather than a prop.
+ *
+ *  Mirrors `applyEffects`'s own filter, minus the wrap: reserved (style-axis)
+ *  types are skipped, non-'media'-scope types are skipped (they go through
+ *  `applyEffects` instead), a disabled entry is skipped entirely (dropped, not
+ *  delivered as an inert entry — same "no wrapper for a disabled node" rule as
+ *  the wrapper axis), and a type with no resolvable renderer is skipped
+ *  (silently — the same "SKIP, never throw" rule every axis follows).
+ *
+ *  Returns `[]` for an item with no effects, or none of them media-scoped —
+ *  the empty array `MediaEffectsContext`'s own default already is, so a
+ *  `renderVideoItemNode` caller providing `[]` here is indistinguishable from
+ *  one providing nothing at all. */
+export function collectMediaEffects(theme: BrandTheme, item: VideoItem): MediaEffectEntry[] {
+  const effects = item.effects;
+  if (!effects?.length) return [];
+  const entries: MediaEffectEntry[] = [];
+  for (const [index, effect] of effects.entries()) {
+    if (isReservedEffectType(theme, effect.type)) continue;
+    if (effectScope(theme, effect.type) !== 'media') continue;
+    if (!isNodeEnabled(effect)) continue;
+    const Renderer = resolveEffectRenderer(theme, effect.type);
+    if (!Renderer) continue;
+    entries.push({ effect, index, Renderer, config: effectConfig(theme, effect.type) });
+  }
+  return entries;
+}
+
 export { kenBurnsStyle, findKenBurns, type KenBurnsEffect } from './ken-burns';
 export {
   GrainEffect,
@@ -136,3 +278,15 @@ export {
   transformString,
   transformLayerStyle,
 } from './primitives';
+export {
+  resolveStyleEffectRenderer,
+  styleEffectConfig,
+  composeMediaStyle,
+  applyStyleEffects,
+  CORE_STYLE_EFFECT_TYPES,
+  type MediaStyleFragment,
+  type StyleEffectRenderProps,
+  type StyleEffectRenderer,
+  type StyleEffectRegistry,
+  type StyleEffectRegistration,
+} from './style-effect';

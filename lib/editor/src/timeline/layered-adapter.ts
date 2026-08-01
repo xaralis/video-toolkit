@@ -1,5 +1,11 @@
 import type { LayeredReel, VideoItem, AudioItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import { withTotalDuration } from '@video-toolkit/lib/reel-config-base/total-duration';
+import {
+  isCut,
+  CUT_KIND,
+  transitionAlignmentOf,
+  transitionHandles,
+} from '@video-toolkit/lib/reel-config-base/transition-schema';
 
 export interface TLAction { id: string; start: number; end: number; effectId: string; movable?: boolean; flexible?: boolean; minStart?: number; }
 export interface TLRow { id: string; actions: TLAction[]; }
@@ -48,29 +54,45 @@ export function layeredToTimeline(reel: LayeredReel, fps: number): { editorData:
   // timeline; its move + left edge stay locked (music always starts at 0).
   const music: TLAction[] = [act('music', 'base', 0, reel.tracks.music.endMs ?? reel.meta.totalDurationMs, 'music')];
   // Transitions are a derived "at-the-cut" view: clips stay butted on the
-  // video track. Every item's non-`cut` transitionOut gets one centered block
-  // on its cut — including the LAST item, whose transitionOut is a closing
-  // fade to the composition background rather than into a following clip. The
-  // FIRST item's non-`cut` transitionIn gets one opening block anchored at time
-  // 0 (a fade in from the background). Together this makes the lane a view of
-  // every transition edge in the reel, not just adjacent-pair cuts.
+  // video track. Every item's non-`cut` transitionOut gets one block on its cut
+  // — including the LAST item, whose transitionOut is a closing fade to the
+  // composition background rather than into a following clip. The FIRST item's
+  // non-`cut` transitionIn gets one opening block anchored at time 0 (a fade in
+  // from the background). Together this makes the lane a view of every
+  // transition edge in the reel, not just adjacent-pair cuts.
+  //
+  // WHERE the block sits comes from `transitionHandles` — the SAME decider the
+  // renderer's `computeVideoLayout` uses (lib/render/video-track-layout.ts), so
+  // a boundary authored `alignment: 'start'` or `'end'` is DRAWN where it is
+  // RENDERED. This lane used to reimplement the split as an unconditional
+  // `[cut - frames/2, cut + frames/2]`, which was silently wrong off `center`.
   const vids = reel.tracks.video;
   const transitions: TLAction[] = [];
+  const framesToMs = (f: number) => Math.round((f / fps) * 1000);
   for (let i = 0; i < vids.length; i++) {
     const item = vids[i];
     if (i === 0) {
       const tin = item.transitionIn as { kind?: string; frames?: number } | undefined;
-      if (tin?.kind && tin.kind !== 'cut' && tin.frames) {
-        const halfMs = Math.round((tin.frames / 2 / fps) * 1000);
-        transitions.push({ id: `${TRANSITION_IN_PREFIX}${item.id}`, start: 0, end: (halfMs * 2) / MS, effectId: tin.kind });
+      // `!isCut(tin)` implies a truthy `kind`, but a predicate over `unknown`
+      // cannot carry that back into the narrowing — hence the assertions below.
+      if (!isCut(tin) && tin?.frames) {
+        // No alignment split at a reel EDGE: the renderer zeroes the handle
+        // there (isFirst/isLast in computeVideoLayout), so the transition plays
+        // over the item's own opening frames whatever its alignment says.
+        transitions.push({ id: `${TRANSITION_IN_PREFIX}${item.id}`, start: 0, end: framesToMs(tin.frames) / MS, effectId: tin.kind! });
       }
     }
     const t = item.transitionOut as { kind?: string; frames?: number } | undefined;
-    if (!t?.kind || t.kind === 'cut' || !t.frames) continue;
+    if (isCut(t) || !t?.frames) continue;
     // start/end are in SECONDS like every other lane (act() divides by MS).
     const cut = item.endMs;
-    const halfMs = Math.round((t.frames / 2 / fps) * 1000);
-    transitions.push({ id: `${TRANSITION_PREFIX}${item.id}`, start: Math.max(0, cut - halfMs) / MS, end: (cut + halfMs) / MS, effectId: t.kind });
+    const { before, after } = transitionHandles(t.frames, transitionAlignmentOf(t));
+    transitions.push({
+      id: `${TRANSITION_PREFIX}${item.id}`,
+      start: Math.max(0, cut - framesToMs(before)) / MS,
+      end: (cut + framesToMs(after)) / MS,
+      effectId: t.kind!,
+    });
   }
   return {
     editorData: [
@@ -459,7 +481,7 @@ export function deleteItem(reel: LayeredReel, selectedId: string, opts: { ripple
     const field = edge === 'in' ? 'transitionIn' : 'transitionOut';
     return {
       ...reel,
-      tracks: { ...reel.tracks, video: reel.tracks.video.map((v) => (v.id === id ? { ...v, [field]: { kind: 'cut' } } : v)) },
+      tracks: { ...reel.tracks, video: reel.tracks.video.map((v) => (v.id === id ? { ...v, [field]: { kind: CUT_KIND } } : v)) },
     };
   }
   if (lane === 'music') return reel; // the single music bed isn't deletable
@@ -505,7 +527,7 @@ export function splitItem(reel: LayeredReel, selectedId: string, atFrame: number
   const rightId = `${v.id}-b`;
   const cut = v.sourceInMs + leftDur;
 
-  const left: VideoItem = { ...v, endMs: atMs, sourceOutMs: cut, transitionOut: { kind: 'cut' } };
+  const left: VideoItem = { ...v, endMs: atMs, sourceOutMs: cut, transitionOut: { kind: CUT_KIND } };
   const right: VideoItem = { ...v, id: rightId, startMs: atMs, sourceInMs: cut, transitionIn: undefined };
 
   const video = [...reel.tracks.video.slice(0, idx), left, right, ...reel.tracks.video.slice(idx + 1)];

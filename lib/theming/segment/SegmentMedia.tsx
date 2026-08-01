@@ -1,12 +1,14 @@
 // Explicit React import: files under lib/theming are transformed with the classic JSX runtime under the editor's Vitest config, so `React` must be in scope.
 import React from 'react';
-import { Img, OffthreadVideo, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Img, OffthreadVideo, Sequence, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import { cropCoverStyle } from '../../reel-config-base/crop';
-import { gradeFilter, gradeNeedsWb, gradeWbMatrixValues } from '../../reel-config-base/grade';
-import type { Crop, Grade } from '../../reel-config-base/base-types';
+import type { Crop } from '../../reel-config-base/base-types';
 import type { VideoRenderProps } from '../types';
 import { kenBurnsStyle, findKenBurns, type KenBurnsEffect } from '../effects/ken-burns';
+import { applyStyleEffects, composeMediaStyle, type MediaStyleFragment } from '../effects/style-effect';
+import { useMediaEffects, applyMediaEffects } from '../effects/media-effects-context';
 import { resolveMediaSource, type MediaRole, type MediaSourceResolver } from '../media-source';
+import { anchorTiming } from '../../render/overlay-anchor';
 
 const VIDEO_EXT_RE = /\.(mp4|mov|webm)$/i;
 
@@ -38,9 +40,22 @@ export { kenBurnsStyle, findKenBurns, type KenBurnsEffect };
  *  brands' clip/broll/photo renderers compose around — vintage, paper-frame,
  *  and overlays are brand wrappers rendered AROUND this, not part of it.
  *  multi-clip/card/outro items render nothing here (out of scope). */
-export const SegmentMedia: React.FC<VideoRenderProps> = ({ item, handles, resolveMediaSource: override }) => {
+export const SegmentMedia: React.FC<VideoRenderProps> = ({
+  item,
+  handles,
+  resolveMediaSource: override,
+  styleEffects,
+  anchoredOverlays,
+  renderAnchoredOverlay,
+}) => {
   const { fps } = useVideoConfig();
   const frame = useCurrentFrame();
+  // Phase 4 Task 3.3 — read BEFORE the early return below so the hook order
+  // never depends on `item.kind` (rules of hooks). Empty `[]` outside any
+  // `MediaEffectsContext.Provider` (every existing SegmentMedia test, and the
+  // Task 3.1 merge baseline), so `applyMediaEffects` below is a no-op there —
+  // parity is automatic, not asserted.
+  const mediaEffects = useMediaEffects();
 
   if (item.kind !== 'clip' && item.kind !== 'broll' && item.kind !== 'photo') return null;
 
@@ -52,39 +67,31 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({ item, handles, resolv
   // edge for cross-item transitions (0 when the item has no neighbor overlap).
   const durationInFrames = Math.round(((item.endMs - item.startMs) / 1000) * fps) + handles.inHalf + handles.outHalf;
 
-  // `crop`/`grade` are permissive `z.record` fields on the schema (like the
-  // transition records), so they are asserted to their shapes here; malformed
-  // values are tolerated downstream by cropCoverStyle/gradeFilter.
+  // `crop` is a permissive `z.record` field on the schema (like the
+  // transition records), so it is asserted to its shape here; malformed
+  // values are tolerated downstream by cropCoverStyle.
+  //
+  // The merge, as of Phase 4 Task 3.2 (crop + style effects) and Task 3.4
+  // (grade folded INTO the style-effect axis rather than merged separately,
+  // right here, afterward): crop's own fragment is the BASE, then every
+  // STYLE-axis effect on the item — `item.grade` FIRST (synthesized inside
+  // `applyStyleEffects`), then ken-burns / a brand's own style-effect
+  // registration in `item.effects[]` array order — composes onto it via
+  // `composeMediaStyle`'s ONE rule per property (see style-effect.ts). This is
+  // the SAME merge the old hand-inlined version did —
+  // segment-media-merge-baseline.test.tsx pins the 18-cell matrix
+  // byte-for-byte across both rewrites, including the objectPosition/
+  // transformOrigin PAIRING (the highest-risk regression named in the task
+  // brief) and grade's own filter + white-balance `defs`.
   const cropStyle = cropCoverStyle(item.crop as Crop | undefined, item.focalX, item.focalY);
-  let transform = cropStyle.transform;
-  let objectPosition = cropStyle.objectPosition;
-  let transformOrigin = cropStyle.transformOrigin;
-
-  const kb = findKenBurns(item.effects);
-  if (kb) {
-    const kbs = kenBurnsStyle(kb, frame, durationInFrames, item.focalX, item.focalY);
-    transform = [transform, kbs.transform].filter(Boolean).join(' ');
-    if (kbs.objectPosition) {
-      objectPosition = kbs.objectPosition;
-      transformOrigin = kbs.transformOrigin;
-    }
-  }
-
-  const grade = item.grade as Grade | undefined;
-  const filter = gradeFilter(grade, `grade-${item.id}`);
-  // Self-contained white-balance (temperature/tint) SVG filter def, so grade
-  // works for every brand without depending on a brand-side <GradeDefs>. Only
-  // rendered when the grade actually needs WB — absent for every clip without
-  // temperature/tint, so existing renders are byte-identical.
-  const wbDef = gradeNeedsWb(grade) ? (
-    <svg style={{ position: 'absolute', width: 0, height: 0 }} aria-hidden="true">
-      <defs>
-        <filter id={`grade-${item.id}`} colorInterpolationFilters="sRGB">
-          <feColorMatrix type="matrix" values={gradeWbMatrixValues(grade!)} />
-        </filter>
-      </defs>
-    </svg>
-  ) : null;
+  const cropFragment: MediaStyleFragment = {
+    transform: cropStyle.transform,
+    objectPosition: cropStyle.objectPosition,
+    transformOrigin: cropStyle.transformOrigin,
+  };
+  const styleEffectFragment = applyStyleEffects(styleEffects, item, frame, durationInFrames);
+  const merged = composeMediaStyle(cropFragment, styleEffectFragment);
+  const wbDef = merged.defs ?? null;
 
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -92,19 +99,78 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({ item, handles, resolv
     width: '100%',
     height: '100%',
     objectFit: 'cover',
-    objectPosition,
-    ...(transform ? { transform, transformOrigin } : {}),
-    ...(filter ? { filter } : {}),
+    objectPosition: merged.objectPosition,
+    ...(merged.transform ? { transform: merged.transform, transformOrigin: merged.transformOrigin } : {}),
+    ...(merged.filter ? { filter: merged.filter } : {}),
+    // CRITICAL 1 fix (Task 3.2 review, round 1): `opacity` is in the
+    // MediaStyleFragment contract and `composeMediaStyle` multiplies it, but
+    // nothing read it back out until now — a style effect setting `opacity`
+    // rendered fully green and changed nothing on screen. Conditioned on
+    // `!== undefined` (not truthiness — `opacity: 0` is a legitimate fully
+    // transparent value) so parity holds: crop/grade never set `opacity`, so
+    // when no style effect does either, `merged.opacity` stays `undefined`
+    // and this key is omitted exactly as before this fix existed.
+    ...(merged.opacity !== undefined ? { opacity: merged.opacity } : {}),
+  };
+
+  // Applies this item's MEDIA-scope effects (Phase 4 Task 3.3) around the
+  // media element, innermost-first like `applyEffects` — the first entry ends
+  // up closest to the media, the last outermost. `mediaStyle` hands each
+  // effect the EXACT style this element renders with (crop + style-effects +
+  // grade, already merged), so a media-scope effect building a second media
+  // source (PP's `blend`) can match it without recomputing the transform.
+  // Returns `node` REFERENTIALLY UNCHANGED when `mediaEffects` is empty — no
+  // wrapper allocated, so an item with none renders byte-identically to
+  // before this axis existed (see the merge baseline test, unmodified).
+  //
+  // Delegated to the SHARED applier (media-effects-context.tsx) rather than a
+  // local closure (review round 1, MINOR 5) — the same function
+  // `useMediaEffects()`'s own doc points a hand-rolled brand renderer at, so
+  // there is exactly one implementation of this ordering/mediaStyle contract.
+  const wrapWithMediaEffects = (node: React.ReactNode): React.ReactNode =>
+    applyMediaEffects(mediaEffects, { item, handles, mediaStyle: style }, node);
+
+  // Phase 4 Task 4.1 — draws this item's `anchoredOverlays` (routed 'anchored'
+  // onto THIS item's id) at the exact composition frame they would have landed
+  // on if routed 'track' instead (see ../../render/overlay-anchor.ts).
+  //
+  // Wrapped in an `AbsoluteFill` ONLY when there is at least one overlay to
+  // draw — that conditional is what keeps the zero-overlay case (every
+  // existing caller, until a brand actually routes something 'anchored') an
+  // IDENTICAL tree to before this capability existed: `mediaNode`/the
+  // `wbDef` fragment returned bare, exactly as before. An unconditional
+  // wrapper would insert a new element around every clip/broll/photo in both
+  // brand repos, which is exactly the parity break Task 4.1 must not cause.
+  const wrapWithAnchoredOverlays = (node: React.ReactNode): React.ReactNode => {
+    const overlays = anchoredOverlays ?? [];
+    if (overlays.length === 0 || !renderAnchoredOverlay) return node;
+    return (
+      <AbsoluteFill>
+        {node}
+        {overlays.map((o) => {
+          const { from, durationInFrames } = anchorTiming(o, item, handles, fps);
+          if (durationInFrames <= 0) return null;
+          return (
+            <Sequence key={o.id} from={from} durationInFrames={durationInFrames} name={o.id}>
+              {renderAnchoredOverlay(o)}
+            </Sequence>
+          );
+        })}
+      </AbsoluteFill>
+    );
   };
 
   if (useImg) {
-    return wbDef ? (
-      <>
-        {wbDef}
-        <Img src={src} style={style} />
-      </>
-    ) : (
-      <Img src={src} style={style} />
+    const mediaNode = wrapWithMediaEffects(<Img src={src} style={style} />);
+    return wrapWithAnchoredOverlays(
+      wbDef ? (
+        <>
+          {wbDef}
+          {mediaNode}
+        </>
+      ) : (
+        mediaNode
+      ),
     );
   }
 
@@ -123,12 +189,15 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({ item, handles, resolv
   const endAt = item.kind === 'photo' ? undefined : Math.round((item.sourceOutMs / 1000) * fps) + handles.outHalf;
 
   const video = <OffthreadVideo src={src} muted startFrom={startFrom} endAt={endAt} style={style} />;
-  return wbDef ? (
-    <>
-      {wbDef}
-      {video}
-    </>
-  ) : (
-    video
+  const mediaNode = wrapWithMediaEffects(video);
+  return wrapWithAnchoredOverlays(
+    wbDef ? (
+      <>
+        {wbDef}
+        {mediaNode}
+      </>
+    ) : (
+      mediaNode
+    ),
   );
 };

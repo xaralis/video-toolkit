@@ -60,35 +60,72 @@ points; the catalog that connects them is `lib/reel-config-base/transition-schem
 The `Seen` column records where a presentation has actually been *looked at*, which is not
 the same as being wired up. `Series` means it renders correctly when hand-driven through
 `<TransitionSeries>` — that is what `showcase/transitions/` exercises, and what this table's
-old "✅ Validated" column meant, back when hand-driving was the only integration path. **No
-kind is yet visually confirmed through the at-cut engine**, which composites differently
-(handle-borrowed overlap rather than a shrinking sequence), so a presentation that looks right
-in the gallery can still misbehave at a cut. **Core can render** —
-`examples/layered-minimal` is a complete, installed Remotion project (`npx remotion still
-src/index.ts MinimalReel out/probe.png --frame=45` bundles and renders a real PNG there, exit
-0; `out/` is gitignored). Closing this gap is therefore a concrete core task, not something
-that needs a brand repo: author a reel literal in `examples/layered-minimal` that exercises
-each of the 11 unconfirmed kinds at a cut and render stills. See the risk entry in
-`docs/superpowers/HANDOFF.md` for the full picture, including two defects a still render would
-directly confirm or refute.
+old "✅ Validated" column meant, back when hand-driving was the only integration path.
+
+**CORRECTED IN PLACE — every kind IS now visually confirmed through the at-cut engine.** This
+paragraph used to say "no kind is yet visually confirmed through the at-cut engine" and named
+"the 11 unconfirmed kinds", true when it was written, before the pixel harness existed. Since
+Phase 4, `examples/layered-minimal`'s pixel harness
+(`node scripts/render-transition-matrix.mjs`, `docs/superpowers/transition-pixel-harness.md`)
+renders every catalog kind × mode (`enter`/`exit`/`cut`) × 5 progress points through the real
+at-cut engine (`buildVideoNodes`, the same assembly a reel uses) and hash-compares the result
+against committed goldens — closing exactly the gap this paragraph used to flag as open. That
+settles *pixel parity against a recorded baseline*, not aesthetic judgement; a kind rendering
+the same bytes as last time says nothing about whether those bytes look right, which is a
+separate, human call. **Core can render** — `examples/layered-minimal` is a complete, installed
+Remotion project (`npx remotion still src/index.ts MinimalReel out/probe.png --frame=45` bundles
+and renders a real PNG there, exit 0; `out/` is gitignored).
 
 | Transition | Kind | Seen | Description | Best For |
 |------------|------|------|-------------|----------|
 | `glitch()` | `glitch` | Series | Digital distortion with slice displacement and RGB separation | Tech demos, cyberpunk, edgy reveals |
-| `rgbSplit()` | `rgb-split` | Series | Chromatic aberration with color fringing | Modern tech, energetic transitions |
+| `rgbSplit()` | `rgb-split` | **Two-input node** | Chromatic aberration with color fringing | Modern tech, energetic transitions |
 | `zoomBlur()` | `zoom-blur` | Series | Radial motion blur with scale | CTAs, reveals, high-energy moments |
 | `lightLeak()` | `light-leak` | Series | Cinematic lens flare and overexposure | Emotional moments, celebrations, film aesthetic |
-| `pixelate()` | `pixelate` | Series | Digital mosaic dissolution | Retro/gaming, digital transformations |
-| `checkerboard()` | `checkerboard` | Series | Grid-based reveal with multiple patterns | Playful reveals, structured transitions |
-| `scanlineGlitch()` | `scanline-glitch` | — | Compressed CRT scanlines + RGB shift | Retro-futurism, modern edgy reels |
+| `pixelate()` | `pixelate` | **Two-input node** | Digital mosaic dissolution | Retro/gaming, digital transformations |
+| `checkerboard()` | `checkerboard` | **Two-input node** | Grid-based reveal with multiple patterns | Playful reveals, structured transitions |
+| `scanlineGlitch()` | `scanline-glitch` | **Two-input node** | Compressed CRT scanlines + RGB shift | Retro-futurism, modern edgy reels |
 | `whipPan()` | `whip-pan` | — | Directional motion blur — fast camera move | Energetic cuts, fast-paced reels |
 | `zoomThrough()` | `zoom-through` | — | Zoom out of outgoing, zoom into incoming | Product reveals, fast-cut edits |
-| `wipe()` | `wipe` | — | Directional sweep in a brand colour | Brand-consistent directional reveals |
-| `gradientWipe()` | `gradient-wipe` | — | Feathered diagonal blend band | Soft corner-to-corner reveals |
+| `wipe()` | `wipe` | **Two-input node** | Directional sweep in a brand colour | Brand-consistent directional reveals |
+| `gradientWipe()` | `gradient-wipe` | **Two-input node** | Feathered diagonal blend band | Soft corner-to-corner reveals |
 | `burn()` | `burn` | At-cut | Cloud-masked burn-through with a hot edge | Organic reveals, warm brand moments |
+| `fadeToColor()` | `fade-to-color` | **Two-input node** (with a colour) | Dip to a colour the BRAND names; with no colour, the plain crossfade | Section breaks, a beat of brand colour between clips |
 
-A kind's tunable params are exactly its schema fields minus `kind`/`frames`; the editor derives
-its sub-option controls from that shape, so the two can't disagree. Every param of the six
+**Six kinds are ALWAYS NATIVE TWO-INPUT NODES** (`wipe`, `checkerboard`, `pixelate`,
+`scanline-glitch`, `gradient-wipe`, `rgb-split` — the table above is now current on this; re-derive
+with `lib/editor/src/at-cut-transitions.test.tsx`'s `NODE_KINDS` if it drifts again);
+`fade-to-color` is one **only when a colour actually resolves** — with none it
+hands back Remotion's own `fade()`, so its arity is conditional on the brand's palette.
+Their factories return a `TransitionNode` — `{ plan }` (PHASE 5: this used to be
+`{ composite }`, a React component invoked once per boundary with `(from, to, progress)`
+as already-instantiated subtrees; every catalog kind is `plan` now, and there is no
+`composite` shape left at all — see `lib/render/at-cut-transitions.tsx`'s own note). They
+cannot be used with `TransitionSeries`, which hands a presentation one clip at a time;
+drive them through `transitionNodeFor()` + `buildVideoNodes` (`AtCutTransition`, the old
+alternative render path, is deleted). `presentationFor()` returns `null` for them and warns.
+Every other kind is still one-sided at the `resolveTransition`/`presentationFor` level and
+core lifts it (through `wrapRemotionPresentation`, universally, since Task 5). See
+`docs/superpowers/phase4-migrations.md` § Task 2.1 and `docs/superpowers/phase5-migrations.md`.
+
+**One name per concept** (Task 2.5). Every kind spells the in/out or 4-way axis `direction` —
+`zoom-through` used to call it `from`, and that field survives only as a deprecated alias so
+baked literals keep rendering (it warns once and has no editor control). The gallery
+(`TransitionGallery.tsx`) resolves each kind it demonstrates through the **reel's own**
+`transitionNodeFor`, so it cannot drift into showing a different component under a catalog
+kind's name again.
+
+**One table, derived from the catalog** (Task 2.6). The gallery no longer lists kinds at
+all: `buildGalleryEntries()` walks `TRANSITION_CATALOG`, skips `cut` (the absence of a
+transition) and resolves everything else through `transitionNodeFor`. Adding a kind to the
+catalog puts it in the gallery with no gallery edit; entries, notes and `transitionMap` keys
+are all the catalog kind, so the old camelCase spellings (`rgbSplit`, `lightLeak`) and the
+`noteFor` helper that translated between them are gone. `transitionMap.lightLeak` is now
+`transitionMap['light-leak']`.
+
+A kind's tunable params are exactly its schema fields minus `kind`/`frames` (and any
+deprecated alias); the editor derives its sub-option controls from that shape, so the two
+can't disagree. Every param of the six
 kinds wired in most recently (`rgb-split`, `scanline-glitch`, `light-leak`, `zoom-blur`,
 `pixelate`, `checkerboard`) is optional — `{ kind, frames }` alone renders the presentation's
 own defaults.
@@ -99,8 +136,12 @@ own defaults.
 |------------|-------------|
 | `slide()` | Scene slides in from a direction |
 | `fade()` | Simple crossfade |
-| `wipe()` | Edge wipe reveal |
 | `flip()` | 3D card flip |
+
+`@remotion/transitions/wipe` is deliberately **not** listed and is no longer used anywhere in
+core (Phase 4 Task 2.5). The toolkit's `wipe` kind is the two-input node in the table above;
+having the official one under the same name meant the gallery demonstrated a different
+component than reels rendered. One name, one component.
 
 ## Transition Options
 
@@ -288,12 +329,13 @@ For interactive previews (e.g., with `@remotion/player`):
 ```tsx
 import { SingleTransitionPreview, transitionMap } from '@video-toolkit/lib/transitions/TransitionGallery';
 
-// Preview a specific transition
+// Preview a specific transition — a CATALOG KIND, the same string a reel authors
 <SingleTransitionPreview transitionName="glitch" />
 
-// Access transition config programmatically
-const { duration, render } = transitionMap.lightLeak;
-const demo = render('lightLeak', duration); // React.ReactElement, e.g. for a custom preview
+// Access a gallery entry programmatically. Keyed by catalog kind since Task 2.6
+// (`transitionMap.lightLeak` was the old camelCase spelling and is gone).
+const { kind, label, note, duration, node, render } = transitionMap['light-leak'];
+const demo = render(); // React.ReactElement, e.g. for a custom preview
 ```
 
 ## Technical Notes

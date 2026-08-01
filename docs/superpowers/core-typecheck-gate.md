@@ -9,12 +9,26 @@ cd examples/layered-minimal && npm run typecheck    # tsc --noEmit, then a cover
 **Baseline: 0 errors.** Any error is a regression — there is no pre-existing
 noise to filter out. (Established 2026-07-26, on branch `fix/core-has-remotion`.)
 
-**Nothing runs this automatically.** There is no CI in this repo — `.github/workflows/`
-only builds Docker images, cuts releases, and syncs the Remotion skill from upstream — and no
-root-level script. This gate, `lib/editor`'s `vitest`/`tsc`, and the brand-leak grep are all
-manual; run them yourself before calling render/transitions work done. They're listed together
-in `CLAUDE.md`'s "Quality Gates" section and `docs/superpowers/HANDOFF.md`'s "Working
-conventions established".
+**Nothing runs this automatically, and that is deliberate — not an oversight.** There is no CI in
+this repo — `.github/workflows/` only builds Docker images, cuts releases, and syncs the Remotion
+skill from upstream — and no root-level script. Phase 4 considered wiring these gates into CI and
+chose not to: the full matrix (this gate, `lib/editor`'s `vitest`/`tsc`, the brand-leak grep, the
+`it.fails` guard, `pytest test_sync_template.py`, and the pixel harness below) runs in roughly
+2.5 minutes serially, and the per-task workflow that makes rapid iteration possible depends on
+running only the subset a given diff can actually move — a judgement call, not something CI can
+make for you without either running everything every time (defeating the point) or reimplementing
+the same conditional logic as pipeline config. This gate, `lib/editor`'s `vitest`/`tsc`, the
+brand-leak grep, and **the pixel harness** (`docs/superpowers/transition-pixel-harness.md`) are all
+manual; run them yourself before calling render/transitions work done. They're listed together in
+`CLAUDE.md`'s "Quality Gates" section and `docs/superpowers/HANDOFF.md`'s "Working conventions
+established".
+
+**This gate and the pixel harness are complementary, not overlapping.** This one asks "does
+`lib/render`/`lib/transitions` type-check through the code path that actually renders them"; the
+harness asks "does a rendered frame match its committed golden, pixel for pixel". A change can
+break either without the other noticing — a type-safe transition can still render the wrong
+picture, and a pixel-identical render can still be typed unsafely if nothing imports the changed
+file. Run both.
 
 ## Why this gate exists
 
@@ -22,12 +36,14 @@ Core has two type-check surfaces, and until now they left a hole:
 
 | Surface | Covers | Does **not** cover |
 |---|---|---|
-| `lib/editor` (`cd lib/editor && npx tsc --noEmit`, baseline **3**) | `src`, `app`, `host`, `../theming`, plus **11** `lib/render` files and **13** `lib/transitions` files. Five of the render files are *declared* in that tsconfig's `include` — `at-cut-transitions.tsx`, `audio-track.tsx`, `layered-composition.tsx`, `video-track.tsx`, `load-fonts.ts` — so no test deletion can silently drop them; the other six (`audio-gain.ts`, `transition-record.ts`, `video-track-layout.ts`, `fonts.ts`, `layered-composition-props.ts`, `overlay-routing.ts`) and all of `lib/transitions` arrive transitively | `TransitionGallery.tsx` (not in this program), and anything no editor file or declared entry point reaches |
-| `examples/layered-minimal` (this gate, baseline **0**) | its own `src`, plus every `lib/**` file the render actually pulls in — `lib/render` (9 files, including the 4 `.tsx` components above), `lib/transitions` (14 files — every presentation, `index.ts`, and `TransitionGallery.tsx`; see below), `lib/theming` (23), `lib/reel-config-base` (8), `lib/transcripts` (1) | anything no reel imports (editor UI, host) |
+| `lib/editor` (`cd lib/editor && npx tsc --noEmit`, baseline **3**) | `src`, `app`, `host`, `../theming`, plus **14** `lib/render` files and **16** `lib/transitions` files. Five of the render files are *declared* in that tsconfig's `include` — `at-cut-transitions.tsx`, `audio-track.tsx`, `layered-composition.tsx`, `video-track.tsx`, `load-fonts.ts` — so no test deletion can silently drop them; the other nine (`audio-gain.ts`, `transition-record.ts`, `video-track-layout.ts`, `fonts.ts`, `layered-composition-props.ts`, `overlay-anchor.ts`, `overlay-routing.ts`, `preview-environment.ts`, `warn-once.ts`) and all of `lib/transitions` — **including `TransitionGallery.tsx`**, which arrives through `src/transition-gallery*.test.tsx` — arrive transitively | anything no editor file or declared entry point reaches |
+| `examples/layered-minimal` (this gate, baseline **0**) | its own `src`, plus every `lib/**` file the render actually pulls in — `lib/render` (12 files, including the 4 `.tsx` components above), `lib/transitions` (16 files — every presentation, `index.ts`, `edge-plate.tsx`, and `TransitionGallery.tsx`; see below), `lib/theming` (26), `lib/reel-config-base` (10), `lib/transcripts` (1) | anything no reel imports (editor UI, host) |
+
+**These counts drift as files are added — re-derive with `npx tsc --noEmit --listFiles` (per surface) or `node scripts/verify-typecheck-coverage.mjs` (`examples/layered-minimal`), never copy the numbers above. They were themselves found stale (9/14/23/8/1 vs. the guard's actual 12/16/26/10/1) during the Phase 4 final review — `CLAUDE.md`'s Quality Gates table is the more carefully re-derived reference; treat a mismatch between it and this file as a signal to re-measure, not as license to pick either one.**
 
 Before this, the entire render surface — including ~1900 lines of transition
 presentations in `lib/transitions/presentations/*.tsx` — was type-checked by
-**nothing** except the 7 non-`.tsx` `lib/render` modules `lib/editor` pulls in
+**nothing** except the 9 non-`.tsx` `lib/render` modules `lib/editor` pulls in
 incidentally through its own tests. This example was already a complete, installed
 Remotion 4.0.425 project with its own `tsconfig.json`, `@remotion/transitions`, `react`,
 `@types/react` and `typescript`. It was a few config lines from being the gate.

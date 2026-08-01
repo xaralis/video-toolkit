@@ -8,8 +8,14 @@ whatever custom renderers that theme registers.
 
 Templates live in a **brand repo**, never in core (core ships no brand identity).
 The reference implementation of the contract is `examples/layered-minimal` —
-four small files that render end to end. Read it first; this document is the
-narration around it.
+a few small files that render end to end. Read it first; this document is the
+narration around it. Its `theme.tsx`/`MinimalReel` composition is the SMALLEST
+theme (a text renderer, some tokens); its `conformance-theme.tsx`/
+`ConformanceReel` composition (a second, separate composition in the same
+`Root.tsx`) is the OTHER end — every extension axis registered at once, each
+with a deliberately non-core look and pinned by
+`lib/editor/src/conformance-example.test.tsx`. Copy a registration's SHAPE
+from whichever one actually shows the axis you're adding.
 
 ## The contract in one picture
 
@@ -339,7 +345,9 @@ export const compositionTheme: CompositionTheme = {
 
   // Per-kind video renderer. clip/broll/photo already fall back to core's
   // SegmentMedia (trim, crop, focal point, grade, Ken Burns); card/outro/
-  // multi-clip render ONLY when you register them.
+  // multi-clip already fall back to core's own generics (GenericCard/
+  // GenericOutro/GenericMultiClip) too — register a renderer for any of
+  // these to REPLACE the generic, not to make the kind render at all.
   // `params` declares a kind's editable fields ONCE, here. The editor derives
   // its vocabulary from these registrations (editorMetaFromTheme), so a kind
   // you register renders AND is editable — no second declaration to keep in
@@ -377,30 +385,42 @@ one. Register a type and it both renders and becomes addable in the editor's
 effects: { vintage: { renderer: VintageEffect, params: [{ prop: 'mode', options: ['film', 'vhs'] }] } },
 ```
 
-Core already draws `grain`, `scanlines`, `vignette`, `grade` and `transform`
-generically; a type neither you nor core has is **silently skipped**, never
-thrown, so a typo'd effect leaves the reel rendering.
+Core already draws `grain`, `scanlines`, `vignette` and `transform` generically
+on this WRAPPER axis (`CORE_EFFECT_RENDERERS`, `lib/theming/effects/index.ts`);
+a type neither you nor core has is **silently skipped**, never thrown, so a
+typo'd effect leaves the reel rendering.
 
-**`ken-burns` is RESERVED and cannot be overridden on this axis.** It is not a
-wrapper — it composes into the media element's own transform inside
-`SegmentMedia`, alongside the crop. `applyEffects` therefore skips it *before*
-resolution, so writing `effects: { 'ken-burns': { renderer: MyKenBurns } }` does
-nothing: your renderer never runs, and (because the editor derives its catalog
-from the same reserved list) your `params` never appear in the inspector either.
-The silence is deliberate and symmetric — the editor shows exactly what will
+**`ken-burns` and `grade` are RESERVED and cannot be overridden on this axis.**
+Neither is a wrapper — both compose into the media element's own style inside
+`SegmentMedia`, on the separate STYLE axis (`theme.styleEffects`, Phase 4 Task
+3.2/3.4 — see `lib/theming/effects/style-effect.ts`). `applyEffects` therefore
+skips a reserved type *before* resolution, so writing
+`effects: { 'ken-burns': { renderer: MyKenBurns } }` (or `grade`) does nothing:
+your renderer never runs, and (because the editor derives its catalog from the
+same derivation) your `params` never appear in the inspector either. The
+silence is deliberate and symmetric — the editor shows exactly what will
 render — but it is silence, so it is worth knowing about before you spend an
 afternoon on it.
 
-**The escape is the video axis, not the effect axis.** A brand that wants its
-own Ken Burns registers a video renderer for the footage kinds, because the
-renderer that owns the media element is what owns its transform:
+**The escape is the STYLE axis (or the video axis), not the WRAPPER effect
+axis.** A brand that wants its own Ken Burns-shaped movement registers a style
+effect on `theme.styleEffects` (see `examples/layered-minimal/src/
+conformance-theme.tsx`'s `ink-wash` for the shape), or — for a transform that
+needs to own the whole media element, not just contribute a style fragment —
+registers a video renderer for the footage kinds instead:
 
 ```tsx
 video: { clip: { renderer: MyFootage }, broll: { renderer: MyFootage }, photo: { renderer: MyFootage } },
 ```
 
-`RESERVED_EFFECT_TYPES` in `lib/theming/effects/index.ts` is the list, and it is
-consulted at both ends — render and edit.
+**`isReservedEffectType(theme, type)`** (`lib/theming/effects/style-effect.ts`,
+re-exported from `lib/theming/effects/index.ts`) is the live check, consulted
+at both ends — render and edit. It is DERIVED, not a hand-maintained list: a
+type is reserved for the wrapper axis exactly when it resolves on the style
+axis for that theme (core's own `ken-burns`/`grade`, or a brand's own
+`theme.styleEffects` registration under any type name it chooses) — there is
+no `RESERVED_EFFECT_TYPES` constant to consult; that name does not exist in
+this codebase.
 
 ### What core already does for you
 

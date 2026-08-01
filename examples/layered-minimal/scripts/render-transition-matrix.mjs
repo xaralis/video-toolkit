@@ -1,39 +1,153 @@
 #!/usr/bin/env node
 /**
- * Renders the at-cut transition probe stills — the evidence behind
- * docs/superpowers/at-cut-transition-findings.md.
+ * THE TRANSITION PIXEL HARNESS — a gate, not a contact sheet.
  *
- * The kind list is NOT written here. It is read off `getCompositions()`, which
- * returns whatever `src/TransitionMatrix.tsx` registered from
- * `TRANSITION_CATALOG` — so a kind added to the catalog later is probed
- * automatically, with no edit to this file.
+ * Until this file became an asserting harness, ZERO tests in this repo looked at
+ * a pixel. The discriminator that found the `scanline-glitch` and `wipe`
+ * defects — "at progress 0 the composite must still show the OUTGOING clip" —
+ * existed only as a human squinting at a montage, so nothing would have caught
+ * a NEW kind reintroducing the same bug family.
  *
- * Bundles ONCE and then drives `renderStill` in a loop; `npx remotion still`
- * would re-bundle per frame, which is minutes rather than seconds across a few
- * hundred stills.
+ * It asserts two independent things:
  *
- * Output goes to out/matrix/ (gitignored) as one contact sheet per kind, built
- * with ImageMagick `montage`: rows = mode (enter / exit / cut), columns =
- * progress. The individual stills are throwaway evidence — the findings doc is
- * the deliverable.
+ *   1. GOLDENS per kind × mode × progress, committed to
+ *      `goldens/transition-matrix.json` and compared on every run. This catches
+ *      CHANGE. It is what lets a rewrite of transition rendering claim the
+ *      already-correct kinds came through byte-identical, as a measurement
+ *      rather than a hope. Each golden carries an exact sha256 AND an 8×8 grid
+ *      of mean RGB, so the run can distinguish "different bytes" (reported,
+ *      non-fatal — see DETERMINISM) from "different picture" (a failure).
+ *   2. SEMANTIC CHECKS over the decoded pixels (see `lib/pixel-metrics.mjs`).
+ *      This catches WRONGNESS — including in a kind that has no golden yet,
+ *      which is exactly the case a hash can say nothing about.
  *
- *   node scripts/render-transition-matrix.mjs [kind ...]
+ * THE AXIS NAMED `mode` IS DELIBERATELY NOT "direction".
+ * A `mode` here is a REEL-LEVEL SCENARIO, defined entirely by how the probe
+ * reel is configured in `src/TransitionMatrix.tsx` and observable in the
+ * rendered output:
+ *
+ *   enter  a lone clip carrying the kind as its `transitionIn`  — a clip's head
+ *          with nothing before it.
+ *   exit   a lone clip carrying it as its `transitionOut`       — a clip's tail
+ *          with nothing after it.
+ *   cut    two clips meeting at a real cut                      — the composite
+ *          a reel actually renders.
+ *
+ * None of those three is a statement about the one-sided `direction` parameter
+ * the renderer currently threads through a presentation. When transition
+ * rendering moves to a two-input (outgoing + incoming) model, "direction" as an
+ * internal concept may not survive — but "a clip's head", "a clip's tail" and
+ * "two clips meeting" are scenarios a reel can always be in, and they stay
+ * expressible and observable. That is why the harness is written against them.
+ * Nothing in this file or in `lib/pixel-metrics.mjs` reads `direction`.
+ *
+ * DETERMINISM — measured here, not assumed. Probe content is flat colour plus a
+ * numeral: no photo, no video, which is where this repo's known ~1-in-20 render
+ * flake lives. Neither this harness nor `remotion.config.ts` sets a Chromium
+ * OpenGL renderer, and the one configuration measured to be non-deterministic in
+ * this programme (a brand reel) is the one that sets `angle`. Do not add either.
+ *
+ * Even so, these renders are NOT byte-deterministic — and after ~2,070 renders
+ * of investigation the flake is characterised precisely rather than tolerated
+ * vaguely (full write-up in docs/superpowers/transition-pixel-harness.md):
+ *
+ *   - every differing pixel sits in the RIGHTMOST 8 COLUMNS of the 540px frame,
+ *     16-28 pixels out of 518,400, alpha never changing;
+ *   - it is strictly BIMODAL — exactly two globally stable hashes per affected
+ *     cell, the same two across independent runs, both orderings and 16 fresh
+ *     processes, never a third;
+ *   - it is a PER-RENDER coin flip at 9-50% per cell, not run-scoped (an earlier
+ *     version of this comment claimed eight isolated renders agree 8/8; that was
+ *     wrong — measured, one browser: A A B A A B B B);
+ *   - the worst 8×8 cell mean shift it produces is 0.0183/255, two orders of
+ *     magnitude below FP_TOLERANCE, so it always reports delta 0.
+ *
+ * Because it is bimodal and stable, it is RECORDED, not exempted: a golden may
+ * carry two accepted hashes (`<a>|<b>`) for a cell listed in `bimodalCells`, and
+ * either matches as `ok`. Byte-exact enforcement therefore still applies to all
+ * 300 cells — there is no exempted kind and no blind spot. Consequences, all
+ * visible in the output, never silent:
+ *   - a mismatch is re-rendered once before it is called drift (on the SAME
+ *     browser: replacing the browser mid-run was tried and crashes the run with
+ *     an unhandled EPIPE — see the browser-lifecycle note below);
+ *   - a mismatch against every accepted hash whose 8×8 picture still agrees is
+ *     `NEAR`: reported and counted by default, FATAL under `--strict`. Use
+ *     `--strict` for any claim that rendering came through unchanged — the
+ *     tolerance is wide enough (~8100 px per cell) that a localised real change,
+ *     or a uniform ±1-2/255 shift across the whole frame, would sit inside it,
+ *     and a uniform shift is exactly what restacking compositing layers
+ *     produces;
+ *   - `--update-goldens` renders each still `--repeat=N` times (default 2), so a
+ *     flake is never baked into a baseline; at `--repeat=8` or more it also
+ *     RECORDS a two-hash cell instead of majority-voting one away;
+ *   - `--audit-bimodal` re-samples the recorded cells, so a cell that stopped
+ *     flaking must be de-listed rather than lingering as dead tolerance.
+ *
+ * USAGE
+ *   node scripts/render-transition-matrix.mjs                # the gate
+ *   node scripts/render-transition-matrix.mjs --strict       # …NEAR fatal — REQUIRED for a parity claim
+ *   node scripts/render-transition-matrix.mjs fade wipe      # only these kinds
+ *   node scripts/render-transition-matrix.mjs --self-test    # no rendering; proves the checks have teeth
+ *   node scripts/render-transition-matrix.mjs --sheets       # also write contact sheets (needs ImageMagick)
+ *   node scripts/render-transition-matrix.mjs --update-goldens              # re-baseline (REVIEW THE DIFF)
+ *   node scripts/render-transition-matrix.mjs --update-goldens --repeat=12  # …and re-seed bimodal cells
+ *   node scripts/render-transition-matrix.mjs --audit-bimodal[=12]          # re-sample the recorded bimodal cells
+ *
+ * RE-BASELINING is always a reviewed edit: `--update-goldens` rewrites a
+ * committed JSON file and prints every added / removed / changed key, and it
+ * REFUSES to shrink coverage without `--allow-shrink`. It is not a way to make
+ * a red run go away quietly.
  */
 import { bundle } from '@remotion/bundler';
-import { getCompositions, renderStill } from '@remotion/renderer';
+import { getCompositions, openBrowser, renderStill } from '@remotion/renderer';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { decodePng } from './lib/png.mjs';
+import {
+  encodeGolden,
+  hashFrame,
+  isBimodalGolden,
+  modalColor,
+  semanticChecks,
+  toHex,
+  verifyFrame,
+} from './lib/pixel-metrics.mjs';
+import { runSelfTest } from './lib/harness-self-test.mjs';
+
+const DEFAULT_COMMENT =
+  'Golden pixel hashes for the at-cut transition matrix. One entry per <kind>__<mode>__<progress>, ' +
+  'hashed over the DECODED RGBA buffer (not the PNG file). Regenerate with ' +
+  '`node scripts/render-transition-matrix.mjs --update-goldens` and REVIEW THE DIFF — a re-baseline ' +
+  'asserts the new pixels are correct. `knownDefective` records kinds whose goldens are ' +
+  'WRONG-BUT-CURRENT (see docs/superpowers/at-cut-transition-findings.md): a change to those ' +
+  'goldens is expected, not a regression. `semanticXfail` is the subset the semantic checks ' +
+  'actually catch today; the harness fails if one of those starts passing without being removed ' +
+  'from the list in the same commit. `bimodalCells` lists the individual cells whose entry carries ' +
+  'TWO accepted hashes separated by "|" — this renderer is nondeterministic in the rightmost 8 ' +
+  'columns of the frame, strictly bimodal and globally stable, so both attractors are recorded and ' +
+  'either is accepted; every other cell is still enforced byte-exactly. A cell may only carry a ' +
+  'second hash if it is listed here, and `--audit-bimodal` re-samples the list so a cell that has ' +
+  'stopped flaking must be de-listed. A re-seed (`--update-goldens --repeat=24`) never shrinks this ' +
+  'list on the strength of ABSENCE: the flake\'s rate is not stationary between processes even ' +
+  'though its two attractor values are, so a recorded attractor that simply did not come up is ' +
+  'KEPT, and de-listing on absence is a decision a human asks for via `--audit-bimodal`. (A cell ' +
+  'IS de-listed when it stops rendering the recorded picture at all — that is a real change, not ' +
+  'an absent flake.) There is no `flakyUnderStrict` any more — the ' +
+  'kind-level NEAR exemption it named was retired and replaced by this per-cell mechanism; under ' +
+  '`--strict` a NEAR is fatal for EVERY kind, with no exemptions.';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'out', 'matrix');
 const SHEETS = path.join(ROOT, 'out', 'sheets');
+const GOLDEN_FILE = path.join(ROOT, 'goldens', 'transition-matrix.json');
 
 // Must match TransitionMatrix.tsx: 20-frame transition, 60-frame clips.
 const FRAMES = 20;
 const CLIP_F = 60;
 const PROGRESS = [0, 0.25, 0.5, 0.75, 1];
+const MODES = ['enter', 'exit', 'cut'];
 
 /** Global frame at which a mode's transition sits at `p`. */
 function frameFor(mode, p) {
@@ -46,12 +160,104 @@ function frameFor(mode, p) {
   return CLIP_F - FRAMES / 2 + off;
 }
 
-const only = process.argv.slice(2);
+const pKey = (p) => `p${String(p).replace('.', '')}`;
+const keyOf = (kind, mode, p) => `${kind}__${mode}__${pKey(p)}`;
 
-rmSync(OUT, { recursive: true, force: true });
-rmSync(SHEETS, { recursive: true, force: true });
-mkdirSync(OUT, { recursive: true });
-mkdirSync(SHEETS, { recursive: true });
+const argv = process.argv.slice(2);
+const flag = (name) => argv.includes(name);
+const UPDATE = flag('--update-goldens');
+const ALLOW_SHRINK = flag('--allow-shrink');
+const SELF_TEST = flag('--self-test');
+const STRICT = flag('--strict');
+const WANT_SHEETS = flag('--sheets');
+// How many times each still is rendered while re-baselining. 2 is enough to
+// reject a one-off; the two thresholds below decide when an observation is
+// strong enough to RECORD a bimodal cell, and when it is strong enough to
+// DE-LIST one.
+// ASYMMETRIC on purpose. Observing two distinct hashes is evidence of PRESENCE
+// and needs only enough samples to rule out a one-off, so recording a cell as
+// bimodal is cheap. Observing one hash is evidence of ABSENCE, which is much
+// weaker: measured minorities here run as low as 1 in 24, and at p=0.1 twelve
+// samples miss a flaking cell ~28% of the time. So de-listing a cell demands far
+// more samples than listing one.
+const BIMODAL_RECORD_SAMPLES = 8;
+const BIMODAL_DELIST_SAMPLES = 24;
+const repeatArg = argv.find((a) => a.startsWith('--repeat='));
+const REPEAT = repeatArg ? Math.max(1, Number(repeatArg.split('=')[1])) : 2;
+const auditArg = argv.find((a) => a.startsWith('--audit-bimodal'));
+const AUDIT = Boolean(auditArg);
+const AUDIT_N = auditArg?.includes('=') ? Math.max(2, Number(auditArg.split('=')[1])) : BIMODAL_DELIST_SAMPLES;
+const only = argv.filter((a) => !a.startsWith('--'));
+
+if (SELF_TEST) {
+  process.exit(runSelfTest() ? 0 : 1);
+}
+
+const problems = [];
+const notes = [];
+const fail = (msg) => problems.push(msg);
+
+// ---------------------------------------------------------------- goldens ---
+let goldens;
+try {
+  goldens = JSON.parse(readFileSync(GOLDEN_FILE, 'utf8'));
+} catch (err) {
+  if (!UPDATE) {
+    console.error(`no goldens at ${path.relative(ROOT, GOLDEN_FILE)} — run with --update-goldens to seed them`);
+    process.exit(1);
+  }
+  goldens = { probe: {}, kindCount: 0, knownDefective: [], frames: {} };
+}
+const oldFrames = { ...(goldens.frames ?? {}) };
+// TWO lists, deliberately not one. `knownDefective` is documentation — the
+// kinds whose goldens record wrong-but-current pixels, so Workstream 2 knows a
+// change there is expected. `semanticXfail` is the ENFORCED subset: the kinds
+// the semantic checks currently catch. They differ, and pretending otherwise
+// would be a lie in the gate: `checkerboard`'s defect is that its EXITING layer
+// does nothing, which is pixel-identical to the seven kinds that legitimately
+// do nothing when exiting (fade, dissolve, a colourless fade-to-color, burn, clock-wipe, iris,
+// gradient-wipe — see the findings doc). No pixel test can separate those, so
+// `checkerboard` is pinned by its golden hashes only.
+const knownDefective = new Set(goldens.knownDefective ?? []);
+const semanticXfail = new Set(goldens.semanticXfail ?? []);
+
+// CELLS — not kinds — measured to render bimodally. Each listed cell's golden
+// carries two accepted hashes; either matches as `ok`, anything else is
+// near/drift as normal, so byte-exact enforcement is retained everywhere.
+//
+// This replaced a kind-level `flakyUnderStrict` exemption, which was wrong three
+// ways: it blinded 30 cells to cover 10 (all `exit`-mode cells are structurally
+// incapable of the flake — both presentations apply their clip path only when
+// `presentationDirection !== 'exiting'`), it was scoped by the wrong predictor
+// ("curved edge" — `clock-wipe`'s flaking boundary is a straight radial ray and
+// `light-leak` has no clip path at all), and it was incomplete, so `--strict`
+// could still go red on an unchanged tree.
+// Two sets, deliberately. `declaredBimodal` is what the COMMITTED file says and
+// is what the guards below validate against; `bimodalCells` is the set that will
+// be WRITTEN, which a seeding pass adds to. Conflating them made the guards
+// validate the old goldens against a list the same run had just extended, so a
+// seeding pass failed against its own findings.
+const declaredBimodal = new Set(goldens.bimodalCells ?? []);
+const bimodalCells = new Set(declaredBimodal);
+
+// ---------------------------------------------------------------- render ----
+// Clearing the scratch directory must never be able to fail the RUN. Back to
+// back invocations raced here: a previous run's Chrome was still writing into
+// out/matrix, and `rmSync` threw `EACCES, Directory not empty` before a single
+// still had been rendered — a housekeeping error masquerading as a red gate.
+// Retry, then shrug: every still is written with `overwrite: true`, so a
+// leftover file is harmless.
+function clearDir(dir) {
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  } catch (err) {
+    notes.push(`could not clear ${path.relative(ROOT, dir)} (${err.code ?? err.message}); stills are overwritten in place`);
+  }
+  mkdirSync(dir, { recursive: true });
+}
+
+clearDir(OUT);
+if (WANT_SHEETS) clearDir(SHEETS);
 
 console.log('bundling…');
 // Mirrors remotion.config.ts. The CLI reads that file; the programmatic
@@ -69,57 +275,649 @@ const serveUrl = await bundle({
     },
   }),
 });
-const comps = (await getCompositions(serveUrl)).filter((c) => c.id.startsWith('Probe-'));
+// ONE warm browser for the whole matrix, replaced ONLY when a render actually
+// throws. Every other arrangement was tried here and measured worse:
+//   - letting `renderStill` launch its own Chrome per still is ~7x slower and
+//     dies around 60 stills ("Timed out after 25000ms while trying to connect
+//     to the browser");
+//   - recycling on a fixed count (every 15 stills) crashes the run outright with
+//     an unhandled `EPIPE` when a write lands on a replaced browser's socket,
+//     and leaves `chrome-headless-shell` processes behind that then wedge the
+//     NEXT run for minutes.
+// A single instance carries all 300 stills once the machine has no orphaned
+// Chrome processes on it; the 105-still hang seen earlier was on a machine still
+// holding orphans from a killed run. If a gate run ever hangs at startup, check
+// for stray `chrome-headless-shell` processes first.
+let browser = await openBrowser('chrome', { logLevel: 'error' });
+
+async function recycleBrowser(why) {
+  try {
+    await browser.close({ silent: true });
+  } catch {
+    /* a wedged browser is exactly what we are replacing */
+  }
+  browser = await openBrowser('chrome', { logLevel: 'error' });
+  notes.push(`browser replaced after a render error: ${why}`);
+}
+
+const allComps = await getCompositions(serveUrl, { puppeteerInstance: browser });
+const comps = allComps.filter((c) => c.id.startsWith('Probe-'));
+
+// THE CATALOG, read as DATA — not inferred from which probes turned up.
+//
+// `catalogKinds` and `allKinds` (below) are two INDEPENDENT observations, and
+// keeping them apart is the whole point. "This kind produced no probe" has two
+// causes with opposite correct responses: the kind left the catalog (a real
+// removal, prunable under an explicit opt-in) or its probe registration broke
+// while the kind is still very much shipping (a coverage hole). Read off the
+// probe list alone they are indistinguishable, and a re-baseline would happily
+// delete live coverage. See the STALE GOLDEN / MISSING PROBE guards below.
+//
+// A HARD FAILURE on every way this source can be absent, and the ORDER of these
+// checks is the whole guard. An earlier version read
+// `manifest?.defaultProps?.kinds ?? []` and only THEN asked whether the result
+// was an array — so a manifest that was PRESENT but carried no `kinds` payload
+// degraded silently to "the catalog is empty", the `??` having already replaced
+// the nullish value the `Array.isArray` check was there to catch. An empty
+// catalog authorises pruning EVERYTHING: `catalogKinds.includes(kind)` is false
+// for every kind, so every stale key reads as "removed from the catalog" and a
+// `--update-goldens --allow-shrink` run deletes live coverage and exits 0. The
+// manifest is a security boundary for the goldens; a spoof by OMISSION is still
+// a spoof.
+//
+// So: read RAW, validate BEFORE defaulting, and only then hand downstream code a
+// safe array.
+const manifest = allComps.find((c) => c.id === 'TransitionCatalogManifest');
+if (!manifest) {
+  fail(
+    'MANIFEST MISSING: no `TransitionCatalogManifest` composition in the bundle. It is what tells a REMOVED kind ' +
+      'apart from a kind whose probe failed to register, so the coverage guards cannot run without it. ' +
+      'Register it from examples/layered-minimal/src/TransitionMatrix.tsx.',
+  );
+}
+const rawCatalogKinds = manifest?.defaultProps?.kinds;
+if (manifest && !Array.isArray(rawCatalogKinds)) {
+  fail(
+    'MANIFEST MALFORMED: `TransitionCatalogManifest.defaultProps.kinds` is ' +
+      // Truncated: this is an arbitrary payload from the bundle, and a
+      // diagnostic must not be able to dump an unbounded object into the log.
+      `${rawCatalogKinds === undefined ? 'absent' : `${JSON.stringify(rawCatalogKinds).slice(0, 120)}…`}` +
+      ', not an array. It is the only thing that distinguishes a removed kind from a broken probe, and an ' +
+      'unreadable catalog must never read as an EMPTY one — that would authorise pruning every golden.',
+  );
+}
+if (manifest && Array.isArray(rawCatalogKinds) && rawCatalogKinds.length === 0) {
+  fail(
+    'MANIFEST EMPTY: `TransitionCatalogManifest.defaultProps.kinds` is an empty array. TRANSITION_CATALOG is ' +
+      'never empty, so this is a broken manifest, and treating it as the truth would mark every baselined ' +
+      'kind as removed.',
+  );
+}
+// Downstream code indexes this freely; validation above is what makes the
+// fallback safe rather than load-bearing (a run that reached it has already
+// recorded a failure, so no re-baseline can be written).
+const catalogKinds = Array.isArray(rawCatalogKinds) ? rawCatalogKinds : [];
 
 // "Probe-<kind>-<mode>" — mode is the LAST segment, kind is everything between
-// (kinds contain dashes: zoom-through, scanline-glitch, …).
+// (kinds contain dashes: zoom-through, scanline-glitch, …). The kind list is
+// NOT written here: it is whatever `TransitionMatrix.tsx` registered from
+// TRANSITION_CATALOG, so a kind added to the catalog is covered automatically.
 const parsed = comps.map((c) => {
   const parts = c.id.split('-');
   const mode = parts.pop();
   parts.shift();
   return { comp: c, kind: parts.join('-'), mode };
 });
+const allKinds = [...new Set(parsed.map((p) => p.kind))];
+const kinds = allKinds.filter((k) => only.length === 0 || only.includes(k));
+for (const k of only) if (!allKinds.includes(k)) fail(`no probe compositions for requested kind "${k}"`);
 
-const kinds = [...new Set(parsed.map((p) => p.kind))].filter((k) => only.length === 0 || only.includes(k));
-console.log(`${kinds.length} kinds × ${new Set(parsed.map((p) => p.mode)).size} modes × ${PROGRESS.length} progress points`);
+// MANIFEST LIVENESS — every discovered probe kind must be IN the manifest.
+//
+// Deliberately on the ORDINARY path, not gated on `--update-goldens` or
+// `--allow-shrink`. Without it a rotted manifest is invisible until the day
+// somebody re-baselines, which is the worst possible moment to discover that
+// the harness's second source stopped agreeing with its first: every routine
+// gate run would pass, and the damage would land inside the one operation that
+// deletes goldens. A stale, truncated or empty manifest fails HERE, at the next
+// gate run, with the kinds it has lost named.
+//
+// This is the converse of the MISSING PROBE guard below: that one catches
+// "the catalog has a kind the probes do not", this one catches "the probes have
+// a kind the catalog does not". Together they pin the two lists as equal, which
+// is what makes either of them trustworthy as evidence about the other.
+{
+  const missingFromManifest = allKinds.filter((k) => !catalogKinds.includes(k));
+  // `rawCatalogKinds.length > 0` so an EMPTY manifest reports once, as MANIFEST
+  // EMPTY, rather than also listing every kind in the catalog as "stale".
+  if (manifest && Array.isArray(rawCatalogKinds) && rawCatalogKinds.length > 0 && missingFromManifest.length > 0) {
+    fail(
+      `MANIFEST STALE: ${missingFromManifest.length} kind(s) registered probe compositions but are absent from ` +
+        `TransitionCatalogManifest — ${missingFromManifest.join(', ')}. The manifest is the harness's second, ` +
+        'independent source; when it stops matching the probes it can no longer tell a removed kind from a ' +
+        'broken one, and a later --allow-shrink re-baseline would prune live coverage on its word.',
+    );
+  }
+}
+
+const entryFor = (kind, mode) => parsed.find((p) => p.kind === kind && p.mode === mode);
+
+/** Render one still and hand back the decoded RGBA frame. */
+async function shoot(entry, frame, file) {
+  const output = path.join(OUT, file);
+  const once = () =>
+    renderStill({
+      composition: entry.comp,
+      serveUrl,
+      output,
+      puppeteerInstance: browser,
+      logLevel: 'error',
+      // Clamp: in `exit` mode the transition's own end (progress 1) lands on
+      // the frame one PAST the composition's last, since the exiting window
+      // runs to the clip's final frame. p=1 there is really p=0.95 — the last
+      // frame that exists.
+      frame: Math.min(frame, entry.comp.durationInFrames - 1),
+      overwrite: true,
+    });
+
+  try {
+    await once();
+  } catch (err) {
+    // A wedged browser is an INFRASTRUCTURE failure, not a rendering finding —
+    // replace it and try the same still once more. If it fails again the error
+    // propagates and the run dies loudly rather than skipping a still.
+    await recycleBrowser(`${file}: ${String(err.message ?? err).split('\n')[0]}`);
+    await once();
+  }
+  return decodePng(readFileSync(output));
+}
+
+// The plate colours are DERIVED, not restated: frame 0 of any `cut` probe is
+// pure clip A (the transition window does not open until frame 50) and its last
+// frame is pure clip B. So the harness stays correct if the probe's palette in
+// TransitionMatrix.tsx ever changes, and the change shows up in the golden
+// file's metadata diff rather than silently skewing every measurement.
+const refEntry = entryFor(kinds[0] ?? allKinds[0], 'cut');
+if (!refEntry) {
+  console.error('no `cut` probe composition found — cannot derive plate colours');
+  await browser.close({ silent: true });
+  process.exit(1);
+}
+const plateA = modalColor(await shoot(refEntry, 0, '_ref_a.png'));
+const plateB = modalColor(await shoot(refEntry, refEntry.comp.durationInFrames - 1, '_ref_b.png'));
+if (toHex(plateA) === toHex(plateB)) {
+  console.error(`probe plates are indistinguishable (${toHex(plateA)}) — the harness cannot measure anything`);
+  await browser.close({ silent: true });
+  process.exit(1);
+}
+console.log(`plates: outgoing ${toHex(plateA)} · incoming ${toHex(plateB)}`);
+console.log(`${kinds.length} kinds × ${MODES.length} modes × ${PROGRESS.length} progress points`);
 
 const started = Date.now();
+const newFrames = {};
+const results = { ok: 0, secondHash: 0, near: 0, drift: 0, missing: 0, retried: 0, nondeterministic: 0 };
+const semanticFailures = [];
+const xfail = [];
+const xpass = [];
 let n = 0;
+
 for (const kind of kinds) {
-  for (const mode of ['enter', 'exit', 'cut']) {
-    const entry = parsed.find((p) => p.kind === kind && p.mode === mode);
-    if (!entry) continue;
+  const decoded = {};
+  for (const mode of MODES) {
+    const entry = entryFor(kind, mode);
+    if (!entry) {
+      fail(`kind "${kind}" has no "${mode}" probe composition`);
+      continue;
+    }
     for (const p of PROGRESS) {
-      const output = path.join(OUT, `${kind}__${mode}__p${String(p).replace('.', '')}.png`);
-      await renderStill({
-        composition: entry.comp,
-        serveUrl,
-        output,
-        // Clamp: in `exit` mode the transition's own end (progress 1) lands on
-        // the frame one PAST the composition's last, since the exiting window
-        // runs to the clip's final frame. p=1 there is really p=0.95 — the last
-        // frame that exists.
-        frame: Math.min(frameFor(mode, p), entry.comp.durationInFrames - 1),
-        overwrite: true,
-      });
+      const key = keyOf(kind, mode, p);
+      const file = `${key}.png`;
+      let frame = await shoot(entry, frameFor(mode, p), file);
       n++;
+      newFrames[key] = encodeGolden(frame);
+
+      if (UPDATE) {
+        // Every still is rendered `--repeat=N` times (default 2) while
+        // re-baselining, so a one-off is never baked into the baseline.
+        //
+        // With N >= BIMODAL_RECORD_SAMPLES the pass is also the SEEDING pass: two
+        // distinct hashes are then not a flake to be majority-voted away but a
+        // measured property of the cell, and BOTH are recorded as accepted. The
+        // renderer's nondeterminism is a per-render coin flip at 9-50% per
+        // affected cell, so two samples cannot tell "bimodal" from "unlucky" —
+        // which is exactly why the old majority vote produced a baseline that
+        // could not be verified.
+        const samples = [frame];
+        for (let r = 1; r < REPEAT; r++) {
+          samples.push(await shoot(entry, frameFor(mode, p), `${key}.r${r}.png`));
+          n++;
+        }
+        const distinct = [...new Set(samples.map(hashFrame))].sort();
+        const fp = newFrames[key].split(' ')[1];
+        const wasAccepted = (oldFrames[key] ?? '').split(' ')[0].split('|').filter(Boolean);
+        // Does this cell still render what it rendered before? If NONE of the
+        // observed hashes is one the goldens accepted, the pixels genuinely
+        // changed and the old values must go. If ANY matches, the cell is the
+        // same picture and the two sets are UNIONED rather than replaced.
+        const stillTheSameCell = distinct.some((h) => wasAccepted.includes(h));
+        const carryForward = declaredBimodal.has(key) && stillTheSameCell;
+
+        // ABSENCE IS NOT EVIDENCE HERE — measured the hard way. `light-leak__exit__p075`
+        // was recorded at a 6/12 minority in one seeding pass and then produced ONE hash
+        // in 24 renders in the next. Under a stationary p=0.5 that has probability 6e-8,
+        // so the flake's RATE is not stationary between processes even though its two
+        // attractor VALUES are. (iris and clock-wipe reproduced identically across both
+        // passes; only light-leak's cells churned.) A seeding pass therefore never drops
+        // a recorded attractor just because it did not come up — that would silently
+        // un-record a real bimodal cell and hand back the false reds this whole mechanism
+        // exists to remove. De-listing is a decision a human asks for, via
+        // `--audit-bimodal`.
+        const accepted = carryForward ? [...new Set([...wasAccepted, ...distinct])].sort() : distinct;
+        newFrames[key] = `${accepted.join('|')} ${fp}`;
+
+        if (accepted.length > 2) {
+          // Union or single run, more than two accepted values means the "strictly
+          // bimodal" finding does not hold for this cell. That is important either way
+          // and must not be absorbed quietly.
+          fail(`NOT BIMODAL: "${key}" has ${accepted.length} accepted values (${distinct.length} observed in ${REPEAT} renders, ${wasAccepted.length} previously recorded). The known flake is strictly bimodal, so this is something else.`);
+        } else if (distinct.length === 2 && REPEAT >= BIMODAL_RECORD_SAMPLES) {
+          const minority = Math.min(...distinct.map((h) => samples.filter((sm) => hashFrame(sm) === h).length));
+          bimodalCells.add(key);
+          notes.push(`BIMODAL: ${key} produced two stable hashes in ${REPEAT} renders (minority ${minority}/${REPEAT}); both recorded as accepted`);
+        } else if (distinct.length === 2) {
+          // Too few samples to call it bimodal, but both values are now accepted
+          // rather than one being voted away — accepting a value that the renderer
+          // demonstrably produces can only reduce false reds.
+          bimodalCells.add(key);
+          notes.push(`${key} rendered two different images in ${REPEAT}; both accepted, but re-run with --repeat=${BIMODAL_RECORD_SAMPLES} or more to confirm it is the known bimodal flake`);
+        } else if (accepted.length === 2) {
+          notes.push(`${key} is recorded bimodal but produced only ${distinct[0].slice(0, 12)} in ${REPEAT} renders; its recorded pair is KEPT (the flake's rate is not stationary — see the comment above). Run --audit-bimodal to decide about de-listing.`);
+        } else if (declaredBimodal.has(key) && !stillTheSameCell) {
+          bimodalCells.delete(key);
+          notes.push(`${key} was recorded bimodal but now renders something different entirely; its old accepted values are dropped and it is de-listed`);
+        }
+      } else if (AUDIT) {
+        // Guard C, standalone: re-sample the cells recorded as bimodal.
+        if (bimodalCells.has(key)) {
+          const samples = [frame];
+          for (let r = 1; r < AUDIT_N; r++) {
+            samples.push(await shoot(entry, frameFor(mode, p), `${key}.a${r}.png`));
+            n++;
+          }
+          const seen = new Set(samples.map(hashFrame));
+          const accepted = new Set((oldFrames[key] ?? '').split(' ')[0].split('|'));
+          const unexpected = [...seen].filter((h) => !accepted.has(h));
+          if (unexpected.length) {
+            fail(`BIMODAL AUDIT: ${key} produced a hash outside its accepted set (${unexpected.map((h) => h.slice(0, 12)).join(', ')}) in ${AUDIT_N} renders`);
+          } else if (seen.size === 1) {
+            fail(`BIMODAL XPASS: "${key}" is listed in bimodalCells but produced ONE hash in ${AUDIT_N} renders. Remove it from bimodalCells (and drop the second hash) in the same commit.`);
+          } else {
+            const minority = Math.min(...[...seen].map((h) => samples.filter((s) => hashFrame(s) === h).length));
+            console.log(`  AUDIT ${key} — both attractors seen (minority ${minority}/${AUDIT_N}) ok`);
+          }
+        }
+      } else {
+        let v = verifyFrame(key, frame, oldFrames);
+        if (v.status === 'near' || v.status === 'drift') {
+          // Re-render once before calling it drift — loudly, never silently.
+          console.log(`  RETRY ${key} — ${v.status === 'near' ? 'bytes differ (picture matches)' : 'picture differs'}; re-rendering`);
+          results.retried++;
+          const again = await shoot(entry, frameFor(mode, p), `${key}.retry.png`);
+          n++;
+          const h2 = hashFrame(again);
+          if (h2 !== v.actual) {
+            results.nondeterministic++;
+            notes.push(`NON-DETERMINISTIC render: ${key} produced two different images in one run (${v.actual.slice(0, 12)} / ${h2.slice(0, 12)})`);
+          }
+          const v2 = verifyFrame(key, again, oldFrames);
+          if (v2.status === 'ok' || (v.status === 'drift' && v2.status === 'near')) {
+            notes.push(`FLAKE RECOVERED: ${key} ${v2.status === 'ok' ? 'matched the golden' : 'matched the golden picture'} on the second render`);
+            frame = again;
+            newFrames[key] = encodeGolden(again);
+          }
+          v = v2;
+        }
+        if (v.status === 'drift') {
+          results.drift++;
+          fail(`PIXEL DRIFT: ${key} — the picture changed (max cell delta ${v.delta})\n    expected ${v.expected}\n    actual   ${v.actual}`);
+        } else if (v.status === 'near') {
+          // Bytes moved, the picture did not — within a tolerance that is wide
+          // by necessity, not by preference. Counted and named either way; under
+          // `--strict` it is also FATAL, because a claim that rendering came
+          // through unchanged cannot be made on a lenient run.
+          results.near++;
+          const line = `NEAR ${key} — bytes differ, picture identical within tolerance (max cell delta ${v.delta})`;
+          if (STRICT) fail(`${line} — fatal under --strict`);
+          else console.log(`  ${line}`);
+        } else if (v.status === 'missing-golden') {
+          results.missing++;
+          fail(`NO GOLDEN for ${key} — a kind is covered by the matrix but not baselined; run --update-goldens and review the diff`);
+        } else {
+          results.ok++;
+          // Count matches on the cell's SECOND recorded hash — `matchedIndex`,
+          // not `accepted`. An earlier version incremented on ANY accepted match
+          // on a bimodal cell, which made the number a constant (16 on every full
+          // sweep) dressed up as a measurement, and printed a false summary line
+          // on every single run. It is a measurement now: it varies run to run,
+          // and a bimodal cell whose second hash never comes up is what
+          // `--audit-bimodal` exists to catch.
+          if (v.matchedIndex === 1) results.secondHash++;
+        }
+      }
+
+      decoded[`${mode}__${pKey(p)}`] = frame;
     }
   }
-  // Contact sheet: 5 columns (progress) × 3 rows (mode), labelled.
-  const tiles = [];
-  for (const mode of ['enter', 'exit', 'cut']) {
-    for (const p of PROGRESS) tiles.push(path.join(OUT, `${kind}__${mode}__p${String(p).replace('.', '')}.png`));
+
+  // `cut` is the instantaneous kind: it has no `frames` at all, so the
+  // "must be mid-transition at halfway" check does not apply to it.
+  const sem = semanticChecks({ kind, frames: decoded, a: plateA, b: plateB, isInstant: kind === 'cut' });
+  if (semanticXfail.has(kind)) {
+    if (sem.length === 0) xpass.push(kind);
+    else xfail.push(...sem);
+  } else {
+    semanticFailures.push(...sem);
   }
-  execFileSync('montage', [
-    ...tiles.flatMap((t) => ['-label', path.basename(t, '.png').replace(`${kind}__`, ''), t]),
-    '-tile', `${PROGRESS.length}x3`,
-    '-geometry', '180x320+4+4',
-    '-background', '#222222',
-    '-fill', '#ffffff',
-    '-pointsize', '11',
-    path.join(SHEETS, `${kind}.png`),
-  ]);
+
+  if (WANT_SHEETS) writeSheet(kind);
   console.log(`  ${kind} — ${n} stills, ${((Date.now() - started) / 1000).toFixed(0)}s`);
 }
 
-console.log(`\n${n} stills → ${OUT}\ncontact sheets → ${SHEETS}`);
+const elapsed = (Date.now() - started) / 1000;
+await browser.close({ silent: true });
+
+// ------------------------------------------------------- coverage guards ----
+// A gate that silently covers less than it claims is worse than no gate. These
+// guards are the reason `--update-goldens` cannot be used to make a shrinking
+// matrix disappear.
+// These run even on a FILTERED run: they compare the catalog against the golden
+// file and never depend on what was rendered, so `node … fade` still tells you
+// the matrix has stopped covering what it claims to.
+{
+  const expectedKinds = goldens.kindCount ?? 0;
+  if (allKinds.length < expectedKinds && !(UPDATE && ALLOW_SHRINK)) {
+    fail(`COVERAGE SHRANK: goldens were taken over ${expectedKinds} kinds, this run found ${allKinds.length}. If that is intended, re-baseline with --update-goldens --allow-shrink.`);
+  }
+  // A CATALOG KIND THAT REGISTERED NO PROBE is a coverage hole, and it is NOT
+  // what `--allow-shrink` is for. Checked against the manifest rather than
+  // against what rendered, so it fires on a filtered run too, and BEFORE the
+  // per-key loop below so the diagnosis is one line rather than fifteen.
+  //
+  // This is the case an earlier version of the shrink fix let through: it
+  // disabled the whole stale-golden loop under `--update-goldens
+  // --allow-shrink`, and the loop's real predicate is "no probe was
+  // discovered", never "the catalog no longer has it". Break only `wipe`'s
+  // probe registration, leave `wipe` in the catalog, and a re-baseline would
+  // silently delete all 15 of its goldens and exit 0.
+  for (const kind of catalogKinds) {
+    if (!allKinds.includes(kind)) {
+      fail(
+        `MISSING PROBE: "${kind}" is in TRANSITION_CATALOG but registered no probe compositions, so this run ` +
+          'covers it with nothing. --allow-shrink does NOT cover this — it is a broken probe, not a removed kind. ' +
+          'Fix the registration in src/TransitionMatrix.tsx.',
+      );
+    }
+  }
+
+  // Gated on the same explicit opt-in as the count guard above, and NARROWED to
+  // the one case that opt-in exists for: a key whose kind is absent from the
+  // CATALOG. `--allow-shrink` was otherwise unusable — removing a kind makes
+  // every one of its 15 cells stale at once, each a `fail()`, and any failure
+  // makes the re-baseline refuse to write, so the flag the COVERAGE SHRANK
+  // message tells you to reach for could never complete the removal it exists
+  // for. On an unfiltered `--update-goldens` run the written set is `newFrames`,
+  // so those keys are pruned by construction. A key whose kind is STILL IN the
+  // catalog keeps failing here regardless of any flag; the guard above will
+  // usually have said why first.
+  for (const key of Object.keys(oldFrames)) {
+    const kind = key.split('__')[0];
+    if (allKinds.includes(kind)) continue;
+    const inCatalog = catalogKinds.includes(kind);
+    if (!inCatalog && UPDATE && ALLOW_SHRINK) continue;
+    fail(
+      inCatalog
+        ? `STALE GOLDEN: "${key}" is baselined and kind "${kind}" IS STILL IN THE CATALOG, but no probe was discovered for it`
+        : `STALE GOLDEN: "${key}" is baselined but kind "${kind}" no longer exists`,
+    );
+  }
+  // …and the converse, cross-producted rather than observed. The per-still
+  // `missing-golden` check below only ever fires for kinds this run RENDERED, so
+  // on a filtered run a newly added catalog kind with no goldens at all used to
+  // slip through silently — and `kindCount` only guards against SHRINKING, so it
+  // did not catch it either. That is precisely the failure this harness exists to
+  // prevent, so the check is done here, off the catalog, with no renders involved.
+  if (!UPDATE) {
+    const unbaselined = [];
+    for (const kind of allKinds) {
+      for (const mode of MODES) {
+        for (const p of PROGRESS) if (!(keyOf(kind, mode, p) in oldFrames)) unbaselined.push(keyOf(kind, mode, p));
+      }
+    }
+    if (unbaselined.length) {
+      const kindsAffected = [...new Set(unbaselined.map((k) => k.split('__')[0]))];
+      fail(
+        `UNBASELINED COVERAGE: ${unbaselined.length} of ${allKinds.length * MODES.length * PROGRESS.length} matrix cells have no golden, ` +
+          `across ${kindsAffected.length} kind(s): ${kindsAffected.join(', ')}. Run --update-goldens and review the diff.`,
+      );
+    }
+  }
+  for (const k of knownDefective) {
+    if (!allKinds.includes(k)) fail(`knownDefective lists "${k}", which is not a transition kind any more`);
+  }
+  for (const k of semanticXfail) {
+    if (!knownDefective.has(k)) fail(`semanticXfail lists "${k}" but knownDefective does not — the two lists have drifted`);
+  }
+  // A second accepted hash may NEVER appear without the cell being listed: a
+  // newly bimodal cell is information, not noise, and must reach a reviewer as a
+  // one-line addition to `bimodalCells` rather than hiding inside a hash column.
+  for (const [key, value] of Object.entries(oldFrames)) {
+    if (isBimodalGolden(value) && !declaredBimodal.has(key))
+      fail(`UNDECLARED BIMODAL GOLDEN: "${key}" carries two accepted hashes but is not listed in bimodalCells`);
+  }
+  for (const key of declaredBimodal) {
+    if (!(key in oldFrames)) fail(`bimodalCells lists "${key}", which has no golden at all`);
+    else if (!isBimodalGolden(oldFrames[key]))
+      fail(`bimodalCells lists "${key}" but its golden carries only one accepted hash — re-seed with --update-goldens --repeat=${BIMODAL_RECORD_SAMPLES} or de-list it`);
+  }
+  const probe = goldens.probe ?? {};
+  const now = { width: refEntry.comp.width, height: refEntry.comp.height, frames: FRAMES, clipFrames: CLIP_F, progress: PROGRESS, modes: MODES };
+  if (!UPDATE && probe.width !== undefined) {
+    for (const field of ['width', 'height', 'frames', 'clipFrames']) {
+      if (probe[field] !== now[field]) fail(`PROBE GEOMETRY CHANGED: ${field} was ${probe[field]}, is now ${now[field]} — the goldens describe a different matrix`);
+    }
+    for (const field of ['progress', 'modes']) {
+      if (JSON.stringify(probe[field]) !== JSON.stringify(now[field])) {
+        fail(`PROBE AXIS CHANGED: ${field} was ${JSON.stringify(probe[field])}, is now ${JSON.stringify(now[field])}`);
+      }
+    }
+  }
+
+  // ---- THE CELL AXES ARE SHRINK-GUARDED TOO (`modes`, `progress`) --------
+  //
+  // A matrix cell is `kind × mode × progress`. Until this guard, EVERY shrink
+  // protection in this file was on the KIND axis — `COVERAGE SHRANK`,
+  // `STALE GOLDEN`, `MISSING PROBE`, `kindCount`, all of them — and the other
+  // two axes had none at all. Narrowing `PROGRESS` to `[0, 0.5, 1]` and running
+  // PLAIN `--update-goldens`, with no `--allow-shrink` anywhere, deleted 120 of
+  // 300 cells at exit 0 and the follow-up `--strict` run then passed: 40% of
+  // coverage gone, green.
+  //
+  // IT WAS SILENT BECAUSE IT WAS SELF-HEALING. `probe.progress` is rewritten
+  // from the live axis on every re-baseline, and the `PROBE AXIS CHANGED` check
+  // above is gated on `!UPDATE` — so the one mode that MUTATES the axis was the
+  // one mode that stopped checking it. The follow-up gate compared the new axis
+  // against a `probe` block that had just been rewritten to match.
+  //
+  // And it de-listed attractors: 10 `bimodalCells` entries belonging to
+  // SURVIVING kinds went with the dropped cells, which is the union rule's
+  // exact prohibition rather than the kind-removal case it exempts.
+  //
+  // The rule here is the same one the kind axis gets, one axis over: losing a
+  // member is a SHRINK and needs the explicit two-flag opt-in, itemised per
+  // cell. Gaining one is a widening and stays free — adding a progress point is
+  // a normal thing to want, and it only ever adds cells.
+  {
+    const axes = [
+      ['modes', probe.modes, MODES],
+      ['progress', probe.progress, PROGRESS],
+    ];
+    const shrunk = axes
+      .map(([name, was, nowAxis]) => ({
+        name,
+        was,
+        nowAxis,
+        // Compared by `pKey`/string identity, the same way the golden keys are
+        // built — so `0.25` vs `0.250` cannot read as a lost member.
+        gone: Array.isArray(was) ? was.filter((v) => !nowAxis.some((x) => pKey(x) === pKey(v))) : [],
+      }))
+      .filter((a) => a.gone.length > 0);
+
+    if (shrunk.length > 0) {
+      // Every key the CURRENT axes can still produce, for the kinds that still
+      // exist. Anything baselined outside it, for a kind that survives, is a
+      // cell this axis change would delete — deliberately disjoint from the
+      // kind-axis guards above, which own the kinds that went away.
+      const survivable = new Set();
+      for (const kind of allKinds) for (const mode of MODES) for (const p of PROGRESS) survivable.add(keyOf(kind, mode, p));
+      const dropped = Object.keys(oldFrames).filter(
+        (k) => !survivable.has(k) && allKinds.includes(k.split('__')[0]),
+      );
+      const attractors = dropped.filter((k) => declaredBimodal.has(k));
+
+      if (!(UPDATE && ALLOW_SHRINK)) {
+        for (const a of shrunk) {
+          fail(
+            `AXIS SHRANK: \`${a.name}\` lost ${a.gone.length} member(s) — ${JSON.stringify(a.gone)} — ` +
+              `was ${JSON.stringify(a.was)}, is now ${JSON.stringify(a.nowAxis)}. A cell is kind × mode × progress, ` +
+              `so this deletes ${dropped.length} baselined cell(s)` +
+              (attractors.length ? ` INCLUDING ${attractors.length} recorded bimodal attractor(s) for surviving kinds` : '') +
+              '. Pass --update-goldens --allow-shrink if the narrowing is intended.',
+          );
+        }
+        for (const key of dropped) fail(`AXIS-DROPPED GOLDEN: "${key}" would be deleted by the axis change above`);
+      }
+      // An axis change touches EVERY kind, so re-baselining one from a filtered
+      // run is incoherent whatever the flags say: `frames` is the union on a
+      // filtered run, so the old-axis cells survive while `probe.progress` is
+      // rewritten to the narrow axis — a golden file claiming an axis its own
+      // keys contradict.
+      if (only.length > 0) {
+        fail(
+          `AXIS CHANGE ON A FILTERED RUN: \`${shrunk.map((a) => a.name).join('`, `')}\` changed, but this run was ` +
+            `filtered to ${JSON.stringify(only)}. An axis change touches every kind; re-baseline it unfiltered.`,
+        );
+      }
+    }
+  }
+}
+
+for (const f of semanticFailures) {
+  fail(`SEMANTIC: ${f.kind} — ${f.check} (${f.detail})`);
+}
+for (const k of xpass) {
+  fail(`XPASS: "${k}" is listed as knownDefective but now passes every semantic check. If it was fixed, remove it from goldens/transition-matrix.json's knownDefective list in the same commit.`);
+}
+
+// --------------------------------------------------------------- goldens ----
+if (UPDATE) {
+  const merged = { ...oldFrames, ...newFrames };
+  // A filtered run must not delete the keys it did not render; an unfiltered
+  // one prunes stale keys so a removed kind cannot linger as dead coverage.
+  const frames = only.length === 0 ? newFrames : merged;
+  const added = Object.keys(frames).filter((k) => !(k in oldFrames));
+  const removed = Object.keys(oldFrames).filter((k) => !(k in frames));
+  const changed = Object.keys(frames).filter((k) => k in oldFrames && oldFrames[k] !== frames[k]);
+  const nextCount = only.length === 0 ? allKinds.length : Math.max(goldens.kindCount ?? 0, allKinds.length);
+  if (nextCount < (goldens.kindCount ?? 0) && !ALLOW_SHRINK) {
+    fail(`refusing to re-baseline: kind coverage would drop from ${goldens.kindCount} to ${nextCount}. Pass --allow-shrink if a kind was genuinely removed.`);
+  } else if (problems.length) {
+    // The run already recorded failures — a semantic defect in a kind that is not
+    // pinned, an unstable still, a broken coverage guard. Writing goldens anyway
+    // would let `--update-goldens` launder exactly the thing the gate is for.
+    console.log(`\nNOT writing goldens: this run recorded ${problems.length} failure(s). Fix them, then re-baseline.`);
+  } else {
+    const next = {
+      // Unconditional, NOT `goldens.$comment ?? …`. With the `??` the constant was
+      // dead the moment the file had a comment at all, so a corrected description
+      // shipped in source while the committed artifact — the thing a reviewer reads
+      // first — went on documenting a mechanism that no longer existed.
+      $comment: DEFAULT_COMMENT,
+      generatedBy: 'examples/layered-minimal/scripts/render-transition-matrix.mjs --update-goldens',
+      probe: {
+        width: refEntry.comp.width,
+        height: refEntry.comp.height,
+        frames: FRAMES,
+        clipFrames: CLIP_F,
+        progress: PROGRESS,
+        modes: MODES,
+        plateOutgoing: toHex(plateA),
+        plateIncoming: toHex(plateB),
+      },
+      kindCount: nextCount,
+      knownDefective: [...knownDefective].sort(),
+      semanticXfail: [...semanticXfail].sort(),
+      // INTERSECTED with what is actually written, which matters only when a
+      // kind is removed. `bimodalCells` starts from the declared set and is
+      // only added to / deleted from for cells this run VISITED, so a removed
+      // kind's entries survive as keys with no golden — and the strict path
+      // then fails with `bimodalCells lists "X", which has no golden at all` on
+      // the very next run, turning a clean removal into a delayed red. A cell
+      // cannot be bimodal without a golden, so this is the invariant, not a
+      // convenience. It is NOT a de-listing of a surviving cell: `frames` here
+      // is the union on a filtered run, so only cells that genuinely left the
+      // matrix drop out.
+      bimodalCells: [...bimodalCells].filter((k) => k in frames).sort(),
+      frames: Object.fromEntries(Object.keys(frames).sort().map((k) => [k, frames[k]])),
+    };
+    mkdirSync(path.dirname(GOLDEN_FILE), { recursive: true });
+    writeFileSync(GOLDEN_FILE, `${JSON.stringify(next, null, 2)}\n`);
+    console.log(`\nre-baselined ${path.relative(ROOT, GOLDEN_FILE)}: +${added.length} added, -${removed.length} removed, ~${changed.length} changed`);
+    for (const k of [...added.map((k) => `  + ${k}`), ...removed.map((k) => `  - ${k}`), ...changed.map((k) => `  ~ ${k}`)]) console.log(k);
+    console.log('REVIEW THE DIFF before committing — a re-baseline is an assertion that the new pixels are correct.');
+  }
+}
+
+// ---------------------------------------------------------------- report ----
+console.log(`\n${n} stills in ${elapsed.toFixed(0)}s → ${path.relative(ROOT, OUT)}`);
+if (!UPDATE)
+  console.log(
+    `goldens: ${results.ok} accepted (${results.secondHash} matched a bimodal cell's SECOND recorded hash), ` +
+      `${results.near} same-picture-different-bytes, ${results.drift} drifted, ` +
+      `${results.missing} missing, ${results.retried} retried`,
+  );
+for (const note of notes) console.log(`NOTE  ${note}`);
+if (xfail.length) {
+  console.log(`\n${xfail.length} EXPECTED semantic failures across ${new Set(xfail.map((f) => f.kind)).size} known-defective kinds (see docs/superpowers/at-cut-transition-findings.md):`);
+  for (const f of xfail) console.log(`  xfail ${f.kind} — ${f.check} (${f.detail})`);
+}
+if (knownDefective.size) {
+  console.log(
+    `\ngoldens for ${[...knownDefective].sort().join(', ')} record WRONG-BUT-CURRENT pixels — ` +
+      'a change to those specific goldens is expected when the defects are fixed, not a regression.',
+  );
+}
+if (problems.length) {
+  console.log(`\n${problems.length} FAILURES:`);
+  for (const p of problems) console.log(`  ✗ ${p}`);
+  process.exit(1);
+}
+console.log('\nPASS');
+
+// ---------------------------------------------------------------- sheets ----
+function writeSheet(kind) {
+  const tiles = [];
+  for (const mode of MODES) for (const p of PROGRESS) tiles.push(path.join(OUT, `${keyOf(kind, mode, p)}.png`));
+  try {
+    execFileSync('montage', [
+      ...tiles.flatMap((t) => ['-label', path.basename(t, '.png').replace(`${kind}__`, ''), t]),
+      '-tile', `${PROGRESS.length}x${MODES.length}`,
+      '-geometry', '180x320+4+4',
+      '-background', '#222222',
+      '-fill', '#ffffff',
+      '-pointsize', '11',
+      path.join(SHEETS, `${kind}.png`),
+    ]);
+  } catch (err) {
+    notes.push(`contact sheet for ${kind} skipped: ${err.message.split('\n')[0]}`);
+  }
+}

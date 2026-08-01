@@ -1,8 +1,9 @@
 // Explicit React import: files under lib/theming are transformed with the classic JSX runtime under the editor's Vitest config, so `React` must be in scope.
 import React from 'react';
-import { interpolate, useCurrentFrame } from 'remotion';
+import { interpolate, Sequence, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { VideoRenderProps } from '../types';
 import type { CardTokens } from '../tokens';
+import { anchorTiming } from '../../render/overlay-anchor';
 
 // ---- defaults --------------------------------------------------------------
 // Every value is a default for a token in ../tokens.ts, so a brand can move any
@@ -18,6 +19,29 @@ import type { CardTokens } from '../tokens';
 //    nothing — a second brand overrides them through tokens.card.
 const DEFAULT_BACKGROUND = '#000000';
 const DEFAULT_PATTERN = { color: '#ffffff', accentColor: '#ffffff', opacity: 0.36 };
+// Pattern radii, pitches and angle are the pattern's own density — they do not
+// scale against any other exposed token (a pattern's grain is not tied to
+// type size the way the caption padding is to fontSize), so they stay
+// absolute px/deg rather than an em ratio. Promoted to tokens at Task 5.1 so a
+// brand CAN move them; defaults are campaign-reels' tuned literals, verbatim.
+// NOTE (Task 5.1 review, Minor 3): for `pixels`/`dots`/`grid`, the gradient's
+// centre offset (`circle at Xpx Xpx`) is DERIVED as `radiusPx * 2` below, not
+// an independent literal — pre-Task-5.1 the two were separate hardcoded
+// numbers (e.g. `3px` centre vs `1.5px` radius) that happened to satisfy this
+// same 2:1 ratio. Defaults are unaffected (the ratio holds exactly for both),
+// but a brand that sets `radiusPx` to something not intended to also move the
+// dot's positioning within its cell cannot decouple the two. Accepted as-is:
+// the 2:1 relationship keeps each dot's edge tangent to a corner of its own
+// pitch cell at any radius, which is the geometry that makes the pattern tile
+// seamlessly — an independent centre-offset field would let a brand break
+// that tiling, so coupling it to the radius is the safer default, not a gap.
+const DEFAULT_PIXELS_GEOMETRY = { radiusPx: 1.5, pitchPx: 36 };
+const DEFAULT_DOTS_GEOMETRY = { radiusPx: 1, pitchPx: 60 };
+const DEFAULT_GRID_GEOMETRY = { radiusPx: 1, pitchPx: 60 };
+const DEFAULT_DIAGONALS_GEOMETRY = { angleDeg: 135, pitchPx: 24 };
+// The diagonals' rule THICKNESS (not its pitch) is a hairline stroke width —
+// genuinely absolute per CONSTRAINTS' own example, so it is not a token.
+const DIAGONAL_LINE_WIDTH_PX = 1;
 const DEFAULT_TEXT = {
   fontFamily: 'sans-serif',
   fontWeight: 700,
@@ -39,21 +63,29 @@ function patternLayer(name: string | undefined, t: CardTokens['pattern']): React
   let backgroundImage: string | undefined;
   let backgroundSize: string | undefined;
   switch (name) {
-    case 'pixels':
-      backgroundImage = `radial-gradient(circle at 3px 3px, ${p.accentColor} 1.5px, transparent 1.5px)`;
-      backgroundSize = '36px 36px';
+    case 'pixels': {
+      const g = { ...DEFAULT_PIXELS_GEOMETRY, ...(t?.pixels ?? {}) };
+      backgroundImage = `radial-gradient(circle at ${g.radiusPx * 2}px ${g.radiusPx * 2}px, ${p.accentColor} ${g.radiusPx}px, transparent ${g.radiusPx}px)`;
+      backgroundSize = `${g.pitchPx}px ${g.pitchPx}px`;
       break;
-    case 'dots':
-      backgroundImage = `radial-gradient(circle at 2px 2px, ${p.accentColor} 1px, transparent 1px)`;
-      backgroundSize = '60px 60px';
+    }
+    case 'dots': {
+      const g = { ...DEFAULT_DOTS_GEOMETRY, ...(t?.dots ?? {}) };
+      backgroundImage = `radial-gradient(circle at ${g.radiusPx * 2}px ${g.radiusPx * 2}px, ${p.accentColor} ${g.radiusPx}px, transparent ${g.radiusPx}px)`;
+      backgroundSize = `${g.pitchPx}px ${g.pitchPx}px`;
       break;
-    case 'grid':
-      backgroundImage = `radial-gradient(circle at 2px 2px, ${p.color} 1px, transparent 1px)`;
-      backgroundSize = '60px 60px';
+    }
+    case 'grid': {
+      const g = { ...DEFAULT_GRID_GEOMETRY, ...(t?.grid ?? {}) };
+      backgroundImage = `radial-gradient(circle at ${g.radiusPx * 2}px ${g.radiusPx * 2}px, ${p.color} ${g.radiusPx}px, transparent ${g.radiusPx}px)`;
+      backgroundSize = `${g.pitchPx}px ${g.pitchPx}px`;
       break;
-    case 'diagonals':
-      backgroundImage = `repeating-linear-gradient(135deg, ${p.color} 0 1px, transparent 1px 24px)`;
+    }
+    case 'diagonals': {
+      const g = { ...DEFAULT_DIAGONALS_GEOMETRY, ...(t?.diagonals ?? {}) };
+      backgroundImage = `repeating-linear-gradient(${g.angleDeg}deg, ${p.color} 0 ${DIAGONAL_LINE_WIDTH_PX}px, transparent ${DIAGONAL_LINE_WIDTH_PX}px ${g.pitchPx}px)`;
       break;
+    }
     default:
       return null;
   }
@@ -145,7 +177,16 @@ const CARD_PLATES: Record<string, Plate> = {
  *
  *  Effects on the item are applied AROUND this by `renderVideoItemNode`, so
  *  nothing is applied here. */
-export const GenericCard: React.FC<VideoRenderProps> = ({ item, tokens }) => {
+export const GenericCard: React.FC<VideoRenderProps> = ({
+  item,
+  handles,
+  tokens,
+  anchoredOverlays,
+  renderAnchoredOverlay,
+}) => {
+  // Read before the early return below so the hook order never depends on
+  // `item.kind` (rules of hooks).
+  const { fps } = useVideoConfig();
   if (item.kind !== 'card') return null;
 
   const t: CardTokens = tokens?.card ?? {};
@@ -155,6 +196,21 @@ export const GenericCard: React.FC<VideoRenderProps> = ({ item, tokens }) => {
     <div data-card-bg="" style={{ position: 'absolute', inset: 0, backgroundColor: t.background ?? DEFAULT_BACKGROUND }}>
       {patternLayer(item.pattern, t.pattern)}
       {PlateComponent ? <PlateComponent props={item.cardProps ?? {}} tokens={t} /> : null}
+      {/* Phase 4 Task 4.1 — this item's anchored overlays, at the same
+          composition frame they would land on if routed 'track' instead (see
+          ../../render/overlay-anchor.ts). The root div above already wraps
+          unconditionally, so an empty map here changes nothing for the
+          zero-overlay case. */}
+      {(anchoredOverlays ?? []).map((o) => {
+        if (!renderAnchoredOverlay) return null;
+        const { from, durationInFrames } = anchorTiming(o, item, handles, fps);
+        if (durationInFrames <= 0) return null;
+        return (
+          <Sequence key={o.id} from={from} durationInFrames={durationInFrames} name={o.id}>
+            {renderAnchoredOverlay(o)}
+          </Sequence>
+        );
+      })}
     </div>
   );
 };

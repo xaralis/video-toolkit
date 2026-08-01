@@ -22,11 +22,12 @@
 // `defaultRenderBrandTrack`. Deliberately ONE narrow typed field in both
 // cases, not the whole theme — neither prop bag carries a `CompositionTheme`.
 //
-// THOSE ARE THE ONLY TWO AXES THAT THREAD ANYTHING. `caption` is on neither, so
-// it is the one field below that core does not deliver to its generic for you —
-// see its declaration on `ThemeTokens` for what a brand has to do instead. Read
-// that before adding a field here: a token nothing threads is a promise the
-// module cannot keep.
+// A THIRD axis threads the two OVERLAY blocks: `text` via `TrackTextOverlay`
+// and — since Phase 4 Task 4.3 — `caption` via `TrackCaptionsOverlay`, both in
+// lib/render/layered-composition.tsx, both reading the block straight off the
+// theme at the overlay dispatch. As of 4.3 EVERY block below is threaded by
+// core; `caption` was the last one that was not. Keep it that way when adding a
+// field here: a token nothing threads is a promise the module cannot keep.
 
 /** Look constants for {@link GenericMultiClip}. */
 export interface MultiClipTokens {
@@ -61,6 +62,38 @@ export interface MultiClipTokens {
   quadGapPx?: number;
   /** Colour behind the panes (shows through the gaps). Default `#000000`. */
   background?: string;
+  /** Fraction of the frame the FIRST pane takes in `split-h` / `split-v`; the
+   *  second pane gets the remainder. Expressed as a ratio (CSS `flex-grow`,
+   *  itself scale-free) rather than a px width, so it never decouples from the
+   *  frame size. Default 0.5 — an even split, campaign-reels' only split. */
+  splitRatio?: number;
+  /** `quad`'s two column weights, as CSS grid `fr` units (already a ratio, not
+   *  a px width). Default `[1, 1]` — two equal columns. */
+  quadColumns?: [number, number];
+  /** `quad`'s two row weights, as CSS grid `fr` units. Default `[1, 1]` — two
+   *  equal rows. */
+  quadRows?: [number, number];
+}
+
+/** Look constants for {@link GenericTextOverlay}.
+ *
+ *  UNLIKE every other field on {@link ThemeTokens}, this one threads through
+ *  `OverlayRenderProps.tokens` (see `TrackTextOverlay` in
+ *  lib/render/layered-composition.tsx), not `VideoRenderProps`/
+ *  `BrandRenderProps` — text is an overlay-track kind, not a video or
+ *  brand-layer kind.
+ *
+ *  Defaults reproduce the pre-tokens hardcoded literals EXACTLY (`#ffffff` /
+ *  `sans-serif` / 700 / 1.3), so an unthemed brand renders byte-identically. */
+export interface TextTokens {
+  /** Text colour. Default `#ffffff`. */
+  color?: string;
+  /** Font family. Default `sans-serif`. */
+  fontFamily?: string;
+  /** Font weight. Default `700`. */
+  fontWeight?: number;
+  /** Line height. Default `1.3`. */
+  lineHeight?: number;
 }
 
 /** Look constants for {@link GenericCard}. */
@@ -77,6 +110,19 @@ export interface CardTokens {
     accentColor?: string;
     /** Opacity of the whole pattern layer, 0..1. Default 0.36. */
     opacity?: number;
+    /** `pixels` dot radius and repeat pitch, in composition px. Neither scales
+     *  against another token (a pattern's own density is not tied to type
+     *  size), so both stay absolute px. Defaults 1.5 / 36 — campaign-reels'
+     *  tuned values. */
+    pixels?: { radiusPx?: number; pitchPx?: number };
+    /** `dots` dot radius and repeat pitch, in composition px. Defaults 1 / 60. */
+    dots?: { radiusPx?: number; pitchPx?: number };
+    /** `grid` dot radius and repeat pitch, in composition px. Defaults 1 / 60. */
+    grid?: { radiusPx?: number; pitchPx?: number };
+    /** `diagonals` rule angle (degrees) and repeat pitch (composition px).
+     *  Defaults 135 / 24. The 1px rule THICKNESS itself is not exposed — it is
+     *  a hairline stroke width, genuinely absolute, not a pattern density. */
+    diagonals?: { angleDeg?: number; pitchPx?: number };
   };
   /** Line typography. Defaults: `sans-serif`, 700, 120px, `#ffffff`,
    *  line-height 1.05, letter-spacing -0.02em, 80px horizontal padding
@@ -187,6 +233,63 @@ export interface CaptionTokens {
   lastLineGraceMs?: number;
   /** Upper bound on a `pop-focus` phrase chunk. Default 4. */
   maxWordsPerChunk?: number;
+  /** Half-width of the linear fade ramp around a word's active window, in ms.
+   *  Default 30 — {@link DEFAULT_CAPTION_WORD_FADE_MS} in `./generic/caption-lines`,
+   *  which had no token field until Task 5.1 even though its four siblings
+   *  (`maxChars`, `gapBreakMs`, `lastLineGraceMs`, `maxWordsPerChunk`) all did. */
+  wordFadeMs?: number;
+  /** `pop-focus` pill font-size multiplier over {@link fontSize}. Default 1.04
+   *  — already scale-free (a multiplier), so no unit conversion needed. */
+  popFontMultiplier?: number;
+  /** `pop-focus` pill's vertical/horizontal padding, each expressed as a
+   *  RATIO of {@link fontSize} (not px) — this is the exact `POP_PAD_X`/
+   *  `POP_PAD_Y` bug this task exists to fix: they used to be flat px against
+   *  a token-driven font size, so raising `fontSize` shrank the padding
+   *  proportionally instead of scaling with it. Defaults `10/52` and `22/52`
+   *  — both round-trip to the pre-Task-5.1 literals (10px, 22px) exactly at
+   *  the default `fontSize` of 52. */
+  popPadYEm?: number;
+  popPadXEm?: number;
+  /** Brief tail past a `pop-focus` chunk's last word so it does not snap out
+   *  before the next one takes over, in ms. Default 30 — a duration, not a
+   *  geometry magnitude, so it stays absolute. */
+  popTailMs?: number;
+  /** `pop-focus` letter-spacing. CSS `em`, already relative to the pill's own
+   *  computed font-size by definition — no ratio math needed. Default
+   *  `'0.02em'`. */
+  popLetterSpacing?: string;
+  /** `pop-focus` line-height. Unitless CSS multiplier — already relative to
+   *  font-size by definition. Default 1.1. */
+  popLineHeight?: number;
+  /** Gap between words, shared by BOTH modes. CSS `em`. Default `'0.4em'`.
+   *
+   *  RECONCILED at Task 5.1: `pop-focus` used `0.4em`, `highlight` used
+   *  `0.45em` — two values for the same "space between words" concept. Core
+   *  now has one token. `0.4em` (pop-focus's value) wins because pop-focus is
+   *  the shipping brand's LIVE mode; `highlight` is ported but dead in that
+   *  brand's code (see `GenericCaptions`'s own docblock). So this is a pixel
+   *  change ONLY for `highlight` mode (0.45em → 0.4em) — a mode no known
+   *  reel renders — and exact parity for `pop-focus`. */
+  wordGap?: string;
+  /** `highlight` mode: opacity of an inactive word, 0..1. Default 0.55 —
+   *  already a dimensionless ratio. */
+  highlightOpacityInactive?: number;
+  /** `highlight` mode: how much the active word scales up, added to 1.
+   *  Default 0.08 — already a dimensionless ratio. */
+  highlightScaleBump?: number;
+  /** `highlight` mode: the active word's halo radius at full envelope,
+   *  expressed as a RATIO of {@link fontSize} (not px) — the halo is a text
+   *  effect that should grow with type size, same reasoning as the pop-focus
+   *  padding. Default `10/52`, round-tripping to the pre-Task-5.1 10px
+   *  literal exactly at the default `fontSize`. */
+  highlightHaloMaxEm?: number;
+  /** `highlight` mode: the halo's peak alpha, 0..1. Default 0.5 — already a
+   *  dimensionless ratio. */
+  highlightHaloAlpha?: number;
+  /** `highlight` mode letter-spacing. CSS `em`. Default `'0.02em'`. */
+  highlightLetterSpacing?: string;
+  /** `highlight` mode line-height. Unitless CSS multiplier. Default 1.2. */
+  highlightLineHeight?: number;
 }
 
 /** Look constants a theme hands to core's generic renderers. Every axis is
@@ -197,22 +300,29 @@ export interface ThemeTokens {
   card?: CardTokens;
   watermark?: WatermarkTokens;
   disclaimer?: DisclaimerTokens;
-  /** UNLIKE EVERY OTHER FIELD HERE, core threads this NOWHERE. Captions are on
-   *  neither token axis — not `VideoRenderProps.tokens` (captions are not a
-   *  video kind) and not `BrandRenderProps.tokens` (not a brand-layer kind) —
-   *  and core has no mount site for {@link GenericCaptions} at all. Setting
-   *  `theme.tokens.caption` on its own therefore changes nothing.
+  /** Look constants for {@link GenericTextOverlay} — see {@link TextTokens}
+   *  for why this one threads through `OverlayRenderProps` rather than
+   *  `VideoRenderProps`/`BrandRenderProps`. */
+  text?: TextTokens;
+  /** Look constants for {@link GenericCaptions}.
    *
-   *  It is declared anyway because it is the typed, reviewed vocabulary for
-   *  that look, and a brand mounting `GenericCaptions` from its OWN renderer
-   *  passes it straight through:
+   *  THREADED SINCE PHASE 4 TASK 4.3, on the OVERLAY axis — like {@link text},
+   *  and unlike the video/brand-layer blocks above. Captions are an overlay
+   *  KIND (`content.kind === 'captions'`), so core's own mount
+   *  (`TrackCaptionsOverlay`, lib/render/layered-composition.tsx) reads this
+   *  block off the theme and hands it to `GenericCaptions`. Setting
+   *  `theme.tokens.caption` now changes what renders; before 4.3 it changed
+   *  nothing, because core had no mount site at all.
+   *
+   *  A brand mounting `GenericCaptions` from its OWN renderer still passes it
+   *  straight through, exactly as before:
    *
    *  ```tsx
    *  <GenericCaptions words={words} tokens={theme.tokens?.caption} />
    *  ```
    *
-   *  Routing captions through a core axis is a real design decision (which
-   *  tier owns them, how they interact with anchored overlays) and has not been
-   *  made. When it is, this comment goes. */
+   *  The routing decision this comment used to say was unmade is recorded, with
+   *  its reasoning and the alternatives rejected, in
+   *  docs/superpowers/phase4-extension-contract.md §6. */
   caption?: CaptionTokens;
 }

@@ -1,4 +1,5 @@
 import { interpolate, Easing } from 'remotion';
+import { isNodeEnabled } from '../../reel-config-base/node-enabled';
 
 // Ken Burns effect params, as found on a VideoItem's `effects` array (permissive
 // passthrough per EffectSchema). Two shapes are supported, mirroring the two
@@ -16,8 +17,18 @@ export interface KenBurnsEffect {
   toY?: number;
 }
 
+/** The item's ken-burns entry, if it has an ENABLED one.
+ *
+ *  The enable test has to be HERE, not in `applyEffects`. `ken-burns` is a
+ *  RESERVED type (see RESERVED_EFFECT_TYPES): `applyEffects` skips reserved
+ *  types BEFORE it reaches its own `isNodeEnabled` check, because the movement
+ *  is composed into the media element's transform inside SegmentMedia rather
+ *  than wrapped. So the reserved path is a second, independent route from the
+ *  authored `effects[]` to the frame, and it needs its own enable test or
+ *  `{ type: 'ken-burns', enabled: false }` parses, validates, and still moves —
+ *  on the one effect core itself renders and the editor itself offers. */
 export function findKenBurns(effects: Array<{ type: string }> | undefined): KenBurnsEffect | undefined {
-  return effects?.find((e): e is KenBurnsEffect => e.type === 'ken-burns');
+  return effects?.find((e): e is KenBurnsEffect => e.type === 'ken-burns' && isNodeEnabled(e));
 }
 
 // Ken Burns transform for the current frame.

@@ -24,11 +24,25 @@
  * ```
  */
 
+// The reel's leading/trailing edge, as a picture a two-input node can
+// composite against (Phase 4 Task 2.2). `EdgePlate` is a timeline sibling
+// materialised by `video-track.tsx`'s `edge()`, reached through the same
+// `LayerShell` a real clip is. `edgeInput` (the `composite`-arm helper that
+// used to resolve a nullable React-subtree input to this plate) is deleted —
+// Phase 5 Task 5, see `edge-plate.tsx`'s own note.
+export { EdgePlate } from './edge-plate';
+
 // Custom transitions
 export { glitch } from './presentations/glitch';
 export type { GlitchProps } from './presentations/glitch';
 export { burn } from './presentations/burn';
 export type { BurnProps } from './presentations/burn';
+
+// A dip to a colour the BRAND chose (Phase 4 Task 2.3) — the parameter that
+// core's old brand-named fade kind was missing. See the note at the top of the
+// module.
+export { fadeToColor } from './presentations/fade-to-color';
+export type { FadeToColorProps } from './presentations/fade-to-color';
 
 export { rgbSplit } from './presentations/rgb-split';
 export type { RgbSplitProps } from './presentations/rgb-split';
@@ -44,6 +58,18 @@ export type { LightLeakProps } from './presentations/light-leak';
 // this package's own richer implementation (startAngle/segments/counter-
 // clockwise) was never reachable from the schema, the editor or the renderer,
 // so it was deleted rather than kept as a second answer to the same kind.
+//
+// The same principle, applied again in Phase 4 Task 2.5: `TransitionGallery.tsx`
+// used to import `@remotion/transitions/wipe` and show it under the label a reel
+// uses for the `wipe` BELOW. Two components, one name. The official wipe is gone
+// from core entirely, and the gallery now resolves through the reel's own
+// `transitionNodeFor` — so the answer to "which component is `wipe`?" is
+// production's, and there is only one.
+//
+// Task 2.6 finished the job: the gallery imports NO presentation from this file
+// any more. It derives its entries from `TRANSITION_CATALOG` and resolves every
+// one of them through `transitionNodeFor`, so the same guarantee now covers all
+// 20 demonstrable kinds rather than just `wipe`.
 
 export { pixelate } from './presentations/pixelate';
 export type { PixelateProps } from './presentations/pixelate';

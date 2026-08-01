@@ -105,12 +105,17 @@ function plate(id: string, startMs: number, look: { color: string; label: string
 }
 
 /** The kind's CATALOG default, with `frames` forced to PROBE_FRAMES so every
- *  probe shares one progress→frame mapping. `wipe` additionally gets an accent
- *  KEY (the catalog seeds none, since the vocabulary is the brand's) so the
- *  sweep is visible rather than falling back to the presentation's neutral. */
+ *  probe shares one progress→frame mapping. `wipe` and `fade-to-color`
+ *  additionally get an accent KEY (the catalog seeds none, since the vocabulary
+ *  is the brand's) so the sweep / the dip is visible rather than falling back to
+ *  a colourless default. */
 function probeTransition(kind: string): Record<string, unknown> {
   const t = defaultTransition(kind, { frames: PROBE_FRAMES }) as Record<string, unknown>;
-  if (kind === 'wipe') t.color = 'accent';
+  // `fade-to-color` for the same reason as `wipe`: its colour is an accent-slot
+  // KEY the catalog cannot seed (the vocabulary is the brand's), and with none
+  // it deliberately renders the plain crossfade — which would make its 15
+  // goldens a duplicate of `fade`'s and pin nothing about the dip.
+  if (kind === 'wipe' || kind === 'fade-to-color') t.color = 'accent';
   return t;
 }
 
@@ -145,11 +150,41 @@ const Probe: React.FC<{ kind: string; mode: ProbeMode }> = ({ kind, mode }) => (
   <LayeredReelComposition reel={probeReel(kind, mode)} theme={probeTheme} />
 );
 
-/** One `<Composition>` per catalog kind per mode. Mounted from `Root.tsx`
- *  alongside `MinimalReel`; registering extra compositions cannot change what
- *  `MinimalReel` renders. */
+/** THE CATALOG ITSELF, carried as data rather than inferred from what rendered.
+ *
+ *  `getCompositions()` is the render script's ONLY window into this bundle, and
+ *  until this existed its only signal was "which `Probe-*` compositions turned
+ *  up". That conflates two things which need OPPOSITE responses:
+ *
+ *    - a kind was REMOVED from `TRANSITION_CATALOG` → its goldens are stale and
+ *      pruning them under an explicit `--update-goldens --allow-shrink` is the
+ *      whole point of that flag;
+ *    - a kind is STILL IN the catalog but its probe failed to register → its
+ *      goldens are live coverage, and pruning them is precisely the silent
+ *      coverage loss this harness exists to prevent.
+ *
+ *  With only the probe list, both look identical. This composition is the
+ *  independent second source that tells them apart. It renders nothing and is
+ *  deliberately NOT named `Probe-…`, so the script's probe filter never counts
+ *  it as a kind. */
+export const TRANSITION_CATALOG_MANIFEST_ID = 'TransitionCatalogManifest';
+
+const NullComponent: React.FC = () => null;
+
+/** One `<Composition>` per catalog kind per mode, plus the manifest above.
+ *  Mounted from `Root.tsx` alongside `MinimalReel`; registering extra
+ *  compositions cannot change what `MinimalReel` renders. */
 export const TransitionProbeCompositions: React.FC = () => (
   <>
+    <Composition
+      id={TRANSITION_CATALOG_MANIFEST_ID}
+      component={NullComponent as React.FC<Record<string, unknown>>}
+      durationInFrames={1}
+      fps={FPS}
+      width={PROBE_WIDTH}
+      height={PROBE_HEIGHT}
+      defaultProps={{ kinds: TRANSITION_CATALOG.map((e) => e.kind) } as unknown as Record<string, unknown>}
+    />
     {TRANSITION_CATALOG.flatMap((entry) => {
       const kind = entry.kind;
       return PROBE_MODES.map((mode) => (

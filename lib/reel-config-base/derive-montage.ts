@@ -35,10 +35,16 @@ export interface MontageConfig {
   outro: {
     // The outro's entrance is emitted below as `{ kind, frames }` on the last
     // content clip, so only the kinds that ARE `{ kind, frames }` may be named
-    // here — `dissolve`, `burn`, `glitch`, … but not `slide`/`wipe`/
-    // `zoom-through`, which need a direction/from this config has no place to
-    // carry. Naming one of those used to compile (behind an `as Transition`)
-    // and produce an invalid transition.
+    // here — `dissolve`, `burn`, `glitch`, … but not `slide`/`wipe`, which need
+    // a direction this config has no place to carry. Naming one of those used
+    // to compile (behind an `as Transition`) and produce an invalid transition.
+    //
+    // `zoom-through` JOINED the frames-only set in Task 2.5: unifying its
+    // in/out field on `direction` made that field optional (a member cannot
+    // require the field its deprecated alias stands in for), so
+    // `{kind:'zoom-through', frames}` is now a valid transition rendering the
+    // presentation's own `'in'`. It is nameable here as a consequence, not as a
+    // decision — the same status `zoom-blur` has always had.
     style: string; variant: string; transition: FramesOnlyTransitionKind; logoDelaySec?: number; beatStart: number;
   };
   watermark: { asset: string; corner: string; variant?: string };

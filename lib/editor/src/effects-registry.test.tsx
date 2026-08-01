@@ -44,8 +44,11 @@ describe('resolveEffectRenderer', () => {
 
   it('resolves a core generic for a type the brand did not register', () => {
     const theme: BrandTheme = { accentSlots: [] };
-    // Every core generic primitive must be reachable with no brand registration.
-    for (const type of ['grain', 'scanlines', 'vignette', 'grade', 'transform']) {
+    // Every core WRAPPER-axis generic must be reachable with no brand
+    // registration. `grade` is deliberately absent from this list, same as
+    // `ken-burns` — see the dedicated "has NO core wrapper generic" tests
+    // below (Phase 4 Task 3.4 moved grade onto the STYLE axis too).
+    for (const type of ['grain', 'scanlines', 'vignette', 'transform']) {
       expect(resolveEffectRenderer(theme, type), `core generic missing for ${type}`).toBeTypeOf('function');
     }
   });
@@ -63,6 +66,20 @@ describe('resolveEffectRenderer', () => {
     const media = <span data-w="media" />;
     const kb = item([{ type: 'ken-burns', direction: 'in' }]);
     expect(applyEffects({ accentSlots: [] }, kb, NO_HANDLES, media)).toBe(media);
+  });
+
+  // Phase 4 Task 3.4: `grade` joined `ken-burns` as a STYLE effect, applied
+  // inside SegmentMedia via `applyStyleEffects`'s synthetic `item.grade`
+  // entry AND any authored `type: 'grade'` entry — ONE implementation, not
+  // the pre-3.4 world where a `type:'grade'` WRAPPER effect (primitives.tsx's
+  // `GradeEffect`) applied through a second mechanism entirely. If core still
+  // registered a wrapper generic for `grade`, an item carrying BOTH
+  // `item.grade` and an authored `type:'grade'` entry would double the grade.
+  it('has NO core wrapper generic for grade, so it can never double-apply against item.grade', () => {
+    expect(resolveEffectRenderer({ accentSlots: [] }, 'grade')).toBeUndefined();
+    const media = <span data-w="media" />;
+    const g = item([{ type: 'grade', brightness: 1.2 }]);
+    expect(applyEffects({ accentSlots: [] }, g, NO_HANDLES, media)).toBe(media);
   });
 
   // The registry is OPEN-KEYED, so "core registers no generic" is not enough:

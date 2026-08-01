@@ -1,0 +1,316 @@
+# Phase 5 — brand migration notes
+
+Phase 5 is **core-only**, the same discipline as Phase 4: nothing here has been applied to
+either brand repo. This document is written for a **brand author** — someone maintaining a
+`brands/<brand>/`, a template, or a project in a repo that vendors this toolkit as a `toolkit/`
+submodule — not for this programme's own internal record. If you want the internal design
+rationale, staged-migration history, and measurement log, read
+`docs/superpowers/phase5-single-mount-design.md` and
+`.superpowers/sdd/phase5-single-mount-design/task-5-report.md` instead.
+
+## The headline: bump the pin, re-render, done
+
+**`buildVideoNodes` keeps its exact signature** — `(items, opts) => React.ReactNode[]`, same
+options bag (`renderItem`, `width`, `height`, `fps`, `palette`, `transitions`, `background`). Every
+brand call site that already builds a video track this way keeps compiling and keeps rendering,
+with no code change required. You get the single-mount fix (no more colour-flash / stall at a
+transition boundary in Studio or the editor `<Player>`) for free the moment you bump the
+`toolkit/` submodule pin past this commit.
+
+**If your brand does not register its own transition kinds and does not call `presentationFor`
+directly**, that is the entire migration: bump the pin, re-render, verify.
+
+If your brand registers a **custom transition kind** on `BrandTheme.transitions` — neither brand
+repo does this today, but the surface exists — read the rest of this document before your next
+registration, because the contract your renderer returns to narrowed in this phase.
+
+## What actually changed under the hood
+
+Before this phase, a transition renderer could hand back either a one-sided `AnyPresentation`
+(the shape `@remotion/transitions`' own five presentations use) or a **two-input node** exposing
+either `{ composite }` (a React component core mounted at the boundary, receiving both clips as
+subtrees it rendered itself) or `{ plan }` (a declarative description core applies to mounts that
+already exist). Phase 5 migrated every one of the toolkit's own 20 catalog kinds off `composite`
+onto `plan`, one mechanism at a time across five stages, and this task — the last one — **deletes
+the `composite` arm entirely**. A `TransitionNode` is now:
+
+```ts
+interface TransitionNode {
+  plan: (props: TransitionPlanProps) => TransitionComposite;
+}
+```
+
+There is no `composite` field any more, at the type level. If you have a brand renderer that
+returns `{ composite: SomeComponent }`, it will now fail to compile.
+
+**What you almost certainly do NOT need to touch:** if your renderer returns a plain
+`AnyPresentation` (the same `{ component, props }` shape `@remotion/transitions/fade` etc.
+return) — the ordinary way to register a one-sided custom transition — nothing changes for you
+**at the call site.** Core lifts that into `plan` automatically (`wrapRemotionPresentation`,
+previously `fromRemotionPresentation`), the same as it always has for the five official
+presentations — but the lift is now unconditional and life-long rather than boundary-scoped; see
+Rule 5 under "The new authoring surface" below before assuming your presentation needs no
+changes at all.
+
+**What DOES need a migration:** only a renderer that used to hand back `{ composite: MyComponent }`
+directly — a natively two-input transition your brand wrote by hand, receiving `from`/`to` as
+already-instantiated subtrees. That renderer now needs to return `{ plan: myPlan }` instead. See
+"Writing a `plan` node" below for the shape.
+
+## The new authoring surface, for anyone writing a native two-input node
+
+A `plan` is a **plain function**, not a React component — it cannot call hooks, and it is invoked
+once per live frame with a prop bag describing both sides of the boundary as **handles**
+(`LayerHandle`, `{ range: [number, number] }`), not as React subtrees:
+
+```ts
+function myPlan(props: TransitionPlanProps): TransitionComposite {
+  return {
+    from: { style: { opacity: 1 - props.progress } },
+    to: { style: { opacity: props.progress } },
+  };
+}
+```
+
+It returns a `TransitionComposite` describing how to STYLE the mounts that already exist, not
+JSX to render:
+
+- **`from` / `to`** (`LayerOp`, optional on each side) — `style` merged onto that side's shell,
+  `z` to override the default stacking order (incoming over outgoing), `ghosts` for extra styled
+  copies of the clip, and `wrap` for anything a style object can't express (an SVG mask, a
+  `foreignObject`).
+- **`layers`** (`PlateLayer[]`) — media-free full-frame plates (`under`/`between`/`over` the two
+  clips), for a colour sheet, an SVG filter's `<defs>`, a cell grid — anything that isn't a copy
+  of a clip.
+- **`post`** (`filter`/`transform` only) — applied to the WHOLE video track for the live window;
+  narrow on purpose, because anything wider (`opacity`, `mixBlendMode`) would change how the
+  track blends against what's beneath it, which is a reel-level decision no single boundary is
+  entitled to make.
+
+Five rules carry real consequences if you break them — none of them are enforced by a compile
+error, and only ONE of them is enforced by a dev-only console warning. `wrap`'s stability (Rule 2)
+and `wrap`'s unconditional declaration (Rule 4) both have NO dev warning at all — see "the two
+known gaps" below. **Rule 5 has no dev warning either, and it is the one that applies even if you
+never write a `plan` at all** — see below.
+
+1. **`ghosts.length` must not vary with `progress`.** Each ghost is an extra mount of the clip; a
+   count that changes mid-window destroys and recreates a media element mid-transition — the
+   exact defect this whole phase exists to remove, reintroduced by a node instead of by the
+   assembly. Vary a ghost's `style` (e.g. `opacity: 0` for "not showing right now"), never its
+   presence. **Warned** (`video-track:ghosts-vary:<boundary>:<side>`, once per boundary per side).
+2. **A `wrap` must be a STABLE component reference for the item's whole mounted life**, not just
+   for the frames your transition's own window is live — core mounts a declared `wrap` life-long,
+   with an `active` prop telling it whether its boundary is currently live, precisely so the
+   element type at that tree position never changes and nothing remounts. Returning a fresh
+   closure on different calls (`(props) => ({ from: { wrap: () => <Foo/> } })`, where the inline
+   arrow is a new function every call) violates this and reintroduces a remount, even though
+   nothing else about your node changed. Build any `wrap` component ONCE, outside your `plan`
+   function, and return the same reference every time.
+3. **`plan` cannot call hooks.** It is a plain function, invoked directly, not mounted as a
+   component. If your node genuinely needs live state (e.g. reading the current progress inside a
+   styled sub-component), put that in a `wrap` instead — `wrap` IS a real React component and may
+   use hooks (it can read `useActiveTransitionProgress()` for the live progress, scoped correctly
+   even when the same node is shared across two different boundaries).
+4. **Declare `wrap` UNCONDITIONALLY, or not at all — never depending on `progress`, `frame`, or
+   any other per-call input.** Core does not read `wrap` off your `plan`'s live, per-frame return
+   value. It samples your `plan` exactly ONCE per `buildVideoNodes` call, with a synthetic
+   out-of-window probe (`progress: 0, frame: -1` — a pair no live call ever produces), and mounts
+   ONLY what that one sample declared, for the item's entire life. This is intentional (it is what
+   makes an item's `wrap` mountable before its boundary has ever gone live, and it is what makes an
+   unstable `wrap` detectable at all — see Rule 2) but it has a sharp, silent edge: **a `plan` that
+   returns `wrap` conditionally — e.g. `wrap: progress > 0 ? MyWrap : undefined`, the natural way
+   to write "only wrap while something is happening" — is evaluated at the sample's `progress: 0`,
+   so `wrap` is `undefined` there, and your wrap is NEVER MOUNTED, on any frame, ever.** Nothing
+   errors and nothing warns; the transition simply renders as if you had never declared a `wrap` at
+   all, and the only symptom is your effect not showing up. There is no dev warning for this today —
+   it is the same class of gap as the missing unstable-`wrap` warning above, just for a different
+   mistake with the same root cause (a brand author cannot see the sampling `plan` is subjected to).
+   The rule: whether a `plan` result includes a `wrap` key must be a function of the AUTHORED
+   PARAMS only (e.g. `squareAnimation === 'fade'`), never of `progress`, `frame`, or any other
+   per-call value — vary what the wrap DOES with `style`/its own `active` prop, never whether it is
+   present at all.
+5. **A one-sided `AnyPresentation` must be visually the identity at its own inert end — progress
+   0 for something entering, progress 1 for something exiting — because core now wraps EVERY
+   `AnyPresentation` your brand registers, unconditionally, for the item's whole mounted life, not
+   just inside its boundary window.** `at-cut-transitions.tsx:713`
+   (`isTransitionNode(resolved) ? resolved : wrapRemotionPresentation(resolved)`) has no gate any
+   more — the Stage 5 flip deleted the `WRAP_PLAN_KINDS` allowlist that used to limit this lift to
+   core's own kinds. `wrapRemotionPresentation`'s `Wrap` mounts a live `TransitionLayer` for the
+   item's entire life and feeds it `NEUTRAL_PROGRESS` outside the transition's actual window — it
+   does not skip rendering your presentation just because the boundary isn't live yet. **Measured,
+   not assumed:** registering a brand kind that returns a plain `AnyPresentation` — exactly the
+   shape the section above says needs no migration — and driving it through the real
+   `buildVideoNodes` shows the clip nested in a live wrapper at `opacity: 0` with the
+   presentation's colour showing through, for the ~80 frames BEFORE its boundary opens (and
+   symmetrically after it closes on the other side). If your presentation's neutral/rest state
+   at progress 0/1 is not a true visual no-op — a solid colour, a non-zero blur, a translate off
+   its rest position — your clip is wrong for most of its life, not just at the cut. Core's own 13
+   lifted kinds are checked for this by `plan-neutral-progress.test.tsx`, which derives its kind
+   list from `TRANSITION_CATALOG` — it structurally cannot see a brand-registered kind, so nothing
+   in core will catch a violation of this rule for you. **This qualifies the "nothing changes for
+   you" claim in "What actually changed under the hood" above:** a plain-`AnyPresentation` renderer still compiles and still
+   renders without code changes, but its correctness now depends on a contract (identity at the
+   inert end) that did not exist, and was not required, before this phase — audit your
+   presentation against it before relying on the "no migration needed" guidance.
+
+At most one live boundary may set `post` on a given frame — a second is a **warned** conflict
+(`video-track:post-conflict:<a>+<b>`), and the later one wins. This closes a carried hazard: two
+`scanline-glitch`-shaped boundaries sharing an SVG filter id resolve the URL by document order,
+which can pick up the earlier boundary's filter parameters even though "the later one wins" is
+the stated rule for the VALUE. It is benign today only by arithmetic (the only reachable
+simultaneity is two abutting windows both at progress 0 or 1, where the filter is the identity) —
+if you write a `post`-using kind whose filter is non-identity at its endpoints, do not assume this
+stays benign; the warning is what will tell you if it stops being so.
+
+### `'mask-scale'` (added Stage 4) — a cheap alternative to a 64-mount carve-out
+
+`checkerboard`'s `squareAnimation: 'scale'` and `'flip'` sub-options are authored, visible-on-purpose
+multi-mount effects: they render **`gridSize²` separate ghost mounts** of the incoming clip (one
+per cell) so each cell can independently scale/flip in. This is a deliberate exception to the
+"avoid extra mounts" spirit of the single-mount contract, not an oversight — some visual effects
+genuinely need per-cell independent transforms.
+
+**The ghost count is CONSTANT — `gridSize²` at every progress value, including 0 — which is
+exactly what Rule 1 above requires and exactly why this complies with it rather than being an
+exception to it.** `checkerboard.tsx`'s `plan` maps over every cell unconditionally
+(`cells.map(...)`, `presentations/checkerboard.tsx:409`) on every call; what changes with
+`progress` is each ghost's own `style` — `opacity` (0 until that cell's eased progress crosses its
+reveal threshold, 1 after), plus `scale`/`rotateY` for the two animated variants — never whether
+the ghost exists. A cell that looks "not there yet" is a real mount sitting at `opacity: 0`, not an
+absent one. This is `auditGhosts`' own invariant working as designed, not an exemption from it: the
+audit samples five progress points and the live frame and compares COUNTS, and every one of those
+samples sees the same `gridSize²`, so it correctly does not warn.
+
+If your brand does not need the exact per-cell scale/flip look, `'mask-scale'` is the cheap
+alternative added in the same stage: it reuses `checkerboard`'s default SVG-mask technique (3
+mounts total, not `gridSize²`) with a scale-shaped mask animation. **It is visually SIMILAR, not
+IDENTICAL** to `'scale'`/`'flip'` — if your brand's look depends on the exact per-cell picture,
+keep the real sub-option; if you just want "a checkerboard-flavoured scale reveal, cheaply",
+`'mask-scale'` is that.
+
+### `rgb-split`'s 6 media elements per cut — also deliberate
+
+`rgb-split` mounts the clip **6 times** at its cut (3 ghosts per side: the base copy plus a
+red-shifted and a cyan-shifted copy, each side). This is authored and intentional — the RGB-split
+look needs three independently-offset copies of the same footage compositing together — not a
+regression from the single-mount contract. An SVG-filter rewrite that would collapse this to the
+same 1-mount-per-side technique `scanline-glitch` already uses (`feOffset`/`feColorMatrix`/
+`feBlend`) is a real, separate, optional future task — not something this phase or this
+migration note commits you to.
+
+## Goldens: 80 cells moved versus the pre-Phase-5 merge base, and why
+
+**RE-DERIVED — the fix-round review measured the previous version of this section wrong, in the
+direction that under-warns a brand author.** The number below comes from a direct key-by-key diff
+of `examples/layered-minimal/goldens/transition-matrix.json`'s `frames` map, merge base `2e6265e`
+(the last commit before Phase 5 started) versus this document's own HEAD — not from summing
+per-stage subtotals recorded as each stage landed, which is what the previous version of this
+section did and which is where it went wrong. Reproduce it yourself:
+
+```
+git show 2e6265e:examples/layered-minimal/goldens/transition-matrix.json > /tmp/base-goldens.json
+# then diff /tmp/base-goldens.json's "frames" keys against the current file's, by value
+```
+
+If you pin an OLDER core commit than this one and re-render, you will see pixel differences on
+**80 of 300** golden cells versus that pre-Phase-5 commit — 0 cells added, 0 removed, only
+existing cells' hashes changed. By kind:
+
+| Kind | Cells changed (of 15) |
+|---|---|
+| `checkerboard` | 12 |
+| `glitch` | 10 |
+| `light-leak` | 10 |
+| `rgb-split` | 10 |
+| `scanline-glitch` | 10 |
+| `whip-pan` | 10 |
+| `pixelate` | 9 |
+| `zoom-blur` | 9 |
+
+**Three errors in the previous version of this section, corrected:**
+
+1. **The headline number was 68, not 80.** 68 was a Stages-2-4 subtotal (`glitch`/`checkerboard`
+   Stage 2, `rgb-split`/`scanline-glitch` Stage 3, `checkerboard`-carve-out Stage 4 at 0), but the
+   surrounding text framed it as the comparison "versus a core commit from before Phase 5
+   started" — which IS the merge base, where the directly measured answer is 80. This document no
+   longer carries the old per-stage subtotal narrative forward (it cannot be re-verified without
+   re-running each stage's own goldens in turn), only the merge-base total above, which is
+   reproducible from the current tree in one diff. The practical effect of the old framing: four
+   kinds' worth of movement — `light-leak`, `whip-pan`, `zoom-blur`, `pixelate`, 38 cells — never
+   appeared in the total at all.
+2. **`glitch` was said to move 15 cells; measured 10.** All 15 of `glitch`'s cells were not
+   compared correctly, or the count was carried from an earlier, partial measurement and never
+   re-verified against the merge base directly.
+3. **`checkerboard` and `scanline-glitch`'s technique rewrites (SVG mask / SVG filter chain
+   replacing a DOM-copy technique) were attributed to "Stage 2 landing on the `plan` arm."** Both
+   rewrites happened at **Stage 0**, inside the old `composite` contract, before either kind ever
+   touched `plan` — the technique change and the mount-contract migration are two separate events
+   that this section's old wording conflated into one.
+
+**If your brand's `projects/` renders were captured against a pre-Phase-5 core, expect ALL EIGHT
+of these kinds — `checkerboard`, `glitch`, `light-leak`, `rgb-split`, `scanline-glitch`,
+`whip-pan`, `pixelate`, `zoom-blur` — to look very slightly different after the pin bump.** The
+previous version of this list named only four (`glitch`, `checkerboard`, `scanline-glitch`,
+`rgb-split`) and told a brand author nothing about `light-leak`, `whip-pan`, `zoom-blur` or
+`pixelate` — 38 cells across those four kinds that would have read as unexplained regressions to
+chase instead of the reviewed, expected drift they are. Treat all 80 cells as expected drift, not
+a regression to chase.
+
+## The two known gaps: no dev warning for an unstable `wrap`, or for a conditionally-declared one
+
+Core's own test suite catches an unstable `wrap` reference — a fresh component on different
+calls — through a derived DOM-identity check
+(`lib/editor/src/video-track-remount.test.tsx`), because core's own CI-adjacent gates run that
+suite. **A brand author does not run core's test suite**, so if your custom node's `wrap` is
+accidentally unstable, nothing will tell you except the exact symptom this whole phase exists to
+remove (a colour flash / stall at your transition's boundary in Studio or the Player). A `warnOnce`-style
+dev diagnostic for this specific contract violation was scoped by the original design
+(`docs/superpowers/phase5-single-mount-design.md` §4.6) but never actually built in any stage of
+this phase — this is a real, acknowledged gap for brand authors specifically, not a subtle bug.
+If you write your own `wrap`, the rule to hold onto by hand is: **build it once, outside `plan`,
+and never construct a new component inline inside `plan`'s own body.**
+
+The second gap is Rule 4 above, and it is arguably sharper because its failure mode is silent
+rather than merely flickery: a `plan` that declares `wrap` conditionally on `progress`/`frame`
+(rather than unconditionally, gated only on authored params) has that `wrap` sampled once at the
+synthetic out-of-window probe (`progress: 0, frame: -1`) and never re-sampled from a live call — so
+a condition like `progress > 0` reads `false` at the sample and the `wrap` silently never mounts,
+on any frame, with no error and no warning. Nothing in core catches this either, for a brand
+author or otherwise (it has no equivalent test in core's own suite because no core-owned kind
+writes a conditional `wrap`). Hold onto Rule 4 by hand: **whether your `plan` returns a `wrap` key
+at all must depend only on the transition's authored params, never on `progress` or `frame`.**
+
+## Nothing else in the public contract moved
+
+`TransitionRenderProps`, `TransitionRegistry`, `TransitionRegistration`, `resolveTransition`,
+`presentationFor`, `isTransitionNode` — all unchanged in shape and behaviour. `presentationFor`
+still returns `null` and warns once for a kind that resolves to a native two-input node (unusable
+with `TransitionSeries`); only the warning's wording changed (it no longer names the deleted
+`AtCutTransition` as an alternative — it names `buildVideoNodes`). **CORRECTED — the fix-round
+review measured this section's next claim false.** `presentationFor` the *function* is unchanged
+in shape and behaviour, but the SET of catalog kinds it hard-cuts is not: at the merge base before
+this phase (`2e6265e`), `gradient-wipe` and `rgb-split` were one-sided (`resolveTransition`
+returned a plain `AnyPresentation` for them, `at-cut-transitions.tsx:235,240` at that commit), so
+`presentationFor` returned a real presentation for both. Both are native two-input `{ plan }` nodes
+today (`lib/transitions/presentations/gradient-wipe.tsx`, `rgb-split.tsx`) with no one-sided form,
+so `presentationFor` now returns `null` + `warnOnce` for them too — the two-input set went from
+5 to 7 kinds. If your brand calls `presentationFor` directly to drive `TransitionSeries` (as PP's
+`web-program-intro` template does, per the design census) and any boundary in your project is
+authored with `gradient-wipe` or `rgb-split`, **that boundary changes picture on this pin bump** —
+from a rendered transition to a silent hard cut (with a dev-console warning, nothing visible in the
+rendered output). Audit your `transitionOut`/`transitionIn` config for these two kinds before
+bumping the pin; if you use either, move that boundary's call site to `buildVideoNodes` (or accept
+the hard cut). For every other of the 20 catalog kinds, nothing about the call site's behaviour
+changes. If you author a NEW brand kind returning a native `{ plan }` node, `presentationFor` will
+(correctly) hard-cut it with a warning, exactly as it already does for `wipe`/`checkerboard`/
+`pixelate`/`gradient-wipe`/`rgb-split`/`scanline-glitch`/coloured `fade-to-color` today.
+
+**No adapter recovers those seven kinds for `TransitionSeries`.** The original design
+(`phase5-single-mount-design.md` §8.5 point 2) floated the possibility of a `plan`→one-sided
+adapter — applying `plan.from` on the exiting call and `plan.to` (plus `plan.layers`) on the
+entering one — that would let all 20 catalog kinds work through `presentationFor`/
+`TransitionSeries`, restoring a capability the two-input contract removed. **That adapter was
+never built, in this phase or any stage of it.** If you need `wipe`/`checkerboard`/`pixelate`/
+`gradient-wipe`/`rgb-split`/`scanline-glitch`, or `fade-to-color` with a colour, in a
+`TransitionSeries`-driven template today, they are unusable there — drive them through
+`buildVideoNodes` instead, which every layered reel already does.

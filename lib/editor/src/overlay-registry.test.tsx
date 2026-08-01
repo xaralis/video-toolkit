@@ -122,6 +122,48 @@ describe('the unified overlay registry', () => {
     expect(getByTestId('brand-text').textContent).toBe('quote-pull-copy');
   });
 
+  it('threads theme.tokens through to the generic text renderer — task 4.2 (no custom renderer registered)', () => {
+    // Mutation pin: delete `tokens={theme.tokens}` from TrackTextOverlay
+    // (lib/render/layered-composition.tsx) and this goes red — the whole
+    // rest of the suite stays green because nothing else exercises a brand
+    // supplying `theme.tokens.text` through the REAL composition path (only
+    // GenericTextOverlay's own unit test exercises the prop being READ, not
+    // whether the composition actually SUPPLIES it).
+    const theme: CompositionTheme = {
+      ...base,
+      tokens: { text: { color: '#123456' } },
+    };
+    const { container } = render(<LayeredReelComposition reel={reelWith([overlay('o1', 'text')])} theme={theme} />);
+    // GenericTextOverlay is the innermost (leaf) div — AbsoluteFill's own div
+    // also has textContent 'text-copy' via aggregation, so match on the leaf.
+    const divs = Array.from(container.querySelectorAll('div'));
+    const textDiv = divs.find((d) => d.textContent === 'text-copy' && d.children.length === 0);
+    expect(textDiv?.style.color).toBe('rgb(18, 52, 86)'); // #123456
+  });
+
+  it("threads a non-'text' kind's OWN registered config (quote-pull), not text's — task 4.2", () => {
+    // Mutation pin: revert TrackTextOverlay's `overlayConfig(theme, kind)`
+    // back to the hardcoded `overlayConfig(theme, 'text')` and this goes red
+    // — a 'quote-pull' item would silently receive 'text'-config instead of
+    // its own registration's config. 'quote-pull' is used deliberately
+    // (not 'text') because a 'text' item's config is reachable even under the
+    // old hardcoded literal, so it would pass against the bug.
+    const seen: unknown[] = [];
+    const CaptureConfig: React.FC<OverlayRenderProps> = ({ config }) => {
+      seen.push(config);
+      return <div data-testid="captured" />;
+    };
+    const theme: CompositionTheme = {
+      ...base,
+      overlays: {
+        text: { renderer: CaptureConfig, config: 'text-config' },
+        'quote-pull': { config: 'quote-pull-config' },
+      },
+    };
+    render(<LayeredReelComposition reel={reelWith([overlay('q1', 'quote-pull')])} theme={theme} />);
+    expect(seen).toEqual(['quote-pull-config']);
+  });
+
   it("diverts a routing:'anchored' item with an anchorVideoId off the track and into the video renderer", () => {
     const seen: string[][] = [];
     const Clip: React.FC<VideoRenderProps> = ({ anchoredOverlays }) => {

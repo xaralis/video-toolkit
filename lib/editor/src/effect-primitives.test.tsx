@@ -113,6 +113,53 @@ describe('scanlines', () => {
     expect(container.querySelector('[data-w="media"]')).not.toBeNull();
     expect(container.querySelectorAll('div')).toHaveLength(1);
   });
+
+  // --- Task 2.7 ceiling-closer: line width and line colour ------------------
+  // Before 2.7 the duty cycle was hardcoded to 50% (`spacing / 2`) and the line
+  // was hardcoded black. Neither was a design choice — they were core's own
+  // limits, and they were the reason roost's VHS scanline look (a 1-in-4 duty
+  // cycle at rgba(0,0,0,0.16)) could not be expressed as a core `scanlines`.
+  // ONE parameter per test, deliberately: a single test setting both would go
+  // green if only one of them were wired.
+
+  it('lineWidthPx sets the drawn line width, reaching the RENDERED gradient', () => {
+    const { container } = render(
+      <ScanlinesEffect {...props({ type: 'scanlines', spacingPx: 4, opacity: 0.6, lineWidthPx: 1 })} />,
+    );
+    const layer = container.querySelector('div') as HTMLElement;
+    expect(layer.style.backgroundImage).toBe(
+      'repeating-linear-gradient(to bottom, rgba(0,0,0,1) 0px, rgba(0,0,0,1) 1px, rgba(0,0,0,0) 1px, rgba(0,0,0,0) 4px)',
+    );
+  });
+
+  it('lineColor sets the drawn line colour, reaching the RENDERED gradient', () => {
+    const { container } = render(
+      <ScanlinesEffect {...props({ type: 'scanlines', spacingPx: 6, opacity: 0.6, lineColor: '#ff8800' })} />,
+    );
+    const layer = container.querySelector('div') as HTMLElement;
+    expect(layer.style.backgroundImage).toBe(
+      'repeating-linear-gradient(to bottom, #ff8800 0px, #ff8800 3px, rgba(0,0,0,0) 3px, rgba(0,0,0,0) 6px)',
+    );
+  });
+
+  // Parity pin. Every scanlines entry authored before 2.7 omits both fields, so
+  // the emitted string must be byte-identical to the pre-2.7 one: a 50% duty
+  // cycle in opaque black. Mutating either default turns this red.
+  it('omitting both reproduces the pre-2.7 output exactly (50% duty, black)', () => {
+    expect(scanlinesLayerStyle({ spacingPx: 8, opacity: 0.3 }).backgroundImage).toBe(
+      'repeating-linear-gradient(to bottom, rgba(0,0,0,1) 0px, rgba(0,0,0,1) 4px, rgba(0,0,0,0) 4px, rgba(0,0,0,0) 8px)',
+    );
+  });
+
+  // A line wider than the period would emit out-of-order gradient stops.
+  it('clamps lineWidthPx into [0, spacing] so the stops stay ordered', () => {
+    expect(scanlinesLayerStyle({ spacingPx: 4, lineWidthPx: 99 }).backgroundImage).toBe(
+      'repeating-linear-gradient(to bottom, rgba(0,0,0,1) 0px, rgba(0,0,0,1) 4px, rgba(0,0,0,0) 4px, rgba(0,0,0,0) 4px)',
+    );
+    expect(scanlinesLayerStyle({ spacingPx: 4, lineWidthPx: -5 }).backgroundImage).toBe(
+      'repeating-linear-gradient(to bottom, rgba(0,0,0,1) 0px, rgba(0,0,0,1) 0px, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 4px)',
+    );
+  });
 });
 
 describe('vignette', () => {
@@ -166,6 +213,48 @@ describe('grade', () => {
     // gradeWbGains: r = 1 + 1*0.3, b = 1 - 1*0.3
     expect(matrix!.getAttribute('values')).toBe('1.3 0 0 0 0  0 1 0 0 0  0 0 0.7 0 0  0 0 0 1 0');
     expect((wb.container.firstElementChild as HTMLElement).style.filter).toBe('url(#grade-effect-v1-0)');
+  });
+
+  // --- Task 2.7 ceiling-closer: sepia and hue rotation ----------------------
+  // Before 2.7 `gradeFilter` emitted only brightness/contrast/saturate/url(#wb).
+  // Both additions are generic CSS filter functions with neutral defaults; they
+  // exist so the bar for a brand look is GENERICITY, not core's own gaps.
+  // ONE parameter per test — see the scanlines block for why.
+
+  it('sepia reaches the RENDERED filter chain', () => {
+    const { container } = render(<GradeEffect {...props({ type: 'grade', sepia: 0.22 })} />);
+    expect((container.firstElementChild as HTMLElement).style.filter).toBe('sepia(0.22)');
+  });
+
+  it('hueRotateDeg reaches the RENDERED filter chain', () => {
+    const { container } = render(<GradeEffect {...props({ type: 'grade', hueRotateDeg: -8 })} />);
+    expect((container.firstElementChild as HTMLElement).style.filter).toBe('hue-rotate(-8deg)');
+  });
+
+  // Position is load-bearing: url(#wb) must stay LAST (pinned independently by
+  // segment-media-merge-baseline.test.tsx), and the three pre-2.7 functions
+  // must keep their order so no existing grade string moves.
+  it('slots sepia/hue-rotate after saturate and BEFORE the white-balance ref', () => {
+    const { container } = render(
+      <GradeEffect
+        {...props({ type: 'grade', brightness: 1.1, contrast: 0.9, saturation: 0.8, sepia: 0.2, hueRotateDeg: 10, temperature: 0.5 })}
+      />,
+    );
+    expect((container.firstElementChild as HTMLElement).style.filter).toBe(
+      'brightness(1.1) contrast(0.9) saturate(0.8) sepia(0.2) hue-rotate(10deg) url(#grade-effect-v1-0)',
+    );
+  });
+
+  // Parity pin. Every grade authored before 2.7 omits both fields, so the
+  // emitted chain must be byte-identical. Mutating either default (to anything
+  // but the CSS no-op 0) turns this red.
+  it('omitting both reproduces the pre-2.7 filter chain exactly', () => {
+    const { container } = render(
+      <GradeEffect {...props({ type: 'grade', brightness: 1.2, contrast: 1.5, saturation: 0.5 })} />,
+    );
+    expect((container.firstElementChild as HTMLElement).style.filter).toBe(
+      'brightness(1.2) contrast(1.5) saturate(0.5)',
+    );
   });
 
   it('keys its filter id on the effect index, so a repeated grade does not collide', () => {

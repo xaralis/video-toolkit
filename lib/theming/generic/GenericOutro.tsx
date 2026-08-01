@@ -1,8 +1,9 @@
 // Explicit React import: files under lib/theming are transformed with the classic JSX runtime under the editor's Vitest config, so `React` must be in scope.
 import React from 'react';
-import { AbsoluteFill, Audio, OffthreadVideo } from 'remotion';
+import { AbsoluteFill, Audio, OffthreadVideo, Sequence, useVideoConfig } from 'remotion';
 import type { VideoRenderProps } from '../types';
 import { resolveGenericSource } from './media-source';
+import { anchorTiming } from '../../render/overlay-anchor';
 
 /** Item props a generic outro reads. Both optional — an outro item that names
  *  neither renders nothing (and does not throw), which is what makes this a
@@ -31,7 +32,14 @@ interface GenericOutroProps {
  *
  *  Effects on the item are applied AROUND this by `renderVideoItemNode`
  *  (lib/render/layered-composition.tsx), so nothing is applied here. */
-export const GenericOutro: React.FC<VideoRenderProps> = ({ item, resolveMediaSource: override }) => {
+export const GenericOutro: React.FC<VideoRenderProps> = ({
+  item,
+  handles,
+  resolveMediaSource: override,
+  anchoredOverlays,
+  renderAnchoredOverlay,
+}) => {
+  const { fps } = useVideoConfig();
   // `props` is the schema's permissive per-item render-hint bag (z.record), so
   // it is asserted to the shape this renderer reads; anything else is ignored.
   const props = (item.props ?? {}) as GenericOutroProps;
@@ -42,6 +50,21 @@ export const GenericOutro: React.FC<VideoRenderProps> = ({ item, resolveMediaSou
     <AbsoluteFill>
       {props.video ? <OffthreadVideo src={resolveGenericSource(props.video, 'brand', override)} muted /> : null}
       {props.audio ? <Audio src={resolveGenericSource(props.audio, 'brand', override)} /> : null}
+      {/* Phase 4 Task 4.1 — this item's anchored overlays, at the same
+          composition frame they would land on if routed 'track' instead (see
+          ../../render/overlay-anchor.ts). The AbsoluteFill above already
+          wraps unconditionally, so an empty map here changes nothing for the
+          zero-overlay case. */}
+      {(anchoredOverlays ?? []).map((o) => {
+        if (!renderAnchoredOverlay) return null;
+        const { from, durationInFrames } = anchorTiming(o, item, handles, fps);
+        if (durationInFrames <= 0) return null;
+        return (
+          <Sequence key={o.id} from={from} durationInFrames={durationInFrames} name={o.id}>
+            {renderAnchoredOverlay(o)}
+          </Sequence>
+        );
+      })}
     </AbsoluteFill>
   );
 };

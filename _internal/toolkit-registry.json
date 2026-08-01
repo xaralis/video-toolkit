@@ -871,7 +871,12 @@
       "path": "lib/transitions/presentations/glitch.tsx",
       "kind": "glitch",
       "description": "Digital distortion with RGB shift and scan lines",
-      "options": [],
+      "options": [
+        "intensity",
+        "slices",
+        "rgbShift",
+        "scanLines"
+      ],
       "bestFor": "Tech demos, edgy reveals, cyberpunk aesthetic",
       "status": "stable"
     },
@@ -880,6 +885,8 @@
       "kind": "burn",
       "description": "Cloud-masked burn-through with a hot glowing edge; brand supplies the mask and glow colour",
       "options": [
+        "mask",
+        "glowColor",
         "edgeContrast",
         "glowBand"
       ],
@@ -966,7 +973,8 @@
       "kind": "whip-pan",
       "description": "Directional motion blur — fast camera move feel",
       "options": [
-        "direction"
+        "direction",
+        "blurAmount"
       ],
       "bestFor": "Energetic cuts, camera movement, fast-paced reels",
       "status": "beta",
@@ -977,7 +985,8 @@
       "kind": "zoom-through",
       "description": "Zoom out of outgoing, zoom into incoming — high energy",
       "options": [
-        "from"
+        "direction",
+        "zoomAmount"
       ],
       "bestFor": "Dynamic transitions, product reveals, fast-cut edits",
       "status": "beta",
@@ -994,6 +1003,17 @@
       "bestFor": "Brand-consistent wipes, political reels, directional reveals",
       "status": "beta",
       "created": "2026-05-19"
+    },
+    "fadeToColor": {
+      "path": "lib/transitions/presentations/fade-to-color.tsx",
+      "kind": "fade-to-color",
+      "description": "Dip to a colour the BRAND names (an accent-slot key, resolved via the theme's accentSlots); with no colour it is the plain crossfade. A native two-input node ONLY when the colour resolves — conditional arity, pinned in lib/editor/src/at-cut-transitions.test.tsx",
+      "options": [
+        "color"
+      ],
+      "bestFor": "Section breaks, a beat of brand colour between clips; the replacement for the brand-named fade kind core removed in Phase 4",
+      "status": "beta",
+      "created": "2026-07-28"
     },
     "gradientWipe": {
       "path": "lib/transitions/presentations/gradient-wipe.tsx",
@@ -1016,6 +1036,55 @@
       "bestFor": "Digital/tech aesthetic, modern edgy reels, retro-futurism",
       "status": "beta",
       "created": "2026-05-19"
+    }
+  },
+  "transitionAxisNote": "What EVERY transition carries, whatever its kind, plus how a brand adds a kind of its own. Added in Phase 4 (Workstream 1); brand migration notes in docs/superpowers/phase4-migrations.md. The `transitions` map above lists CORE presentations only and is not a complete index of the catalog — `lib/reel-config-base/transition-schema.ts` is (20 kinds counting `cut`; `cut`, `dissolve`, `fade`, `slide`, `flip`, `clock-wipe` and `iris` have no entry above). Phase 4 Task 2.3 added `fade-to-color`; a follow-up REMOVED the brand-named fade kind it replaced (core's catalog no longer carries any brand's colour word), so a baked literal naming it now fails to parse — see docs/superpowers/phase4-migrations.md § 2.3-a for the two-edit rewrite.",
+  "transitionAxis": {
+    "timingFields": {
+      "frames": {
+        "type": "number",
+        "description": "Length of the transition. Rendered by the editor's dedicated length field, not as a sub-option.",
+        "default": 15
+      },
+      "alignment": {
+        "type": "enum",
+        "options": [
+          "center",
+          "start",
+          "end"
+        ],
+        "default": "center",
+        "description": "Where the transition sits relative to the cut. `center` splits it (floor before / ceil after) — the pre-Phase-4 behaviour, so omitting the field is byte-identical. `start` puts the whole transition AFTER the cut (the incoming clip carries it), `end` the whole transition BEFORE it. At a reel edge it CLAMPS: there is no cut to straddle.",
+        "decidedBy": "transitionHandles / transitionAlignmentOf in lib/reel-config-base/transition-schema.ts, read by both lib/render/video-track-layout.ts and the editor's transitions lane",
+        "editorControl": "none — set it in defaultProps",
+        "status": "stable",
+        "created": "2026-07-28"
+      },
+      "enabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "Per-node switch shared with the effect axis. `false` renders a hard cut and stops the boundary lending handle frames, while keeping the authored params in the config for the toggle back. Absent means enabled, so no baked literal changes.",
+        "decidedBy": "isNodeEnabled in lib/reel-config-base/node-enabled.ts",
+        "status": "stable",
+        "created": "2026-07-28"
+      }
+    },
+    "brandRegistry": {
+      "path": "lib/theming/transitions.ts",
+      "themeKey": "BrandTheme.transitions",
+      "description": "The sixth extension axis: a brand registers its own transition kinds in the theme, with zero core edits. Resolution is the same as every other axis (resolveRegistered) — brand wins, core's generic beneath, and a config-only registration does not mask the generic. Before this, kinds resolved through a module-private table in at-cut-transitions.tsx and adding a look meant editing three core files.",
+      "registrationKeys": {
+        "render": "(props: TransitionRenderProps) => ResolvedTransition | null — a {component, props} presentation or a two-input TransitionNode",
+        "params": "readonly ParamField[] — the SAME descriptor the effect axis and EditorMeta use (lib/reel-config-base/param-field.ts). This is the whole editor declaration: editorMetaFromTheme derives EditorMeta.transitionProps from it, so the kind becomes selectable and editable with no second copy.",
+        "config": "theme-level constants, read with transitionConfig(theme, kind)"
+      },
+      "editorEffects": [
+        "the Kind picker offers the catalog UNION the registered kinds (transitionKindChoices)",
+        "a registered kind's controls compose with core's structural ones (transitionParamsFor), a declared field winning by prop in place",
+        "an unrecognised kind is displayed as itself and survives an edit untouched — it used to be coerced to `cut`"
+      ],
+      "status": "stable",
+      "created": "2026-07-28"
     }
   },
   "componentsNote": "Stand-alone visual primitives a template can drop into a composition (lib/components). They are NOT the layered rendering contract: the renderers a brand registers, the accent palette and the placement vocabulary live in lib/theming (SegmentMedia, GenericTextOverlay, GenericWatermark), and the assembly in lib/render. The five legacy-theme components (AnimatedBackground, Label, LogoWatermark, SplitScreen, NarratorPiP) were retired with lib/theme/ and examples/hello-world.",

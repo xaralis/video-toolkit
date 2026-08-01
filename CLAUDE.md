@@ -301,20 +301,189 @@ Consider how visual intensity builds across scenes:
 
 ## Quality Gates
 
-Run these before considering `lib/` or `examples/` work done. All are manual —
-there is no CI in this repo that runs them (`.github/workflows/` only builds
-Docker images, cuts releases, and syncs the Remotion skill from upstream).
+Run these before considering `lib/` or `examples/` work done. **All are manual, and that is a
+deliberate choice, not an oversight to "fix" by wiring up CI.** Phase 4 considered CI and rejected
+it: the pixel harness alone is ~60 s and several gates need a real browser / `remotion still`
+render, so the gate economy that makes six-task days possible (run only what the diff can move,
+skip with a stated reason, one full matrix at the end) works because a human decides what to run
+each time. A CI job would either run everything on every commit (killing the speed this workflow
+depends on) or reinvent the same conditional logic in YAML with none of the judgement. If CI is
+ever added, it should run the full matrix on merge/release, not replace this per-task discipline.
+`.github/workflows/` today only builds Docker images, cuts releases, and syncs the Remotion skill
+from upstream — it does not and should not run these six.
 
-| Gate | Command | Covers | Baseline (measured 2026-07-26) |
+| Gate | Command | Covers | Baseline (measured 2026-08-01, Phase 5 Task 5 — the flip) |
 |---|---|---|---|
-| Editor tests | `cd lib/editor && npx vitest run` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **70 files / 905 tests** |
-| Editor types | `cd lib/editor && npx tsc --noEmit` | Same surface as above, plus all of `lib/render` (declared directly in `lib/editor/tsconfig.json`'s `include`, or reached transitively) and 13 of `lib/transitions`' 14 files — `index.ts` plus all 12 presentations, but **not** `TransitionGallery.tsx`, which only `examples/layered-minimal` reaches (verify with `npx tsc --noEmit --listFiles`) | **3** pre-existing errors |
-| Render/transitions types | `cd examples/layered-minimal && npm run typecheck` | `lib/render` and `lib/transitions` (including their `.tsx` components), via the example that actually imports them — see `docs/superpowers/core-typecheck-gate.md` | **0**, plus a coverage guard |
+| Editor tests | `cd lib/editor && npx vitest run --no-file-parallelism` | `lib/editor`, `lib/theming`, plus shared `lib/*` modules it imports | **109 files / 1788 tests** — 1782 passed, **6 skipped**, ~60 s this run. **The count FELL, as this task's own brief expected**: Task 5 deleted the entire `composite` arm (`TransitionNode` narrows to `{ plan }` only — no more union, `lib/theming/transitions.ts`) and every test that exercised it — `AtCutTransition` (component + all direct unit tests), `fromRemotionPresentation` (function + direct unit tests, replaced by porting the missing coverage onto `wrapRemotionPresentation`), `ItemBody`/premount/`isPreviewEnvironment` fixtures in `video-track-remount.test.tsx`, the `armOf`/`PLAN_KINDS`/`COMPOSITE_KINDS` partition and its now-impossible-to-construct `composite-remount-probe` vacuity guard (replaced with an unstable-`wrap` proof on the plan side — same claim, different, still-constructible fixture), `single-mount-assembly.test.tsx`'s "plan and composite coexist" seam (the premise is false now — there is no composite arm left to coexist with). Full accounting of every deleted/adapted test, file by file, in `.superpowers/sdd/phase5-single-mount-design/task-5-report.md`. **A kind, task or warning added/removed moves this number — re-derive it per file, never carry a prior count forward.** |
+| Editor types | `cd lib/editor && npx tsc --noEmit ; echo "exit=$?"` | Same surface as above, plus all of `lib/render` and all of `lib/transitions` (incl. `TransitionGallery.tsx`, reached via `src/transition-gallery*.test.tsx`) | **3** pre-existing errors, **same three files** (`LayeredInspector.tsx:1052` `hide`, `derive-layered.test.ts:277`, `../theming/envelope.test.ts:1` — no `vitest` types), **exit code 2** — unaffected by this task's deletions, checked by IDENTITY not count. **Trap:** `npx tsc --noEmit \| grep -c 'error TS'` prints `0` when `tsc` itself crashes — always read the exit code separately, never the grep count alone. |
+| Render/transitions types | `cd examples/layered-minimal && npm run typecheck` | `lib/render` and `lib/transitions` (including their `.tsx` components), via the example that actually imports them — see `docs/superpowers/core-typecheck-gate.md` | **0** errors, coverage guard holds at render **12** (down from 13 — `lib/render/preview-environment.ts` is DELETED this task, its only consumer `video-track.tsx` no longer imports it; the guard is a FLOOR at >= 9, so a fall from 13 to 12 does not fail it, and a fall was expected and reported, not silently absorbed) / transitions 16 / theming 26 / reel-config-base 10 / transcripts 1 files (all four unchanged — no files added or removed under those trees this task). |
+| Brand-leak grep | `grep -riE 'lime\|teal\|roost\|progresivn\|sand-brown' lib/ --exclude-dir=node_modules --exclude='*.test.*'` | Any brand vocabulary leaking into shared `lib/` | exactly **2** hits, both comments naming the brand they were generalised from (`lib/theming/effects/ken-burns.ts`, `lib/transitions/presentations/burn.tsx`). Free — run it every time. |
+| `it.fails` guard | `grep -n 'it\.fails' lib/editor/src/at-cut-transitions.test.tsx` (the **escaped** dot — an unescaped `it.fails` also matches prose describing the pins historically and has produced a false positive twice) | Known-defect transition kinds shipped without a real fix | **zero** — all four historical pins were converted to real fixes in Task 2.1; still zero after Tasks 2.2/2.3/3/4/5. Re-derive; do not copy "zero" forward without running it. |
+| Python — `sync_template` | `./.venv/bin/python -m pytest video_toolkit/tests/test_sync_template.py -q` | Template-scaffolding correctness; essentially never touched by render/transitions/editor work | **36 passed**. System `python3` has no `pytest` — use `./.venv/bin/python`. |
+| Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` — **while iterating, filter to the kinds you touched** (see below); this full form is for the gate itself | Every at-cut transition kind × mode × progress — one still per cell, hash-compared against committed goldens | **PASS** in **45 s** (300 stills, 0 retried): `300 accepted (6 on a bimodal cell's second recorded hash), 0 same-picture-different-bytes, 0 drifted, 0 missing`. **Task 5 deletes the `composite` arm's whole assembly (dead code — nothing resolved to it any more since Task 4) — ZERO cells moved, confirming the "deleting dead code moves nothing" hypothesis** the task brief asked to be measured, not assumed. `bimodalCells` unchanged at **18** (`clock-wipe` 9, `iris` 7, `light-leak` 2) — this task touched neither list nor any of those three kinds' rendering. |
 
-**"All passed" is not full green.** Four of those tests are `it.fails` known-defect pins
-(`lib/editor/src/at-cut-transitions.test.tsx` — `checkerboard`, `pixelate`, `scanline-glitch`,
-`wipe`), and vitest counts an `it.fails` as a pass. The defects they record are real and
-deliberately unfixed; see `docs/superpowers/at-cut-transition-findings.md`.
+**`--strict` is the mode a parity claim must use — the plain `pixel-gate` is for day-to-day
+iteration only.** The lenient default treats a near-miss (8×8 mean delta within tolerance) as a
+warning; `--strict` makes it fatal. Renders here are **not byte-deterministic**: a per-render coin
+flip (9-50% depending on the cell) produces one of two *stable, recorded* attractor hashes on
+**18** cells (re-derived from `bimodalCells.length` in the goldens file at this HEAD — **not 24**,
+a stale figure from an earlier phase that contradicted this same section's own gate row and
+:457's paragraph for at least three tasks running; always re-count from the goldens file, never
+copy a number quoted at you), concentrated in the rightmost 8 columns of the frame — this is
+renderer nondeterminism, reproduced in fresh processes, not harness state leakage. **`--strict`
+does NOT reliably pass on an unchanged tree** — the phase 5 whole-branch fix round measured a
+clean-tree `--strict` failure on `light-leak__exit__p075` (bytes differ, picture identical, max
+cell delta 0 — fatal only because `--strict` has no tolerance) and, on a second run, a different
+cell (`light-leak__cut__p025`), neither of which was in the recorded `bimodalCells` list at the
+time. The fix-round re-seed (`node scripts/render-transition-matrix.mjs light-leak
+--update-goldens --repeat=24`, union rule — the list only ever grows) did not reproduce a new
+attractor for either cell in this environment despite multiple `--repeat=24` attempts, and
+repeated `--strict` runs afterward (and before) passed every time on this machine — consistent with
+this repo's standing finding that the flake's rate is machine-dependent, not merely
+process-dependent. Treat "passes on an unchanged tree" as an expectation on THIS machine at THIS
+moment, not a guarantee; a hash that is neither attractor is still a real `drifted`. Read
+`docs/superpowers/transition-pixel-harness.md` for the full mechanism (union rule
+for re-seeding, `--audit-bimodal`, why the scope is a cell and never a kind) — it has changed more
+than once this phase and a stale paraphrase here would be worse than a pointer to it.
+
+**What the pixel harness cannot see, at all, in either direction: the editor-mount-lifecycle
+defect class.** It renders 300 fully independent stills, so it never exercises a component
+persisting or remounting *across frames* — the exact shape of the Task R1/R2 preview-only
+transition-remount regression (media elements destroyed and recreated at a boundary, causing a
+colour flash / stagger in the Player). That class is pinned by
+`lib/editor/src/video-track-remount.test.tsx`'s DOM-identity assertions, a completely different
+gate. A gate table that implies the pixel harness covers "transitions" end to end would be wrong;
+it covers *what a single frame looks like*, not *whether the same DOM node persists across frames*.
+
+### ALWAYS filter the pixel harness while iterating — this is an instruction, not a tip
+
+**When you are working on specific transition kinds, pass them as bare positional arguments.
+Do not run the full harness to check a change that touches two kinds.**
+
+```bash
+cd examples/layered-minimal && node scripts/render-transition-matrix.mjs wipe pixelate
+```
+
+That renders 2 kinds × 3 modes × 5 progress points = **30 stills instead of 300**, seconds
+instead of ~47 s. Most work touches one to four kinds.
+
+**The rule:**
+
+- **Iterating on a change** → filter to the kinds you touched. Every time. Re-running 300
+  stills to learn about 30 is waste, and you will do it many times per task.
+- **Before committing** → one full `npm run pixel-gate:strict`, unfiltered. That is the gate;
+  the filtered runs are not.
+- **Reviewing** → filter unless the finding is about the harness itself or an axis.
+
+An entire workstream was run with every agent doing a full pass on every iteration — minutes
+per task, thrown away, because the filter is undocumented anywhere the agents were reading.
+If you catch yourself waiting ~47 s to look at one kind, you have made this mistake.
+
+**Two things the filter does NOT substitute for**, both deliberate:
+
+- A filtered run **refuses an axis change** (`MODES` / `PROGRESS`) — an axis change touches
+  every kind, so it must be re-baselined unfiltered. You will see
+  `AXIS CHANGE ON A FILTERED RUN`.
+- **Harness-machinery work needs unfiltered runs.** Several guards behave differently on a
+  filtered run (by design — read the comments before changing one), so if you are editing
+  `scripts/render-transition-matrix.mjs` itself, filtering hides the thing you are testing.
+
+### The harness renders serially — and the "parallel is slower" comment is narrower than it looks
+
+`shoot()` is called from a plain triple `for` loop over kind × mode × progress against **one
+warm browser**, i.e. 300 sequential `renderStill` calls on a 10-core machine. The long comment
+above `openBrowser` says other arrangements "measured worse" — but what was actually measured
+is (a) letting `renderStill` launch its **own Chrome per still** (~7× slower, dies around 60
+stills) and (b) **recycling** the browser every 15 stills (`EPIPE` crashes, orphaned
+`chrome-headless-shell` processes that wedge the next run). **Neither is "shard the kind list
+across N concurrent browsers"**, which is untried here and is the normal way to parallelise
+this. Expect 3–4× on 10 cores.
+
+**If you do it, know the hazard first.** Render non-determinism in this repo is **bimodal and
+process-dependent**, and separate processes are the *enumerating* axis for it — so sharding
+across processes will surface bimodal cells the serial run never sampled. That is *allowed*
+(the union rule treats the list as a lower bound and additions are fine), but it means the
+first runs churn the golden file. Do the re-seed **deliberately, in the same commit**, rather
+than discovering it mid-task and reading it as drift.
+
+**Do not shrink the render scale to go faster.** It invalidates every golden and destroys the
+margin that separates a real regression (8×8 mean delta 1–2) from the flake (0.0183).
+
+**If a gate run hangs at startup, check for stray `chrome-headless-shell` processes** before
+anything else — a killed run leaves orphans that wedge the next one for minutes.
+
+**There are no `it.fails` pins left.** Four known-defect pins used to live in
+`lib/editor/src/at-cut-transitions.test.tsx` (`checkerboard`, `pixelate`, `scanline-glitch`,
+`wipe`), and vitest counted each as a pass — so "all passed" was not full green. Phase 4
+Task 2.1 fixed all four (they are native two-input nodes now) and the pins are gone.
+**Still re-derive rather than trust this line** —
+`grep -c 'it\.fails' lib/editor/src/at-cut-transitions.test.tsx`, expected **0**; the
+count has been wrong in writing three times. Historical detail:
+`docs/superpowers/at-cut-transition-findings.md`.
+
+**The 6 SKIPPED tests are deliberate and derived** (re-derived for Phase 5 Task 3 — it
+was 5 through Task 2.2/2.3; `rgb-split` joined `NODE_KINDS` this task, migrating from a
+one-sided `TransitionPresentation` core lifted (twice — once per direction, via
+`fromRemotionPresentation`) to a native node returning `ghosts` directly, so it is now
+`isTransitionNode(resolved)` straight out of `resolveTransition` like the other five — the "a
+kind cannot opt out quietly" guarantee below is what caught this automatically, not a
+hand-edited count). They are the generic "carries its authored params through to the
+presentation" case for the six kinds that resolve to a two-input node — a node closes over its
+params, so there is no props bag to read. The set of skipping kinds is itself asserted, so a
+seventh kind cannot opt out quietly.
+
+**What replaces them, precisely** (an earlier version of this paragraph claimed "pinned by
+DOM assertions" and that was **false** for 9 of the 11 params): the
+`two-input node <kind> delivers every authored param` block in the same file is a
+**differential** check — for every sub-option `subOptionsFor(kind)` declares, it renders
+the kind twice, catalog default vs an in-bounds probe value for that one param, at three
+progress points, and requires the rendered output to differ. All **15** tunable params are now
+covered (`pixelate` ×5, `checkerboard` ×4, `scanline-glitch.rgbShiftPx`, `wipe.direction`,
+`gradient-wipe.direction` + `gradient-wipe.softness`, `rgb-split.direction` +
+`rgb-split.displacement` — the two params Task 3's migration added, re-derived directly off
+`subOptionsFor('rgb-split')` rather than assumed; `wipe.color` and `fade-to-color.color` by the
+accent tests — an `accent`-typed param has no in-bounds probe value to invent, so it gets a
+differential test of its own instead). It is derived so a new param is covered the day it is
+added, and it fails whether the value is dropped at the forwarding table in
+`lib/render/at-cut-transitions.tsx` or ignored inside the node. **This hole was real:**
+deleting `scanlines: t.scanlines` from that table previously passed every gate, because
+the editor suite skipped the kind and the pixel harness only ever renders catalog
+defaults. **Task 3 found a SECOND instance of the same hole class, for `rgb-split`
+specifically:** the differential helper (`mountPlan` in `at-cut-transitions.test.tsx`) rendered
+`style`/`z`/`wrap` but not `ghosts` — and `rgb-split`'s whole picture lives on `ghosts`, so
+`direction`/`displacement` both failed "not to be" on two byte-identical strings until the
+helper was fixed to render ghosts too (mirroring `LayerShell`'s own production behaviour).
+
+**The differential block went vacuous for 5 of the 11 params, silently, and was fixed in
+Phase 5 Task 0.2's fix round.** It compares two renders' `container.innerHTML`. Once
+`checkerboard` (Task 0.1) and `scanline-glitch` (Task 0.2) each started minting an unseeded
+`random(null)`-derived SVG `id` on every mount, the two HTML strings could never be equal
+regardless of any param — proven by hard-coding `checkerboard`'s `gridSize`/`pattern`/
+`stagger`/`squareAnimation` and `scanline-glitch`'s `rgbShiftPx` in turn and confirming the
+block still passed every time. The helper (`stripGeneratedIds`, same file) now normalises
+`id="…"` and `url(#…)` to a fixed placeholder before comparing, restoring the guarantee — and
+that fix was itself proven by re-running the same 5 hard-coded-param mutations and confirming
+each now goes red. **Any future kind minting a fresh per-mount id needs no new test** — the
+normalisation is generic — but a kind whose differential test still passes with a param
+hard-coded should raise the same suspicion the "9 of 11" DOM-assertion claim above should have.
+
+The pixel harness has **18** known-**bimodal** cells with two accepted hashes each: `clock-wipe`
+9, `iris` 7, `light-leak` 2 (`light-leak__exit__p025`/`__p05`, minority 1/24 each). This is
+Phase 5 Task 2.3's own re-derivation, not a carried-forward number, and the count's history is
+worth reading because a shallow re-seed produced a WRONG intermediate value along the way: Task
+2.3's migration re-shapes `light-leak`'s picture (the `isolation: 'isolate'` flag turning on),
+which legitimately de-lists the 8 `light-leak` cells that were bimodal before it — their old
+second hash does not apply to a materially different picture, and the harness's own `NOTE` lines
+say so explicitly, not a silent drop. The FIRST re-seed pass ran at only `--repeat=6` and found
+zero bimodal `light-leak` cells — which a review caught as structurally meaningless: the script's
+own `BIMODAL_RECORD_SAMPLES` is 8, so a 6-sample run cannot record a second attractor even if one
+exists. Re-running at `--repeat=24` (the depth Phase 4 Task 2.3 needed for six of these same
+cells previously) recovered exactly 2, not 0. Before Task 2.3 the count was 24 (18 until Phase 4
+Task 2.3 confirmed six more at 24 samples each — one `iris` and five `light-leak` edge cells,
+each of which had been failing `--strict` intermittently; 19 until Task 2.2, which re-baselined
+six `light-leak` edge cells whose recorded pictures no longer existed and seeded five new ones at
+`--repeat=12`). The parenthesised "N matched a bimodal cell's SECOND recorded hash" in a gate run
+varies legitimately between runs; `0 drifted, 0 missing` is the gate, that count is not.
 
 **Check `tsc`'s exit code, not just the error count** — `npx tsc --noEmit | grep -c 'error TS'`
 returns `0` when tsc *crashes*. This has bitten twice.

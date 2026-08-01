@@ -43,11 +43,30 @@ export type {
   OverlayItemRegistration,
   CompositionTheme,
 } from './types';
-export { overlayRegistry, resolveOverlayRenderer, overlayConfig, resolveVideoRenderer, videoConfig } from './brand-theme';
+export {
+  overlayRegistry,
+  resolveOverlayRenderer,
+  overlayConfig,
+  resolveVideoRenderer,
+  videoConfig,
+  transitionConfig,
+} from './brand-theme';
+export type {
+  AnyPresentation,
+  TransitionNode,
+  ResolvedTransition,
+  TransitionRenderProps,
+  TransitionRenderer,
+  TransitionRegistration,
+  TransitionRegistry,
+} from './transitions';
+export { isTransitionNode } from './transitions';
 export {
   resolveEffectRenderer,
   effectConfig,
+  effectScope,
   applyEffects,
+  collectMediaEffects,
   kenBurnsStyle,
   findKenBurns,
   GrainEffect,
@@ -58,8 +77,34 @@ export {
   type EffectRenderProps,
   type EffectRenderer,
   type EffectRegistration,
+  type MediaEffectEntry,
   type KenBurnsEffect,
+  // The STYLE axis (Phase 4 Task 3.2/6.5) — `theme.styleEffects` in
+  // `BrandTheme`/`CompositionTheme` (./types.ts). These were re-exported from
+  // `./effects` internally but never propagated through this public barrel,
+  // so a brand typing its own `StyleEffectRenderer` (as `conformance-theme.tsx`
+  // does) had no import path for it short of reaching into `./effects/style-effect`
+  // directly. Added here rather than left as a doc-only fix because it is the
+  // actual missing piece a brand author needs.
+  resolveStyleEffectRenderer,
+  styleEffectConfig,
+  composeMediaStyle,
+  applyStyleEffects,
+  isReservedEffectType,
+  CORE_STYLE_EFFECT_TYPES,
+  type MediaStyleFragment,
+  type StyleEffectRenderProps,
+  type StyleEffectRenderer,
+  type StyleEffectRegistry,
+  type StyleEffectRegistration,
 } from './effects';
+export {
+  MediaEffectsContext,
+  MediaEffectsConsumptionContext,
+  MediaEffectsBoundary,
+  useMediaEffects,
+  applyMediaEffects,
+} from './effects/media-effects-context';
 export { SegmentMedia } from './segment/SegmentMedia';
 export { GenericTextOverlay } from './generic/GenericTextOverlay';
 export {
@@ -90,6 +135,8 @@ export {
   activeAmount,
   chunkWords,
   strokeShadow,
+  rebaseCaptionTimes,
+  type CaptionTimes,
   DEFAULT_CAPTION_MAX_CHARS,
   DEFAULT_CAPTION_GAP_BREAK_MS,
   DEFAULT_CAPTION_LAST_LINE_GRACE_MS,
@@ -107,4 +154,5 @@ export type {
   WatermarkTokens,
   DisclaimerTokens,
   CaptionTokens,
+  TextTokens,
 } from './tokens';

@@ -13,15 +13,25 @@ import {
   defaultTransition,
 } from './transitions';
 import {
+  CoreTransitionSchema,
   TransitionSchema,
   AccentKey,
   subOptionForField,
   defaultValueForField,
+  ColorHex,
 } from '@video-toolkit/lib/reel-config-base/transition-schema';
+import { paramChoices, type ParamOption } from '@video-toolkit/lib/reel-config-base/param-field';
 
-// The zod union's own members, read straight off the schema — the yardstick
-// every derived list below is measured against.
-const SCHEMA_MEMBERS = TransitionSchema.options as ReadonlyArray<z.ZodObject<z.ZodRawShape>>;
+// The values of an `options` list, whichever of the two declaration styles it
+// uses (bare strings or `{value,label}`). Since Phase 4 Task 1.1 both axes share
+// ONE descriptor, and `paramChoices` is the normaliser.
+const optValues = (o?: readonly ParamOption[]) => paramChoices(o)?.map((c) => c.value);
+
+// The CORE union's own members, read straight off the schema — the yardstick
+// every derived list below is measured against. Read off `CoreTransitionSchema`
+// rather than `TransitionSchema`: since Phase 4 the latter is a two-branch
+// `z.union`, whose `.options` are the two BRANCHES, not the catalog's kinds.
+const SCHEMA_MEMBERS = CoreTransitionSchema.options as ReadonlyArray<z.ZodObject<z.ZodRawShape>>;
 const SCHEMA_KINDS = SCHEMA_MEMBERS.map((m) => (m.shape.kind as z.ZodLiteral<string>).value);
 const shapeFor = (kind: string) =>
   SCHEMA_MEMBERS.find((m) => (m.shape.kind as z.ZodLiteral<string>).value === kind)!.shape;
@@ -75,10 +85,10 @@ describe('catalog is derived from TransitionSchema', () => {
   it('mirrors each enum sub-option’s values from the schema enum', () => {
     for (const kind of SCHEMA_KINDS) {
       for (const opt of subOptionsFor(kind)) {
-        if (opt.kind !== 'enum') continue;
+        if (opt.type !== 'enum') continue;
         const field = inner(shapeFor(kind)[opt.prop]);
         expect(field, `${kind}.${opt.prop}`).toBeInstanceOf(z.ZodEnum);
-        expect(opt.options?.map((o) => o.value)).toEqual((field as z.ZodEnum<[string, ...string[]]>).options);
+        expect(optValues(opt.options)).toEqual((field as z.ZodEnum<[string, ...string[]]>).options);
       }
     }
   });
@@ -97,11 +107,15 @@ describe('catalog is derived from TransitionSchema', () => {
 
 describe('TRANSITION_KINDS', () => {
   it('lists all 20 kinds with human-readable labels', () => {
+    // 20 again: Phase 4 Task 2.3 added `fade-to-color` (21), and the removal of
+    // the brand-named fade kind it replaced took one back off. Core's catalog
+    // names NO brand's colour word — that is the point of the removal, so this
+    // count going back to 21 without a new generic kind is the regression.
     expect(TRANSITION_KINDS).toHaveLength(20);
     const byKind = Object.fromEntries(TRANSITION_KINDS.map((k) => [k.kind, k.label]));
     expect(byKind['cut']).toBe('Cut');
     expect(byKind['dissolve']).toBe('Dissolve');
-    expect(byKind['fade-coal']).toBe('Fade to black');
+    expect(byKind['fade-to-color']).toBe('Fade to colour');
     expect(byKind['glitch']).toBe('Glitch');
     expect(byKind['whip-pan']).toBe('Whip pan');
     expect(byKind['zoom-through']).toBe('Zoom');
@@ -159,17 +173,24 @@ describe('no transition in the registry is unreachable', () => {
   // transition; three of them named props their presentation never accepted
   // (scanlineGlitch's `scanlineHeight`/`glitchIntensity` among them). Pin them
   // to the schema, which is now derived from the presentations' real signatures.
-  it('lists exactly the tunable options each new kind’s schema declares', () => {
-    for (const [name, kind] of [
-      ['rgbSplit', 'rgb-split'],
-      ['zoomBlur', 'zoom-blur'],
-      ['lightLeak', 'light-leak'],
-      ['pixelate', 'pixelate'],
-      ['checkerboard', 'checkerboard'],
-      ['scanlineGlitch', 'scanline-glitch'],
-    ] as const) {
-      const entry = registry.transitions[name] as { options?: string[] };
-      expect(entry.options, name).toEqual(subOptionsFor(kind).map((o) => o.prop));
+  //
+  // Originally pinned six hardcoded kinds (2026-07 Task 2.4) — the ones that
+  // task itself touched. That left every OTHER registry entry unchecked, which
+  // is exactly how `zoomThrough.options` kept naming the deprecated `from`
+  // for a full task cycle after Task 2.5 renamed the field to `direction`:
+  // Task 2.4 edited the entry, Task 2.5 changed the fact, and no gate read
+  // both. Widened (Workstream 2 final-review fix wave) to iterate every
+  // registry entry that names a core catalog kind — i.e. the whole map, since
+  // `it('gives every registry transition a `kind` that the catalog offers')`
+  // above already guarantees that's all of them — so a future task that edits
+  // a schema without walking back to the registry goes red here instead of
+  // shipping a stale `options` list silently.
+  it('lists exactly the tunable options each registry kind’s schema declares', () => {
+    for (const [name, entry] of Object.entries(registry.transitions)) {
+      if (name.startsWith('_')) continue; // `_note` — prose for a human reader, not an entry
+      const { kind, options } = entry as { kind?: string; options?: string[] };
+      if (!kind || !options) continue;
+      expect(options, name).toEqual(subOptionsFor(kind).map((o) => o.prop));
     }
   });
 });
@@ -245,52 +266,78 @@ describe('presetForFrames', () => {
 });
 
 describe('subOptionsFor', () => {
-  it('returns no sub-options for cut, dissolve, fade-coal, and glitch', () => {
+  it('returns no sub-options for cut, dissolve, and fade', () => {
+    // `fade`/`dissolve` are the parameterless crossfade; the dip's ONE knob
+    // lives on `fade-to-color`, pinned below.
     expect(subOptionsFor('cut')).toEqual([]);
     expect(subOptionsFor('dissolve')).toEqual([]);
-    expect(subOptionsFor('fade-coal')).toEqual([]);
-    expect(subOptionsFor('glitch')).toEqual([]);
+    expect(subOptionsFor('fade')).toEqual([]);
   });
 
-  it('returns a direction enum with 4 options for whip-pan', () => {
+  // Task 2.4: four presentation props that existed only as glitch.tsx's own
+  // destructured defaults, unreachable from any config until this task.
+  it('returns four knobs for glitch: intensity, slices, and two toggles', () => {
+    const opts = subOptionsFor('glitch');
+    const byProp = Object.fromEntries(opts.map((o) => [o.prop, o]));
+    expect(Object.keys(byProp).sort()).toEqual(['intensity', 'rgbShift', 'scanLines', 'slices']);
+    expect(byProp.intensity.type).toBe('number');
+    expect(byProp.intensity.min).toBe(0);
+    expect(byProp.intensity.max).toBe(1);
+    expect(byProp.slices.type).toBe('number');
+    expect(byProp.slices.min).toBe(2);
+    expect(byProp.slices.max).toBe(32);
+    expect(byProp.rgbShift.type).toBe('boolean');
+    expect(byProp.scanLines.type).toBe('boolean');
+  });
+
+  it('returns a direction enum with 4 options, plus blurAmount, for whip-pan', () => {
     const opts = subOptionsFor('whip-pan');
-    expect(opts).toHaveLength(1);
-    expect(opts[0].prop).toBe('direction');
-    expect(opts[0].kind).toBe('enum');
-    expect(opts[0].options).toHaveLength(4);
-    expect(opts[0].options?.map((o) => o.value).sort()).toEqual(['down', 'left', 'right', 'up']);
+    const byProp = Object.fromEntries(opts.map((o) => [o.prop, o]));
+    expect(Object.keys(byProp).sort()).toEqual(['blurAmount', 'direction']);
+    expect(byProp.direction.type).toBe('enum');
+    expect(byProp.direction.options).toHaveLength(4);
+    expect(optValues(byProp.direction.options)!.sort()).toEqual(['down', 'left', 'right', 'up']);
+    expect(byProp.blurAmount.type).toBe('number');
+    expect(byProp.blurAmount.min).toBe(0);
+    expect(byProp.blurAmount.max).toBe(100);
   });
 
-  it('returns a from enum with in/out for zoom-through', () => {
+  // `direction`, not `from` (Task 2.5): one name per concept, and the
+  // deprecated alias is deliberately NOT offered as a second control.
+  it('returns a direction enum with in/out, plus zoomAmount, for zoom-through', () => {
     const opts = subOptionsFor('zoom-through');
-    expect(opts).toHaveLength(1);
-    expect(opts[0].prop).toBe('from');
-    expect(opts[0].options?.map((o) => o.value).sort()).toEqual(['in', 'out']);
+    const byProp = Object.fromEntries(opts.map((o) => [o.prop, o]));
+    expect(Object.keys(byProp).sort()).toEqual(['direction', 'zoomAmount']);
+    expect(optValues(byProp.direction.options)!.sort()).toEqual(['in', 'out']);
+    expect(byProp.zoomAmount.type).toBe('number');
+    expect(byProp.zoomAmount.min).toBe(1);
+    expect(byProp.zoomAmount.max).toBe(3);
   });
 
-  // wipe's colour is a BRAND accent-slot key, not a fixed palette: core no
-  // longer names one brand's colours, so the control is an 'accent' picker
-  // whose options come from the brand's own accentSlots at edit time.
-  it('returns an accent colour picker + a direction enum for wipe', () => {
+  // wipe's colour is EITHER a BRAND accent-slot key OR a literal (hex) — core
+  // no longer names one brand's colours, so the control is a DUAL
+  // 'accent-or-color' picker whose accent half comes from the brand's own
+  // accentSlots at edit time and whose literal half needs no brand at all.
+  it('returns a dual accent-or-color picker + a direction enum for wipe', () => {
     const opts = subOptionsFor('wipe');
     const byProp = Object.fromEntries(opts.map((o) => [o.prop, o]));
-    expect(byProp.color.kind).toBe('accent');
+    expect(byProp.color.type).toBe('accent-or-color');
     expect(byProp.color.options).toBeUndefined();
-    expect(byProp.direction.kind).toBe('enum');
-    expect(byProp.direction.options?.map((o) => o.value).sort()).toEqual(['left', 'right']);
+    expect(byProp.direction.type).toBe('enum');
+    expect(optValues(byProp.direction.options)!.sort()).toEqual(['left', 'right']);
   });
 
   it('returns direction enum + softness number for gradient-wipe', () => {
     const opts = subOptionsFor('gradient-wipe');
     const byProp = Object.fromEntries(opts.map((o) => [o.prop, o]));
-    expect(byProp.direction.kind).toBe('enum');
-    expect(byProp.direction.options?.map((o) => o.value).sort()).toEqual([
+    expect(byProp.direction.type).toBe('enum');
+    expect(optValues(byProp.direction.options)!.sort()).toEqual([
       'bl-tr',
       'br-tl',
       'tl-br',
       'tr-bl',
     ]);
-    expect(byProp.softness.kind).toBe('number');
+    expect(byProp.softness.type).toBe('number');
     expect(byProp.softness.options).toBeUndefined();
   });
 
@@ -299,9 +346,9 @@ describe('subOptionsFor', () => {
       const opts = subOptionsFor(kind);
       expect(opts).toHaveLength(1);
       expect(opts[0].prop).toBe('direction');
-      expect(opts[0].kind).toBe('enum');
+      expect(opts[0].type).toBe('enum');
       expect(opts[0].options).toHaveLength(4);
-      expect(opts[0].options?.map((o) => o.value).sort()).toEqual(['down', 'left', 'right', 'up']);
+      expect(optValues(opts[0].options)!.sort()).toEqual(['down', 'left', 'right', 'up']);
     }
   });
 
@@ -311,17 +358,45 @@ describe('subOptionsFor', () => {
     expect(subOptionsFor('iris')).toEqual([]);
   });
 
-  // DECISION, pinned deliberately. Burn's shape carries four optional fields.
-  // Two are numeric look-shaping knobs a person may want to tune, so they get
-  // controls; `mask` and `glowColor` are STRINGS and stay uncontrolled — they
-  // are brand-supplied (a staticFile path and a theme colour injected by the
-  // brand's own composition), not hand-tuned in the inspector, and there is no
-  // free-text sub-option control to render them with. Before the unified
-  // catalog, burn surfaced nothing at all; exposing the two numbers is the
-  // intended delta. Change this list only on purpose.
-  it('surfaces burn’s two numeric knobs and neither of its brand-supplied strings', () => {
-    expect(subOptionsFor('burn').map((o) => o.prop)).toEqual(['edgeContrast', 'glowBand']);
-    expect(subOptionsFor('burn').map((o) => o.kind)).toEqual(['number', 'number']);
+  // THE CAPABILITY Phase 4 Task 1.1 ADDS, pinned. This test used to assert the
+  // OPPOSITE — that burn surfaced only its two numeric knobs and that `mask`
+  // and `glowColor` stayed uncontrolled, "because there is no free-text
+  // sub-option control to render them with". There wasn't, and that was the
+  // defect: two real, authored-in-config properties that the inspector simply
+  // could not show, because the transition axis' parameter vocabulary had no
+  // `string` while the effect axis' had no `accent`, and neither was a superset
+  // of the other. One merged descriptor closes it. The assertion inverted
+  // deliberately; the ZodString branch of `subOptionForField` is what carries it.
+  it('surfaces ALL FOUR of burn’s fields, strings included', () => {
+    expect(subOptionsFor('burn').map((o) => o.prop)).toEqual(['mask', 'glowColor', 'edgeContrast', 'glowBand']);
+    expect(subOptionsFor('burn').map((o) => o.type)).toEqual(['string', 'color', 'number', 'number']);
+  });
+
+  // `glowColor` is a colour and `mask` is a path. Both are `z.string()` to zod,
+  // so the difference is DECLARED — `COLOR_FIELDS` in transition-schema.ts,
+  // beside `PROP_LABELS` — rather than inferred from the shape.
+  it('distinguishes burn’s colour from its file path by declaration', () => {
+    const byProp = Object.fromEntries(subOptionsFor('burn').map((o) => [o.prop, o]));
+    expect(byProp.glowColor.type).toBe('color');
+    expect(byProp.mask.type).toBe('string');
+    // Same shape to zod: both parse a plain string, and the marking changed no
+    // validation. If it had, every baked brand literal carrying a mask/glow
+    // would be at risk.
+    expect(ColorHex.safeParse('#ff8800').success).toBe(true);
+    expect(ColorHex.safeParse('not-a-hex').success).toBe(true);
+    expect(ColorHex.safeParse(42).success).toBe(false);
+  });
+
+  // Every string field is reachable, not just burn's: this is a rule about the
+  // descriptor, not a special case for one kind.
+  it('gives every kind’s string field a control, and never a number one', () => {
+    for (const kind of SCHEMA_KINDS) {
+      const shape = shapeFor(kind);
+      for (const opt of subOptionsFor(kind)) {
+        const f = inner(shape[opt.prop]);
+        if (f instanceof z.ZodString) expect(opt.type, `${kind}.${opt.prop}`).toMatch(/^(string|color|accent|accent-or-color)$/);
+      }
+    }
   });
 
   // The six wired in by Task 4. Each list is exactly the params its
@@ -330,25 +405,25 @@ describe('subOptionsFor', () => {
   it('returns direction enum + displacement number for rgb-split', () => {
     const byProp = Object.fromEntries(subOptionsFor('rgb-split').map((o) => [o.prop, o]));
     expect(Object.keys(byProp)).toEqual(['direction', 'displacement']);
-    expect(byProp.direction.options?.map((o) => o.value)).toEqual(['horizontal', 'vertical', 'diagonal']);
-    expect(byProp.displacement.kind).toBe('number');
+    expect(optValues(byProp.direction.options)).toEqual(['horizontal', 'vertical', 'diagonal']);
+    expect(byProp.displacement.type).toBe('number');
   });
 
   it('returns direction/blurAmount/scaleAmount/origin for zoom-blur', () => {
     const opts = subOptionsFor('zoom-blur');
     expect(opts.map((o) => o.prop)).toEqual(['direction', 'blurAmount', 'scaleAmount', 'origin']);
-    expect(opts.map((o) => o.kind)).toEqual(['enum', 'number', 'number', 'enum']);
+    expect(opts.map((o) => o.type)).toEqual(['enum', 'number', 'number', 'enum']);
     const byProp = Object.fromEntries(opts.map((o) => [o.prop, o]));
-    expect(byProp.direction.options?.map((o) => o.value)).toEqual(['in', 'out']);
-    expect(byProp.origin.options?.map((o) => o.value)).toEqual(['center', 'top', 'bottom', 'left', 'right']);
+    expect(optValues(byProp.direction.options)).toEqual(['in', 'out']);
+    expect(optValues(byProp.origin.options)).toEqual(['center', 'top', 'bottom', 'left', 'right']);
   });
 
   it('returns temperature/direction/intensity and a BOOLEAN flareArtifacts for light-leak', () => {
     const opts = subOptionsFor('light-leak');
     expect(opts.map((o) => o.prop)).toEqual(['temperature', 'direction', 'intensity', 'flareArtifacts']);
-    expect(opts.map((o) => o.kind)).toEqual(['enum', 'enum', 'number', 'boolean']);
+    expect(opts.map((o) => o.type)).toEqual(['enum', 'enum', 'number', 'boolean']);
     const byProp = Object.fromEntries(opts.map((o) => [o.prop, o]));
-    expect(byProp.temperature.options?.map((o) => o.value)).toEqual(['warm', 'cool', 'rainbow']);
+    expect(optValues(byProp.temperature.options)).toEqual(['warm', 'cool', 'rainbow']);
     expect(byProp.flareArtifacts.options).toBeUndefined();
   });
 
@@ -357,25 +432,27 @@ describe('subOptionsFor', () => {
     expect(opts.map((o) => o.prop)).toEqual([
       'maxBlockSize', 'gridSize', 'scanlines', 'glitchArtifacts', 'randomness',
     ]);
-    expect(opts.map((o) => o.kind)).toEqual(['number', 'number', 'boolean', 'boolean', 'number']);
+    expect(opts.map((o) => o.type)).toEqual(['number', 'number', 'boolean', 'boolean', 'number']);
   });
 
   it('returns checkerboard’s nine reveal patterns and its square animation', () => {
     const opts = subOptionsFor('checkerboard');
     expect(opts.map((o) => o.prop)).toEqual(['gridSize', 'pattern', 'stagger', 'squareAnimation']);
     const byProp = Object.fromEntries(opts.map((o) => [o.prop, o]));
-    expect(byProp.pattern.options?.map((o) => o.value)).toEqual([
+    expect(optValues(byProp.pattern.options)).toEqual([
       'sequential', 'random', 'diagonal', 'alternating', 'spiral',
       'rows', 'columns', 'center-out', 'corners-in',
     ]);
-    expect(byProp.squareAnimation.options?.map((o) => o.value)).toEqual(['fade', 'scale', 'flip']);
+    // Phase 5 Task 4 adds `'mask-scale'` (option 2 of the design's carve-out)
+    // — additive, so this list grows by one rather than replacing a value.
+    expect(optValues(byProp.squareAnimation.options)).toEqual(['fade', 'scale', 'flip', 'mask-scale']);
   });
 
   it('returns scanline-glitch’s single shift knob under a readable label', () => {
     const opts = subOptionsFor('scanline-glitch');
     expect(opts).toHaveLength(1);
     expect(opts[0].prop).toBe('rgbShiftPx');
-    expect(opts[0].kind).toBe('number');
+    expect(opts[0].type).toBe('number');
     // humanize() alone would render this 'Rgb shift px'.
     expect(opts[0].label).toBe('RGB shift (px)');
   });
@@ -391,50 +468,100 @@ describe('subOptionForField', () => {
     expect(subOptionForField('invert', z.boolean())).toEqual({
       prop: 'invert',
       label: 'Invert',
-      kind: 'boolean',
+      type: 'boolean',
     });
   });
 
   it('maps an OPTIONAL boolean to a checkbox too', () => {
-    expect(subOptionForField('softEdges', z.boolean().optional())?.kind).toBe('boolean');
+    expect(subOptionForField('softEdges', z.boolean().optional())?.type).toBe('boolean');
     expect(subOptionForField('softEdges', z.boolean().optional())?.label).toBe('Soft edges');
   });
 
   it('maps numbers to numeric fields and enums to dropdowns', () => {
-    expect(subOptionForField('cellSize', z.number().min(1))?.kind).toBe('number');
+    expect(subOptionForField('cellSize', z.number().min(1))?.type).toBe('number');
     const e = subOptionForField('from', z.enum(['in', 'out']));
-    expect(e?.kind).toBe('enum');
-    expect(e?.options?.map((o) => o.value)).toEqual(['in', 'out']);
+    expect(e?.type).toBe('enum');
+    expect(optValues(e?.options)).toEqual(['in', 'out']);
   });
 
-  it('gives strings and other types no control at all', () => {
-    expect(subOptionForField('mask', z.string())).toBeNull();
+  // Inverted by Task 1.1 for the string half — see the burn tests above. What
+  // still gets NO control is what genuinely cannot be edited as a single field.
+  it('gives a plain string a TEXT control, and unrenderable shapes none at all', () => {
+    expect(subOptionForField('mask', z.string())).toEqual({ prop: 'mask', label: 'Mask', type: 'string' });
     expect(subOptionForField('bag', z.record(z.string(), z.unknown()))).toBeNull();
+    expect(subOptionForField('stops', z.array(z.number()))).toBeNull();
+    expect(subOptionForField('nested', z.object({ a: z.number() }))).toBeNull();
   });
 
-  // AccentKey is a plain string to zod, so it is recognised by IDENTITY, not by
-  // shape — that is exactly what distinguishes "a brand accent-slot key" from
-  // burn's `mask` path, which is also a string and must stay uncontrolled.
-  it('maps an AccentKey field to an accent picker, options left to the brand', () => {
+  // The NLE metadata on the merged descriptor is populated from the schema
+  // itself, so a bounded param arrives at the editor bounded. Emitted
+  // independently: a `.min()` with no `.max()` must not invent a max.
+  it('carries the schema\u2019s own bounds, step and default onto the descriptor', () => {
+    // A bounded field gets a `step` DERIVED from its range. min/max alone was
+    // worse than neither: `<input type=number>` defaults step to 1, so a 0\u20131
+    // field could only spin 0 \u2194 1 and a typed `0.5` was a step mismatch.
+    expect(subOptionForField('intensity', z.number().min(0).max(1))).toEqual({
+      prop: 'intensity',
+      label: 'Intensity',
+      type: 'number',
+      min: 0,
+      max: 1,
+      step: 0.01,
+    });
+    // A range needs BOTH ends to be reasoned from, and `.int()` says the
+    // schema wants whole numbers whatever the range.
+    expect(subOptionForField('cells', z.number().min(2))).toEqual({ prop: 'cells', label: 'Cells', type: 'number', min: 2 });
+    expect(subOptionForField('free', z.number())).toEqual({ prop: 'free', label: 'Free', type: 'number' });
+    expect(subOptionForField('count', z.number().int().min(0).max(1))).toMatchObject({ step: 1 });
+    // The clamp at the wide end: a 0\u20131000 span would give 10 without it.
+    expect(subOptionForField('px', z.number().min(0).max(1000))).toMatchObject({ step: 1 });
+    expect(subOptionForField('softness', z.number().default(12))?.default).toBe(12);
+    expect(subOptionForField('softness', z.number().default(12).optional())?.default).toBe(12);
+    expect(subOptionForField('softness', z.number())?.default).toBeUndefined();
+  });
+
+  // CHANGED IN PHASE 4 (Task 1.6). A colour field is now declared by NAME —
+  // `COLOR_FIELDS` in transition-schema.ts, beside `PROP_LABELS` — not by
+  // deriving from the shared `ColorHex` instance. The instance survives as
+  // documentation of intent (and its validation is unchanged); what it no
+  // longer does is carry a WeakSet mark that `.min()`/`.nullable()`/
+  // `.transform()` could silently strip. Chain-independence is pinned in
+  // lib/editor/src/accent-field-mark.test.ts.
+  it('recognises a ColorHex field by its declared name, in any chain order', () => {
+    expect(subOptionForField('glowColor', ColorHex.optional())?.type).toBe('color');
+    expect(subOptionForField('glowColor', ColorHex.describe('x').optional())?.type).toBe('color');
+    expect(subOptionForField('glowColor', ColorHex.optional().describe('x'))?.type).toBe('color');
+    // An UNDECLARED name is text, not a colour — however it was written.
+    expect(subOptionForField('glow', ColorHex.optional())?.type).toBe('string');
+    expect(subOptionForField('glow', z.string().optional())?.type).toBe('string');
+  });
+
+  // `color` is a DUAL field since the Phase 4 widening (accent-slot key OR a
+  // literal hex — `ACCENT_OR_COLOR_FIELDS`, transition-schema.ts), so its
+  // control is 'accent-or-color', not plain 'accent'. It still gets no
+  // `options` from the schema: the accent half's choices are the brand's, and
+  // the literal half needs none.
+  it('maps `color` to the DUAL accent-or-color picker, options left to the brand', () => {
     expect(subOptionForField('color', AccentKey)).toEqual({
       prop: 'color',
       label: 'Color',
-      kind: 'accent',
+      type: 'accent-or-color',
     });
-    expect(subOptionForField('color', AccentKey.optional())?.kind).toBe('accent');
-    // A look-alike plain string is still uncontrolled.
-    expect(subOptionForField('color', z.string().optional())).toBeNull();
+    expect(subOptionForField('color', AccentKey.optional())?.type).toBe('accent-or-color');
+    // burn's `mask` is also a string and must stay a plain TEXT field — that is
+    // the distinction the declaration carries. Since Task 1.1 it is "which
+    // control", not "control or nothing", which makes it worth restating.
+    expect(subOptionForField('mask', z.string().optional())?.type).toBe('string');
   });
 
-  // Regression: zod's `.describe()` clones into a NEW instance
-  // (`new This({...this._def, description})`), so a naive `t === AccentKey`
-  // identity check only survives `.optional()` BEFORE `.describe()` — the
-  // order every existing catalog field happens to use. The equally natural
-  // reverse order (`.describe()` then `.optional()`) used to silently produce
-  // no control at all (not even an error). AccentKey must recognise both.
-  it('still maps to an accent picker when .describe() comes before .optional()', () => {
+  // Regression, kept: zod's `.describe()` clones into a NEW instance
+  // (`new This({...this._def, description})`), so the identity/WeakSet marks
+  // this replaced only survived `.optional()` BEFORE `.describe()` — the order
+  // every existing catalog field happens to use. The reverse order used to
+  // silently produce no control at all (not even an error).
+  it('still maps `color` to the dual picker when .describe() comes before .optional()', () => {
     const field = AccentKey.describe('A differently-worded description').optional();
-    expect(subOptionForField('color', field)?.kind).toBe('accent');
+    expect(subOptionForField('color', field)?.type).toBe('accent-or-color');
   });
 });
 
@@ -471,10 +598,23 @@ describe('defaultTransition', () => {
     expect(defaultTransition('cut')).toEqual({ kind: 'cut' });
   });
 
-  it('defaults dissolve/fade-coal/glitch to 15 frames', () => {
+  it('defaults dissolve/fade-to-color to 15 frames', () => {
     expect(defaultTransition('dissolve')).toEqual({ kind: 'dissolve', frames: 15 });
-    expect(defaultTransition('fade-coal')).toEqual({ kind: 'fade-coal', frames: 15 });
-    expect(defaultTransition('glitch')).toEqual({ kind: 'glitch', frames: 15 });
+    // No `color`: core seeds no colour, so the default is the plain crossfade
+    // until the author picks a slot from the brand's own palette.
+    expect(defaultTransition('fade-to-color')).toEqual({ kind: 'fade-to-color', frames: 15 });
+  });
+
+  // Task 2.4: glitch's two toggles are seeded true (the presentation's own
+  // default) — a checkbox has no honest "unset" state, unlike the numeric
+  // knobs below, which stay absent so the presentation's own default applies.
+  it('defaults glitch to 15 frames, rgbShift true, scanLines true, no intensity/slices', () => {
+    expect(defaultTransition('glitch')).toEqual({
+      kind: 'glitch',
+      frames: 15,
+      rgbShift: true,
+      scanLines: true,
+    });
   });
 
   it('defaults whip-pan to 15 frames and direction left', () => {
@@ -485,11 +625,16 @@ describe('defaultTransition', () => {
     });
   });
 
-  it('defaults zoom-through to 15 frames and from in', () => {
+  // Nothing but `frames` (Task 2.5). `direction` became OPTIONAL when it
+  // replaced the required `from` — a baked `{from:'in'}` literal has to keep
+  // parsing, and a member cannot require the field it is aliasing. That matches
+  // `zoom-blur`, whose `direction` has always been optional and unseeded, and
+  // it is honest: unset means the presentation's own `'in'`, which is exactly
+  // what the old seed said out loud. The DEPRECATED `from` is never seeded.
+  it('defaults zoom-through to 15 frames, with neither direction nor the deprecated from', () => {
     expect(defaultTransition('zoom-through')).toEqual({
       kind: 'zoom-through',
       frames: 15,
-      from: 'in',
     });
   });
 

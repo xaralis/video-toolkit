@@ -2,11 +2,13 @@ import type React from 'react';
 import type { Registration, Registry } from './registry';
 // Type-only import — erased at runtime, so this does NOT create a module cycle
 // with effects/index.ts (which imports BrandTheme back, also type-only).
-import type { EffectRenderProps } from './effects';
+import type { EffectRenderProps, EffectRegistration } from './effects';
+import type { StyleEffectRenderProps, StyleEffectRenderer } from './effects/style-effect';
 import type { AccentSlot } from './palette';
 import type { ThemeTokens } from './tokens';
 import type { Placement } from './placement';
 import type { MediaSourceResolver } from './media-source';
+import type { TransitionRegistry } from './transitions';
 import type { VideoItem, AudioItem, OverlayItem, BrandLayerItem } from '../reel-config-base/layered-schema';
 
 /** The static prop bag every text-overlay renderer receives. Frame-derived
@@ -27,6 +29,12 @@ export interface OverlayRenderProps {
   /** Usually 0 — the overlay is mounted in a Sequence at the item's start. */
   appearAtMs: number;
   durationMs: number;
+  /** The theme's look constants for core's generic overlay renderer (see
+   *  ./tokens.ts, `TextTokens`). Core-supplied — `TrackTextOverlay` threads
+   *  `theme.tokens` through here, the same narrow-field convention as
+   *  `VideoRenderProps.tokens`/`BrandRenderProps.tokens`, except this is the
+   *  ONE place `tokens` reaches the OVERLAY axis rather than video/brand. */
+  tokens?: ThemeTokens;
 }
 
 export type OverlayRenderer = React.FC<OverlayRenderProps>;
@@ -55,8 +63,31 @@ export interface BrandTheme {
   video?: Partial<Record<VideoKind, VideoRegistration>>;
   /** ONE open-keyed effect registry. Effect types are OPEN — a brand names
    *  them, core never enumerates them. Absent type → core generic primitive
-   *  (grain/scanlines/vignette/grade/transform) → silently skipped. */
-  effects?: Registry<EffectRenderProps>;
+   *  (grain/scanlines/vignette/grade/transform) → silently skipped.
+   *
+   *  Typed on `EffectRegistration` rather than the bare `Registry<>` alias
+   *  (like `overlays`/`video`/`brand` below) so the `scope` field (Phase 4
+   *  Task 3.3) is visible here — see ./effects/index.ts. */
+  effects?: Record<string, EffectRegistration>;
+  /** ONE open-keyed STYLE-effect registry (Phase 4 Task 3.2) — a SEPARATE axis
+   *  from `effects` above, for effect types that compose into the media
+   *  element's own style rather than wrapping it (today: `ken-burns`, core's
+   *  own; see lib/theming/effects/style-effect.ts). Absent type → core's own
+   *  style-effect generic (`ken-burns`) → not a style type at all, so it falls
+   *  through to the WRAPPER axis (`effects` above) like any other type.
+   *
+   *  Registering a type HERE is what makes `isReservedEffectType` treat it as
+   *  reserved on the wrapper axis: this is the "brand can register its own
+   *  style ken-burns" capability — replacing the movement without replacing
+   *  the whole video renderer. */
+  styleEffects?: Registry<StyleEffectRenderProps, StyleEffectRenderer>;
+  /** ONE open-keyed transition registry. Transition kinds are OPEN as of
+   *  Phase 4 — core's catalog (lib/reel-config-base/transition-schema.ts) is
+   *  core's vocabulary, not THE vocabulary. Absent kind → core's generic
+   *  presentation for that kind → hard cut (plus one dev warning naming the
+   *  kind, from `getTransitionRecord`). Registering a kind here is what makes a
+   *  brand-authored transition render AND what stops it warning. */
+  transitions?: TransitionRegistry;
   /** ONE open-keyed brand-layer registry (watermark / disclaimer / whatever a
    *  brand names). Absent kind → core generic (GenericWatermark /
    *  GenericDisclaimer) → silently skipped. Consumed by
@@ -108,6 +139,25 @@ export interface VideoRenderProps {
    *  A renderer must apply this at render time only — never write the result
    *  back onto `item.source`, which captions are derived from. */
   resolveMediaSource?: MediaSourceResolver;
+  /** The theme's STYLE-effect registry, threaded down the same narrow way as
+   *  `tokens`/`resolveMediaSource` — `renderVideoItemNode` passes
+   *  `theme.styleEffects` here so `SegmentMedia` can resolve a brand's style
+   *  effect (or fall back to core's own `ken-burns`) without ever holding a
+   *  `CompositionTheme`. Absent (a renderer not built on SegmentMedia, or a
+   *  direct SegmentMedia call outside the composition, e.g. in a test) → core
+   *  style effects only. */
+  styleEffects?: Registry<StyleEffectRenderProps, StyleEffectRenderer>;
+  /** Draws ONE overlay item exactly as the track would — the SAME function
+   *  `makeOverlayRenderer(theme)` builds for `LayeredReelComposition`'s own
+   *  track Sequences (see lib/render/layered-composition.tsx and
+   *  lib/render/overlay-anchor.ts), threaded down here by
+   *  `renderVideoItemNode` the same narrow way as `tokens`/`resolveMediaSource`.
+   *  A renderer that draws `anchoredOverlays` must call THIS, not roll its own
+   *  dispatch — that is what keeps a track-routed and an anchored-routed
+   *  overlay of the same kind unable to disagree on how they render (they are
+   *  literally the same call). Absent in any call site outside the real
+   *  composition (e.g. a renderer invoked directly in a unit test). */
+  renderAnchoredOverlay?: (item: OverlayItem) => React.ReactNode;
 }
 
 export type VideoRenderer = React.FC<VideoRenderProps>;
@@ -139,9 +189,24 @@ export interface BrandRenderProps {
 
 export type BrandRenderer = React.FC<BrandRenderProps>;
 
-/** Brand-layer kinds are OPEN, like overlay kinds and effect types — the
- *  schema names two today ('watermark' | 'disclaimer'), and core has a generic
- *  for exactly those two. A brand may register more. */
+/** Brand-layer kinds are OPEN AT THIS TYPE — like overlay kinds and effect
+ *  types — and core has a generic for exactly two ('watermark' |
+ *  'disclaimer').
+ *
+ *  BUT (Phase 4 Task 6.2 finding, unlike the overlay/effect/transition axes):
+ *  `BrandLayerItemSchema.kind` (lib/reel-config-base/layered-schema.ts) is
+ *  CLOSED to those same two literals (`z.enum(['watermark','disclaimer'])`),
+ *  so a schema-valid, literal-JSON `tracks.brand` item cannot actually name a
+ *  THIRD kind today — doing so does not typecheck against `LayeredReel`, with
+ *  no runtime signal at all (a compile error on the literal, nothing more).
+ *  Registering a NEW renderer for `'watermark'`/`'disclaimer'` here works
+ *  exactly as this type promises; naming a brand-new kind needs
+ *  `BrandLayerItemSchema.kind` widened to `z.string()` first — a real core
+ *  schema change (with its own editor/migration surface for both brand
+ *  repos), not something a brand can work around from its own theme file. See
+ *  `examples/layered-minimal/src/conformance-theme.tsx`'s own "CONTRACT
+ *  FINDING" comment and `.superpowers/sdd/2026-07-26-phase4-node-contract/
+ *  task-6.2-report.md` for the full account. */
 export type BrandKind = string;
 
 /** One brand-layer kind's registration. Built on the shared `Registration`

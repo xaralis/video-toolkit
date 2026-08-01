@@ -11,24 +11,50 @@
  */
 import React from 'react';
 import { AbsoluteFill, useCurrentFrame, interpolate, Sequence } from 'remotion';
-import { TransitionSeries, linearTiming } from '@remotion/transitions';
-import type { TransitionPresentation } from '@remotion/transitions';
 
-// Any transition's presentation() call returns TransitionPresentation<PropsForThatTransition> —
-// each transition has its own props shape (GlitchProps, RgbSplitProps, ...), so a component
-// that renders whichever one is passed in must be generic over that shape rather than pinned
-// to a single transition's props (as it previously was, pinned to glitch's).
+// THE RENDER PATH, imported deliberately. A gallery whose whole job is to show
+// what a reel looks like must resolve a kind the way a reel resolves it — see
+// `galleryTransitionNode` below.
+import { transitionNodeFor } from '../render/at-cut-transitions';
+import type { TransitionNode, TransitionRecord } from '../render/at-cut-transitions';
+import { buildVideoNodes } from '../render/video-track';
+import type { VideoItem } from '../reel-config-base/layered-schema';
+import { defaultTransition, isCut, TRANSITION_CATALOG } from '../reel-config-base/transition-schema';
+import type { TransitionKind } from '../reel-config-base/transition-schema';
 
-import { slide } from '@remotion/transitions/slide';
-import { fade } from '@remotion/transitions/fade';
-import { wipe } from '@remotion/transitions/wipe';
-import { flip } from '@remotion/transitions/flip';
-import { glitch } from './presentations/glitch';
-import { rgbSplit } from './presentations/rgb-split';
-import { zoomBlur } from './presentations/zoom-blur';
-import { lightLeak } from './presentations/light-leak';
-import { pixelate } from './presentations/pixelate';
-import { checkerboard } from './presentations/checkerboard';
+// ONE TABLE, DERIVED FROM THE CATALOG (Phase 4 Task 2.6).
+//
+// This file used to hand-maintain THREE parallel kind→presentation tables —
+// `TRANSITIONS`, `transitionMap` and `TRANSITION_NOTES` — in camelCase
+// spellings (`rgbSplit`, `lightLeak`) that disagreed with the catalog's kinds
+// (`rgb-split`, `light-leak`), plus a `noteFor` helper whose only job was to
+// paper over that mismatch. They covered 8 of the catalog's 20 kinds and
+// nothing caught them drifting further; that is how the gallery came to show
+// `@remotion/transitions/wipe` under a name reels used for a different
+// component (Task 2.5).
+//
+// `noteFor` is GONE rather than kept working: a helper that reconciles two
+// spellings preserves the bug in dormant form once there is only one spelling.
+// There is now one spelling — the catalog kind, which is also what a reel
+// authors — and everything else (label, note, presentation, demo length) hangs
+// off it.
+//
+// NO PRESENTATION IS IMPORTED HERE ANY MORE. Not `@remotion/transitions/wipe`
+// (Task 2.5's fork, deleted), and not `glitch` / `rgbSplit` / `slide` / … either:
+// every kind resolves through `transitionNodeFor`, the reel's own resolver, so
+// "which component does the gallery show for kind K?" has exactly one possible
+// answer and it is production's.
+//
+// AND NO `TransitionSeries`. It hands a presentation ONE clip at a time, so it
+// structurally cannot drive a NATIVE TWO-INPUT kind. There were four when this
+// path was built (`wipe`, `pixelate`, `checkerboard`, `scanline-glitch` — Task
+// 2.1), and that is why those four had no gallery entry at all; `fade-to-color`
+// joins them whenever its colour resolves — a set this file never enumerates,
+// because every kind goes through `transitionNodeFor` either way, which LIFTS a
+// one-sided
+// presentation into the same two-input shape, so one demo component
+// (`NodeTransitionDemo`) now drives every kind and the split disappears with
+// the tables.
 
 // Scene colors for visual variety
 const SCENE_A_COLOR = '#1a1a2e';
@@ -37,42 +63,55 @@ const SCENE_B_COLOR = '#e94560';
 // Default scene lengths (frames) on either side of a transition
 const DEFAULT_SCENE_DURATION = 90;
 
-// Transition descriptions for context
-const TRANSITION_NOTES: Record<string, string> = {
-  'glitch()': 'Digital distortion with RGB shift',
-  'rgbSplit()': 'Chromatic aberration effect',
-  'zoomBlur()': 'Radial motion blur',
-  'lightLeak()': 'Cinematic lens flare',
-  'pixelate()': 'Mosaic dissolution',
-  'checkerboard()': 'Grid squares reveal',
-  'checkerboard(diagonal)': 'Diagonal wave pattern',
-  'checkerboard(alternating)': 'True checkerboard pattern',
-  'checkerboard(spiral)': 'Spiral from center',
-  'checkerboard(center-out)': 'Radial grid reveal',
-  'slide()': 'Push from direction',
-  'fade()': 'Simple crossfade',
-  'wipe()': 'Edge reveal',
-  'flip()': '3D card flip',
-};
+/** How long every demo's boundary runs — 45 frames, 1.5 s at 30 fps.
+ *
+ *  ONE number for every kind, deliberately. The old per-entry lengths (40 / 45
+ *  / 60, hand-picked) were the fourth thing the parallel tables carried, and a
+ *  gallery is a COMPARISON: the same window for every kind is what makes two
+ *  demos comparable. It is not read off `defaultTransition().frames` either —
+ *  that default (15) is a sensible reel cut and far too short to see a
+ *  transition's shape. */
+const DEMO_TRANSITION_FRAMES = 45;
 
-// The gallery labels transitions as `glitch()`; the programmatic transitionMap keys them as
-// `glitch`. Look up both spellings so a note shows either way.
-const noteFor = (label: string): string =>
-  TRANSITION_NOTES[label] ?? TRANSITION_NOTES[`${label}()`] ?? '';
+/** Per-kind prose, keyed by CATALOG KIND — the same string a reel writes in
+ *  `{ kind: … }`. A kind with no note falls back to its catalog label, so a new
+ *  kind reads sensibly the day it lands and this table never becomes a second
+ *  list of kinds to maintain. */
+const TRANSITION_NOTES: Partial<Record<TransitionKind, string>> = {
+  'dissolve': 'A→B crossfade — the canonical name',
+  'fade': 'Crossfade; a synonym of dissolve, rendered identically',
+  'fade-to-color': 'Dips through a brand accent colour — with none set, a crossfade',
+  'glitch': 'Digital distortion with RGB shift',
+  'rgb-split': 'Chromatic aberration effect',
+  'scanline-glitch': 'RGB-shifted copies under a scanline sweep',
+  'burn': 'Organic ember reveal with a hot glow edge',
+  'light-leak': 'Cinematic lens flare washing over the cut',
+  'slide': 'Push from a direction',
+  'flip': '3D card flip',
+  'whip-pan': 'Rapid directional pan with motion blur',
+  'zoom-through': 'Zooms through the screen plane',
+  'zoom-blur': 'Radial motion blur',
+  'clock-wipe': 'Sweeps round like a clock hand',
+  'iris': 'Circular iris opening from the centre',
+  'wipe': 'Coloured sheet sweeps across, then off',
+  'gradient-wipe': 'Soft feathered diagonal blend',
+  'pixelate': 'Mosaic blocks dissolve one clip into the next',
+  'checkerboard': 'Grid of squares reveals the incoming clip',
+};
 
 // Consistent scene component
 const GalleryScene: React.FC<{
   color: string;
   label: string;
+  note: string;
   isAfter?: boolean;
-}> = ({ color, label, isAfter = false }) => {
+}> = ({ color, label, note, isAfter = false }) => {
   const frame = useCurrentFrame();
   const labelOpacity = interpolate(frame, [0, 10], [0, 1], {
     extrapolateRight: 'clamp',
   });
 
   const sceneName = isAfter ? 'Scene B' : 'Scene A';
-  const note = noteFor(label);
 
   return (
     <AbsoluteFill
@@ -225,33 +264,134 @@ const GalleryScene: React.FC<{
   );
 };
 
-// Single transition demo segment
-function TransitionDemo<Props extends Record<string, unknown>>({
+/** The gallery's composition size — the ONE source of it. `transitionGalleryConfig`
+ *  spreads this rather than restating the numbers, and a size-dependent kind
+ *  (`clock-wipe`, `iris`) resolves against it, so the demo shows the same
+ *  geometry the config renders. */
+export const GALLERY_DIMS = { width: 1920, height: 1080, fps: 30 };
+
+/** What `galleryTransitionNode` resolves against: `transitionNodeFor`'s own
+ *  dimensions bag (pixel size, and optionally a palette and a BRAND transition
+ *  registry) plus the `fps` `buildVideoNodes` needs (PHASE 5 TASK 5:
+ *  `AtCutTransition`, which used to need it, is deleted). Read off the
+ *  resolver's signature rather than restated, so it cannot drift from it. */
+export type GalleryDims = Parameters<typeof transitionNodeFor>[1] & { fps: number };
+
+/** RESOLVES A CATALOG KIND THE WAY A REEL DOES — the single line that ends the
+ *  `wipe` fork (Phase 4 Task 2.5) and, since Task 2.6, the ONLY way this file
+ *  obtains anything to render.
+ *
+ *  The gallery used to hand-pick a presentation per entry, which is how it came
+ *  to demonstrate `@remotion/transitions/wipe` under the same name a reel used
+ *  for the toolkit's own. Going through `transitionNodeFor` + the kind's own
+ *  catalog defaults means the question "which component is this?" has exactly
+ *  one answer, and it is production's. It also makes two-input nodes showable
+ *  at all: `transitionNodeFor` lifts a one-sided presentation and returns a
+ *  native node untouched, so both contracts arrive here in one shape.
+ *
+ *  THROWS rather than skipping when a kind resolves to nothing: `cut` is
+ *  filtered out by name before it gets here (it IS the absence of a
+ *  transition), so any other miss is a catalog kind with no renderer — loud is
+ *  the only useful behaviour.
+ *
+ *  Pinned behaviourally by `lib/editor/src/transition-gallery.test.tsx`. */
+export function galleryTransitionNode(kind: TransitionKind, dims: GalleryDims = GALLERY_DIMS): TransitionNode {
+  const node = transitionNodeFor(defaultTransition(kind) as TransitionRecord, dims);
+  if (!node) throw new Error(`TransitionGallery: no renderer for catalog kind "${kind}"`);
+  return node;
+}
+
+/** ONE demo component for every kind.
+ *
+ *  FIX ROUND 1 (Task 2.1 review, Important 1) — REWRITTEN TO GO THROUGH
+ *  `buildVideoNodes`, THE SAME ASSEMBLY A REEL USES, rather than hand-rolling
+ *  a 3-`Sequence` mini-assembly around `AtCutTransition` directly (PHASE 5
+ *  TASK 5: `AtCutTransition` no longer exists at all — see
+ *  `lib/render/at-cut-transitions.tsx`'s own note on its deletion — so this
+ *  history is preserved only to explain why this component goes through
+ *  `buildVideoNodes` rather than a leaner hand-rolled assembly). At the time,
+ *  `AtCutTransition` was the `composite` ARM's boundary compositor — its
+ *  `plan` branch was a defined dead end (it warned
+ *  `at-cut-transition:plan-arm-wrong-entry-point` and hard-cut, "reached
+ *  through the wrong entry point", not "not built yet"). Since Task 2.1 seven
+ *  kinds (`fade`, `dissolve`, `slide`, `flip`, `clock-wipe`, `iris`,
+ *  colourless `fade-to-color`) resolve to `plan`, so driving them through
+ *  `AtCutTransition` directly silently hard-cut the commonest transitions in
+ *  the showcase — exactly the regression the task brief's "do not regress
+ *  it" line named, and nothing caught it because the test comparing the
+ *  gallery's picture to the reel's picture routed BOTH sides through the same
+ *  hand-rolled helper, so the comparison held by construction while the
+ *  gallery's OWN render path (this component) went untested.
+ *
+ *  `buildVideoNodes` already IS the assembly a reel drives every boundary
+ *  through (Phase 5 Task 5 deleted the `composite` arm — `TransitionNode` has
+ *  only `plan` now, so there is no per-boundary arm dispatch left inside
+ *  `buildVideoNodes` to route through; it always reads `node.plan` directly,
+ *  `video-track.tsx:209`), so driving the demo through it means
+ *  the gallery shows EXACTLY what a reel would show for `name` — real
+ *  boundary-overlap geometry (`computeVideoLayout`'s own handle borrowing,
+ *  default `center` alignment) included, not an approximation of it. Two
+ *  synthetic `VideoItem`s (`kind: 'outro'`, the one video-item kind needing
+ *  no `source`/trim fields) stand in for scenes A and B; `renderItem` is the
+ *  seam that swaps in `GalleryScene` for whatever a real reel would put
+ *  there. The resolved `TransitionNode` this component used to receive as a
+ *  prop is no longer needed for RENDERING (re-resolving it via `name` inside
+ *  `buildVideoNodes` is the same call `galleryTransitionNode` already makes,
+ *  so there is no second source of truth) — `GalleryEntry.node` still carries
+ *  it, for `pictureOf`/`reelPictureFor`'s own direct comparison.
+ *
+ *  `dims` DEFAULTS TO `GALLERY_DIMS` BUT MUST BE THE CALLER'S OWN — the seam
+ *  `transition-gallery-catalog.test.tsx`'s derivation proof rides in on: a
+ *  probe-only kind reaches this component only through `dims.transitions`
+ *  (a brand-style registry), the same way `galleryTransitionNode` resolved
+ *  `entry.node` from it. Hardcoding `GALLERY_DIMS` here (no `transitions`)
+ *  would resolve every demo through CORE's kinds only, silently dropping any
+ *  registry a caller threaded through `buildGalleryEntries`. */
+function NodeTransitionDemo({
   name,
-  presentation,
-  transitionDuration = 45,
+  note,
+  dims = GALLERY_DIMS,
+  transitionDuration = DEMO_TRANSITION_FRAMES,
   sceneADuration = DEFAULT_SCENE_DURATION,
   sceneBDuration = DEFAULT_SCENE_DURATION,
 }: {
-  name: string;
-  presentation: TransitionPresentation<Props>;
+  name: TransitionKind;
+  note: string;
+  dims?: GalleryDims;
   transitionDuration?: number;
   sceneADuration?: number;
   sceneBDuration?: number;
 }) {
+  const a = <GalleryScene color={SCENE_A_COLOR} label={name} note={note} />;
+  const b = <GalleryScene color={SCENE_B_COLOR} label={name} note={note} isAfter />;
+
+  // Frames -> ms at the gallery's own fps, for the synthetic items'
+  // `startMs`/`endMs` — `computeVideoLayout` converts back with
+  // `Math.round((ms/1000)*fps)`, which round-trips exactly for the small
+  // integer frame counts this file uses.
+  const framesToMs = (frames: number) => Math.round((frames * 1000) / dims.fps);
+  const cutMs = framesToMs(sceneADuration);
+  const items: VideoItem[] = [
+    {
+      id: `${name}-a`, kind: 'outro', startMs: 0, endMs: cutMs,
+      transitionOut: { kind: name, frames: transitionDuration },
+    } as unknown as VideoItem,
+    {
+      id: `${name}-b`, kind: 'outro', startMs: cutMs, endMs: cutMs + framesToMs(sceneBDuration),
+    } as unknown as VideoItem,
+  ];
+
   return (
-    <TransitionSeries>
-      <TransitionSeries.Sequence durationInFrames={sceneADuration}>
-        <GalleryScene color={SCENE_A_COLOR} label={name} />
-      </TransitionSeries.Sequence>
-      <TransitionSeries.Transition
-        presentation={presentation}
-        timing={linearTiming({ durationInFrames: transitionDuration })}
-      />
-      <TransitionSeries.Sequence durationInFrames={sceneBDuration}>
-        <GalleryScene color={SCENE_B_COLOR} label={name} isAfter />
-      </TransitionSeries.Sequence>
-    </TransitionSeries>
+    <AbsoluteFill>
+      {buildVideoNodes(items, {
+        renderItem: (item) => (item.id === `${name}-a` ? a : b),
+        width: dims.width,
+        height: dims.height,
+        fps: dims.fps,
+        palette: dims.palette,
+        transitions: dims.transitions,
+      })}
+    </AbsoluteFill>
   );
 }
 
@@ -299,80 +439,97 @@ const IntroSlide: React.FC = () => {
   );
 };
 
-// Each transition's presentation() call returns TransitionPresentation<PropsForThatTransition> —
-// a different, incompatible Props type per transition. Storing those directly in one array would
-// force TypeScript to widen them to a union, which TransitionDemo's generic can't be instantiated
-// from at a single call site (its `component` slot is contravariant in Props). makeTransitionEntry
-// closes over the concrete presentation inside a `render` closure instead, so each entry's Props is
-// resolved once, locally, at its own call to makeTransitionEntry — the array itself only ever holds
-// the resulting non-generic { name, duration, render } shape.
-type TransitionEntry = {
-  name: string;
+/** ONE gallery entry: a catalog kind, and everything about how it is shown.
+ *
+ *  This replaced THREE parallel tables (`TRANSITIONS`, `transitionMap`,
+ *  `TRANSITION_NOTES`), each keyed differently and each hand-maintained. The
+ *  entry's identity is its `kind` — the same string a reel authors — and every
+ *  other field is derived from it.
+ *
+ *  `node` is resolved ONCE, and the `render` closure reads that same value, so
+ *  a test asserting on `node` is asserting on what is shown. */
+export type GalleryEntry = {
+  /** The catalog kind — the entry's identity: on-screen label, note key,
+   *  `transitionMap` key, and what `transitionNodeFor` resolved. */
+  kind: TransitionKind;
+  /** The catalog's own editor label ("Gradient wipe"). Also the note's
+   *  fallback, so a kind nobody has written prose for still reads sensibly. */
+  label: string;
+  /** The line shown under the scene. */
+  note: string;
+  /** The boundary's length in frames. */
   duration: number;
   sceneA: number;
   sceneB: number;
-  render: (transitionDuration: number) => React.ReactElement;
+  /** The resolved two-input node — exactly what the reel path resolves for
+   *  `kind`, at the gallery's own dimensions. */
+  node: TransitionNode;
+  render: () => React.ReactElement;
 };
 
-function makeTransitionEntry<Props extends Record<string, unknown>>(
-  name: string,
-  presentation: TransitionPresentation<Props>,
-  duration: number,
-  scenes: { sceneA?: number; sceneB?: number } = {},
-): TransitionEntry {
-  const sceneA = scenes.sceneA ?? DEFAULT_SCENE_DURATION;
-  const sceneB = scenes.sceneB ?? DEFAULT_SCENE_DURATION;
-  return {
-    name,
-    duration,
-    sceneA,
-    sceneB,
-    render: (transitionDuration) => (
-      <TransitionDemo
-        name={name}
-        presentation={presentation}
-        transitionDuration={transitionDuration}
-        sceneADuration={sceneA}
-        sceneBDuration={sceneB}
-      />
-    ),
-  };
+/** THE DERIVATION — the whole of Phase 4 Task 2.6.
+ *
+ *  Every kind in `catalog`, minus `cut`, in catalog order. NOTHING HERE NAMES A
+ *  KIND, so a kind the catalog gains appears in the gallery with no edit to
+ *  this file at all. That is the capability, and it is pinned in
+ *  `lib/editor/src/transition-gallery-catalog.test.tsx` by a kind that exists
+ *  only in the test's own fixture — a test asserting "all 20 current kinds
+ *  appear" would pass against a hardcoded list of 20 and pin nothing.
+ *
+ *  The two parameters are that pin's seam: a fixture catalog, and the `dims`
+ *  bag a BRAND transition registry rides in on. Production passes neither. */
+export function buildGalleryEntries(
+  catalog: ReadonlyArray<{ kind: TransitionKind; label: string }> = TRANSITION_CATALOG,
+  dims: GalleryDims = GALLERY_DIMS,
+): GalleryEntry[] {
+  return catalog
+    // `cut` is the ABSENCE of a transition — `resolveTransition` returns null
+    // for it by design, so there is no component to demonstrate. Filtered by
+    // the shared predicate rather than by a name written here, and it is the
+    // ONLY exclusion: any other kind that fails to resolve throws.
+    .filter((e) => !isCut(e.kind))
+    .map(({ kind, label }): GalleryEntry => {
+      const note = TRANSITION_NOTES[kind] ?? label;
+      const node = galleryTransitionNode(kind, dims);
+      return {
+        kind,
+        label,
+        note,
+        node,
+        duration: DEMO_TRANSITION_FRAMES,
+        sceneA: DEFAULT_SCENE_DURATION,
+        sceneB: DEFAULT_SCENE_DURATION,
+        render: () => (
+          <NodeTransitionDemo
+            name={kind}
+            note={note}
+            dims={dims}
+            transitionDuration={DEMO_TRANSITION_FRAMES}
+            sceneADuration={DEFAULT_SCENE_DURATION}
+            sceneBDuration={DEFAULT_SCENE_DURATION}
+          />
+        ),
+      };
+    });
 }
 
-// Define all transitions to showcase.
-// Transition durations: 45 frames = 1.5s for most, longer for complex effects.
-const TRANSITIONS: TransitionEntry[] = [
-  makeTransitionEntry('glitch()', glitch({ intensity: 0.9 }), 45),
-  makeTransitionEntry('rgbSplit()', rgbSplit({ direction: 'horizontal' }), 45),
-  makeTransitionEntry('zoomBlur()', zoomBlur({ direction: 'in' }), 45),
-  makeTransitionEntry('lightLeak()', lightLeak({ temperature: 'warm' }), 60),
-  makeTransitionEntry('pixelate()', pixelate({ maxBlockSize: 50 }), 45),
-  makeTransitionEntry('checkerboard(diagonal)', checkerboard({ pattern: 'diagonal', gridSize: 8 }), 50),
-  makeTransitionEntry('checkerboard(alternating)', checkerboard({ pattern: 'alternating', gridSize: 8 }), 50),
-  makeTransitionEntry('checkerboard(spiral)', checkerboard({ pattern: 'spiral', gridSize: 10 }), 55),
-  makeTransitionEntry(
-    'checkerboard(center-out)',
-    checkerboard({ pattern: 'center-out', gridSize: 8, squareAnimation: 'scale' }),
-    50,
-  ),
-  makeTransitionEntry('slide()', slide(), 40),
-  makeTransitionEntry('fade()', fade(), 45),
-  makeTransitionEntry('wipe()', wipe(), 40),
-  makeTransitionEntry('flip()', flip(), 45),
-];
+/** The gallery's entries, in catalog order. EXPORTED so it can be pinned: this
+ *  is the array the gallery COMPOSITION renders, and `transitionMap` below is
+ *  an index into these same objects rather than a second table. */
+export const TRANSITIONS: GalleryEntry[] = buildGalleryEntries();
 
 // Calculate segment duration (scene A + scene B - overlap from transition)
-const getSegmentDuration = (t: TransitionEntry) => t.sceneA + t.sceneB - t.duration;
+const getSegmentDuration = (t: GalleryEntry) => t.sceneA + t.sceneB - t.duration;
 
 export const TransitionGallery: React.FC = () => {
   const introDuration = 60; // 2 seconds
 
   let currentFrame = introDuration;
-  const segments: { name: string; from: number; duration: number }[] = [];
+  const segments: { from: number; duration: number }[] = [];
 
   TRANSITIONS.forEach((t) => {
     const duration = getSegmentDuration(t);
-    segments.push({ name: t.name, from: currentFrame, duration });
+    segments.push({ from: currentFrame, duration });
     currentFrame += duration;
   });
 
@@ -386,11 +543,11 @@ export const TransitionGallery: React.FC = () => {
       {/* Each transition demo */}
       {TRANSITIONS.map((t, i) => (
         <Sequence
-          key={t.name}
+          key={t.kind}
           from={segments[i].from}
           durationInFrames={segments[i].duration}
         >
-          {t.render(t.duration)}
+          {t.render()}
         </Sequence>
       ))}
     </AbsoluteFill>
@@ -405,52 +562,38 @@ export const transitionGalleryConfig = {
     (acc, t) => acc + getSegmentDuration(t),
     0
   ),
-  fps: 30,
-  width: 1920,
-  height: 1080,
+  // Read off GALLERY_DIMS, not restated. A size-dependent kind (`clock-wipe`,
+  // `iris`) resolves against those numbers, so a second copy here would be one
+  // more "two answers to the same question" waiting to drift apart.
+  ...GALLERY_DIMS,
 };
+
+/** Programmatic access by CATALOG KIND — an index into `TRANSITIONS`, not a
+ *  second table. It used to be a hand-written object literal keyed
+ *  `glitch`/`rgbSplit`/`lightLeak`, spellings no reel could author and which
+ *  disagreed with both the catalog and the array above; `noteFor` existed only
+ *  to translate between them and is gone with it.
+ *
+ *  Typed `Record<string, GalleryEntry>` rather than
+ *  `Partial<Record<TransitionKind, …>>` deliberately: `cut` is legitimately
+ *  absent, and a Partial would make EVERY read `GalleryEntry | undefined` at
+ *  every call site to describe that one hole. The runtime guard in
+ *  `SingleTransitionPreview` is what covers a miss. */
+export const transitionMap: Readonly<Record<string, GalleryEntry>> = Object.fromEntries(
+  TRANSITIONS.map((e) => [e.kind, e]),
+);
 
 // For single-transition preview (useful for interactive player)
 export const SingleTransitionPreview: React.FC<{
-  transitionName: keyof typeof transitionMap;
+  /** A catalog kind — `'light-leak'`, not `'lightLeak'`. */
+  transitionName: TransitionKind;
 }> = ({ transitionName }) => {
   const transition = transitionMap[transitionName];
   if (!transition) return null;
 
-  return transition.render(transitionName, transition.duration);
+  return transition.render();
 };
 
-// Map for programmatic access. See the TransitionEntry / makeTransitionEntry comment above —
-// same reasoning, but render() also takes `name` here since the map's keys (not a stored field)
-// are what SingleTransitionPreview passes through as the demo's label.
-type NamedTransitionEntry = {
-  duration: number;
-  render: (name: string, transitionDuration: number) => React.ReactElement;
-};
-
-function makeNamedTransitionEntry<Props extends Record<string, unknown>>(
-  presentation: TransitionPresentation<Props>,
-  duration: number,
-): NamedTransitionEntry {
-  return {
-    duration,
-    render: (name, transitionDuration) => (
-      <TransitionDemo name={name} presentation={presentation} transitionDuration={transitionDuration} />
-    ),
-  };
-}
-
-export const transitionMap = {
-  glitch: makeNamedTransitionEntry(glitch({ intensity: 0.9 }), 45),
-  rgbSplit: makeNamedTransitionEntry(rgbSplit({ direction: 'horizontal' }), 45),
-  zoomBlur: makeNamedTransitionEntry(zoomBlur({ direction: 'in' }), 45),
-  lightLeak: makeNamedTransitionEntry(lightLeak({ temperature: 'warm' }), 60),
-  pixelate: makeNamedTransitionEntry(pixelate({ maxBlockSize: 50 }), 45),
-  checkerboard: makeNamedTransitionEntry(checkerboard({ pattern: 'diagonal', gridSize: 8 }), 50),
-  slide: makeNamedTransitionEntry(slide(), 40),
-  fade: makeNamedTransitionEntry(fade(), 45),
-  wipe: makeNamedTransitionEntry(wipe(), 40),
-  flip: makeNamedTransitionEntry(flip(), 45),
-} as const;
-
-export type TransitionName = keyof typeof transitionMap;
+/** The gallery's key type. A catalog kind since Task 2.6 — every other spelling
+ *  is gone. */
+export type TransitionName = TransitionKind;
