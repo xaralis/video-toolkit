@@ -155,4 +155,77 @@ describe('glitch\'s three threshold-gated overlays are mounted life-long, driven
     expect(noise?.style.opacity).toBe('0');
     expect(neonBlocks?.style.opacity).toBe('0');
   });
+
+  // FIX ROUND 1, IMPORTANT 2 (opus review). The FIRST fix (round 0) stopped
+  // the neon-blocks OUTER wrapper from toggling presence, but left its 8
+  // INNER blocks exactly as before: `if (random(s) < 0.5) return null`,
+  // seeded by `block-${i}-${flickerFrame}`. The reviewer traced what that
+  // means now that `Wrap` mounts `TransitionLayer`/`GlitchPresentation`
+  // UNCONDITIONALLY (Task 1.4's own contract, correct and unchanged) — the
+  // presentation's `useCurrentFrame()` ticks across the CLIP'S ENTIRE LIFE,
+  // not just inside the ~20-frame boundary window, so `flickerFrame =
+  // Math.floor(frame / 2)` advances every 2 frames for as long as the item
+  // is mounted. Before this task the churn was bounded TWICE — by the
+  // boundary Sequence's own short duration and by `glitchIntensity > 0.15` —
+  // and round 0 removed the second bound while the first bound had ALREADY
+  // been removed by moving to `wrap`. Net effect: this task made an
+  // ALREADY-conditional mount unconditionally churn for the item's whole
+  // life, exactly backwards from the direction Phase 5 moves in, even though
+  // the effect itself (decorative CSS, no media) is not the media-remount
+  // stutter this phase targets.
+  //
+  // This test renders the neon-blocks wrapper's 8 CHILDREN directly (not
+  // just the wrapper itself, which the tests above already cover) across a
+  // wide sweep of `clock.frame` values — spanning far more than one 20-frame
+  // window, both while the boundary is `active` and while it is not (the
+  // life-long, inactive case IS the defect: before this fix, `active={false}`
+  // + a changing `clock.frame` alone flips block membership with no boundary
+  // in sight at all) — and asserts exactly 8 DOM nodes exist at every frame,
+  // by the SAME REFERENCES throughout, not merely the same count.
+  it('keeps the SAME 8 DOM nodes for the neon-block cluster across the clip\'s WHOLE LIFE, active or not — only opacity toggles, never presence', () => {
+    resetWarnOnce();
+    resetTransitionNodeCache();
+    const record = { kind: 'glitch', frames: FRAMES } as TransitionRecord;
+    const node = transitionNodeFor(record, DIMS)!;
+    const composite = node.plan!({
+      from: { range: [0, FRAMES] }, to: { range: [0, FRAMES] }, progress: 0, frame: 0,
+      durationInFrames: FRAMES, params: {}, dims: { ...DIMS, fps: 30 }, palette: [], background: 'transparent',
+    });
+    const Wrap = composite.to!.wrap!;
+
+    const renderAt = (active: boolean, frame: number) => {
+      clock.frame = frame;
+      return (
+        <ActiveTransitionProgressContext.Provider
+          value={{ progress: active ? 0.5 : 0, frame, durationInFrames: FRAMES }}
+        >
+          <Wrap active={active}><div data-testid="clip" /></Wrap>
+        </ActiveTransitionProgressContext.Provider>
+      );
+    };
+
+    const { container, rerender } = render(renderAt(false, 0));
+    const wrapperAt = () => findOverlays(container).neonBlocks!;
+    const baseline = [...wrapperAt().children];
+    expect(baseline.length).toBe(8); // exactly 8, always — the fix's own claim
+
+    // Far outside any 20-frame window, `active` false throughout — this is
+    // the life-long-mount case the fix must hold for, not just the
+    // already-covered active sweep above.
+    for (const frame of [2, 4, 6, 50, 137, 300, 1000]) {
+      rerender(renderAt(false, frame));
+      const now = [...wrapperAt().children];
+      expect(now.length, `count at inactive frame ${frame}`).toBe(8);
+      now.forEach((el, i) => expect(el, `block ${i} at inactive frame ${frame}`).toBe(baseline[i]));
+    }
+
+    // And while genuinely active, for completeness — the same 8 references,
+    // never recreated by the `active` flag flipping either.
+    for (const frame of [1005, 1010, 1015]) {
+      rerender(renderAt(true, frame));
+      const now = [...wrapperAt().children];
+      expect(now.length, `count at active frame ${frame}`).toBe(8);
+      now.forEach((el, i) => expect(el, `block ${i} at active frame ${frame}`).toBe(baseline[i]));
+    }
+  });
 });

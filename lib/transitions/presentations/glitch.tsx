@@ -132,23 +132,41 @@ const GlitchPresentation: React.FC<
 
       {/* Random neon glitch blocks — pure CSS overlay, no children.
           PHASE 5 TASK 2.3 — the OUTER `AbsoluteFill` is always mounted now
-          (opacity driven, same fix as the two overlays above). The 8 inner
-          blocks are a SEPARATE, narrower concern the brief does not ask this
-          task to change: their PRESENCE already varies per-block with
-          `random(s) < 0.5`, which is a function of `flickerFrame` (time), not
-          of `progress` — so the COUNT of mounted blocks is constant across a
-          given flicker frame and changes only when the flicker frame itself
-          advances (every 2 frames, same cadence the whole glitch reseeds at),
-          never as a function of where in the transition window that frame
-          sits. Nothing about this task's contract ("the count must not
-          depend on progress") is violated by it; only the OUTER wrapper's
-          former presence-toggle (on `glitchIntensity > 0.15`, a `progress`-
-          derived value) was in scope, and is fixed the same way as its two
-          siblings above. */}
+          (opacity driven, same fix as the two overlays above). ROUND 0 of
+          this fix left the 8 INNER blocks' own presence toggle
+          (`if (random(s) < 0.5) return null`) in place, reasoning that its
+          trigger (`flickerFrame`, a function of TIME) was outside this
+          task's "count must not depend on `progress`" contract — WRONG, per
+          fix round 1 (opus review, Important 2): `Wrap` mounts this whole
+          presentation UNCONDITIONALLY (Task 1.4's own contract), so
+          `useCurrentFrame()` ticks across the CLIP'S ENTIRE LIFE once
+          migrated, not just inside the boundary window — turning an
+          already-bounded (window-scoped) per-block mount/unmount churn into
+          an UNBOUNDED, item-lifetime one. Fixed below the same way as this
+          file's other two overlays: always render all 8, drive `opacity`
+          instead of presence. See `glitch-overlay-mount.test.tsx`'s "keeps
+          the SAME 8 DOM nodes… across the clip's WHOLE LIFE" test, which
+          sweeps `clock.frame` across a span far wider than one boundary
+          window, `active` and not, and is what caught round 0's gap. */}
       <AbsoluteFill style={{ opacity: glitchIntensity > 0.15 ? 1 : 0, pointerEvents: 'none' }}>
+        {/* FIX ROUND 1, IMPORTANT 2 (opus review). `Wrap` mounts this whole
+            presentation UNCONDITIONALLY, active or not (Task 1.4's contract),
+            so `useCurrentFrame()` — and therefore `flickerFrame` — ticks
+            across the CLIP'S ENTIRE LIFE, not just inside a ~20-frame
+            boundary window. Round 0 of this fix left each block's own
+            `if (random(s) < 0.5) return null` in place, which — now that
+            nothing else bounds how often `flickerFrame` changes — turned an
+            already-bounded (window-scoped) mount/unmount churn into an
+            UNBOUNDED, item-lifetime one: exactly backwards from the
+            direction this phase moves in, even though the effect itself is
+            decorative (no media, no reload). Fixed the same way as this
+            file's other two overlays: all 8 blocks are ALWAYS rendered, and
+            `random(s) < 0.5` drives `opacity` (0 or 1) instead of presence —
+            same value, same visual result, stable element count and
+            identity for the item's whole life. */}
         {Array.from({ length: 8 }, (_, i) => {
           const s = `block-${i}-${flickerFrame}`;
-          if (random(s) < 0.5) return null;
+          const visible = random(s) >= 0.5;
           const colorChoice = random(`${s}-c`);
           const bgColor =
             colorChoice > 0.7
@@ -167,6 +185,7 @@ const GlitchPresentation: React.FC<
                 height: `${1 + random(`${s}-h`) * 12}%`,
                 backgroundColor: bgColor,
                 mixBlendMode: 'screen',
+                opacity: visible ? 1 : 0,
               }}
             />
           );
