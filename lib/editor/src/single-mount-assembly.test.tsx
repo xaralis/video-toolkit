@@ -887,4 +887,56 @@ describe("checkerboard's `'scale'`/`'flip'` carve-out through the REAL tree — 
       expect(ghostCells.some((c) => effectiveOpacity(c) > 0)).toBe(true);
     },
   );
+
+  // PHASE 5 TASK 4, FIX ROUND 2 (opus review, Important A) — THE OTHER HALF
+  // of the fix for Critical 1. `HideRealWhileActive` (`checkerboard.tsx`)
+  // hides the real mount ONLY while `active` — `opacity: active ? 0 : 1` —
+  // but nothing asserted the `active === false` branch specifically. A
+  // reviewer's mutation (`active ? 0 : 1` → a bare `0`) passed EVERY existing
+  // test in this file, `checkerboard-single-mount.test.tsx`,
+  // `at-cut-transitions.test.tsx` and `video-track-remount.test.tsx` — 424
+  // green, 0 red — because `b`'s own Sequence runs frames 90-179 and every
+  // prior test samples ONLY inside or right at the 20-frame [80,100] window,
+  // where `active` is `true` either way. The real consequence: `b` (the
+  // incoming clip) would be INVISIBLE for its entire POST-CUT life (frames
+  // 100-179), not just hidden during the transition — the `wrap` contract's
+  // own "must be inert (render `children` unchanged) when `active` is false"
+  // clause (`LayerOp.wrap`'s doc comment, `lib/theming/transitions.ts`),
+  // unasserted for this wrap.
+  //
+  // NOT generalised into a DERIVED pin over every wrap-carrying `plan` kind,
+  // on purpose, and the reason is structural rather than a shortcut: every
+  // OTHER wrap-carrying kind is already exercised at ITS OWN catalog default
+  // by `plan-neutral-progress.test.tsx`'s `describe.each(PLAN_KINDS)` block,
+  // because a lifted `@remotion/transitions` presentation's `wrap` IS what
+  // that kind always uses. `checkerboard` is the one exception: its `wrap`
+  // (`HideRealWhileActive`) only exists on the `'scale'`/`'flip'` SUB-OPTION,
+  // which is NOT the catalog default (`'fade'` is) — so the existing derived
+  // sweep, which parameterises by KIND only, structurally cannot reach it.
+  // Generalising that sweep to parameterise by kind AND sub-option would be a
+  // real architecture change to `plan-neutral-progress.test.tsx` (every kind,
+  // not just this one), is unrelated to fixing this specific defect, and
+  // risks conflating an architecture change with a fix-round mutation test.
+  // A kind-specific real-tree test is the narrower, correct-sized fix here;
+  // if a FUTURE kind ships a second wrap gated on a non-default sub-option,
+  // it will need the identical kind-specific treatment, which is a fair cost
+  // for not touching the shared sweep's shape in a fix round.
+  it.each(['scale', 'flip'] as const)(
+    '%s: the real mount is VISIBLE (effective opacity 1) once the window has closed — the wrap is inert when inactive',
+    (squareAnimation) => {
+      clock.preview = false;
+      clock.frame = 150; // b's Sequence is frames 90-179; well past the window's close at 100
+      const { container } = render(
+        <>
+          {buildVideoNodesForCheckerboard(CHECKERBOARD_REEL(squareAnimation), {
+            renderItem: (item) => <video data-testid={`vid-${item.id}`} />,
+            width: 540, height: 960, fps: 30, palette: undefined,
+          })}
+        </>,
+      );
+      const bVideo = container.querySelector('[data-testid="vid-b"]');
+      expect(bVideo).not.toBeNull();
+      expect(effectiveOpacity(bVideo!)).toBe(1);
+    },
+  );
 });

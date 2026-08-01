@@ -217,47 +217,44 @@ describe('checkerboard the mask id is stable across frames and unique per DISTIN
     unmount();
   });
 
-  // PHASE 5 TASK 4 — CORRECTED CLAIM FROM TASK 0.1's SAME-NAMED TEST. Under
-  // the OLD `composite` arm, `checkerboard` was a plain component and TWO
-  // `render()` calls of it were two REAL React mounts, each running its own
-  // `useState(() => random())` — genuinely two independent instances, always
-  // different ids. Under the `plan` arm, the mask id is minted ONCE, at
-  // FACTORY time (`checkerboard(props)`), not per render — the same
-  // "build-once, `wrap` must be a stable reference for the node's whole
-  // life" discipline every migrated kind follows. `transitionNodeFor` also
-  // CACHES the resolved node per (record, dims, palette) — so two calls with
-  // BYTE-IDENTICAL config return the SAME node, the SAME `wrap` reference,
-  // and therefore the SAME mask id. Two DIFFERENT configs (even a one-field
-  // difference) resolve to two DIFFERENT cached entries and therefore two
-  // different ids — which is what this test now actually proves, since
-  // "two concurrent instances" no longer means what it did pre-migration.
-  it('two DIFFERENTLY-CONFIGURED live boundaries get different mask ids (via the node cache)', () => {
+  // PHASE 5 TASK 4, FIX ROUND 2 (opus review, Important B) — CORRECTED. This
+  // comment used to assert, AS CURRENT FACT, that the mask id is "minted
+  // ONCE, at FACTORY time… two calls with BYTE-IDENTICAL config return the
+  // SAME node, the SAME `wrap` reference, and therefore the SAME mask id."
+  // That was the FIRST submission's behaviour and Fix Round 1 (Critical 2)
+  // REMOVED it — leaving the comment stating a fixed mistake as live
+  // behaviour, exactly the "comment walked back" failure this phase's own
+  // discipline warns against.
+  //
+  // THE CURRENT CONTRACT: `uid` is minted by `useState` INSIDE
+  // `CheckerboardMask`, once per MOUNT, stable across every re-render of
+  // THAT mount, and distinct from any other mount of the SAME `wrap`
+  // reference — see `checkerboard.tsx`'s own doc comment. `transitionNodeFor`
+  // still CACHES the resolved node (and therefore the `wrap` REFERENCE) per
+  // (record, dims, palette) — that part is unchanged, and is what the test
+  // below (renamed) now actually proves: two DIFFERENT configs resolve to
+  // two DIFFERENT cached nodes, and therefore two DIFFERENT `wrap`
+  // references. It does NOT, and cannot, prove anything about mask IDS any
+  // more — `idOf` below calls `render()` separately for each node, which is
+  // a separate MOUNT regardless of config, so two mounts' ids would differ
+  // even for the SAME config (see the dedicated same-config test below this
+  // one) — comparing ids here would be tautological, not a claim about the
+  // cache at all.
+  it('two DIFFERENTLY-CONFIGURED boundaries resolve to DIFFERENT cached nodes, and therefore different `wrap` references', () => {
     resetTransitionNodeCache();
     const nodeA = transitionNodeFor({ kind: 'checkerboard', frames: 15, gridSize: 4 } as TransitionRecord, DIMS)!;
     const nodeB = transitionNodeFor({ kind: 'checkerboard', frames: 15, gridSize: 5 } as TransitionRecord, DIMS)!;
+    expect(nodeA).not.toBe(nodeB);
     if (typeof nodeA.plan !== 'function' || typeof nodeB.plan !== 'function') {
       throw new Error('expected plan-arm nodes in this test');
     }
-    const idOf = (node: typeof nodeA) => {
-      const composite = node.plan!({
-        from: { range: [0, 15] }, to: { range: [0, 15] }, progress: 0.5, frame: 7,
-        durationInFrames: 15, params: {}, dims: { width: 1080, height: 1920, fps: 30 }, palette: [], background: 'transparent',
-      });
-      const Wrap = composite.to!.wrap!;
-      const { container, unmount } = render(
-        <ActiveTransitionProgressContext.Provider value={{ progress: 0.5, frame: 7, durationInFrames: 15 }}>
-          <Wrap active>{B}</Wrap>
-        </ActiveTransitionProgressContext.Provider>,
-      );
-      const id = container.querySelector('mask')?.id;
-      unmount();
-      return id;
+    const planArgs: Parameters<typeof nodeA.plan>[0] = {
+      from: { range: [0, 15] }, to: { range: [0, 15] }, progress: 0.5, frame: 7,
+      durationInFrames: 15, params: {}, dims: { width: 1080, height: 1920, fps: 30 }, palette: [], background: 'transparent',
     };
-    const idA = idOf(nodeA);
-    const idB = idOf(nodeB);
-    expect(idA).toBeTruthy();
-    expect(idB).toBeTruthy();
-    expect(idA).not.toBe(idB);
+    const wrapA = nodeA.plan(planArgs).to!.wrap!;
+    const wrapB = nodeB.plan!(planArgs).to!.wrap!;
+    expect(wrapA).not.toBe(wrapB);
   });
 
   // PHASE 5 TASK 4, FIX ROUND 1 (opus review, Critical 2) — CORRECTED. The
@@ -367,22 +364,41 @@ describe("checkerboard's carve-out ('scale'/'flip') keeps a pixel-exact per-cell
 
   // The real, un-ghosted `to` mount is hidden, not absent — so hiding it can
   // never itself be a remount (an element-count change).
-  it('the real `to` mount is opacity: 0 via its `wrap`, not removed, and not via the shell', () => {
+  //
+  // PHASE 5 TASK 4, FIX ROUND 2 (opus review, minor) — CORRECTED. The
+  // previous version of this test compared `bVideo.parentElement`'s own
+  // `style.opacity` against `.parentElement.parentElement`'s, which FALSE-
+  // PASSED against the unfixed `ad7e8d0` commit: with NO `wrap` at all (the
+  // original `to: { style: { opacity: 0 }, ghosts }`), `bVideo.parentElement`
+  // IS the styled shell itself (`opacity: 0` — satisfies the first
+  // assertion by accident) and `.parentElement.parentElement` is the RTL
+  // render container (no `opacity` set at all — satisfies `.not.toBe('0')`
+  // by accident too). Walking DOM levels can never distinguish "no wrap,
+  // shell hides it" from "wrap hides it, shell doesn't" — both produce two
+  // ancestor divs no matter what. This version asserts on the COMPOSITE
+  // OBJECT directly instead: `to.wrap` must be a function (the hiding
+  // mechanism actually exists) and `to.style` must be absent or carry no
+  // `opacity: 0` (the mistake this pins can never resurface silently through
+  // `style` again), which is unambiguous regardless of DOM shape.
+  it('the real `to` mount is hidden via `wrap`, never via `style.opacity` on the shell', () => {
+    const node = transitionNodeFor(
+      { kind: 'checkerboard', frames: 15, gridSize: 3, squareAnimation: 'scale' } as TransitionRecord, DIMS,
+    )!;
+    if (typeof node.plan !== 'function') throw new Error('expected a plan-arm node in this test');
+    const composite = node.plan({
+      from: { range: [0, 15] }, to: { range: [0, 15] }, progress: 0.5, frame: 7,
+      durationInFrames: 15, params: {}, dims: { width: 1080, height: 1920, fps: 30 }, palette: [], background: 'transparent',
+    });
+    expect(typeof composite.to?.wrap).toBe('function');
+    expect(composite.to?.style?.opacity).not.toBe(0);
+
+    // And the DOM shape this produces: the real mount IS still present
+    // (hidden, not removed) — an element-count check, which the composite
+    // assertion above cannot make on its own.
     const { container, unmount } = mountCheckerboard(
       { kind: 'checkerboard', frames: 15, gridSize: 3, squareAnimation: 'scale' }, 0.5,
     );
-    // The real mount's DIRECT parent (the `wrap`'s own div) is what carries
-    // `opacity: 0` — PHASE 5 TASK 4, FIX ROUND 1 (Critical 1): the SHELL
-    // itself (one level further up, the div this helper gives `op.style`)
-    // must NOT carry it — that shell is also an ancestor of the ghosts, and
-    // `opacity: 0` there would multiply out every one of them too (a group
-    // property, not a per-element one). See `effectiveOpacity` below, the
-    // instrument that actually catches this class of mistake.
-    const bVideo = container.querySelector('[data-testid="b"]')!;
-    const wrapDiv = bVideo.parentElement!;
-    const shellDiv = wrapDiv.parentElement!;
-    expect(wrapDiv.style.opacity).toBe('0');
-    expect(shellDiv.style.opacity).not.toBe('0');
+    expect(bCount(container)).toBeGreaterThan(0);
     unmount();
   });
 
