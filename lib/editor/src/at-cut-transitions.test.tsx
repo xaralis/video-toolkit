@@ -1539,6 +1539,57 @@ describe('a reel edge resolves the missing input to the theme background', () =>
     },
   );
 
+  // ---- `wipe` (Phase 5 Task 2.2 fix round — Important 3) ------------------
+  //
+  // `wipe` is a NATIVE two-input node Task 2.2 migrated, not one of the seven
+  // lifted one-sided presentations above — and it answers the "what does a
+  // materialised edge plate do" contract question the OPPOSITE way from
+  // `pixelate` (same task, same file): `pixelate` forces a null side's
+  // opacity to a flat `0` (see `pixelate.tsx`'s own comment); `wipe` lets the
+  // plate follow its ordinary `to`/`from` curve, exactly like a real clip
+  // would. Both are correct, on two DIFFERENT properties of the same
+  // contract question ("a node can no longer decline the edge plate"):
+  //
+  //   - `wipe`'s `from`/`to` opacities are STRICTLY COMPLEMENTARY — at every
+  //     progress, exactly one of them is `1` and the other is `0` (a hard
+  //     swap behind an opaque sheet, never both visible at once). So letting
+  //     the null side's opacity rise is safe: it only ever becomes visible
+  //     at the exact instant the REAL side has already dropped to `0`, and
+  //     the swap instant itself sits behind the sheet's own full coverage
+  //     (`translateX(0%)` at progress 0.5, the same frame `to`'s opacity
+  //     flips). This is the SAME mechanism the seven lifted presentations
+  //     above are tested for (their trailing-edge test IS "the background
+  //     plate follows the entering curve, same as a real clip would").
+  //   - `pixelate`'s `from`/`to` opacities OVERLAP by design (a genuine
+  //     cross-dissolve: both sides can be `1` simultaneously, e.g. progress
+  //     0.5) and NOTHING covers the swap — so applying the same curve to a
+  //     flat-colour plate composites it directly against still-fully-visible
+  //     real content, which is the defect this task's fix round closed.
+  //
+  // Measured (not reasoned) via the node's own `plan()` output at the
+  // trailing edge (`to === null`): `to.style.opacity` is `0` for progress <
+  // 0.5, and jumps to `1` at exactly progress 0.5 — the same frame the sheet
+  // (`layers[0].style.transform`) reaches `translateX(0%)`, full coverage.
+  // The background is then revealed PROGRESSIVELY as the sheet slides off
+  // toward progress 1, which is the intended picture for a wipe transition
+  // whether what's next is a real clip or nothing.
+  it('wipe reveals the theme background behind the departing sheet at the trailing edge, not before', () => {
+    const at = (p: number) => {
+      const s = trailingSample('wipe', p);
+      return { plates: s.plates, opacity: s.opacity };
+    };
+    expect([at(0.25), at(0.5), at(0.75)]).toEqual([
+      // Before the sheet covers: the background must NOT be visible yet —
+      // the outgoing clip's own beat is still showing (covered by the
+      // approaching sheet, not by a premature background reveal).
+      { plates: 1, opacity: '0' },
+      // Exactly at the covering instant: the swap has happened, hidden.
+      { plates: 1, opacity: '1' },
+      // Past it: the sheet is sliding away, background progressively shown.
+      { plates: 1, opacity: '1' },
+    ]);
+  });
+
   // ---- the native node Task 2.1 left for this task ------------------------
   //
   // 2.1 made `checkerboard` draw NO grid when `to === null`, explicitly
@@ -1597,7 +1648,14 @@ describe('a reel edge resolves the missing input to the theme background', () =>
   // eight is the identity — so the incoming clip resolves out of the background
   // rather than out of nothing. Same mechanism, so one pin per family is enough
   // here; what must not happen is the plate silently disappearing.
-  it.each(['fade', 'dissolve', 'fade-to-color', 'burn', 'gradient-wipe', 'clock-wipe', 'iris'] as const)(
+  //
+  // `wipe` joins this list too (Task 2.2 fix round) — its exiting branch is
+  // NOT the identity (the plate's own opacity still follows `wipe`'s step
+  // curve, per the dedicated trailing-edge test above), but the assertion
+  // here is purely structural — exactly one background plate exists — which
+  // holds regardless of that curve's value, since `EdgePlate` is always
+  // materialised whether or not the op currently makes it visible.
+  it.each(['fade', 'dissolve', 'fade-to-color', 'burn', 'gradient-wipe', 'clock-wipe', 'iris', 'wipe'] as const)(
     '%s draws the theme background beneath the incoming clip at the leading edge',
     (kind) => {
       const { container } = mount(kind, { from: null }, 0.5);

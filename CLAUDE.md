@@ -320,7 +320,7 @@ from upstream — it does not and should not run these six.
 | Brand-leak grep | `grep -riE 'lime\|teal\|roost\|progresivn\|sand-brown' lib/ --exclude-dir=node_modules --exclude='*.test.*'` | Any brand vocabulary leaking into shared `lib/` | exactly **2** hits, both comments naming the brand they were generalised from (`lib/theming/effects/ken-burns.ts`, `lib/transitions/presentations/burn.tsx`). Free — run it every time. |
 | `it.fails` guard | `grep -n 'it\.fails' lib/editor/src/at-cut-transitions.test.tsx` (the **escaped** dot — an unescaped `it.fails` also matches prose describing the pins historically and has produced a false positive twice) | Known-defect transition kinds shipped without a real fix | **zero** — all four historical pins were converted to real fixes in Task 2.1; still zero after Task 2.2. Re-derive; do not copy "zero" forward without running it. |
 | Python — `sync_template` | `./.venv/bin/python -m pytest video_toolkit/tests/test_sync_template.py -q` | Template-scaffolding correctness; essentially never touched by render/transitions/editor work | **36 passed**. System `python3` has no `pytest` — use `./.venv/bin/python`. |
-| Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` — **while iterating, filter to the kinds you touched** (see below); this full form is for the gate itself | Every at-cut transition kind × mode × progress — one still per cell, hash-compared against committed goldens | **PASS** in **~45 s** (300 stills, 0 retried), run twice across separate processes (default `--repeat=2`, a full `--repeat=4`): `300 accepted (10-11 on a bimodal cell's second recorded hash — varies run to run, expected), 0 same-picture-different-bytes, 0 drifted, 0 missing`. **9 of `pixelate`'s 15 cells moved** (`enter`/`exit`/`cut` × p025/p05/p075 — `exit__p1` did NOT move, confirming the fix below restores exact edge-frame parity) — small, argued, hand-inspected (max 8×8 cell delta 3-16 of 255), attributed to the `isolation: 'isolate'` flag turning on now that `pixelate`'s own boundary resolves to a plan (see task-2.2-report.md's golden adjudication for the full separation-of-causes measurement). `wipe`/`fade-to-color`/`gradient-wipe` moved **zero** cells. `bimodalCells` is **24** (`clock-wipe` 9, `iris` 7, `light-leak` 8) — see the caveats immediately below before treating this as a plain pass/fail. |
+| Pixel harness | `cd examples/layered-minimal && npm run pixel-gate:strict` — **while iterating, filter to the kinds you touched** (see below); this full form is for the gate itself | Every at-cut transition kind × mode × progress — one still per cell, hash-compared against committed goldens | **PASS** in **~45 s** (300 stills, 0 retried), run twice across separate processes (default `--repeat=2`, a full `--repeat=4`): `300 accepted (10-11 on a bimodal cell's second recorded hash — varies run to run, expected), 0 same-picture-different-bytes, 0 drifted, 0 missing`. **9 of `pixelate`'s 15 cells moved** (`enter`/`exit`/`cut` × p025/p05/p075 — `exit__p1` did NOT move, confirming the fix below restores exact edge-frame parity) — small, argued, hand-inspected (max 8×8 cell delta 3-16 of 255). **NOT the `isolation: 'isolate'` flag** — that was the brief's prediction and it was measured wrong: migrated code with `isolate` forced OFF produced IDENTICAL per-cell deltas to migrated code with `isolate` as computed, and the flag alone (unmigrated code, isolate forced on) contributes only 1-2. The real cause is structural — `pixelate`'s grid/vignette/RGB-split overlays moved from JSX siblings to `PlateLayer` timeline siblings at a different tree position relative to the two clips — and the moved set is exactly the cells where `pixelIntensity > 0.05` (the plate-bearing ones; `p0`/`p1` are untouched). See task-2.2-report.md's golden adjudication for the full separation-of-causes measurement. `wipe`/`fade-to-color`/`gradient-wipe` moved **zero** cells. `bimodalCells` is **24** (`clock-wipe` 9, `iris` 7, `light-leak` 8) — see the caveats immediately below before treating this as a plain pass/fail. |
 
 **`--strict` is the mode a parity claim must use — the plain `pixel-gate` is for day-to-day
 iteration only.** The lenient default treats a near-miss (8×8 mean delta within tolerance) as a
@@ -408,18 +408,25 @@ Task 2.1 fixed all four (they are native two-input nodes now) and the pins are g
 count has been wrong in writing three times. Historical detail:
 `docs/superpowers/at-cut-transition-findings.md`.
 
-**The 4 SKIPPED tests are deliberate and derived.** They are the generic
-"carries its authored params through to the presentation" case for the four kinds that
-resolve to a two-input node — a node closes over its params, so there is no props bag to
-read. The set of skipping kinds is itself asserted, so a fifth kind cannot opt out quietly.
+**The 5 SKIPPED tests are deliberate and derived** (re-derived for Phase 5 Task 2.2 — it
+was 4 through Task 2.1; `gradient-wipe` joined `NODE_KINDS` this task, migrating from a
+one-sided `TransitionPresentation` core lifted to a native node returning `to.style.maskImage`
+directly, so it is now `isTransitionNode(resolved)` straight out of `resolveTransition` like the
+other four — the "a fifth kind cannot opt out quietly" guarantee below is what caught this
+automatically, not a hand-edited count). They are the generic "carries its authored params
+through to the presentation" case for the five kinds that resolve to a two-input node — a node
+closes over its params, so there is no props bag to read. The set of skipping kinds is itself
+asserted, so a sixth kind cannot opt out quietly.
 
 **What replaces them, precisely** (an earlier version of this paragraph claimed "pinned by
 DOM assertions" and that was **false** for 9 of the 11 params): the
 `two-input node <kind> delivers every authored param` block in the same file is a
 **differential** check — for every sub-option `subOptionsFor(kind)` declares, it renders
 the kind twice, catalog default vs an in-bounds probe value for that one param, at three
-progress points, and requires the rendered output to differ. All **11** tunable params are
-covered (`pixelate` ×5, `checkerboard` ×4, `scanline-glitch.rgbShiftPx`, `wipe.direction`;
+progress points, and requires the rendered output to differ. All **13** tunable params are now
+covered (`pixelate` ×5, `checkerboard` ×4, `scanline-glitch.rgbShiftPx`, `wipe.direction`,
+`gradient-wipe.direction` + `gradient-wipe.softness` — the two params Task 2.2's migration
+added, re-derived directly off `subOptionsFor('gradient-wipe')` rather than assumed;
 `wipe.color` and `fade-to-color.color` by the accent tests — an `accent`-typed param has no
 in-bounds probe value to invent, so it gets a differential test of its own instead). It is
 derived so a new param is covered the day it is

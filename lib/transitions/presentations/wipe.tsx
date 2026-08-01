@@ -22,6 +22,31 @@
 // covers the frame at the swap instant (`p === 0.5`), so switching which side
 // is opacity-1 there is invisible, precisely as switching which side was MOUNTED
 // there was invisible before.
+//
+// AT A REEL EDGE (Task 2.2 fix round, Important 3) — this node does NOT force
+// a null side's opacity to a flat `0` the way `pixelate.tsx` (same task, same
+// mechanism otherwise) does. That is a deliberate difference, not an
+// oversight, and it turns on ONE property: `from`/`to` here are STRICTLY
+// COMPLEMENTARY — at every progress exactly one of them is `1` and the other
+// `0` — never both visible at once. So when a null side (materialised by core
+// as an `EdgePlate`, design §2.5) is asked to rise to opacity 1, it only ever
+// does so at the exact instant the REAL side has already dropped to `0`, and
+// that swap instant sits behind the sheet's own full coverage
+// (`translateX(0%)` at progress 0.5, the SAME frame `to`'s opacity flips) —
+// so the materialised plate steps into the missing clip's role exactly the
+// way the seven lifted one-sided presentations' own trailing-edge test
+// already exercises ("the background plate follows the entering curve, same
+// as a real clip would"), not a premature reveal.
+//
+// `pixelate`'s curves are NOT complementary — both sides can be `1`
+// simultaneously (a genuine cross-dissolve/blend), and nothing covers the
+// swap — so applying the same treatment there composited a flat colour
+// directly against still-fully-visible real content, which was Task 2.2's
+// actual defect. `wipe` was never at risk of that class of bug: forcing a
+// flat `0` here would be an unforced change to a picture that is already
+// correct (and is asserted so — see `at-cut-transitions.test.tsx`'s
+// "wipe reveals the theme background behind the departing sheet at the
+// trailing edge, not before").
 import type { TransitionNode, TransitionPlanProps, TransitionComposite } from '../../theming/transitions';
 import { interpolate } from 'remotion';
 
