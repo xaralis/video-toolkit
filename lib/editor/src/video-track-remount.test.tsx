@@ -89,32 +89,36 @@ import type { VideoItem } from '@video-toolkit/lib/reel-config-base/layered-sche
 const clip = (id: string, startMs: number, endMs: number, extra: Record<string, unknown> = {}): VideoItem =>
   ({ id, kind: 'clip', startMs, endMs, source: `${id}.mp4`, sourceInMs: 0, sourceOutMs: endMs - startMs, ...extra }) as VideoItem;
 
-// a: 0-3000ms with a 20-frame scanline-glitch out. b: 3000-6000ms. 30fps -> cut at
+// a: 0-3000ms with a 20-frame checkerboard out. b: 3000-6000ms. 30fps -> cut at
 // frame 90, the default (center) alignment gives a window of [80, 100].
 //
 // PHASE 5 TASK 2.1 changed this fixture's KIND from `fade` to `burn`; PHASE 5
-// TASK 2.3 changes it again, from `burn` to `scanline-glitch` — both deliberately,
-// not incidentally, for the identical reason each time. Every hand-written
-// test below (Fix 1/2/3, R2, and the Task 1.2 shell-parity test) exercises
-// `composite`-arm mechanics specifically: the boundary Sequence, `rebased()`
-// copies, `ItemBody`'s blanking, the R1/R2 mount-count floors. `burn`
-// migrated to the `plan` arm THIS task, which does not blank, has no
-// boundary Sequence and no rebased copies at all — so this whole file's
-// geometry, counts and identities would silently start asserting something
-// else entirely (or simply fail, which is what happened here first:
-// confirmed RED against the unchanged fixture, `npx vitest run
-// --no-file-parallelism video-track-remount.test.tsx` failing exactly the
-// same 5 composite-arm tests Task 2.1's swap once fixed). `scanline-glitch` is
-// Stage 3's, not this task's, and keeps this file pinning the arm it says it
-// pins — after this task it is one of exactly THREE catalog kinds still
-// composite (`rgb-split`, `scanline-glitch`, `checkerboard`), so the choice
-// is nearly forced; whichever of the three is picked, a later stage's
-// migration collides with this fixture the same way this task's did with
-// Task 2.1's. The DERIVED section below (Task 1.3) still names catalog kinds
-// directly where it means to — this substitution is scoped to the
-// hand-written fixture alone.
+// TASK 2.3 changed it again, from `burn` to `scanline-glitch`; PHASE 5 TASK 3
+// changes it a third time, from `scanline-glitch` to `checkerboard` — every
+// time deliberately, not incidentally, for the identical reason. Every
+// hand-written test below (Fix 1/2/3, R2, and the Task 1.2 shell-parity test)
+// exercises `composite`-arm mechanics specifically: the boundary Sequence,
+// `rebased()` copies, `ItemBody`'s blanking, the R1/R2 mount-count floors.
+// `burn` migrated to the `plan` arm at Task 2.3, and `scanline-glitch`
+// migrates to it THIS task (confirmed RED against the unchanged
+// `scanline-glitch` fixture first: `npx vitest run --no-file-parallelism
+// video-track-remount.test.tsx` failed exactly the same 5 composite-arm tests
+// Task 2.1's and Task 2.3's swaps once fixed — see task-3-report.md). Neither
+// migrates the plan/composite ASSEMBLY these hand-written tests pin, which
+// does not blank, has no boundary Sequence and no rebased copies at all — so
+// this whole file's geometry, counts and identities would silently start
+// asserting something else entirely if the fixture's kind kept pace with
+// whichever kind just migrated. `checkerboard` is Stage 4's, not this task's,
+// and keeps this file pinning the arm it says it pins — after this task it
+// is the ONLY catalog kind still composite, so there is no longer a choice to
+// argue: the NEXT migration (Stage 4, `checkerboard` itself) collides with
+// this fixture directly and has to introduce a test-only composite node
+// instead of substituting a real catalog kind, because none will be left.
+// The DERIVED section below (Task 1.3) still names catalog kinds directly
+// where it means to — this substitution is scoped to the hand-written
+// fixture alone.
 const reel = (): VideoItem[] => [
-  clip('a', 0, 3000, { transitionOut: { kind: 'scanline-glitch', frames: 20 } }),
+  clip('a', 0, 3000, { transitionOut: { kind: 'checkerboard', frames: 20 } }),
   clip('b', 3000, 6000),
 ];
 
@@ -417,25 +421,30 @@ describe('DERIVED — the plan/composite partition over the catalog is pinned', 
   // PHASE 5 TASK 2.3 adds SIX more — `glitch`, `burn`, `light-leak`,
   // `whip-pan`, `zoom-through`, `zoom-blur` — by the SAME mechanism as Task
   // 2.1 (`WRAP_PLAN_KINDS` in `at-cut-transitions.tsx`; none of these six is
-  // a native two-input node). This is Stage 2's last migration: after this
-  // task exactly three catalog kinds remain composite (`rgb-split`,
+  // a native two-input node). This was Stage 2's last migration: after that
+  // task exactly three catalog kinds remained composite (`rgb-split`,
   // `scanline-glitch`, `checkerboard`).
+  //
+  // PHASE 5 TASK 3 adds the two re-baseline kinds — `rgb-split` (native
+  // `plan`, `ghosts`) and `scanline-glitch` (native `plan`, `post`) — bringing
+  // the partition to EIGHTEEN. After this task exactly ONE catalog kind
+  // remains composite: `checkerboard` (Stage 4's carve-out).
   //
   // Order matches `CATALOG_KINDS`' own order (`TRANSITION_CATALOG`'s
   // declaration order: `dissolve`, `fade`, `fade-to-color`, `glitch`,
   // `rgb-split`, `scanline-glitch`, `burn`, `light-leak`, `slide`, `flip`,
   // `whip-pan`, `zoom-through`, `zoom-blur`, `clock-wipe`, `iris`, `wipe`,
-  // `gradient-wipe`, `pixelate`, `checkerboard` — `rgb-split`,
-  // `scanline-glitch` and `checkerboard` stay composite and are filtered
-  // out), not the brief's prose order.
-  it('is exactly the sixteen Task 2.1+2.2+2.3 migrated kinds — re-derive; do not carry forward', () => {
+  // `gradient-wipe`, `pixelate`, `checkerboard` — only `checkerboard` stays
+  // composite and is filtered out), not the brief's prose order.
+  it('is exactly the eighteen Task 2.1+2.2+2.3+3 migrated kinds — re-derive; do not carry forward', () => {
     expect.hasAssertions();
     expect(PLAN_KINDS).toEqual([
-      'dissolve', 'fade', 'fade-to-color', 'glitch', 'burn', 'light-leak',
+      'dissolve', 'fade', 'fade-to-color', 'glitch', 'rgb-split', 'scanline-glitch', 'burn', 'light-leak',
       'slide', 'flip', 'whip-pan', 'zoom-through', 'zoom-blur',
       'clock-wipe', 'iris', 'wipe', 'gradient-wipe', 'pixelate',
     ]);
     expect(COMPOSITE_KINDS.length).toBe(CATALOG_KINDS.length - PLAN_KINDS.length);
+    expect(COMPOSITE_KINDS).toEqual(['checkerboard']);
   });
 });
 
@@ -497,16 +506,21 @@ function sameElements(a: readonly Element[], b: readonly Element[]): boolean {
  *  `TransitionNode`'s `composite` arm is a plain JSX component with no
  *  `ghosts`-shaped contract — so ANY second element it produces is the
  *  unauthorised extra copy the whole ratchet exists to catch. Verified this
- *  is not merely assumed: `rgb-split` (still composite today) already
- *  renders its `children` prop into three separate `<AbsoluteFill>` siblings
- *  (main + a red-shifted copy + a cyan-shifted copy,
+ *  is not merely assumed: PRE-TASK-3, `rgb-split` (composite then) rendered
+ *  its `children` prop into three separate `<AbsoluteFill>` siblings (main +
+ *  a red-shifted copy + a cyan-shifted copy,
  *  `lib/transitions/presentations/rgb-split.tsx`) — the SAME element
  *  reference reused at three tree positions, which React mounts as three
  *  separate DOM nodes, PLUS the item's own hidden copy (Fix 1) — so
  *  `distinct === 4` there (measured; an earlier version of this comment said
  *  3, counting only the presentation's own internal copies and missing the
  *  item's own — the assertion was never affected, only this count), and
- *  `distinct > 1` correctly flags it either way.
+ *  `distinct > 1` correctly flags it either way. `rgb-split` migrated to the
+ *  `plan` arm at Task 3, where its 4 ghost mounts (2 per side) are a
+ *  LEGITIMATE, authored multi-mount (`LayerOp.ghosts`) — this historical
+ *  measurement documents what `distinct > 1` catches on the COMPOSITE arm
+ *  specifically, not a claim about `rgb-split`'s current arm; `checkerboard`
+ *  is the composite kind this bucket now exercises.
  *
  *  `persists` — REVIEW ROUND 2, IMPORTANT 1 REWRITE. The original
  *  formulation ("every reference on the first observed frame survives to

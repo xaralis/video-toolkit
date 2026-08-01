@@ -2,144 +2,136 @@
 // filter chain over a single mounted `blend`, instead of the `blend` fragment
 // (both `from` and `to`) being re-rendered three times (6 media mounts total).
 //
-// See lib/transitions/presentations/scanline-glitch.tsx for the mechanism: the
-// `blend` (`from` + `to`) mounts once, wrapped in an `AbsoluteFill` carrying
-// `filter: url(#<id>)`; the filter chain is `feOffset` (per-copy shift) →
-// `feColorMatrix` (hue-rotate, then saturate, then an alpha-scale by `peak`)
-// → `feBlend mode="screen"`, applied twice — once per shifted copy — against
-// the single `SourceGraphic`.
+// Phase 5 Task 3 — `composite` → `plan`, the `post` slot's first real
+// exercise. `scanline-glitch` no longer instantiates `from`/`to` at all (they
+// are already-mounted shells the ASSEMBLY drives — see
+// `video-track-remount.test.tsx`'s derived ratchet, which now covers
+// `scanline-glitch`'s mount-count/identity guarantees generically, as a real
+// catalog `plan` kind). What THIS file settles is `scanline-glitch`'s OWN
+// `plan` output: the filter chain's primitives are genuinely driven by
+// peak/xJitter/shift, the RGB contribution is zero at both ends, the element
+// count (filter primitives) never varies with progress, the filter id is
+// stable for one node's whole life, and the SVG defs it emits actually render
+// and wire up to the `post.filter` value the node returns.
 //
-// This file runs under jsdom like at-cut-transitions.test.tsx, so — same
-// caveat as that file — it settles WIRING and STRUCTURE (mount counts, filter
-// application, which numbers drive which primitives), not what a frame LOOKS
-// like. That is the pixel harness's job (examples/layered-minimal).
-//
-// `useCurrentFrame()` throws outside a registered composition (real remotion
-// behaviour, not a test artifact — see `use-current-frame.js`), and
-// `scanline-glitch`'s jitter depends on it, so — like at-cut-transitions.test.tsx
-// — `remotion` is mocked here to hand back a controllable clock.
+// `useCurrentFrame()` is GONE from this kind entirely — `frame` is now an
+// explicit argument on `TransitionPlanProps` (design's "a plan cannot call
+// React hooks" contract), so this file needs no `remotion` mock at all, unlike
+// its pre-Task-3 self.
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
-
-const clock = vi.hoisted(() => ({ frame: 0 }));
-
-vi.mock('remotion', async () => {
-  const actual = await vi.importActual<typeof import('remotion')>('remotion');
-  return {
-    ...actual,
-    useCurrentFrame: () => clock.frame,
-  };
-});
 
 import {
   transitionNodeFor,
+  resetTransitionNodeCache,
   type TransitionRecord,
-  type TransitionNode,
-  type TransitionNodeProps,
 } from '@video-toolkit/lib/render/at-cut-transitions';
+import type { TransitionComposite } from '@video-toolkit/lib/theming/transitions';
 
 const DIMS = { width: 1080, height: 1920 };
 
-const A = <div data-testid="a" />;
-const B = <div data-testid="b" />;
-
-// Phase 5 Task 1.1 widened `TransitionNode` into a `plan`/`composite` union.
-// `scanline-glitch` is still a `composite` node (Stage 4 migrates it), so
-// every node this file resolves is composite-only — narrow once here instead
-// of at each call site.
-function compositeOf(node: TransitionNode): React.ComponentType<TransitionNodeProps> {
-  if (typeof node.plan === 'function') throw new Error('expected a composite-arm TransitionNode in this test');
-  return node.composite;
+/** Calls the node's `plan` directly with a fully-populated, real `LayerHandle`
+ *  pair on both sides — the shape `VideoTrackHost` feeds a live boundary. */
+function planAt(t: Partial<TransitionRecord> & { kind: 'scanline-glitch' }, progress: number, frame?: number): TransitionComposite {
+  const durationInFrames = 15;
+  const node = transitionNodeFor(t as TransitionRecord, DIMS)!;
+  if (typeof node.plan !== 'function') throw new Error('expected scanline-glitch to resolve to a plan node');
+  return node.plan({
+    from: { range: [0, durationInFrames] },
+    to: { range: [0, durationInFrames] },
+    progress,
+    frame: frame ?? Math.round(progress * durationInFrames),
+    durationInFrames,
+    params: {},
+    dims: { width: DIMS.width, height: DIMS.height, fps: 30 },
+    palette: [],
+    background: 'transparent',
+  });
 }
 
-const mount = (
-  t: Partial<TransitionRecord> & { kind: 'scanline-glitch' },
-  progress: number,
-  inputs: { from?: React.ReactNode | null; to?: React.ReactNode | null } = {},
-) => {
-  const Composite = compositeOf(transitionNodeFor(t as TransitionRecord, DIMS)!);
+/** Mounts a plan's `layers` (the ONLY place a `<filter>` element exists — the
+ *  filter is APPLIED via `post`, never mounted directly around `from`/`to`
+ *  any more) so real DOM assertions (attribute values, element counts) can be
+ *  made against the actual rendered SVG, not against the plan object alone. */
+function renderLayers(composite: TransitionComposite) {
   return render(
-    <Composite
-      from={inputs.from === undefined ? A : inputs.from}
-      to={inputs.to === undefined ? B : inputs.to}
-      progress={progress}
-      durationInFrames={15}
-      width={1080}
-      height={1920}
-      fps={30}
-      palette={[]}
-      background="transparent"
-    />,
+    <>
+      {(composite.layers ?? []).map((l) => (
+        <div key={l.key}>{l.content}</div>
+      ))}
+    </>,
   );
-};
+}
 
-const aCount = (container: HTMLElement) => container.querySelectorAll('[data-testid="a"]').length;
-const bCount = (container: HTMLElement) => container.querySelectorAll('[data-testid="b"]').length;
-const filterEls = (container: HTMLElement) => [...container.querySelectorAll('filter')];
 const feOffsetEls = (container: HTMLElement) => [...container.querySelectorAll('feOffset')];
-const filteredWrapperOf = (container: HTMLElement, id: string) =>
-  [...container.querySelectorAll('div')].find((d) => d.style.filter === `url(#${id})`);
+const filterEls = (container: HTMLElement) => [...container.querySelectorAll('filter')];
 
-describe('scanline-glitch mounts `from` and `to` exactly once, not three times', () => {
-  it.each([0, 0.2, 0.5, 0.8, 1])('progress=%s: exactly one `a` mount and one `b` mount', (progress) => {
-    const { container, unmount } = mount({ kind: 'scanline-glitch', frames: 15 }, progress);
-    expect({ a: aCount(container), b: bCount(container) }).toEqual({ a: 1, b: 1 });
-    unmount();
+describe('scanline-glitch: `from`/`to` carry no extra mounts — the picture lives in `style` + `layers` + `post`', () => {
+  it('`from` is untouched (the identity) and `to` carries a plain opacity ramp, on every progress', () => {
+    for (const progress of [0, 0.2, 0.5, 0.8, 1]) {
+      const composite = planAt({ kind: 'scanline-glitch' }, progress);
+      expect(composite.from).toEqual({});
+      expect(composite.to).toEqual({ style: { opacity: progress } });
+    }
   });
 
-  it('a missing `to` (the reel\'s trailing edge) still mounts `from` exactly once', () => {
-    const { container, unmount } = mount({ kind: 'scanline-glitch', frames: 15 }, 0.4, { to: null });
-    expect({ a: aCount(container), b: bCount(container) }).toEqual({ a: 1, b: 0 });
-    unmount();
+  it('never returns `ghosts` on either side — the RGB split is a `post` filter, not an extra mount', () => {
+    const composite = planAt({ kind: 'scanline-glitch' }, 0.5);
+    expect(composite.from?.ghosts).toBeUndefined();
+    expect(composite.to?.ghosts).toBeUndefined();
   });
 });
 
-describe('scanline-glitch the filter is actually wired to the mounted layer, not just present nearby', () => {
-  it('the wrapper carrying `from`+`to` has `filter: url(#<id>)` where `<id>` is the real `<filter>` element\'s id', () => {
-    const { container, unmount } = mount({ kind: 'scanline-glitch', frames: 15 }, 0.5);
+describe('scanline-glitch: `post` is wired to a real, rendered `<filter>` element', () => {
+  it('`post.filter` is `url(#<id>)` where `<id>` is the id of the ONE `<filter>` element the layers render', () => {
+    const composite = planAt({ kind: 'scanline-glitch' }, 0.5);
+    const match = /^url\(#(.+)\)$/.exec(String(composite.post?.filter));
+    expect(match).toBeTruthy();
+    const id = match![1];
+
+    const { container, unmount } = renderLayers(composite);
     const filters = filterEls(container);
-    expect(filters.length).toBe(1);
-    const id = filters[0].getAttribute('id');
-    expect(id).toBeTruthy();
-    const wrapper = filteredWrapperOf(container, id!);
-    expect(wrapper).toBeTruthy();
-    // Guard the guard: the wrapper must actually CONTAIN the mounted `a`/`b`,
-    // not merely sit next to them.
-    expect(wrapper!.querySelector('[data-testid="a"]')).toBeTruthy();
-    expect(wrapper!.querySelector('[data-testid="b"]')).toBeTruthy();
+    expect(filters).toHaveLength(1);
+    expect(filters[0].getAttribute('id')).toBe(id);
     unmount();
   });
 
-  it('the filter id is stable across re-renders of the same instance and distinct across two instances', () => {
-    const node = transitionNodeFor({ kind: 'scanline-glitch', frames: 15 } as TransitionRecord, DIMS)!;
-    const Composite = compositeOf(node);
-    const { container, rerender, unmount } = render(
-      <Composite from={A} to={B} progress={0} durationInFrames={15} width={1080} height={1920} fps={30} palette={[]} background="transparent" />,
-    );
-    const idAt = () => container.querySelector('filter')!.getAttribute('id');
-    const first = idAt();
-    rerender(
-      <Composite from={A} to={B} progress={0.4} durationInFrames={15} width={1080} height={1920} fps={30} palette={[]} background="transparent" />,
-    );
-    expect(idAt()).toBe(first);
-    rerender(
-      <Composite from={A} to={B} progress={0.9} durationInFrames={15} width={1080} height={1920} fps={30} palette={[]} background="transparent" />,
-    );
-    expect(idAt()).toBe(first);
-    unmount();
+  it('`post` carries only `filter` — no `transform`, `opacity` or anything else', () => {
+    const composite = planAt({ kind: 'scanline-glitch' }, 0.5);
+    expect(Object.keys(composite.post ?? {})).toEqual(['filter']);
+  });
 
-    const { container: c2, unmount: u2 } = mount({ kind: 'scanline-glitch', frames: 15 }, 0);
-    expect(c2.querySelector('filter')!.getAttribute('id')).not.toBe(first);
-    u2();
+  // THE STABLE-ID CONTRACT, ARGUED (see the module doc comment in
+  // scanline-glitch.tsx): the id is minted ONCE per resolved node — a
+  // FACTORY-time value, not a per-call one — because `post`'s `url(#id)`
+  // reference and the `<filter id>` it targets must agree across every LIVE
+  // frame of this node's whole life, and `plan` itself is invoked fresh every
+  // frame.
+  it('the filter id is stable across repeated `plan()` calls on the SAME node, and distinct across two separately-resolved nodes', () => {
+    resetTransitionNodeCache();
+    const idFor = (progress: number) => {
+      const composite = planAt({ kind: 'scanline-glitch' }, progress);
+      return /^url\(#(.+)\)$/.exec(String(composite.post?.filter))![1];
+    };
+    const first = idFor(0);
+    expect(idFor(0.4)).toBe(first);
+    expect(idFor(0.9)).toBe(first);
+
+    // A DIFFERENT authored config (`rgbShiftPx` differs) resolves to a
+    // DIFFERENT node — and therefore a different id — rather than hitting
+    // `transitionNodeFor`'s cache.
+    const composite2 = planAt({ kind: 'scanline-glitch', rgbShiftPx: 40 }, 0);
+    const secondId = /^url\(#(.+)\)$/.exec(String(composite2.post?.filter))![1];
+    expect(secondId).not.toBe(first);
   });
 });
 
-describe('scanline-glitch the filter primitives are genuinely driven by peak / xJitter / shift', () => {
+describe('scanline-glitch: the filter primitives are genuinely driven by peak / xJitter / shift', () => {
   it('the two feOffset dx values move as progress moves (peak, xJitter both depend on it)', () => {
-    clock.frame = 3; // fixed frame so only `progress` varies across samples
     const dxAt = (progress: number) => {
-      const { container, unmount } = mount({ kind: 'scanline-glitch', frames: 15 }, progress);
+      const composite = planAt({ kind: 'scanline-glitch' }, progress, 3); // fixed frame
+      const { container, unmount } = renderLayers(composite);
       const dx = feOffsetEls(container).map((el) => Number(el.getAttribute('dx')));
       unmount();
       return dx;
@@ -149,13 +141,12 @@ describe('scanline-glitch the filter primitives are genuinely driven by peak / x
     const at1 = dxAt(1);
     expect(at05).not.toEqual(at0);
     expect(at05).not.toEqual(at1);
-    clock.frame = 0;
   });
 
   it('rgbShiftPx changes the two feOffset dx values at mid-progress', () => {
-    clock.frame = 0; // xJitter is 0 at frame 0, isolating shift's own contribution
     const dxAt = (rgbShiftPx: number) => {
-      const { container, unmount } = mount({ kind: 'scanline-glitch', frames: 15, rgbShiftPx }, 0.5);
+      const composite = planAt({ kind: 'scanline-glitch', rgbShiftPx }, 0.5, 0); // frame 0 => xJitter 0, isolates shift
+      const { container, unmount } = renderLayers(composite);
       const dx = feOffsetEls(container).map((el) => Number(el.getAttribute('dx')));
       unmount();
       return dx;
@@ -166,36 +157,36 @@ describe('scanline-glitch the filter primitives are genuinely driven by peak / x
   // ISOLATES xJitter specifically. The test above ("dx values move as
   // progress moves") varies `progress`, which moves `peak` too — `peak` alone
   // is sufficient to move `dx` (via `shift * peak`), so that test cannot tell
-  // whether `xJitter` itself is wired in at all. Reviewer's deletion sweep:
-  // setting `xJitter = 0` at scanline-glitch.tsx left the ENTIRE suite green,
-  // including that test. This one holds `progress` fixed (so `peak` and
-  // `shift * peak` are constant) and varies only `clock.frame` — the one
+  // whether `xJitter` itself is wired in at all. Reviewer's deletion sweep
+  // (Phase 4): setting `xJitter = 0` at scanline-glitch.tsx left the ENTIRE
+  // suite green, including that test. This one holds `progress` fixed (so
+  // `peak` and `shift * peak` are constant) and varies only `frame` — the one
   // input `xJitter` reads that nothing else in `dx` depends on.
   it('the two feOffset dx values move as the frame moves, progress held fixed (xJitter)', () => {
     const dxAtFrame = (frame: number) => {
-      clock.frame = frame;
-      const { container, unmount } = mount({ kind: 'scanline-glitch', frames: 15 }, 0.5);
+      const composite = planAt({ kind: 'scanline-glitch' }, 0.5, frame);
+      const { container, unmount } = renderLayers(composite);
       const dx = feOffsetEls(container).map((el) => Number(el.getAttribute('dx')));
       unmount();
       return dx;
     };
     const atFrame1 = dxAtFrame(1);
     const atFrame4 = dxAtFrame(4); // (4*31)%7=5 vs (1*31)%7=3 — distinct jitter buckets
-    clock.frame = 0;
     expect(atFrame4).not.toEqual(atFrame1);
   });
 });
 
-describe('scanline-glitch element count is progress-invariant', () => {
-  it('no conditional mounting on progress: filter primitive counts hold across the range', () => {
+describe('scanline-glitch: element count is progress-invariant', () => {
+  it('no conditional layers/plates on progress: filter primitive counts hold across the range', () => {
     const countsAt = [0, 0.1, 0.5, 0.9, 1].map((p) => {
-      const { container, unmount } = mount({ kind: 'scanline-glitch', frames: 15 }, p);
+      const composite = planAt({ kind: 'scanline-glitch' }, p);
+      const { container, unmount } = renderLayers(composite);
       const n = {
+        layers: (composite.layers ?? []).length,
         filters: filterEls(container).length,
         feOffsets: feOffsetEls(container).length,
         feColorMatrix: container.querySelectorAll('feColorMatrix').length,
         feBlend: container.querySelectorAll('feBlend').length,
-        divs: container.querySelectorAll('div').length,
       };
       unmount();
       return n;
@@ -206,10 +197,11 @@ describe('scanline-glitch element count is progress-invariant', () => {
   });
 });
 
-describe('scanline-glitch the RGB contribution is zero at both ends, exactly the outgoing/incoming clip', () => {
+describe('scanline-glitch: the RGB contribution is zero at both ends, exactly the outgoing/incoming clip', () => {
   it('at progress 0 and progress 1 both feBlend copies\' alpha-scale (peak) is 0', () => {
     const alphaScaleAt = (progress: number) => {
-      const { container, unmount } = mount({ kind: 'scanline-glitch', frames: 15 }, progress);
+      const composite = planAt({ kind: 'scanline-glitch' }, progress);
+      const { container, unmount } = renderLayers(composite);
       const scales = [...container.querySelectorAll('feColorMatrix[type="matrix"]')].map((el) => {
         const parts = (el.getAttribute('values') ?? '').trim().split(/\s+/);
         return Number(parts[parts.length - 2]);
@@ -223,15 +215,62 @@ describe('scanline-glitch the RGB contribution is zero at both ends, exactly the
     expect(alphaScaleAt(0.5).every((v) => v > 0)).toBe(true);
   });
 
-  it('at progress 0 `to` is fully transparent and at progress 1 fully opaque, either side of the filter', () => {
-    const opacityOfB = (progress: number) => {
-      const { container, unmount } = mount({ kind: 'scanline-glitch', frames: 15 }, progress);
-      const b = container.querySelector('[data-testid="b"]')!;
-      const opacity = (b.parentElement as HTMLElement).style.opacity;
-      unmount();
-      return opacity;
+  it('at progress 0 `to` is fully transparent and at progress 1 fully opaque', () => {
+    expect(planAt({ kind: 'scanline-glitch' }, 0).to).toEqual({ style: { opacity: 0 } });
+    expect(planAt({ kind: 'scanline-glitch' }, 1).to).toEqual({ style: { opacity: 1 } });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TASK 3 BRIEF — "a second `post` on one frame is a discipline hazard design
+// §7 flags (`:608`). Check what happens if two boundaries with `post` are
+// live simultaneously, and whether anything prevents or detects it."
+//
+// `transitionNodeFor` memoizes by (record, dims) — see its own doc comment,
+// "THE AMPLIFIER" — so two boundaries with BYTE-IDENTICAL authored config
+// (same kind + frames + rgbShiftPx) resolve to the SAME node object, and
+// therefore the SAME `filterId` (minted once, at factory time — see
+// scanline-glitch.tsx's own doc comment on why). This is a real, measured
+// narrowing from the pre-Task-3 composite, which minted a fresh id per REACT
+// MOUNT (`useState`) — two JSX call sites were always two component
+// instances, so two structurally-identical boundaries never collided before.
+//
+// This does NOT create a wrong picture on the CSS side: `video-track-plan.tsx`
+// applies `post.filter` to the WHOLE TRACK from at most one boundary's value
+// per frame (`pickPost`, "the LATER one wins", dev-warned). But if BOTH
+// boundaries are live on the same frame, BOTH boundaries' plates still render
+// (`PlateHost` is per-boundary, unconditional), so the DOM would carry TWO
+// `<filter id="scanline-glitch-XYZ">` elements sharing the SAME id — an SVG
+// duplicate-id hazard: `url(#id)` resolves to whichever such element is FIRST
+// in document order, regardless of which boundary's filter value the track
+// wrapper's `style.filter` actually carries. This is checked here, not fixed —
+// out of this task's scope (the brief asks to "check", not "fix"; two live
+// `post` boundaries is already a warned pathology, and the two-clip-wide
+// overlap needed to reach it is itself the `overlapping-boundaries` diagnostic
+// in `video-track.tsx`).
+describe('scanline-glitch: two simultaneous `post` boundaries (the discipline hazard design §7 flags)', () => {
+  it('two byte-identically-configured boundaries share the SAME node, and therefore the SAME filter id', () => {
+    resetTransitionNodeCache();
+    const a = transitionNodeFor({ kind: 'scanline-glitch', frames: 20 } as TransitionRecord, DIMS)!;
+    const b = transitionNodeFor({ kind: 'scanline-glitch', frames: 20 } as TransitionRecord, DIMS)!;
+    // The amplifier's whole point: identical config -> identical node
+    // reference. This is what makes the id collision possible at all.
+    expect(a).toBe(b);
+    const idOf = (n: typeof a) => {
+      const composite = n.plan!({
+        from: { range: [0, 20] }, to: { range: [0, 20] }, progress: 0.5, frame: 10,
+        durationInFrames: 20, params: {}, dims: { width: DIMS.width, height: DIMS.height, fps: 30 },
+        palette: [], background: 'transparent',
+      });
+      return /^url\(#(.+)\)$/.exec(String(composite.post?.filter))![1];
     };
-    expect(opacityOfB(0)).toBe('0');
-    expect(opacityOfB(1)).toBe('1');
+    expect(idOf(a)).toBe(idOf(b));
+  });
+
+  it('a DIFFERENTLY-configured boundary (distinct rgbShiftPx) resolves to a distinct node and a distinct id', () => {
+    resetTransitionNodeCache();
+    const a = transitionNodeFor({ kind: 'scanline-glitch', frames: 20, rgbShiftPx: 16 } as TransitionRecord, DIMS)!;
+    const b = transitionNodeFor({ kind: 'scanline-glitch', frames: 20, rgbShiftPx: 40 } as TransitionRecord, DIMS)!;
+    expect(a).not.toBe(b);
   });
 });

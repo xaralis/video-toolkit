@@ -124,10 +124,13 @@ beforeEach(() => {
 // "empty describe.each passes trivially" trap `video-track-remount.test.tsx`
 // already guards against for the identity ratchet). A literal array, not a
 // count, so a shrink prints exactly which kind went missing.
-it('PLAN_KINDS is exactly the sixteen Task 2.1+2.2+2.3 migrated kinds — re-derive; do not carry forward', () => {
+// PHASE 5 TASK 3 adds `rgb-split` and `scanline-glitch`, bringing the
+// partition to EIGHTEEN — the same derivation `video-track-remount.test.tsx`
+// pins, re-derived here rather than imported, per that file's own note.
+it('PLAN_KINDS is exactly the eighteen Task 2.1+2.2+2.3+3 migrated kinds — re-derive; do not carry forward', () => {
   expect.hasAssertions();
   expect(PLAN_KINDS).toEqual([
-    'dissolve', 'fade', 'fade-to-color', 'glitch', 'burn', 'light-leak',
+    'dissolve', 'fade', 'fade-to-color', 'glitch', 'rgb-split', 'scanline-glitch', 'burn', 'light-leak',
     'slide', 'flip', 'whip-pan', 'zoom-through', 'zoom-blur',
     'clock-wipe', 'iris', 'wipe', 'gradient-wipe', 'pixelate',
   ]);
@@ -261,11 +264,31 @@ function expectedNeutralFilter(kind: string): string {
 // opacity/transform/filter curve on BOTH sides — none of their exiting
 // branches is the identity the way `fade`'s is — so all five are `true`/
 // `true`.
+//
+// PHASE 5 TASK 3 — two more rows, the FOUR new booleans argued individually
+// (per the task brief):
+//   - `rgb-split.exiting = true`: `from.style.opacity =
+//     interpolate(progress,[0,1],[1,0])` is a REAL, progress-driven curve —
+//     unlike `fade`'s exiting branch (a constant `opacity: 1`), this one
+//     genuinely ramps down, so it is NOT the identity and must differ live.
+//   - `rgb-split.entering = true`: `to.style.opacity =
+//     interpolate(progress,[0,1],[0,1])`, symmetric, also a real curve.
+//   - `scanline-glitch.exiting = false`: `from: {}` — no style at all, the
+//     identity, exactly like `fade`/`burn`'s exiting branch. The `post` SVG
+//     filter it also emits is applied to the TRACK, not to `from`'s own
+//     ancestor chain in a way this file's `findStyle` would see as `from`'s
+//     property at a frame with no other live boundary — and in any case
+//     `post` is undefined whenever this boundary itself is not live, so it
+//     does not leak into the "far outside window" neutral sample either.
+//   - `scanline-glitch.entering = true`: `to.style.opacity = progress`, a
+//     real linear ramp.
 const EXPECT_LIVE_DIFFERS: Record<string, { exiting: boolean; entering: boolean }> = {
   dissolve: { exiting: false, entering: true },
   fade: { exiting: false, entering: true },
   'fade-to-color': { exiting: false, entering: true },
   glitch: { exiting: true, entering: true },
+  'rgb-split': { exiting: true, entering: true },
+  'scanline-glitch': { exiting: false, entering: true },
   burn: { exiting: false, entering: true },
   'light-leak': { exiting: true, entering: true },
   slide: { exiting: true, entering: true },

@@ -81,10 +81,12 @@ type Dims = {
 //
 // The return type is `ResolvedTransition | null`, not `AnyPresentation | null`:
 // since Task 2.1 four of core's own kinds (`wipe`, `checkerboard`, `pixelate`,
-// `scanline-glitch`) are NATIVE two-input nodes rather than one-sided
-// presentations core lifts. `fade-to-color` joins them CONDITIONALLY — only
-// when its `color` key resolves against the brand's palette, because only then
-// is there a dip to express; with no colour it is the plain one-sided fade.
+// `scanline-glitch`) were NATIVE two-input nodes rather than one-sided
+// presentations core lifts; Phase 5 Task 3 adds a fifth, `rgb-split` (it used
+// to be lifted via `fromRemotionPresentation`, now it is a native `plan`
+// node too). `fade-to-color` joins them CONDITIONALLY — only when its `color`
+// key resolves against the brand's palette, because only then is there a dip
+// to express; with no colour it is the plain one-sided fade.
 type Renderer<K extends TransitionKind> = (t: Extract<CoreTransition, { kind: K }>, dims: Dims) => ResolvedTransition | null;
 
 // Shared by the catalog's only two `AccentOrColorHex` fields — `fade-to-color`'s
@@ -242,7 +244,13 @@ const PRESENTATIONS: { [K in TransitionKind]: Renderer<K> } = {
   // optional, and the presentation destructures it with its own default — so
   // passing an explicit `undefined` through is exactly "use your default", the
   // same contract `burn` and `gradient-wipe` above already rely on.
-  'rgb-split': (t) => rgbSplit({ direction: t.direction, displacement: t.displacement }) as AnyPresentation,
+  //
+  // PHASE 5 TASK 3 — `rgbSplit` is now a NATIVE two-input `plan` node (see
+  // lib/transitions/presentations/rgb-split.tsx), not a one-sided
+  // `TransitionPresentation` core lifts. No `as AnyPresentation` cast: the
+  // factory's return type IS `TransitionNode` now, same as `gradientWipe`
+  // above.
+  'rgb-split': (t) => rgbSplit({ direction: t.direction, displacement: t.displacement }),
   'scanline-glitch': (t) => scanlineGlitch({ rgbShiftPx: t.rgbShiftPx }),
   'light-leak': (t) => lightLeak({
     temperature: t.temperature, direction: t.direction, intensity: t.intensity, flareArtifacts: t.flareArtifacts,

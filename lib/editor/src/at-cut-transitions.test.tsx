@@ -127,6 +127,16 @@ function mountPlan(
     palette: [],
     background,
   });
+  // PHASE 5 TASK 3 — GHOSTS RENDERED TOO, mirroring `LayerShell`
+  // (lib/render/video-track-plan.tsx): appended AFTER the real child, never
+  // before it, same as production. Load-bearing, not cosmetic: `rgb-split`'s
+  // whole picture (the two colour-shifted copies) lives on `ghosts`, not on
+  // `style` — a helper that renders `style`/`z`/`wrap` but not `ghosts` would
+  // make its differential params test ("direction"/"displacement changes
+  // what the node renders") vacuously compare two IDENTICAL renders, since
+  // neither param touches the main layer's own `style`. Confirmed RED against
+  // the committed fixture before this fix: `direction`/`displacement` both
+  // failed with "not to be" on two byte-identical strings.
   const renderSide = (side: 'from' | 'to', content: React.ReactNode) => {
     const op = composite[side];
     const style: React.CSSProperties = {
@@ -134,7 +144,15 @@ function mountPlan(
       ...(op?.z === undefined ? {} : { zIndex: op.z }),
     };
     const Wrap = op?.wrap;
-    return <div style={style}>{Wrap ? <Wrap active>{content}</Wrap> : content}</div>;
+    return (
+      <div style={style}>
+        {Wrap ? <Wrap active>{content}</Wrap> : content}
+        {op?.ghosts?.map((ghost, i) => (
+          // eslint-disable-next-line react/no-array-index-key
+          <div key={`ghost-${i}`} style={{ ...ghost }}>{content}</div>
+        ))}
+      </div>
+    );
   };
   const CLIP = <div data-testid="clip" />;
   const fromContent = inputs.from === null ? <EdgePlate background={background} /> : (inputs.from ?? CLIP);
@@ -302,14 +320,21 @@ const NODE_KINDS = KINDS.filter((k) => {
 });
 
 describe('one-sided presentations vs native two-input nodes', () => {
-  // FIVE, and the count is a measurement of the PROBE, not of the catalog.
+  // SIX, and the count is a measurement of the PROBE, not of the catalog.
   // PHASE 5 TASK 2.2 added `gradient-wipe` to this set: it used to be a
   // one-sided `TransitionPresentation` core lifted (`wrapRemotionPresentation`);
   // it is now a native `plan` node returning `to.style.maskImage` directly, so
   // it resolves to a `TransitionNode` straight out of `resolveTransition` like
-  // the other four. `wipe` and `pixelate` were ALREADY native nodes before this
+  // the others. `wipe` and `pixelate` were ALREADY native nodes before this
   // task (Phase 4) and stay in this set — migrating their ARM (`composite` →
   // `plan`) does not change whether `isTransitionNode()` is true for them.
+  // PHASE 5 TASK 3 adds `rgb-split`: it used to be a one-sided
+  // `TransitionPresentation` core lifted (`fromRemotionPresentation`, twice —
+  // once per direction); it is now a native `plan` node (`ghosts`), so it
+  // joins this set too. `scanline-glitch` was ALREADY a native node before
+  // this task (Phase 4 Task 2.1) and stays — migrating its ARM (`composite` →
+  // `plan`, `post`) does not change whether `isTransitionNode()` is true for
+  // it either.
   //
   // `fade-to-color` is a node only when its `color` key resolves — a dip has no
   // one-sided form, but a colourless `fade-to-color` is not a dip at all, it is
@@ -320,11 +345,11 @@ describe('one-sided presentations vs native two-input nodes', () => {
   // directly — with and without a colour — in "a fade’s colour is a parameter"
   // below, so it cannot drift unnoticed just because this list does not name it.
   //
-  // The sixth entry used to be a brand-named fade kind hardwired to a black
+  // A SEVENTH entry used to be a brand-named fade kind hardwired to a black
   // core had chosen for it. It was removed from core entirely; the colour is
   // the brand's to name now, which is why the arity became conditional.
-  it('exactly five kinds are native two-input nodes AT THEIR CATALOG DEFAULT — not a statement about the catalog', () => {
-    expect([...NODE_KINDS].sort()).toEqual(['checkerboard', 'gradient-wipe', 'pixelate', 'scanline-glitch', 'wipe']);
+  it('exactly six kinds are native two-input nodes AT THEIR CATALOG DEFAULT — not a statement about the catalog', () => {
+    expect([...NODE_KINDS].sort()).toEqual(['checkerboard', 'gradient-wipe', 'pixelate', 'rgb-split', 'scanline-glitch', 'wipe']);
   });
 
   // The other half of the conditional arity, stated where the list above is —
@@ -1472,7 +1497,20 @@ describe('a reel edge resolves the missing input to the theme background', () =>
   // `0.25` reads `0.625`, not `0.25` — it gets its own dedicated test below,
   // the same shape `wipe`'s got in Task 2.2's fix round for the same reason
   // (a kind whose curve does not fit the shared numeric expectation).
-  it.each(['fade', 'dissolve', 'burn', 'glitch', 'light-leak', 'whip-pan', 'zoom-blur'] as const)(
+  // PHASE 5 TASK 3 — `scanline-glitch` joins this family. Its `to.style.opacity
+  // = progress` (`scanline-glitch.tsx`) is the SAME `interpolate(progress,
+  // [0,1],[0,1])` shape the rest of this family uses, verified against the
+  // node's own arithmetic (argued in the module's own doc comment: the curve
+  // reaches full opacity only exactly at progress 1, never early, so there is
+  // no `pixelate`-shaped curtain risk at all — the SAME reasoning `wipe` and
+  // `gradient-wipe` get, restated for this kind's own numbers). `rgb-split`
+  // does NOT join this family — see its own dedicated block below: its `to`
+  // side also carries `ghosts`, and a ghost's own content is ANOTHER copy of
+  // the materialised `EdgePlate`, so `platesOf` (which matches by background
+  // colour, not by tree position) finds THREE such elements there, not one —
+  // a real, kind-specific structural difference the shared `plates: 1`
+  // assertion below would wrongly paper over.
+  it.each(['fade', 'dissolve', 'burn', 'glitch', 'light-leak', 'whip-pan', 'zoom-blur', 'scanline-glitch'] as const)(
     '%s fades the theme background IN over the outgoing clip at the trailing edge',
     (kind) => {
       const at = (p: number) => {
@@ -1694,9 +1732,13 @@ describe('a reel edge resolves the missing input to the theme background', () =>
   // `plan-neutral-progress.test.tsx`, which pins exactly this). The assertion
   // stays purely structural regardless of the curve's value, for the same
   // reason `wipe`'s does.
+  // PHASE 5 TASK 3 — `scanline-glitch` joins this list too: its `from: {}` is
+  // the identity, exactly like `fade`'s exiting branch, so the plate's own
+  // background is simply always visible, unmasked by any op. `rgb-split`
+  // again does not join it — see its own dedicated block for why.
   it.each([
     'fade', 'dissolve', 'fade-to-color', 'burn', 'gradient-wipe', 'clock-wipe', 'iris', 'wipe',
-    'glitch', 'light-leak', 'whip-pan', 'zoom-through', 'zoom-blur',
+    'glitch', 'light-leak', 'whip-pan', 'zoom-through', 'zoom-blur', 'scanline-glitch',
   ] as const)(
     '%s draws the theme background beneath the incoming clip at the leading edge',
     (kind) => {
@@ -1704,6 +1746,61 @@ describe('a reel edge resolves the missing input to the theme background', () =>
       expect(platesOf(container)).toHaveLength(1);
     },
   );
+
+  // ---- `rgb-split` (Phase 5 Task 3) — the `ghosts` reel-edge answer --------
+  //
+  // Neither curve is forced to a flat `0` at a null side, unlike `pixelate`:
+  // `rgb-split`'s `from`/`to` opacities are LINEAR crossfades
+  // (`interpolate(progress,[0,1],[1,0])`/`[0,1]`) reaching their extreme only
+  // exactly AT the window's own edge — the same argument `wipe` and
+  // `scanline-glitch` get, restated for this kind's own numbers (see
+  // `rgb-split.tsx`'s own doc comment). What is DIFFERENT here from every
+  // other plan kind this suite pins an edge answer for is that the
+  // materialised `EdgePlate` is not the only thing standing in for the
+  // missing side: `ghosts` duplicates it too, so a null side's edge picture
+  // is the plate PLUS its two (opacity-scaled-to-0-at-the-threshold, per the
+  // module doc comment) colour-shifted ghost copies — never fewer, never
+  // more, at any progress (the SAME invariant a real clip's ghosts carry).
+  describe('rgb-split — the `ghosts` reel-edge answer', () => {
+    it('trailing edge: the background plate rises under the SAME curve a real clip would, plus its own two ghost copies', () => {
+      const at = (p: number) => {
+        const { container, unmount } = mount('rgb-split', { to: null }, p);
+        const plates = platesOf(container);
+        // The REAL plate is the one whose PARENT carries the main opacity —
+        // the ghost copies of it live one level deeper (inside a ghost div
+        // that is itself inside the shell), so its parent is that ghost div,
+        // never the shell directly.
+        const shellPlate = plates.find((p2) => p2.parentElement?.style.opacity !== '');
+        const out = { plateCount: plates.length, shellOpacity: shellPlate?.parentElement?.style.opacity ?? null };
+        unmount();
+        return out;
+      };
+      expect([at(0.25), at(0.75)]).toEqual([
+        { plateCount: 3, shellOpacity: '0.25' },
+        { plateCount: 3, shellOpacity: '0.75' },
+      ]);
+    });
+
+    it('leading edge: the background plate sits beneath the incoming clip, and BOTH sides carry their own two ghost copies', () => {
+      const { container } = mount('rgb-split', { from: null }, 0.5);
+      // The null `from` side: the plate plus its two ghost copies.
+      expect(platesOf(container)).toHaveLength(3);
+      // The real `to` side: the clip plus ITS two ghost copies — `ghosts` is
+      // authored per side, so the incoming clip is exactly as duplicated as
+      // the background plate is, not a special case either way.
+      expect(container.querySelectorAll('[data-testid="clip"]')).toHaveLength(3);
+    });
+
+    it('a stable ghost count of two on the null side, at every progress — never conditionally mounted', () => {
+      const countsAt = [0, 0.05, 0.3, 0.5, 0.7, 0.95, 1].map((p) => {
+        const { container, unmount } = mount('rgb-split', { to: null }, p);
+        const n = platesOf(container).length;
+        unmount();
+        return n;
+      });
+      expect(countsAt).toEqual(countsAt.map(() => 3));
+    });
+  });
 
   // Task 0.1: the default `'fade'` path mounts the incoming clip ONCE, masked
   // — not once per cell. "the cells carry the real incoming clip" is now true

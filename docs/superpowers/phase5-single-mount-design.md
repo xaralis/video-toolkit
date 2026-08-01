@@ -354,10 +354,25 @@ properties on that wrapper:
   plan? — and is therefore **constant across every frame of a composition**. The property this
   paragraph actually argues for (no divergence between in-window and out-of-window frames) is
   preserved exactly; what changes is that a reel's blending is coupled to whether it contains a
-  plan kind at all, which **Stage 2 must adjudicate** when the first kind migrates and its cells
-  move partly for this reason rather than for the kind's own. At Stage 5, with every kind
-  migrated, the condition is true for every reel that has a transition at all and the deviation
-  disappears.
+  plan kind at all, which **the migrating stage must adjudicate** each time a new kind's cells
+  move partly for this reason rather than for the kind's own — the sentence originally said
+  "Stage 2 must adjudicate", but Stage 2 never migrated a kind whose own goldens moved (it was
+  strictly zero-golden-movement by that task's own acceptance criterion, and `rgb-split`/
+  `scanline-glitch` stayed composite through it); the first stage this actually bites is
+  **Stage 3**, corrected here rather than left to read as a promise Stage 2 kept. At Stage 5, with
+  every kind migrated, the condition is true for every reel that has a transition at all and the
+  deviation disappears.
+
+  **CORRECTED IN PLACE BY TASK 3 (measured, the first task where this could be tested rather than
+  argued).** Both controls the brief asked for were run for `rgb-split`/`scanline-glitch`: (1)
+  the OLD composite code with `isolate` forced `true` — `rgb-split` alone showed a small but real
+  effect (max 8×8 cell delta 4–8 across 9 cells); `scanline-glitch` showed none (0 drifted, only
+  `NEAR`s at delta 0–1); (2) the fully MIGRATED code with `isolate` forced `false` vs its shipped
+  `true` — IDENTICAL hashes on every cell, for BOTH kinds. So on the shipped tree the flag
+  contributes **nothing** to either kind's final picture — this task's own correction 3 reasoning
+  (a toggling filter/blend already forces its own stacking context, so the flag's value is
+  immaterial once the kind is actually migrated) held, empirically, for both a `post`-carrying
+  kind and a `ghosts`-carrying one. See task-3-report.md for the exact commands and hashes.
 - `filter` (and only `filter`/`transform`) from the live boundary's `post`, `undefined`
   otherwise.
 
@@ -388,7 +403,7 @@ lines: `cut` `:260`, `dissolve` `:269`, `fade` `:270`, `fade-to-color` `:295`, `
 | 4 | `fade-to-color` | node **only when its colour resolves** (`:164-187`); otherwise the one-sided `fade` | **A** | §2.4. Pure opacity arithmetic (`fade-to-color.tsx:51-58`). Both routes are bucket A. Note it is **not** in `NODE_KINDS` — the catalog default carries no colour, so the harness renders it through `fade`. |
 | 5 | `glitch` | one-sided, one SVG filter | **A**, goldens move | `wrap` per side. Children written once (`glitch.tsx:83`). **Its clock changes**: it calls `useCurrentFrame()` (`:64-65` seed) and moves from the boundary Sequence to the item's, so its seed sequence shifts. 15 cells re-baseline, same mechanism as `phase4-migrations.md` §1.3-d. |
 | 6 | `rgb-split` | one-sided, **3× children** | **B** | Main layer → `to`/`from` style; the two ghosts → `ghosts: [redStyle, cyanStyle]`. The `splitIntensity > 0.05` guards (`rgb-split.tsx:72`, `:86`) must become `opacity: 0` instead of conditional mounts, so the element count is progress-invariant. Max ghost opacity at the threshold is `0.05 × 0.7 = 0.035`, so the picture moves slightly. **6 media elements per cut, not 2** — reducible to 2 by an SVG-filter rewrite (the shape `glitch` already uses), which is a separate, optional task. |
-| 7 | `scanline-glitch` | native node, 3× the blend | **B** | `from: {}`, `to.style.opacity = p` (the blend, `:49`), scanline gradient → `over` plate, RGB split → `post` SVG filter. Not byte-exact against the DOM triple-render; 15 cells re-baseline. Its own historic defect was never arity (`scanline-glitch.tsx:44-50`). |
+| 7 | `scanline-glitch` | native node, 3× the blend | **B** | `from: {}`, `to.style.opacity = p` (the blend, `:49`), scanline gradient → `over` plate, RGB split → `post` SVG filter. Not byte-exact against the DOM triple-render; **measured 10 of 15 cells re-baseline** (Task 3), not 15 — the 5 unmoved cells are exactly the endpoints where `peak`/opacity are 0 or already saturated at the old byte-exact values (`enter`/`cut` progress 0 and 1, `exit` progress 0); the 4 `exit` cells that DID move are dominated by a genuine defect closure (the composite arm never called `edgeInput`, so `to === null` drew the outgoing clip forever past the cut instead of resolving to the theme background — `exit` progress 1's cell delta of 149 is that bug disappearing). Its own historic defect was never arity (`scanline-glitch.tsx:44-50`). |
 | 8 | `burn` | one-sided, SVG mask + `foreignObject` | **A** | `wrap` per side. Children once (`burn.tsx:82`). Branches are on `presentationDirection` (`:44`) and on `mask` (`:49`) — **both constant per side per node**, never on progress, so the shell shape is stable. |
 | 9 | `light-leak` | one-sided | **A** | `wrap` or style. Children once (`light-leak.tsx:129`), overlays after it. |
 | 10 | `slide` | official | **A** | `wrap`; children once. |
@@ -658,7 +673,9 @@ with a full unfiltered `pixel-gate:strict`:
 | 2.3 | `wrap`-shaped customs: `burn`, `glitch` (**15 cells move — clock origin**), `light-leak`, `whip-pan`, `zoom-through`, `zoom-blur` |
 
 **Stage 3 — the two re-baseline kinds.** `rgb-split` (`ghosts`, un-conditioned) and
-`scanline-glitch` (`post`). 30 cells, reviewed picture by picture.
+`scanline-glitch` (`post`). **~30 cells budgeted; measured 20 moved** (10 each — reviewed picture
+by picture, task-3-report.md), the other 10 already byte-exact at the endpoints where the
+threshold/blend is inert.
 
 **Stage 4 — the carve-out.** `checkerboard` to the mask plan; `'scale'`/`'flip'` onto
 `ghosts` (option 1) with option 2 offered as a new sub-option value. Migration note.
