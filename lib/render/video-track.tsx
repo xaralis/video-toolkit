@@ -184,6 +184,15 @@ export function buildVideoNodes(
   // draw through their own Sequences uninterrupted — the same picture a hard
   // cut always was, since `computeVideoLayout`'s handle-borrowing overlap
   // does not depend on a boundary rendering anything.
+  // How early an item's own Sequence mounts, hidden, so its media is loaded and
+  // seeked by the frame it has to paint. Without it a clip's <OffthreadVideo>
+  // first exists ON its opening frame, and in the editor's <Player> the
+  // background shows through while the element fetches and seeks — a black
+  // flash at a cut. Remotion premounts at `opacity: 0` under a <Freeze> at the
+  // sequence's first frame, so this changes no rendered pixel; it only moves
+  // the mount earlier. One second is enough for a local seek and short enough
+  // that at most one extra item is ever mounted ahead.
+  const ITEM_PREMOUNT_SECONDS = 1;
   const planned = new Map<string, PlanBoundary>();
   for (const b of boundaries) {
     const node: TransitionNode | null = transitionNodeFor(b.record, dims);
@@ -318,7 +327,13 @@ export function buildVideoNodes(
       const exitOf = boundaries.find((b) => isPlanned(b) && b.fromIndex === i);
       const enterOf = boundaries.find((b) => isPlanned(b) && b.toIndex === i);
       nodes.push(
-        <Sequence key={item.id} from={entry.seqFrom} durationInFrames={entry.seqDuration} name={item.id}>
+        <Sequence
+          key={item.id}
+          from={entry.seqFrom}
+          durationInFrames={entry.seqDuration}
+          premountFor={Math.min(entry.seqFrom, Math.round(opts.fps * ITEM_PREMOUNT_SECONDS))}
+          name={item.id}
+        >
           <LayerShell boundaryKey={exitOf?.key ?? null} side="from">
             <LayerShell boundaryKey={enterOf?.key ?? null} side="to">
               {content(i)}
