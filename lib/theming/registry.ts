@@ -50,8 +50,11 @@ export type Registry<P, R = React.FC<P>> = Record<string, Registration<P, R>>;
  *
  *  `R` (the renderer TYPE) is a parameter, defaulting to `React.FC<P>`, because
  *  the TRANSITION axis' renderer is not a component: it returns a
- *  `{ component, props }` presentation for `AtCutTransition` to drive, which is
- *  not a `ReactNode` and so cannot be an FC. Every other axis takes the
+ *  `{ component, props }` presentation, or a `{ plan }` two-input node, for
+ *  `buildVideoNodes` to drive — neither is a `ReactNode` and so cannot be an
+ *  FC (PHASE 5 TASK 5: this used to say "for `AtCutTransition` to drive";
+ *  that component is deleted, `buildVideoNodes` is the only render path
+ *  left). Every other axis takes the
  *  default; the transition axis supplies its own. The RULE below is untouched by that — which is the
  *  point, since a sixth bespoke lookup is exactly what this module exists to
  *  prevent. */

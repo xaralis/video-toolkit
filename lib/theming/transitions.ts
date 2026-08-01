@@ -15,7 +15,9 @@
 // that silence from being invisible.
 //
 // WHY THE RENDERER IS NOT A REACT COMPONENT. A transition does not draw; it
-// hands back the NODE `AtCutTransition` should drive at the boundary. That
+// hands back the NODE `buildVideoNodes` should drive at the boundary (PHASE 5
+// TASK 5: this used to say `AtCutTransition`, the old per-boundary compositor;
+// it is deleted, and `buildVideoNodes` is the only render path left). That
 // return value is a plain object, not a ReactNode, so it cannot be an
 // `React.FC`. That is exactly why `Registration` takes the renderer type as a
 // parameter — see the note there.
@@ -31,10 +33,13 @@
 // A renderer may still return the ONE-SIDED `AnyPresentation` shape — the five
 // official `@remotion/transitions` presentations are one-sided, and so is every
 // brand registration written against the Task 1.2 contract. Core LIFTS those
-// into the two-input form with `fromRemotionPresentation`
-// (lib/render/at-cut-transitions.tsx), so nothing that already worked has to
-// change. `TransitionNode` is the shape a natively two-input presentation
-// returns instead.
+// into the two-input form with `wrapRemotionPresentation`
+// (lib/render/at-cut-transitions.tsx) — PHASE 5 TASK 5: this used to be
+// `fromRemotionPresentation`, which built a `composite` React component; that
+// arm is gone, so the lift now always produces a `plan` node instead, the
+// same lift a migrated core kind's own `Wrap` uses. Nothing that already
+// worked has to change. `TransitionNode` is the shape a natively two-input
+// presentation returns instead.
 import React from 'react';
 import type { Registration, Registry } from './registry';
 import type { AccentSlot } from './palette';
@@ -68,53 +73,24 @@ export interface TransitionRenderProps {
   config?: unknown;
 }
 
-/** The prop bag a TWO-INPUT transition node is invoked with — ONE call per
- *  boundary, per frame.
- *
- *  `from`/`to` being NULLABLE is what makes the reel's leading and trailing
- *  edges fall out of the model instead of needing special cases: a trailing-edge
- *  transition is one with `to === null`, a leading-edge one has `from === null`,
- *  and a dissolve against `null` is a dissolve to the composition background.
- *  Core passes the null; what a node does with it is the node's decision — and
- *  since Task 2.2 core's own answer, for every kind it lifts and for
- *  `checkerboard`, is `edgeInput(input, background)`: the missing neighbour is
- *  a plate of `background`. */
-export interface TransitionNodeProps {
-  /** The OUTGOING clip (A), already carrying its own time base. Null at the
-   *  reel's leading edge — there is no predecessor. */
-  from: React.ReactNode | null;
-  /** The INCOMING clip (B). Null at the reel's trailing edge. */
-  to: React.ReactNode | null;
-  /** 0..1 across the boundary. CLAMPED BY CORE — a node must never clamp, and
-   *  several of core's own presentations (`whipPan`, `zoomThrough`) rely on that
-   *  because they set no `extrapolateLeft`/`Right`. */
-  progress: number;
-  /** The boundary's length in frames (what the transition's `frames` authored). */
-  durationInFrames: number;
-  /** Composition pixel size and rate — `clock-wipe`/`iris` size their mask off it. */
-  width: number;
-  height: number;
-  fps: number;
-  /** The brand's accent palette. Empty (never undefined) when there is none. */
-  palette: readonly AccentSlot[];
-  /** The composition background — `CompositionTheme.background`, threaded down
-   *  by `buildVideoNodes`. This is what a null input RESOLVES TO: at the reel's
-   *  trailing edge a fade fades to this colour, at its leading edge it fades
-   *  out of it. `'transparent'` when the caller has none in scope, which paints
-   *  nothing and leaves whatever is behind the video track showing.
-   *
-   *  A node must never substitute a colour of its own — core owns no colour
-   *  vocabulary. `edgeInput` (lib/transitions/edge-plate.tsx) is the shared
-   *  helper that turns a null input into this plate. */
-  background: string;
-}
+/** DELETED (Phase 5 Task 5): `TransitionNodeProps`, the prop bag the old
+ *  `composite` arm's React component received (`from`/`to` as
+ *  already-instantiated subtrees it rendered itself). The `composite` arm
+ *  is gone — see `TransitionNode` below: every catalog kind, and every
+ *  one-sided presentation a brand renderer hands back, now resolves to
+ *  `plan`, which is told about its two sides as `LayerHandle`s
+ *  (`TransitionPlanProps`, below) rather than subtrees. Nothing in this
+ *  repo constructs the old shape any more. */
 
-// THE SINGLE-MOUNT CONTRACT (Phase 5 Task 1.1). Added ADDITIVELY: `TransitionNode`
-// widens from a single shape to a union, and every existing `{ composite }` node
-// keeps type-checking unchanged (the `plan?: never` member makes an object
-// literal that omits `plan` still assignable). Nothing renders through the
-// `plan` arm yet — that starts at Task 1.2. See
-// docs/superpowers/phase5-single-mount-design.md §2.3 for the design.
+
+// THE SINGLE-MOUNT CONTRACT (Phase 5 Task 1.1, narrowed at Task 5). Added
+// ADDITIVELY at Task 1.1: `TransitionNode` widened from a single shape to a
+// union, and every existing `{ composite }` node kept type-checking unchanged
+// (the `plan?: never` member made an object literal that omits `plan` still
+// assignable). Stages 2-4 migrated every catalog kind onto `plan`; Task 5
+// narrows the union back down to that one shape now that nothing supplies
+// the other. See docs/superpowers/phase5-single-mount-design.md §2.3 for the
+// original design and §7 Stage 5 for the flip.
 //
 // NAMING NOTE: the design doc's §2.3 names the per-frame plan-invocation prop
 // bag `TransitionRenderProps` — but that identifier is already this file's
@@ -122,7 +98,7 @@ export interface TransitionNodeProps {
 // `width`, `height`, `palette`, `config`, consumed by `TransitionRenderer`).
 // Reusing it here would be a duplicate top-level export, not a shadow — a hard
 // compile error, not a style question. This task renames the NEW type to
-// `TransitionPlanProps` (parallel to the existing `TransitionNodeProps` for the
+// `TransitionPlanProps` (parallel to the now-deleted `TransitionNodeProps` for the
 // `composite` arm) and keeps everything else verbatim. The existing
 // `TransitionRenderProps` is untouched, per this task's additive-only mandate.
 
@@ -287,53 +263,47 @@ export interface TransitionComposite {
   post?: React.CSSProperties;
 }
 
-/** A natively TWO-INPUT transition: either the declarative `plan` form (the
- *  single-mount contract this phase migrates every kind to) or the JSX
- *  `composite` form (Task 1.3's shape, retained through the staged migration
- *  and removed at its end). A node supplies exactly one.
+/** A natively TWO-INPUT transition — the declarative `plan` form, which is now
+ *  the ONLY form (Phase 5 Task 5 narrows this from the Task 1.1 union: the
+ *  JSX `composite` arm — Task 1.3's shape, kept only through the staged
+ *  migration `docs/superpowers/phase5-single-mount-design.md` §7 walks
+ *  through — is deleted along with the assembly that drove it,
+ *  `lib/render/video-track.tsx`'s boundary Sequence and
+ *  `AtCutTransition`/`fromRemotionPresentation` in
+ *  `lib/render/at-cut-transitions.tsx`). A one-sided `AnyPresentation` —
+ *  core's own or a brand renderer's — is no longer lifted into a `composite`
+ *  component either: `wrapRemotionPresentation` lifts it straight into this
+ *  `plan` shape, universally, so nothing that resolves to `AnyPresentation`
+ *  ever needs a second lift target.
  *
- *  `composite?: never` (on the `plan` arm) is what rejects a FRESH LITERAL
- *  supplying both `plan` and `composite` instead of silently picking one —
- *  verified by deleting it (`transition-single-mount-types.test.ts`'s
- *  double-field literal pin goes red). `plan?: never` (on the `composite`
- *  arm) is NOT independently exercised by that same literal pin — deleting
- *  it alone there stays green, because a fresh literal's excess-property
- *  check treats `plan` as non-excess as long as it is declared SOMEWHERE in
- *  the union, so `composite?: never` alone already carries that particular
- *  test. `plan?: never` has its OWN pin instead, one a fresh literal cannot
- *  exercise: a DECLARED (non-literal) value shaped like a composite node,
- *  whose `plan` key holds something other than `never`, is accepted by a
- *  composite-only type and rejected only because `plan?: never` is present —
- *  ordinary structural typing tolerates a value's extra properties, but not
- *  when the target itself declares that key. Both members are therefore
- *  pinned, by two different tests exercising two different TypeScript
- *  mechanisms; keep both.
+ *  Not a union any more, so there is nothing left to reject a double-field
+ *  literal against — `transition-single-mount-types.test.ts`'s two
+ *  `@ts-expect-error` pins for `plan?: never`/`composite?: never` are deleted
+ *  with it (see that file's own note on why each could no longer fail: the
+ *  key they guarded against no longer exists to be supplied).
  *
- *  Narrow with `typeof node.plan === 'function'`, NOT `'plan' in node`:
- *  `plan?: never` being OPTIONAL means `{ composite: X, plan: undefined }` —
- *  a plausible shape for a spread-built node — has the `plan` KEY present
- *  without a callable VALUE, and `'in'` would take the wrong branch for it.
- *  `isTransitionNode` below and `AtCutTransition`
- *  (`lib/render/at-cut-transitions.tsx`) both use `typeof` for this reason.
- *
- *  Structurally distinguishable from `AnyPresentation` by having neither a
- *  `component` nor a `props` field. */
-export type TransitionNode =
-  | { plan: (props: TransitionPlanProps) => TransitionComposite; composite?: never }
-  | { composite: React.ComponentType<TransitionNodeProps>; plan?: never };
+ *  Structurally distinguishable from `AnyPresentation` by having no
+ *  `component`/`props` field — `isTransitionNode` below still needs this,
+ *  because `ResolvedTransition` is still a union of the two. */
+export interface TransitionNode {
+  plan: (props: TransitionPlanProps) => TransitionComposite;
+}
 
 /** What a renderer may hand back: a two-input node, or a one-sided Remotion
  *  presentation that core lifts into one. */
 export type ResolvedTransition = AnyPresentation | TransitionNode;
 
-/** True for the two-input shape — either arm of the `TransitionNode` union. A
- *  structural test, not a tag, so a brand can build a node as a plain object
- *  literal without importing a constructor. Widened in Task 1.1 to also accept
- *  the `plan` arm: it previously pattern-matched on `composite` alone, which
- *  would have misclassified a `plan`-only node as `AnyPresentation`. */
+/** True for the two-input `plan` shape, false for a one-sided
+ *  `AnyPresentation`. A structural test, not a tag, so a brand can build a
+ *  node as a plain object literal without importing a constructor.
+ *
+ *  PHASE 5 TASK 5 — narrowed back down from "either arm of the union"
+ *  (Task 1.1's widening) now that there is only one arm: `TransitionNode` is
+ *  no longer a union, so this is `typeof n.plan === 'function'` alone. Still
+ *  needed — `ResolvedTransition` is still `AnyPresentation | TransitionNode`,
+ *  and a one-sided presentation has no `plan` field to find. */
 export function isTransitionNode(r: ResolvedTransition): r is TransitionNode {
-  const n = r as TransitionNode;
-  return typeof n.composite === 'function' || typeof n.plan === 'function';
+  return typeof (r as TransitionNode).plan === 'function';
 }
 
 /** What a registered transition kind resolves to. Returning `null` means "no

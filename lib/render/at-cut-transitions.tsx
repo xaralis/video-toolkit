@@ -13,16 +13,15 @@ import { iris } from '@remotion/transitions/iris';
 import {
   glitch, whipPan, zoomThrough, wipe as customWipe, gradientWipe, burn,
   rgbSplit, scanlineGlitch, lightLeak, zoomBlur, pixelate, checkerboard,
-  fadeToColor, edgeInput,
+  fadeToColor,
 } from '../transitions';
-import { useCurrentFrame } from 'remotion';
 import { getTransitionRecord, type TransitionRecord } from './transition-record';
 import { resolveAccentOrColor, type AccentSlot } from '../theming/palette';
 import { resolveRegistered, registrationConfig } from '../theming/registry';
 import { isTransitionNode } from '../theming/transitions';
 import type {
-  AnyPresentation, ResolvedTransition, TransitionNode, TransitionNodeProps,
-  TransitionRegistry, TransitionRenderer, TransitionComposite,
+  AnyPresentation, ResolvedTransition, TransitionNode, TransitionComposite,
+  TransitionRegistry, TransitionRenderer,
 } from '../theming/transitions';
 import { useActiveTransitionProgress } from './video-track-plan';
 import { warnOnce } from './warn-once';
@@ -36,7 +35,7 @@ export { isTransitionNode };
 // and lib/theming may not import lib/render), but this has been its import path
 // since before the transition axis had a theme surface.
 export type {
-  AnyPresentation, TransitionNode, TransitionNodeProps, ResolvedTransition,
+  AnyPresentation, TransitionNode, ResolvedTransition,
   TransitionRegistry, TransitionRenderer, TransitionRenderProps,
 } from '../theming/transitions';
 
@@ -359,11 +358,19 @@ export function resolveTransition(t: TransitionRecord | undefined, dims: Dims): 
 }
 
 // Invokes ONE SIDE of a one-sided presentation directly (not via
-// TransitionSeries) with the exact prop shape it expects. Since Task 1.3 this
-// is no longer a render-path component in its own right: it is the layer
-// `fromRemotionPresentation` builds a two-input node out of, called twice — once
-// per input — inside a SINGLE node invocation.
-export const TransitionLayer: React.FC<{
+// TransitionSeries) with the exact prop shape it expects.
+//
+// PHASE 5 TASK 5 — NO LONGER EXPORTED. This used to be the layer
+// `fromRemotionPresentation` built its `composite` React component out of,
+// called twice per boundary invocation (once per input) inside a single
+// node call. `fromRemotionPresentation` (and the `composite` arm it fed) is
+// deleted; the ONLY remaining caller is `wrapRemotionPresentation`'s `Wrap`
+// component below, which calls it once per FRAME instead, reading its own
+// live progress off context. Nothing outside this file used the public
+// export (`git grep -n 'TransitionLayer' lib/editor/src` before this task
+// found only `at-cut-transitions.test.tsx`'s own direct unit tests of it,
+// migrated in this task — see task-5-report.md).
+const TransitionLayer: React.FC<{
   presentation: AnyPresentation;
   direction: 'entering' | 'exiting';
   progress: number;
@@ -391,7 +398,31 @@ export const TransitionLayer: React.FC<{
  *  wiring suite have used since the engine was extracted. The RENDER path does
  *  not go through it any more — see `transitionNodeFor`.
  *
- *  WHY THE WARNING. Every caller of this function feeds the result to
+ *  PHASE 5 TASK 5 — THE WARNING STAYS; ONLY ITS WORDING CHANGED, AND THE
+ *  BRIEF'S OWN PRESCRIPTION TO DELETE IT WAS WRONG. §6's deletion table
+ *  reasoned "every kind resolves to a node; no one-sided render path is left
+ *  to warn about" — true of the SIX kinds `wrapRemotionPresentation` lifts
+ *  from a one-sided presentation (`fade`, `dissolve`, `slide`, `flip`,
+ *  `clock-wipe`, `iris`, `fade-to-color`'s no-colour fallback), because
+ *  `resolveTransition` still hands THOSE back as a plain `AnyPresentation` —
+ *  the lift to `plan` happens one level up, in `transitionNodeFor`, which
+ *  `presentationFor` never calls. But `wipe`, `checkerboard`, `pixelate`,
+ *  `gradient-wipe`, `rgb-split`, `scanline-glitch` and `fade-to-color` WITH a
+ *  resolved colour are NATIVE two-input nodes straight out of
+ *  `resolveTransition` — unaffected by this task, since their factories
+ *  already returned `{ plan }` since Stages 2-4 — and have no one-sided form
+ *  today, same as before this task. Deleting this warning would silently
+ *  hard-cut those seven kinds at every `presentationFor` call site with NO
+ *  diagnostic, which is the exact regression Task 2.3's brief named and this
+ *  warning exists to prevent; measured (not assumed) against
+ *  `examples/layered-minimal`'s `web-program-intro`-shaped call: `wipe`,
+ *  `checkerboard`, `pixelate`, `gradient-wipe`, `rgb-split` and
+ *  `scanline-glitch` still hit `isTransitionNode(resolved) === true` here at
+ *  this HEAD (`at-cut-transitions.test.tsx`'s `presentationFor` block pins
+ *  it). Only the MESSAGE'S mention of `AtCutTransition` — deleted this task,
+ *  see the module docblock — is stale; it now names only `buildVideoNodes`.
+ *
+ *  WHY THE WARNING AT ALL. Every caller of this function feeds the result to
  *  `TransitionSeries.Transition`, and every one of them treats `null` as "no
  *  transition" — a HARD CUT. That was harmless while `null` only ever meant
  *  `cut` or an unrecognised kind. Since Task 2.1 it also means "this kind is a
@@ -401,9 +432,8 @@ export const TransitionLayer: React.FC<{
  *
  *  There is deliberately NO compatibility shim faking a one-sided form for a
  *  two-input node: a wrong picture rendered silently is worse than a visible
- *  degradation. The caller has to move to `transitionNodeFor` /
- *  `AtCutTransition` (or `buildVideoNodes`), and this says so out loud, once
- *  per kind, in dev. */
+ *  degradation. The caller has to move to `transitionNodeFor` (or
+ *  `buildVideoNodes`), and this says so out loud, once per kind, in dev. */
 export function presentationFor(t: TransitionRecord | undefined, dims: Dims): AnyPresentation | null {
   const resolved = resolveTransition(t, dims);
   if (!resolved) return null;
@@ -414,60 +444,37 @@ export function presentationFor(t: TransitionRecord | undefined, dims: Dims): An
       () =>
         `[video-toolkit] transition kind "${kind}" is a TWO-INPUT node and has no one-sided ` +
         'presentation, so presentationFor() returns null and this boundary will render as a ' +
-        'HARD CUT. Drive it through transitionNodeFor() + AtCutTransition (or buildVideoNodes) ' +
-        'instead of TransitionSeries. See docs/superpowers/phase4-migrations.md.',
+        'HARD CUT. Drive it through transitionNodeFor() + buildVideoNodes instead of ' +
+        'TransitionSeries. See docs/superpowers/phase5-migrations.md.',
     );
     return null;
   }
   return resolved;
 }
 
-/** LIFTS a one-sided Remotion presentation into the two-input model: render
- *  `from` through the presentation's EXITING branch, `to` through its ENTERING
- *  branch, and stack entering over exiting — which is `TransitionSeries`' own
- *  compositing order, and (before Task 1.3) exactly what two sibling
- *  `AtCutTransition` wrappers produced across a cut.
- *
- *  This is the compatibility route, not a compromise: the five official
- *  `@remotion/transitions` presentations are one-sided by design and keep
- *  working unchanged, as does every brand registration written against Task
- *  1.2's contract.
- *
- *  A NULL INPUT IS THE COMPOSITION BACKGROUND (Task 2.2), not nothing. Task 1.3
- *  drew nothing on the missing side, which reproduced the pre-1.3 pixels
- *  exactly — and preserved the defect that came with them: a one-sided
- *  presentation whose EXITING branch is the identity function (`fade`,
- *  `dissolve`, `fade-to-color` with no colour, `burn`, `clock-wipe`, `iris`,
- *  `gradient-wipe`) did
- *  literally nothing as a `transitionOut`, because the only branch that draws
- *  had no input. Feeding it a plate of `background` is what makes the reel's
- *  trailing edge actually fade — and it is the same operation at the leading
- *  edge, where the incoming clip now resolves OUT of the background rather than
- *  out of nothing. `background` is `transparent` when the caller has none, so
- *  that route still paints exactly what 1.3 did. */
-export function fromRemotionPresentation(p: AnyPresentation): TransitionNode {
-  const composite: React.FC<TransitionNodeProps> = ({ from, to, progress, durationInFrames, background }) => (
-    <>
-      <TransitionLayer presentation={p} direction="exiting" progress={progress} durationInFrames={durationInFrames}>
-        {edgeInput(from, background)}
-      </TransitionLayer>
-      <TransitionLayer presentation={p} direction="entering" progress={progress} durationInFrames={durationInFrames}>
-        {edgeInput(to, background)}
-      </TransitionLayer>
-    </>
-  );
-  return { composite };
-}
+/** PHASE 5 TASK 5 — `fromRemotionPresentation` DELETED. It lifted a one-sided
+ *  Remotion presentation into the OLD `composite` model: render `from`
+ *  through the presentation's EXITING branch, `to` through its ENTERING
+ *  branch, stacked entering-over-exiting inside a JSX component the
+ *  now-deleted boundary Sequence mounted. `wrapRemotionPresentation`, below,
+ *  is its full replacement — the SAME presentation, driven the SAME way
+ *  (same `TransitionLayer`, same `direction`/`progress`/`durationInFrames`),
+ *  through the `plan`/`wrap` medium instead: no lift target remains that
+ *  produces a `composite`, because `TransitionNode` no longer has that arm
+ *  (`lib/theming/transitions.ts`). `edgeInput` (`lib/transitions/edge-plate.tsx`)
+ *  was `fromRemotionPresentation`'s only caller and is deleted with it — a
+ *  reel edge's missing side is materialised as an `EdgePlate` **timeline
+ *  sibling** now (`video-track.tsx`'s `edge()`), reached through the same
+ *  `LayerShell` a real clip is, which was already true for every kind that
+ *  had migrated to `plan` before this task. */
 
 /** LIFTS a one-sided Remotion presentation into the SINGLE-MOUNT `plan` arm
- *  (Phase 5 Task 2.1) — the `LayerOp.wrap` counterpart of
- *  `fromRemotionPresentation` above, for exactly the kinds `transitionNodeFor`
- *  gates to it (`WRAP_PLAN_KINDS`, below). `fromRemotionPresentation` itself
- *  is UNCHANGED and stays the lift for every kind that has not migrated yet
- *  (Stage 2.2/2.3) — this is a SEPARATE function, not a mode switch on it,
- *  because the generic lift must keep producing a `composite` for those
- *  kinds; only `transitionNodeFor`'s call site decides which lift a given
- *  kind gets.
+ *  (Phase 5 Task 2.1). PHASE 5 TASK 5 — now the UNIVERSAL lift: every kind
+ *  that resolves to a plain `AnyPresentation` goes through this function,
+ *  core's own catalog kinds and any brand renderer alike (see
+ *  `transitionNodeFor` below — the old `WRAP_PLAN_KINDS` gate that limited
+ *  this to a named subset of core kinds is deleted along with
+ *  `fromRemotionPresentation`, its only other possible destination).
  *
  *  THE SAME PRESENTATION, DRIVEN THE SAME WAY, THROUGH A DIFFERENT MEDIUM.
  *  `@remotion/transitions`' own presentations style `children`; they never
@@ -628,49 +635,30 @@ export function resetTransitionNodeCache(): void {
   transitionNodeCacheByRegistry = new WeakMap();
 }
 
-/** PHASE 5 TASK 2.1 — exactly the kinds migrated to `LayerOp.wrap`: the five
- *  official `@remotion/transitions` presentations `fade`/`dissolve` alias
- *  (`fade`, `dissolve`, `slide`, `flip`, `clock-wipe`, `iris`) plus
- *  `fade-to-color`'s NO-COLOUR fallback (design §3 row 4 — with the catalog
- *  default it renders through the plain `fade()`, so it is bucket A too).
+/** PHASE 5 TASK 5 — `WRAP_PLAN_KINDS` DELETED. Tasks 2.1/2.3 gated the
+ *  `wrapRemotionPresentation` lift to a named subset of core kinds
+ *  (`fade`, `dissolve`, `slide`, `flip`, `clock-wipe`, `iris`,
+ *  `fade-to-color`'s no-colour fallback, `burn`, `glitch`, `light-leak`,
+ *  `whip-pan`, `zoom-through`, `zoom-blur`) because the OTHER lift,
+ *  `fromRemotionPresentation`, was still the destination for everything not
+ *  in the set — a brand renderer returning a plain one-sided presentation,
+ *  in particular. Now that `fromRemotionPresentation` is deleted (there is
+ *  no second lift target, and no `composite` shape left to build), the gate
+ *  has nothing left to decide: `transitionNodeFor` below lifts EVERY
+ *  one-sided `AnyPresentation` — core's or a brand's — through
+ *  `wrapRemotionPresentation`, unconditionally. A native two-input kind
+ *  (`wipe`, `checkerboard`, `pixelate`, `gradient-wipe`, `rgb-split`,
+ *  `scanline-glitch`, `fade-to-color` WITH a resolved colour) is still
+ *  unaffected: `isTransitionNode(resolved)` is already true for those
+ *  straight out of `resolveTransition`, so the lift branch never runs for
+ *  them, exactly as before this task.
  *
- *  Deliberately a KIND gate at the `transitionNodeFor` call site, not a
- *  change to `PRESENTATIONS`/`resolveTransition`/`fromRemotionPresentation`
- *  themselves: `resolveTransition` (and therefore `presentationFor`, the
- *  compatibility surface both brand repos call directly with
- *  `TransitionSeries`) must keep returning the plain one-sided
- *  `AnyPresentation` for these kinds UNCHANGED — only the render path
- *  (`transitionNodeFor`, which `AtCutTransition`/`buildVideoNodes` actually
- *  use) lifts them differently. Gating inside `resolveTransition` instead
- *  would have made `isTransitionNode(resolved)` true for these kinds
- *  everywhere, which would have made `presentationFor` warn-and-hard-cut for
- *  six extremely common kinds it has always served correctly — a real
- *  regression for the six PP `web-program-intro` files design §8.5 measured
- *  calling `presentationFor` directly. `fade-to-color` WITH a resolved
- *  colour is unaffected either way: it already returns a `TransitionNode`
- *  (native `composite`) straight out of `resolveTransition`, so
- *  `isTransitionNode(resolved)` is true and this set is never consulted for
- *  that branch.
- *
- *  TYPED `ReadonlySet<TransitionKind>` (Phase 5 Task 2.2 — deferred from Task
- *  2.1, which left this `ReadonlySet<string>` with the note that a typo would
- *  not be a compile error). This set is not the only registration surface for
- *  the `plan` arm any more — `wipe`, `pixelate`, `gradient-wipe` and
- *  `fade-to-color`'s COLOUR route are native nodes returning `plan` directly
- *  from `PRESENTATIONS`, never gated here at all (a native node is
- *  `isTransitionNode(resolved)` already, so `transitionNodeFor`'s branch below
- *  never consults this set for them). `WRAP_PLAN_KINDS` names ONLY the kinds
- *  still reached via `wrapRemotionPresentation` — the lift for a one-sided
- *  `@remotion/transitions` presentation this task did not touch. */
-//  PHASE 5 TASK 2.3 adds six more, all still lifted by
-//  `wrapRemotionPresentation` (none of these six are native two-input nodes):
-//  `burn`, `glitch`, `light-leak`, `whip-pan`, `zoom-through`, `zoom-blur`.
-//  Each writes `children` exactly once (verified against the current tree,
-//  not carried forward from the design document — see task-2.3-report.md).
-const WRAP_PLAN_KINDS: ReadonlySet<TransitionKind> = new Set<TransitionKind>([
-  'fade', 'dissolve', 'slide', 'flip', 'clock-wipe', 'iris', 'fade-to-color',
-  'burn', 'glitch', 'light-leak', 'whip-pan', 'zoom-through', 'zoom-blur',
-]);
+ *  `resolveTransition`/`presentationFor` are UNCHANGED by this deletion —
+ *  they still hand back the plain `AnyPresentation` for these lifted kinds,
+ *  because the lift happens one level up, in this function, which
+ *  `presentationFor` never calls (see that function's own updated doc
+ *  comment for why deleting ITS warning, as §6's table originally
+ *  prescribed, would have been a real regression). */
 
 /** THE RENDER PATH. Resolves a kind to the two-input node the boundary drives,
  *  lifting a one-sided presentation on the way when that is what it resolved
@@ -720,20 +708,9 @@ export function transitionNodeFor(t: TransitionRecord | undefined, dims: Dims): 
     return cached;
   }
 
-  // `t` is guaranteed non-null here (`resolveTransition` only ever returns
-  // non-null when its own `t` argument was), so `t.kind` is safe to read for
-  // the WRAP_PLAN_KINDS gate below. `t.kind` is `string` (a BRAND kind widens
-  // `TransitionRecord['kind']` past the closed `TransitionKind` union), so the
-  // `.has()` call needs a cast to satisfy the now-tightened
-  // `ReadonlySet<TransitionKind>` — safe, because a brand kind that is not
-  // actually a `TransitionKind` simply misses the set at runtime, exactly as
-  // before this task's typing fix; what changed is that a TYPO inside the SET
-  // LITERAL above is now a compile error, which is the gap Task 2.1 deferred.
-  const node = isTransitionNode(resolved)
-    ? resolved
-    : WRAP_PLAN_KINDS.has(t!.kind as TransitionKind)
-      ? wrapRemotionPresentation(resolved)
-      : fromRemotionPresentation(resolved);
+  // PHASE 5 TASK 5 — the `WRAP_PLAN_KINDS` gate is gone: every one-sided
+  // `AnyPresentation` lifts through `wrapRemotionPresentation`, unconditionally.
+  const node = isTransitionNode(resolved) ? resolved : wrapRemotionPresentation(resolved);
   if (cache.size >= TRANSITION_NODE_CACHE_LIMIT) {
     const leastRecentlyUsedKey = cache.keys().next().value;
     if (leastRecentlyUsedKey !== undefined) cache.delete(leastRecentlyUsedKey);
@@ -742,103 +719,25 @@ export function transitionNodeFor(t: TransitionRecord | undefined, dims: Dims): 
   return node;
 }
 
-// THE BOUNDARY COMPOSITOR. Mounted inside the boundary's OWN `Sequence` (see
-// video-track.tsx), so `useCurrentFrame()` is already boundary-relative: frame 0
-// is the first frame of the transition and frame `frames` is its last.
+// PHASE 5 TASK 5 — `AtCutTransition` DELETED.
 //
-// It resolves ONE node and calls it ONCE with (from, to, progress). It is NOT
-// called twice with a `direction` — that was `TransitionSeries`' shape, and
-// asking a two-input operation to draw itself one side at a time is what
-// produced core's whole defect family (seven kinds that no-op when exiting,
-// `checkerboard`'s empty cells, `wipe`'s two beats running simultaneously, a
-// trailing edge that draws nothing). A one-sided presentation still works: it
-// is LIFTED by `fromRemotionPresentation` at resolution time, not re-invoked
-// here.
+// It was THE BOUNDARY COMPOSITOR for the `composite` arm: mounted inside a
+// boundary's own `Sequence` (`video-track.tsx`), it resolved one node and
+// called it ONCE with `(from, to, progress)` where `from`/`to` were
+// already-instantiated subtrees the node's `.composite` component rendered.
+// That whole assembly — the boundary Sequence, `rebased()`, `BOUNDARY_TAIL`
+// — is deleted from `video-track.tsx` in the same commit, and `TransitionNode`
+// no longer HAS a `.composite` arm to drive (`lib/theming/transitions.ts`).
 //
-// PROGRESS IS CLAMPED HERE, deliberately not left to each presentation's own
-// interpolate() calls — several of the custom ones (whipPan, zoomThrough) don't
-// set extrapolateLeft/Right and would run away outside the window otherwise.
-// The boundary Sequence normally bounds the frame anyway; the clamp is what
-// makes that a guarantee of the CONTRACT rather than a property of one caller,
-// so a node may be driven from anywhere and still never see progress outside
-// [0,1].
-export const AtCutTransition: React.FC<{
-  /** The resolved node, or null for a hard cut (both inputs drawn plainly). */
-  node: TransitionNode | null;
-  /** The outgoing clip — null at the reel's leading edge. */
-  from: React.ReactNode | null;
-  /** The incoming clip — null at the reel's trailing edge. */
-  to: React.ReactNode | null;
-  /** The boundary's length in frames. */
-  frames: number;
-  dims: {
-    width: number; height: number; fps: number;
-    palette?: readonly AccentSlot[];
-    /** `CompositionTheme.background` — what a null input resolves to (Task
-     *  2.2). Optional so a caller with no theme in scope still composes;
-     *  absent becomes `transparent`, which paints nothing. Core never
-     *  substitutes a colour of its own. */
-    background?: string;
-  };
-}> = ({ node, from, to, frames, dims }) => {
-  const frame = useCurrentFrame();
-  const progress = frames > 0 ? Math.max(0, Math.min(1, frame / frames)) : 1;
-  if (!node) {
-    // No node: a hard cut. Draw both inputs in their natural order rather than
-    // dropping one — the caller decided this window belongs to the boundary.
-    // eslint-disable-next-line react/jsx-no-useless-fragment
-    return <>{from}{to}</>;
-  }
-  if (typeof node.plan === 'function') {
-    // `typeof`, not `'plan' in node`: `plan?: never` is OPTIONAL, so
-    // `{ composite: X, plan: undefined }` — a plausible shape for a
-    // spread-built node — is a legal composite node whose `plan` KEY still
-    // exists. `'in'` would take this branch for that node; `typeof` checks
-    // the VALUE and does not. Matches `isTransitionNode`'s own discriminant.
-    //
-    // PHASE 5 TASK 1.2 — RE-SCOPED, NOT REMOVED. Task 1.1 added this branch
-    // when the plan path did not exist at all ("that lands in Stage 1.2").
-    // It exists now — but it is NOT here. A plan is applied to mounts that
-    // already exist, which only the track assembly owns, so `buildVideoNodes`
-    // routes a plan-arm boundary away from this component entirely
-    // (`typeof node.plan === 'function'`, the same discriminant used here).
-    //
-    // What reaching this branch means TODAY is therefore narrower and more
-    // useful than what it meant before: a caller drove a plan node through the
-    // BOUNDARY COMPOSITOR — a hand-rolled assembly, or a brand renderer still
-    // building its own `<AtCutTransition>` — where the single-mount path is
-    // structurally unreachable, because this component receives its inputs as
-    // subtrees and has no shells to style. The fallback is unchanged (draw both
-    // inputs plainly, i.e. a hard cut). The KEY is renamed to match what the
-    // branch now means — `unwired` was true only while the plan path did not
-    // exist anywhere, and a key that describes the old world is a key the next
-    // reader has to decode. Nothing in the repo can produce a plan node yet, so
-    // no session can have seen the old key and be de-duplicated wrongly by the
-    // new one.
-    warnOnce(
-      'at-cut-transition:plan-arm-wrong-entry-point',
-      () =>
-        '[video-toolkit] a transition node supplied `plan` instead of `composite`, and `plan` is ' +
-        'driven by buildVideoNodes\' single-mount assembly, not by AtCutTransition — this component ' +
-        'receives its two inputs as subtrees and has no already-mounted layers to apply a plan to. ' +
-        'Render this boundary through buildVideoNodes (see docs/superpowers/' +
-        'phase5-single-mount-design.md). This boundary is rendering as a HARD CUT.',
-    );
-    // eslint-disable-next-line react/jsx-no-useless-fragment
-    return <>{from}{to}</>;
-  }
-  const Composite = node.composite;
-  return (
-    <Composite
-      from={from}
-      to={to}
-      progress={progress}
-      durationInFrames={frames}
-      width={dims.width}
-      height={dims.height}
-      fps={dims.fps}
-      palette={dims.palette ?? []}
-      background={dims.background ?? 'transparent'}
-    />
-  );
-};
+// `git grep -n AtCutTransition` before this task found exactly one real call
+// site: `video-track.tsx`'s own composite-boundary loop, now gone. Every
+// other hit was a doc comment or a unit test exercising the component in
+// isolation (migrated or deleted in this task — see task-5-report.md). Once
+// `TransitionNode.plan` stopped being optional, `typeof node.plan ===
+// 'function'` inside this component was true for EVERY node it could ever
+// be handed, which made it warn-and-hard-cut unconditionally — a component
+// with zero production callers that could only ever produce one outcome is
+// not a capability worth keeping alive, it is exactly the "shipped vacuous"
+// failure mode this phase's own laws warn against. `presentationFor`'s
+// still-live two-input warning (above) now names only `buildVideoNodes` as
+// the render path, not this deleted alternative.

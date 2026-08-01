@@ -54,15 +54,12 @@ import {
   resolveTransition,
   transitionNodeFor,
   resetTransitionNodeCache,
-  fromRemotionPresentation,
+  wrapRemotionPresentation,
   isTransitionNode,
-  TransitionLayer,
-  AtCutTransition,
   DIRECTION_4WAY,
   getTransitionRecord,
   type AnyPresentation,
   type TransitionNode,
-  type TransitionNodeProps,
   type TransitionRecord,
 } from '@video-toolkit/lib/render/at-cut-transitions';
 import { resetWarnOnce } from '@video-toolkit/lib/render/warn-once';
@@ -74,18 +71,12 @@ import { paramChoices, type ParamOption } from '@video-toolkit/lib/reel-config-b
 const KINDS = TRANSITION_CATALOG.map((e) => e.kind);
 const DIMS = { width: 1080, height: 1920 };
 
-// Phase 5 Task 1.1 widened `TransitionNode` into a `plan`/`composite` union.
-// Nothing in this repo produces a `plan` node yet — every node this suite
-// builds or resolves is still composite-only — so this helper narrows once
-// per call site instead of repeating an `if (typeof node.plan === 'function')
-// throw …` guard at every one of them (typeof, not `'plan' in node` — see
-// TransitionNode's own doc comment in lib/theming/transitions.ts for why). If
-// a future `plan` node genuinely reaches one of these call sites, this throw
-// is the loud failure that says so.
-function compositeOf(node: TransitionNode): React.ComponentType<TransitionNodeProps> {
-  if (typeof node.plan === 'function') throw new Error('expected a composite-arm TransitionNode in this test');
-  return node.composite;
-}
+// PHASE 5 TASK 5 — `compositeOf` DELETED. It used to narrow a `TransitionNode`
+// down to its `.composite` arm for the (then-hypothetical) case where a node
+// had no `plan`. `TransitionNode` is now a single `{ plan }` interface — there
+// is no `.composite` shape left to narrow to, anywhere — so every call site
+// that used this helper now drives the node directly through `plan`/`mountPlan`
+// instead (see each site's own comment for what changed).
 
 /** Drives a `plan`-arm node's `wrap`s directly, mirroring what `LayerShell`
  *  (`lib/render/video-track-plan.tsx`) applies to an already-mounted layer:
@@ -419,13 +410,14 @@ describe.each(KINDS)('transition kind %s', (kind) => {
       return;
     }
     expect(node).not.toBeNull();
-    const isPlan = typeof node!.plan === 'function';
-    expect(typeof (isPlan ? node!.plan : compositeOf(node!))).toBe('function');
+    // PHASE 5 TASK 5 — every node is `{ plan }` now, so there is no arm to
+    // branch on any more; this just confirms the boundary got something
+    // callable back.
+    expect(typeof node!.plan).toBe('function');
     // A native node has NO one-sided form to hand back; every other kind still
     // does (a `plan`-arm kind included — it started as one, and
-    // `WRAP_PLAN_KINDS` in at-cut-transitions.tsx deliberately keeps
-    // `resolveTransition`/`presentationFor` unaware of the lift), and brands'
-    // `presentationFor` call sites still get it.
+    // `wrapRemotionPresentation` in at-cut-transitions.tsx lifts it
+    // unconditionally), and brands' `presentationFor` call sites still get it.
     const p = presentationFor(transition as never, DIMS);
     expect({ kind, oneSided: p !== null }).toEqual({ kind, oneSided: !isNode });
     if (p) {
@@ -445,49 +437,21 @@ describe.each(KINDS)('transition kind %s', (kind) => {
       [null, <div key="b" />],
       [<div key="a" />, null],
     ];
-    if (typeof node.plan === 'function') {
-      for (const progress of [0, 0.5, 1]) {
-        for (const [from, to] of inputs) {
-          expect(() => mountPlan(node, { from, to }, progress).unmount()).not.toThrow();
-        }
-      }
-    } else {
-      const Composite = compositeOf(node);
-      for (const progress of [0, 0.5, 1]) {
-        for (const [from, to] of inputs) {
-          expect(() =>
-            render(
-              <Composite
-                from={from}
-                to={to}
-                progress={progress}
-                durationInFrames={15}
-                width={1080}
-                height={1920}
-                fps={30}
-                palette={[]}
-                background="transparent"
-              />,
-            ).unmount(),
-          ).not.toThrow();
-        }
+    // PHASE 5 TASK 5 — every node is `{ plan }` now, one-sided kinds included
+    // (lifted through `wrapRemotionPresentation`), so there is only one path
+    // through here any more.
+    for (const progress of [0, 0.5, 1]) {
+      for (const [from, to] of inputs) {
+        expect(() => mountPlan(node, { from, to }, progress).unmount()).not.toThrow();
       }
     }
-    // One-sided kinds are additionally driven through the layer core lifts them
-    // with, in both directions — the coverage this suite has always had.
-    const p = presentationFor(transition as never, DIMS);
-    if (!p) return;
-    for (const direction of ['entering', 'exiting'] as const) {
-      for (const progress of [0, 0.5, 1]) {
-        expect(() =>
-          render(
-            <TransitionLayer presentation={p} direction={direction} progress={progress} durationInFrames={15}>
-              <div data-testid="content" />
-            </TransitionLayer>,
-          ).unmount(),
-        ).not.toThrow();
-      }
-    }
+    // PHASE 5 TASK 5 — the trailing "drive a one-sided kind's `TransitionLayer`
+    // directly, in both directions" pass is GONE: `TransitionLayer` is no
+    // longer exported (it is `wrapRemotionPresentation`'s private
+    // implementation detail now), and the coverage it added is already
+    // subsumed by the `mountPlan` pass above — a one-sided kind resolves to a
+    // node through the exact same lift, so mounting it across the progress
+    // range already exercises `TransitionLayer` from the inside.
   });
 
   // A NODE closes over its params — there is no props bag to inspect, so this
@@ -545,45 +509,24 @@ describe.each(NODE_KINDS)('two-input node %s delivers every authored param', (ki
   const stripGeneratedIds = (html: string) =>
     html.replace(/id="[^"]*"/g, 'id="ID"').replace(/url\(#[^)]*\)/g, 'url(#ID)');
 
-  // PHASE 5 TASK 2.2 — branches on ARM. `wipe`/`pixelate`/`gradient-wipe` moved
-  // `composite` → `plan` this task; `checkerboard`/`scanline-glitch` (Stage
-  // 3/4) have not. `mountPlan` (defined near `compositeOf`, above) renders
-  // `layers` (plates) TOO — load-bearing here specifically, since `pixelate`'s
-  // grid/glitch-slice/RGB-split/scanline/vignette/noise overlays all moved
-  // onto `layers` this task; a plan-arm render that skipped plates would make
-  // every one of those params' differential checks below vacuously pass on
-  // NOTHING (the plate never rendered at all, so two renders' stripped HTML
-  // would both be the empty string from that layer, not merely equal to each
-  // other for the right reason).
+  // PHASE 5 TASK 5 — every node is `{ plan }` now, so there is only one path
+  // through here any more. `mountPlan` renders `layers` (plates) TOO —
+  // load-bearing here specifically, since `pixelate`'s grid/glitch-slice/
+  // RGB-split/scanline/vignette/noise overlays all live on `layers`; a render
+  // that skipped plates would make every one of those params' differential
+  // checks below vacuously pass on NOTHING (the plate never rendered at all,
+  // so two renders' stripped HTML would both be the empty string from that
+  // layer, not merely equal to each other for the right reason).
   const renderedFor = (t: Record<string, unknown>) => {
     const node = transitionNodeFor(t as TransitionRecord, { ...DIMS, palette: PALETTE })!;
     return PROBE_PROGRESS.map((progress) => {
-      let container: HTMLElement;
-      let unmount: () => void;
-      if (typeof node.plan === 'function') {
-        ({ container, unmount } = mountPlan(
-          node,
-          { from: <div data-testid="a" />, to: <div data-testid="b" /> },
-          progress,
-          'transparent',
-          15,
-        ));
-      } else {
-        const Composite = compositeOf(node);
-        ({ container, unmount } = render(
-          <Composite
-            from={<div data-testid="a" />}
-            to={<div data-testid="b" />}
-            progress={progress}
-            durationInFrames={15}
-            width={1080}
-            height={1920}
-            fps={30}
-            palette={PALETTE}
-            background="transparent"
-          />,
-        ));
-      }
+      const { container, unmount } = mountPlan(
+        node,
+        { from: <div data-testid="a" />, to: <div data-testid="b" /> },
+        progress,
+        'transparent',
+        15,
+      );
       const html = stripGeneratedIds(container.innerHTML);
       unmount();
       return html;
@@ -627,20 +570,11 @@ describe('composition-size-dependent kinds', () => {
 // These assert the colour where it actually matters — on the sweeping sheet the
 // node paints — which is a stronger pin than the props bag ever was.
 describe('accent-slot resolution', () => {
-  // `wipe` moved `composite` → `plan` (Phase 5 Task 2.2); `mountPlan` renders
-  // its sheet as an `over` PLATE now, not a JSX sibling.
+  // `wipe` is `{ plan }` now (Phase 5 Task 2.2); `mountPlan` renders its
+  // sheet as an `over` PLATE, not a JSX sibling.
   const sheetColorFor = (t: TransitionRecord, dims: Parameters<typeof transitionNodeFor>[1]) => {
     const node = transitionNodeFor(t, dims)!;
-    let container: HTMLElement;
-    let unmount: () => void;
-    if (typeof node.plan === 'function') {
-      ({ container, unmount } = mountPlan(node, { from: null, to: null }, 0.5, 'transparent', 15));
-    } else {
-      const Composite = compositeOf(node);
-      ({ container, unmount } = render(
-        <Composite from={null} to={null} progress={0.5} durationInFrames={15} width={1080} height={1920} fps={30} palette={[]} background="transparent" />,
-      ));
-    }
+    const { container, unmount } = mountPlan(node, { from: null, to: null }, 0.5, 'transparent', 15);
     // Excludes `'transparent'` — `mountPlan` materialises a NULL side as a real
     // `EdgePlate` now (Phase 5 Task 2.2's edge-plate contract), which also
     // carries a non-empty `backgroundColor`. The sheet's own colour is always a
@@ -743,37 +677,19 @@ describe('the four two-input nodes render what their name promises', () => {
   const nodeFor = (t: Partial<TransitionRecord> & { kind: string }, palette?: readonly AccentSlot[]) =>
     transitionNodeFor(t as TransitionRecord, palette ? { ...DIMS, palette } : DIMS)!;
 
-  // PHASE 5 TASK 2.2 — branches on arm: `wipe`/`pixelate` moved `composite` →
-  // `plan` this task, `checkerboard`/`scanline-glitch` (Stage 3/4) have not.
+  // PHASE 5 TASK 5 — every node is `{ plan }` now, so there is only one path.
   const mountNode = (
     node: TransitionNode,
     progress: number,
     inputs: { from?: React.ReactNode | null; to?: React.ReactNode | null } = {},
-  ) => {
-    if (typeof node.plan === 'function') {
-      return mountPlan(
-        node,
-        { from: inputs.from === undefined ? A : inputs.from, to: inputs.to === undefined ? B : inputs.to },
-        progress,
-        'transparent',
-        15,
-      );
-    }
-    const Composite = compositeOf(node);
-    return render(
-      <Composite
-        from={inputs.from === undefined ? A : inputs.from}
-        to={inputs.to === undefined ? B : inputs.to}
-        progress={progress}
-        durationInFrames={15}
-        width={1080}
-        height={1920}
-        fps={30}
-        palette={[]}
-        background="transparent"
-      />,
+  ) =>
+    mountPlan(
+      node,
+      { from: inputs.from === undefined ? A : inputs.from, to: inputs.to === undefined ? B : inputs.to },
+      progress,
+      'transparent',
+      15,
     );
-  };
 
   const count = (container: HTMLElement, id: 'a' | 'b') =>
     container.querySelectorAll(`[data-testid="${id}"]`).length;
@@ -1136,85 +1052,38 @@ describe('Task 2.4 — the orphan knobs reach the presentation', () => {
   });
 });
 
-describe('AtCutTransition drives ONE node off the boundary-local frame', () => {
-  const NODE_DIMS = { width: 1080, height: 1920, fps: 30 };
+// PHASE 5 TASK 5 — `describe('AtCutTransition drives ONE node off the
+// boundary-local frame', ...)` DELETED OUTRIGHT. `AtCutTransition` (the
+// component these tests exercised directly — resolving a boundary-local
+// frame to a progress value, clamping it to [0,1], and calling a node's
+// `.composite` once with `{from, to, progress, ...}`) is deleted from
+// production (`lib/render/at-cut-transitions.tsx`) along with the whole
+// boundary-`<Sequence>` assembly that was its only caller
+// (`lib/render/video-track.tsx`). There is no surviving symbol to import and
+// zero production callers left, so nothing here can ever fail again. The
+// frame-to-progress ramp/clamp behaviour these tests pinned now lives in
+// `VideoTrackHost`/`LayerShell` (`lib/render/video-track-plan.tsx`) and is
+// exercised end to end by `video-track-remount.test.tsx` and
+// `two-input-transitions.test.tsx`, not by a standalone component test here.
 
-  beforeEach(() => {
-    clock.frame = 0;
-  });
-
-  const spyNode = (seen: TransitionNodeProps[]): TransitionNode => ({
-    composite: (props: TransitionNodeProps) => {
-      seen.push(props);
-      return (
-        <>
-          {props.from}
-          {props.to}
-        </>
-      );
-    },
-  });
-
-  it('ramps progress 0→1 across the boundary', () => {
-    const seen: TransitionNodeProps[] = [];
-    for (const [frame, expected] of [[0, 0], [5, 0.5], [10, 1]] as const) {
-      clock.frame = frame;
-      const { unmount } = render(
-        <AtCutTransition node={spyNode(seen)} from={<div />} to={<div />} frames={10} dims={NODE_DIMS} />,
-      );
-      expect({ frame, progress: seen.at(-1)!.progress }).toEqual({ frame, progress: expected });
-      unmount();
-    }
-  });
-
-  // CORE CLAMPS, PRESENTATIONS NEVER DO. `whipPan` and `zoomThrough` set no
-  // extrapolateLeft/Right and would run away outside the window; the boundary's
-  // own Sequence normally bounds the frame, but the clamp is what makes [0,1] a
-  // property of the CONTRACT rather than of one caller.
-  it('clamps progress to [0,1] for a frame outside the window', () => {
-    const seen: TransitionNodeProps[] = [];
-    for (const [frame, expected] of [[-4, 0], [40, 1]] as const) {
-      clock.frame = frame;
-      const { unmount } = render(
-        <AtCutTransition node={spyNode(seen)} from={null} to={<div />} frames={10} dims={NODE_DIMS} />,
-      );
-      expect({ frame, progress: seen.at(-1)!.progress }).toEqual({ frame, progress: expected });
-      unmount();
-    }
-  });
-
-  it('forwards both inputs, the boundary length, the dimensions and the palette', () => {
-    const seen: TransitionNodeProps[] = [];
-    clock.frame = 5;
-    render(
-      <AtCutTransition
-        node={spyNode(seen)}
-        from={<div data-testid="a" />}
-        to={<div data-testid="b" />}
-        frames={10}
-        dims={{ ...NODE_DIMS, palette: PALETTE }}
-      />,
-    );
-    expect(seen).toHaveLength(1);
-    expect(seen[0].durationInFrames).toBe(10);
-    expect({ w: seen[0].width, h: seen[0].height, fps: seen[0].fps }).toEqual({ w: 1080, h: 1920, fps: 30 });
-    expect(seen[0].palette).toBe(PALETTE);
-    expect(seen[0].from).not.toBeNull();
-    expect(seen[0].to).not.toBeNull();
-  });
-
-  it('draws both inputs plainly when the kind resolved to nothing (a hard cut)', () => {
-    const { container } = render(
-      <AtCutTransition node={null} from={<div data-testid="content" />} to={<div data-testid="content" />} frames={10} dims={NODE_DIMS} />,
-    );
-    expect(container.querySelectorAll('[data-testid="content"]')).toHaveLength(2);
-  });
-});
-
-// The compatibility route: the five official presentations are one-sided by
-// design, and so is every brand registration written against Task 1.2. Core
-// LIFTS them rather than asking brands to migrate.
-describe('fromRemotionPresentation lifts a one-sided presentation', () => {
+// PHASE 5 TASK 5 — `describe('fromRemotionPresentation lifts a one-sided
+// presentation', ...)` RENAMED AND ADAPTED to `wrapRemotionPresentation`,
+// its full replacement. `fromRemotionPresentation` built the OLD `composite`
+// arm (render `from` through the presentation's EXITING branch, `to` through
+// ENTERING, stacked entering-over-exiting inside a single call); it is
+// deleted, and `wrapRemotionPresentation` is the ONLY lift target left — it
+// drives the exact same `TransitionLayer` the same way, just through the
+// `plan`/`wrap` medium (`op.wrap`) instead of a JSX component prop. Nothing
+// else in this file had direct unit coverage of `wrapRemotionPresentation`
+// (`git grep` found only the wiring-level `describe.each(KINDS)` block,
+// which drives it indirectly through a real catalog kind), so these three
+// `it`s port every assertion `fromRemotionPresentation`'s tests made,
+// unchanged in substance — only the mounting mechanism (`mountPlan` instead
+// of rendering `.composite` as a JSX element) differs, because `mountPlan`
+// already reproduces exactly what `LayerShell` does with a `wrap`: mount it
+// with `active` always true and the live progress/duration delivered through
+// `ActiveTransitionProgressContext`, never as a prop.
+describe('wrapRemotionPresentation lifts a one-sided presentation into the plan arm', () => {
   const trace = (order: string[]): AnyPresentation => ({
     component: (props: Record<string, unknown>) => {
       order.push(props.presentationDirection as string);
@@ -1225,72 +1094,53 @@ describe('fromRemotionPresentation lifts a one-sided presentation', () => {
 
   it('renders `from` through EXITING and `to` through ENTERING, entering on top', () => {
     const order: string[] = [];
-    const node = fromRemotionPresentation(trace(order));
-    const Composite = compositeOf(node);
-    const { container } = render(
-      <Composite
-        from={<div data-testid="a" />}
-        to={<div data-testid="b" />}
-        progress={0.5}
-        durationInFrames={10}
-        width={1080}
-        height={1920}
-        fps={30}
-        palette={[]}
-        background="transparent"
-      />,
+    const node = wrapRemotionPresentation(trace(order));
+    const { container, unmount } = mountPlan(
+      node,
+      { from: <div data-testid="a" />, to: <div data-testid="b" /> },
+      0.5,
+      'transparent',
+      10,
     );
     expect(order).toEqual(['exiting', 'entering']);
     expect(container.querySelectorAll('[data-testid="a"]')).toHaveLength(1);
     expect(container.querySelectorAll('[data-testid="b"]')).toHaveLength(1);
+    unmount();
   });
 
   // TASK 1.3's "renders NOTHING on a null side" IS DELIBERATELY REVERSED HERE.
   // Drawing nothing reproduced the pre-1.3 pixels exactly — and, with them, the
   // defect: a presentation whose exiting branch is the identity function had no
   // input to draw, so seven kinds did nothing at all as a `transitionOut`. Both
-  // branches now always run; a null side is a plate of `background`. With
-  // `background: 'transparent'` (the no-theme caller) that plate paints
-  // nothing, which is how the old pixels survive where no theme is threaded.
-  it('runs BOTH branches on a null side, feeding it the background plate', () => {
+  // branches now always run; a null side is materialised as an `EdgePlate` by
+  // `mountPlan` (mirroring `video-track.tsx`'s own edge handling), which is
+  // what `wrapRemotionPresentation`'s `wrap` then renders through the
+  // presentation exactly like any other content.
+  it('runs BOTH branches on a null side, feeding it the materialised edge plate', () => {
     const order: string[] = [];
-    const node = fromRemotionPresentation(trace(order));
-    const Composite = compositeOf(node);
-    const { container } = render(
-      <Composite
-        from={null}
-        to={<div data-testid="b" />}
-        progress={0.5}
-        durationInFrames={10}
-        width={1080}
-        height={1920}
-        fps={30}
-        palette={[]}
-        background="#123456"
-      />,
-    );
+    const node = wrapRemotionPresentation(trace(order));
+    const { container, unmount } = mountPlan(node, { from: null, to: <div data-testid="b" /> }, 0.5, '#123456', 10);
     expect(order).toEqual(['exiting', 'entering']);
     expect(
       [...container.querySelectorAll('div')].filter((d) => d.style.backgroundColor === 'rgb(18, 52, 86)'),
     ).toHaveLength(1);
+    unmount();
   });
 
   it('forwards the presentation’s own props as passedProps', () => {
     const seen: Record<string, unknown>[] = [];
-    const node = fromRemotionPresentation({
+    const node = wrapRemotionPresentation({
       component: (props: Record<string, unknown>) => {
         seen.push(props);
         return null;
       },
       props: { marker: 42 },
     });
-    const Composite = compositeOf(node);
-    render(
-      <Composite from={null} to={<div />} progress={0.25} durationInFrames={12} width={1} height={2} fps={30} palette={[]} background="transparent" />,
-    );
+    const { unmount } = mountPlan(node, { from: null, to: <div /> }, 0.25, 'transparent', 12);
     expect(seen[0].passedProps).toEqual({ marker: 42 });
     expect(seen[0].presentationProgress).toBe(0.25);
     expect(seen[0].presentationDurationInFrames).toBe(12);
+    unmount();
   });
 });
 
@@ -1306,12 +1156,16 @@ describe('transitionNodeFor is the render path', () => {
   });
 
   it('passes a natively two-input registration through unlifted', () => {
-    const composite = () => null;
+    // PHASE 5 TASK 5 — a brand-registered `TransitionNode` fixture is
+    // `{ plan }` now, same as every other node; `plan`'s own reference is
+    // what identifies "this exact node passed through unchanged", same claim
+    // the old `{ composite }` fixture made about `.composite`.
+    const plan = () => ({ from: {}, to: {} });
     const node = transitionNodeFor({ kind: 'brand-x', frames: 15 } as unknown as TransitionRecord, {
       ...DIMS,
-      transitions: { 'brand-x': { renderer: () => ({ composite }) } },
+      transitions: { 'brand-x': { renderer: () => ({ plan }) } },
     });
-    expect(compositeOf(node!)).toBe(composite);
+    expect(node!.plan).toBe(plan);
   });
 
   // TASK R1 — MEMOIZATION, pinned at the wiring (Review Round 1, Important
@@ -1387,15 +1241,16 @@ describe('transitionNodeFor is the render path', () => {
     // resolved a kind) stayed green under every other test in this repo —
     // this is the one that would have caught it.
     it('does not serve one registry’s node for another registry’s same-named kind', () => {
-      const compositeA = () => null;
-      const compositeB = () => null;
+      // PHASE 5 TASK 5 — `{ plan }` fixtures, same reasoning as the test above.
+      const planA = () => ({ from: {}, to: {} });
+      const planB = () => ({ from: {}, to: {} });
       const t = { kind: 'brand-sweep', frames: 15 } as unknown as TransitionRecord;
 
-      const nodeA = transitionNodeFor(t, { ...DIMS, transitions: { 'brand-sweep': { renderer: () => ({ composite: compositeA }) } } });
-      const nodeB = transitionNodeFor(t, { ...DIMS, transitions: { 'brand-sweep': { renderer: () => ({ composite: compositeB }) } } });
+      const nodeA = transitionNodeFor(t, { ...DIMS, transitions: { 'brand-sweep': { renderer: () => ({ plan: planA }) } } });
+      const nodeB = transitionNodeFor(t, { ...DIMS, transitions: { 'brand-sweep': { renderer: () => ({ plan: planB }) } } });
 
-      expect(compositeOf(nodeA!)).toBe(compositeA);
-      expect(compositeOf(nodeB!)).toBe(compositeB);
+      expect(nodeA!.plan).toBe(planA);
+      expect(nodeB!.plan).toBe(planB);
       expect(nodeB).not.toBe(nodeA);
     });
   });
@@ -1444,33 +1299,15 @@ describe('a reel edge resolves the missing input to the theme background', () =>
   ) => {
     const t = { ...(defaultTransition(kind, { frames: 20 }) as object), ...extra } as unknown as TransitionRecord;
     const node = transitionNodeFor(t, { ...DIMS, palette })!;
-    // Task 2.1 moved `fade`/`dissolve`/`slide`/`flip`/`clock-wipe`/`iris`/
-    // colourless `fade-to-color` onto the `plan` arm, which has no
-    // `.composite` — `mountPlan` (defined near `compositeOf`, above)
-    // exercises the SAME picture through `LayerOp.wrap`, the way `LayerShell`
-    // actually drives it.
-    if (typeof node.plan === 'function') {
-      return mountPlan(
-        node,
-        { from: inputs.from === undefined ? CLIP : inputs.from, to: inputs.to === undefined ? CLIP : inputs.to },
-        progress,
-        background,
-        20,
-      );
-    }
-    const Composite = compositeOf(node);
-    return render(
-      <Composite
-        from={inputs.from === undefined ? CLIP : inputs.from}
-        to={inputs.to === undefined ? CLIP : inputs.to}
-        progress={progress}
-        durationInFrames={20}
-        width={1080}
-        height={1920}
-        fps={30}
-        palette={palette}
-        background={background}
-      />,
+    // PHASE 5 TASK 5 — every node is `{ plan }` now; `mountPlan` exercises the
+    // SAME picture through `LayerOp.wrap`, the way `LayerShell` actually
+    // drives it.
+    return mountPlan(
+      node,
+      { from: inputs.from === undefined ? CLIP : inputs.from, to: inputs.to === undefined ? CLIP : inputs.to },
+      progress,
+      background,
+      20,
     );
   };
 
@@ -1908,22 +1745,17 @@ describe('a reel edge resolves the missing input to the theme background', () =>
       .toHaveLength(0);
   });
 
-  // The first link of the thread. `reel-edge-background.test.tsx` pins the rest
-  // of it (theme.background → LayeredReelComposition → buildVideoNodes → here).
-  it('AtCutTransition hands the node the background it was given, and `transparent` when it has none', () => {
-    const seen: TransitionNodeProps[] = [];
-    const node: TransitionNode = {
-      composite: (props: TransitionNodeProps) => {
-        seen.push(props);
-        return null;
-      },
-    };
-    clock.frame = 5;
-    const base = { width: 1080, height: 1920, fps: 30 };
-    render(<AtCutTransition node={node} from={<div />} to={null} frames={10} dims={{ ...base, background: BG }} />);
-    render(<AtCutTransition node={node} from={<div />} to={null} frames={10} dims={base} />);
-    expect(seen.map((p) => p.background)).toEqual([BG, 'transparent']);
-  });
+  // PHASE 5 TASK 5 — "AtCutTransition hands the node the background it was
+  // given, and `transparent` when it has none" DELETED. It unit-tested
+  // `AtCutTransition` directly (now deleted, along with the whole boundary
+  // `<Sequence>` assembly that was its only caller). The background thread
+  // this test was "the first link of" is unaffected by this task — a null
+  // side still becomes an `EdgePlate` carrying the caller's `background` — and
+  // every other test in this `describe` block already exercises that thread
+  // through `mount()` → `mountPlan`, which is now the whole path (there is no
+  // separate `AtCutTransition` hop left to pin on its own).
+  // `reel-edge-background.test.tsx` still pins the rest of the thread
+  // (theme.background → LayeredReelComposition → buildVideoNodes → here).
 });
 
 // ---------------------------------------------------------------------------
@@ -1962,27 +1794,9 @@ describe('a fade’s colour is a parameter (fade-to-color)', () => {
     palette: readonly AccentSlot[] = PALETTE,
   ) => {
     const node = transitionNodeFor(t as unknown as TransitionRecord, { ...DIMS, palette })!;
-    // `fade`, `dissolve` and colourless `fade-to-color` are `plan`-arm since
-    // Task 2.1 (see `mountPlan`, defined near `compositeOf`, above) — only a
-    // COLOURED `fade-to-color` is still the native two-input `composite` node
-    // this block was built around.
-    if (typeof node.plan === 'function') {
-      return mountPlan(node, { from: A, to: B }, progress, 'transparent', 15);
-    }
-    const Composite = compositeOf(node);
-    return render(
-      <Composite
-        from={A}
-        to={B}
-        progress={progress}
-        durationInFrames={15}
-        width={1080}
-        height={1920}
-        fps={30}
-        palette={palette}
-        background="transparent"
-      />,
-    );
+    // PHASE 5 TASK 5 — every node is `{ plan }` now, coloured `fade-to-color`
+    // (the native two-input node this block was built around) included.
+    return mountPlan(node, { from: A, to: B }, progress, 'transparent', 15);
   };
 
   /** Every painted layer in the tree — a `fade` paints none at all, so this is

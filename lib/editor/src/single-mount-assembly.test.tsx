@@ -1,18 +1,21 @@
-// PHASE 5 TASK 1.2 — the single-mount assembly, and the seam between the two
-// arms.
+// PHASE 5 TASK 1.2 — the single-mount assembly.
 //
-// What this file settles, and what it deliberately does not:
+// PHASE 5 TASK 5 — THE `composite` ARM IS GONE. This file used to also settle
+// that a `plan`-arm boundary and a `composite`-arm boundary render through
+// DIFFERENT paths IN THE SAME REEL (the per-boundary seam that made Stages
+// 2-4 individually shippable) — that premise is now FALSE: `video-track.tsx`'s
+// whole `composite`-arm assembly (`ItemBody`, `rebased()`, the boundary
+// `<Sequence>` holding `<AtCutTransition>`) is deleted, and every resolved
+// boundary is driven through the `plan` arm's shells unconditionally. The
+// `composite-probe` fixture and every test whose ENTIRE point was proving
+// that coexistence are deleted below, with a comment at each site; tests that
+// only incidentally touched the mixed fixture while actually pinning
+// something about the `plan` boundary alone are kept, simplified onto a
+// plan-only reel.
 //
-//   IT DOES settle that a `plan`-arm boundary and a `composite`-arm boundary
-//   render through DIFFERENT paths IN THE SAME REEL — the per-boundary seam
-//   that makes Stages 2-4 individually shippable — and that the shells core
-//   now wraps every item in are mounted for the item's whole life and never
-//   change element type or count across a boundary crossing.
-//
-//   IT DOES NOT migrate a kind. Every kind in the catalog still resolves to
-//   `composite`; the plan node below is built HERE, in the test, out of the
-//   brand transition registry — which is also the exact route a brand would
-//   use, so this is not a fake seam.
+// What this file still settles: the shells core wraps every item in are
+// mounted for the item's whole life and never change element type or count
+// across a boundary crossing.
 //
 // The Remotion mock is `video-track-remount.test.tsx`'s (frame-gating +
 // time-rebasing + a real `premountFor` implementation), because the assembly's
@@ -73,7 +76,7 @@ import { buildVideoNodes } from '@video-toolkit/lib/render/video-track';
 import { resetWarnOnce } from '@video-toolkit/lib/render/warn-once';
 import type { VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import type {
-  TransitionComposite, TransitionPlanProps, TransitionRegistry, TransitionNodeProps,
+  TransitionComposite, TransitionPlanProps, TransitionRegistry,
 } from '@video-toolkit/lib/theming/transitions';
 
 const clip = (id: string, startMs: number, endMs: number, extra: Record<string, unknown> = {}): VideoItem =>
@@ -99,28 +102,24 @@ const plan = (p: TransitionPlanProps): TransitionComposite => {
   };
 };
 
-// PHASE 5 TASK 4 — `checkerboard` (this fixture's composite kind since Task
-// 3) migrates to the `plan` arm this task, and was the catalog's LAST
-// composite kind. `composite-probe` is a test-only composite node — the
-// SIMPLEST possible one (`({from, to}) => <>{from}{to}</>`) — built the same
-// way a brand registration would build one, exactly as the same substitution
-// was made in `video-track-remount.test.tsx` (see that file's own comment on
-// `COMPOSITE_PROBE`). Every test below that uses it exercises the GENERIC
-// "a plan boundary and a composite boundary coexist in one reel" seam, not
-// `checkerboard`'s own picture, so this substitution changes nothing about
-// what these tests pin.
-const composeProbe: React.FC<TransitionNodeProps> = ({ from, to }) => <>{from}{to}</>;
+// PHASE 5 TASK 5 — `composite-probe` (a test-only `{ composite }` node
+// standing in for a brand registration on that arm, so the earlier "plan
+// boundary and composite boundary coexist in one reel" tests were not a fake
+// seam) DELETED. `TransitionNode` no longer has a `.composite` shape to build
+// one out of — every node is `{ plan }` now — and `video-track.tsx`'s whole
+// composite-arm assembly that would have driven it is gone too. `MIXED` below
+// keeps its three-clip shape (some tests still want a THIRD clip past the one
+// live boundary) but `b`'s trailing edge is now a hard cut, not a second
+// transition — there is no other kind of boundary left to mix in.
 const REGISTRY: TransitionRegistry = {
   planned: { renderer: () => ({ plan }) },
-  'composite-probe': { renderer: () => ({ composite: composeProbe }) },
 };
 
-// a --planned--> b --composite-probe--> c. 30fps, 3s each: cuts at frames 90
-// and 180, both transitions 20 frames and centre-aligned, so the windows are
-// [80, 100] (plan) and [170, 190] (composite).
+// a --planned--> b --(hard cut)--> c. 30fps, 3s each: cut at frame 90, the
+// one 20-frame centre-aligned window is [80, 100].
 const MIXED = (): VideoItem[] => [
   clip('a', 0, 3000, { transitionOut: { kind: 'planned', frames: 20 } }),
-  clip('b', 3000, 6000, { transitionOut: { kind: 'composite-probe', frames: 20 } }),
+  clip('b', 3000, 6000),
   clip('c', 6000, 9000),
 ];
 
@@ -149,24 +148,17 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 // The seam.
 // ---------------------------------------------------------------------------
-describe('the plan arm and the composite arm coexist, per boundary, in one reel', () => {
-  it('a plan boundary mounts each clip ONCE, in preview — where a composite boundary still mounts two', () => {
-    clock.preview = true;
-
-    clock.frame = 90; // mid plan window
-    const { container, rerender } = render(tree());
-    // The whole point: no re-based copy, no blanking. One `a`, one `b`.
-    expect(vids(container, 'a').length).toBe(1);
-    expect(vids(container, 'b').length).toBe(1);
-
-    clock.frame = 180; // mid composite (fade) window
-    rerender(tree());
-    // Untouched Task R1/R2 behaviour: `c` (the incoming clip) has its own
-    // hidden-but-warm copy AND the boundary's re-based one; `b` (outgoing) has
-    // only the boundary's.
-    expect(vids(container, 'c').length).toBe(2);
-    expect(vids(container, 'b').length).toBe(1);
-  });
+describe('the plan arm mounts each clip once', () => {
+  // PHASE 5 TASK 5 — "a plan boundary mounts each clip ONCE, in preview —
+  // where a composite boundary still mounts two" DELETED. Its entire point
+  // was the differential against a `composite`-arm boundary in the SAME reel
+  // (`b`'s old `composite-probe` transitionOut, mounting `c` twice); there is
+  // no composite arm left to differ from — `video-track.tsx`'s composite-arm
+  // assembly (`ItemBody`, `rebased()`, the boundary `<Sequence>` +
+  // `<AtCutTransition>`) is deleted, so every boundary now mounts each clip
+  // once, unconditionally. That is no longer a claim this file needs a
+  // dedicated test for; it is the untested-because-only-possible outcome of
+  // every other test below actually passing.
 
   it('applies the plan to the clip that is already mounted — the shell carries the op style', () => {
     clock.frame = 85; // progress 0.25
@@ -307,7 +299,16 @@ describe('the shells are mounted for the item\'s whole life and are structurally
     const counts = new Set<number>();
     clock.frame = 10;
     const { container, rerender } = render(tree());
-    const firstShell = vids(container, 'a')[0].parentElement!.parentElement!.parentElement!;
+    // PHASE 5 TASK 5 — two ancestors up, not three. `a`'s own two shells
+    // (enter, exit) are the outermost DOM this item owns; a third
+    // `.parentElement` reaches the TRACK-LEVEL wrapper (`isolation: isolate`),
+    // which is shared by the whole reel — it also gains the boundary's
+    // plates and item `b`'s own shells the moment the window opens, which is
+    // exactly what made this count non-constant at the wrong scope. That
+    // wrapper's own constancy is a different, already-covered claim (`the
+    // shells… fills its parent explicitly` above asserts on `track` itself);
+    // this test is specifically about ONE ITEM's own shell subtree.
+    const firstShell = vids(container, 'a')[0].parentElement!.parentElement!;
     for (const frame of A_LIFE) {
       clock.frame = frame;
       rerender(tree());
@@ -444,11 +445,14 @@ describe('`post` applies to the whole video track, narrowly', () => {
     const { container, rerender } = render(tree());
     expect(wrapper(container).style.isolation).toBe('isolate');
 
-    // A composite-only reel is byte-identical to before this task: no
-    // stacking context, so nothing about blending changes. `composite-probe`,
-    // not a real catalog kind — see MIXED's own comment above for why.
+    // PHASE 5 TASK 5 — the "no plan boundary" case used to be a reel whose
+    // only transition was `composite-probe`, back when a `composite`-arm
+    // boundary was a real, distinct thing a reel could contain instead of a
+    // plan one. It no longer is (every resolved boundary IS a plan boundary
+    // now), so "isolate: false" can only mean "no plan boundary resolved for
+    // this reel at all" — a plain hard cut, no transitionOut authored.
     rerender(tree([
-      clip('x', 0, 3000, { transitionOut: { kind: 'composite-probe', frames: 20 } }),
+      clip('x', 0, 3000),
       clip('y', 3000, 6000),
     ]));
     expect(wrapper(container).style.isolation).toBe('');

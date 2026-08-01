@@ -68,7 +68,7 @@ vi.mock('remotion', async () => {
 import { LayeredReelComposition } from '@video-toolkit/lib/render/layered-composition';
 import { SegmentMedia } from '@video-toolkit/lib/theming/segment/SegmentMedia';
 import {
-  transitionNodeFor, resetTransitionNodeCache, AtCutTransition, type TransitionNode,
+  transitionNodeFor, resetTransitionNodeCache,
 } from '@video-toolkit/lib/render/at-cut-transitions';
 import { LayeredInspector } from '../app/LayeredInspector';
 import { editorMetaFromTheme } from '../app/editor-meta';
@@ -541,60 +541,26 @@ describe('warning 8 — config-only registration for a brand-only transition kin
 });
 
 // ---------------------------------------------------------------------------
-// Warning 9 — a `plan`-arm TransitionNode reaches `AtCutTransition`.
+// PHASE 5 TASK 5 — WARNING 9 DELETED, WITH THE COMPONENT IT WARNED ABOUT.
 //
-// RE-SCOPED BY TASK 1.2, not retired: the plan path now exists, but it lives in
-// `buildVideoNodes`' assembly (a plan styles mounts that already exist), and
-// `AtCutTransition` is the COMPOSITE arm's boundary compositor, which receives
-// its inputs as subtrees and has nothing to apply a plan to. So reaching this
-// branch means a caller drove a plan node through the wrong entry point — a
-// hand-rolled assembly or a brand renderer building its own
-// `<AtCutTransition>` — rather than "the feature is not built yet".
+// "Warning 9" pinned `AtCutTransition`'s `at-cut-transition:plan-arm-wrong-
+// entry-point` branch: a plan-arm node reaching the (old) composite arm's
+// boundary compositor, which has no shells to apply a plan to. `AtCutTransition`
+// itself is deleted this task (`lib/render/at-cut-transitions.tsx` — see that
+// file's own note on why: once `TransitionNode.plan` stopped being optional,
+// every node reaching this component took the warn-and-hard-cut branch
+// unconditionally, and it had zero production callers left). Both cases this
+// block pinned stop being able to fail for the same reason — there is no
+// component left to render:
+//
+//   - "warns once, names the shape, and still hard-cuts" — asserted
+//     `AtCutTransition` warns when handed a plan node. The component is gone.
+//   - "does NOT warn for an ordinary composite-arm node" — asserted the
+//     negative for a `{ composite }` node. `TransitionNode` no longer HAS a
+//     `composite` field (`lib/theming/transitions.ts`), so this fixture is
+//     now a compile error, not a value that could ever reach the (deleted)
+//     component to not-warn about.
 // ---------------------------------------------------------------------------
-describe('warning 9 — a plan-arm TransitionNode reaches AtCutTransition (the wrong entry point)', () => {
-  it('warns once, names the shape, and still hard-cuts (draws both inputs plainly)', () => {
-    // Hand-built — no presentation returns `{ plan }` yet, so this is the only
-    // way to construct one. `plan` itself is never called by this branch.
-    const planNode = { plan: () => ({}) } as unknown as TransitionNode;
-    const { container } = render(
-      <AtCutTransition
-        node={planNode}
-        from={<div data-testid="a" />}
-        to={<div data-testid="b" />}
-        frames={10}
-        dims={{ width: 1080, height: 1920, fps: 30 }}
-      />,
-    );
-    // Same fallback as no-node-at-all: both inputs drawn, neither dropped.
-    expect(container.querySelector('[data-testid="a"]')).toBeTruthy();
-    expect(container.querySelector('[data-testid="b"]')).toBeTruthy();
-    expect(warn).toHaveBeenCalledTimes(1);
-    const text = String(warn.mock.calls[0][0]);
-    expect(text).toContain('plan');
-    expect(text).toContain('buildVideoNodes');
-    expect(text).toContain('HARD CUT');
-  });
-
-  it('does NOT warn for an ordinary composite-arm node — the false-positive this pin must not become', () => {
-    // PHASE 5 TASK 4 — `checkerboard` (this pin's fixture kind since Task 3)
-    // migrates to the `plan` arm this task, and was the catalog's LAST
-    // composite kind — there is no real catalog kind left to substitute.
-    // Hand-built, the same way `planNode` just above is (no presentation
-    // returns `{ composite }` as a fresh literal in production either) —
-    // the SIMPLEST possible composite, drawing both inputs once each.
-    const node: TransitionNode = { composite: ({ from, to }) => <>{from}{to}</> };
-    render(
-      <AtCutTransition
-        node={node}
-        from={<div data-testid="a" />}
-        to={<div data-testid="b" />}
-        frames={10}
-        dims={{ width: 1080, height: 1920, fps: 30 }}
-      />,
-    );
-    expect(warn).not.toHaveBeenCalled();
-  });
-});
 
 // ---------------------------------------------------------------------------
 // Warnings 10 and 11 — the two the single-mount assembly owns (Phase 5 Task

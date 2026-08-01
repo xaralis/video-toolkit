@@ -7,71 +7,36 @@
 // module adds the JSX assembly (buildVideoNodes) and re-exports the pure
 // function so consumers can import everything from one path.
 //
-// PHASE 4 TASK 1.3 — THE BOUNDARY IS NOW A THING, not two half-things.
-// Before: one `<Sequence>` per item, wrapped in its own entering AND exiting
-// presentation, and a cut was the accident of two sibling Sequences overlapping
-// by the borrowed handles. A transition never saw the clip on the other side of
-// it.
-// Now: a boundary is its own `<Sequence>` spanning exactly the transition
-// window, holding ONE node that receives BOTH clips and composites them itself.
-// Each item's own Sequence still carries its content and its handles, but goes
-// BLANK for the frames a boundary has taken over — otherwise the clip would be
-// drawn twice, once plainly underneath and once inside the transition, and
-// anything the transition draws with partial alpha would blend against the wrong
-// thing.
+// PHASE 5 TASK 5 — THE FLIP, ONCE. SINGLE MOUNT, NO SECOND ARM.
 //
-// The two inputs are handed to the node RE-BASED: each is wrapped in a
-// `layout="none"` Sequence carrying that item's own global range, so a clip
-// inside a transition sees exactly the frame numbers it would have seen in its
-// own Sequence — and a clip whose range has ENDED renders nothing, which is how
-// the last frame of a cut still shows only the incoming clip.
+// Every boundary this file ever builds a `PlanBoundary` for is applied to the
+// mounts that already exist — the two shells every item is wrapped in
+// (`LayerShell`, `./video-track-plan.tsx`) — through the boundary's node.
+// Nothing is ever relocated in the tree, so nothing ever remounts.
 //
-// WHY THE RE-BASED COPIES CANNOT BE ELIMINATED (Task R2, recorded so the next
-// reader does not re-derive it). React reconciles by POSITION, so an item whose
-// content is rendered inside the boundary for some frames and under its own
-// Sequence for the rest has two instances, not one moved instance — that is the
-// remount Task R1 mitigated. The obvious wish is "mount each item's media once
-// and let the boundary composite the mount that already exists". It is not
-// reachable, and the obstruction is the node CONTRACT, not this file:
-//
-//   1. A `TransitionNode` RENDERS its two inputs — it receives them as
-//      `React.ReactNode` children and decides where, and how many times, they
-//      appear (`wipe` swaps `from`/`to` behind its sheet; `checkerboard` clips
-//      `to` into gridSize² cells over an intact `from`). "Composite the mount
-//      that already exists" would mean the node styles a subtree it does not
-//      own, which cannot express either of those two. Giving that up is giving
-//      up exactly what Task 1.3 bought.
-//   2. A node is therefore mounted only for its window. It cannot be mounted
-//      for an item's whole life instead: `checkerboard` at progress 1 renders
-//      `to` 64 times, so an always-mounted node would cost 64 permanent copies
-//      of every clip, and switching to a pass-through at progress 1 is itself a
-//      tree-position change — i.e. the same remount, relocated.
-//   3. An item is the `to` of the boundary before it and the `from` of the
-//      boundary after it, so it cannot be a CHILD of the boundary that
-//      composites it either: React gives a subtree one parent.
-//
-// So an input that outlives its boundary window is necessarily rendered in two
-// places, and the floor is THREE media elements around an interior footage cut
-// in preview: the boundary's two copies, plus the INCOMING clip's own copy
-// (kept warm by Fix 1 because it is shown again the frame the window closes).
-// The OUTGOING clip's own copy is the fourth, and it is pure waste — its blank
-// window runs to the end of its Sequence, so it is never shown again. Task R2
-// releases it; see `ItemBody`'s `drawnThrough`.
-//
-// PHASE 5 TASK 1.2 — THE SECOND PATH, SELECTED PER BOUNDARY. Everything above
-// describes the `composite` arm, which is UNCHANGED and is still what every
-// kind in the catalog resolves to. A boundary whose node exposes `plan`
-// instead takes a different route entirely: no boundary Sequence, no
-// `rebased()` copies, no blanking — the node's two-sided description is applied
-// to the mounts that already exist, through the two shells every item now
-// carries (`./video-track-plan.tsx`). The two paths coexist per BOUNDARY, not
-// per reel, which is what makes the staged migration shippable one kind at a
-// time.
+// WHAT USED TO BE HERE, AND WHY IT IS GONE (docs/superpowers/
+// phase5-single-mount-design.md §7 Stage 5; full account in
+// `.superpowers/sdd/phase5-single-mount-design/task-5-report.md`). Before this
+// task, a boundary whose node exposed only `.composite` (Task 1.3's original
+// shape) took a SEPARATE route: a boundary `<Sequence>` spanning the
+// transition window, holding one node that received BOTH clips RE-BASED into
+// its own coordinate system (`rebased()`) — copies distinct from each item's
+// own Sequence, which was BLANKED (`ItemBody`) for the frames the boundary had
+// taken over, so the clip was not drawn twice. That is what produced the
+// remount this whole phase exists to remove: React reconciles by tree
+// POSITION, and content rendered inside the boundary for some frames and under
+// its own Sequence for the rest is two mounts, not one moved mount. Stages
+// 0-4 migrated every catalog kind off that path onto `plan`; this task deletes
+// the path itself now that nothing resolves to it any more
+// (`TransitionNode` no longer HAS a `.composite` arm —
+// `lib/theming/transitions.ts`). A boundary whose kind resolves to no node at
+// all (an unrecognised brand kind, warned elsewhere) simply contributes
+// nothing here: the items either side draw straight through, which is the
+// same picture a hard cut always was.
 import React from 'react';
-import { Sequence, useCurrentFrame } from 'remotion';
-import { AtCutTransition, transitionNodeFor } from './at-cut-transitions';
+import { Sequence } from 'remotion';
+import { transitionNodeFor } from './at-cut-transitions';
 import { computeVideoLayout, type VideoLayoutEntry } from './video-track-layout';
-import { isPreviewEnvironment } from './preview-environment';
 import { warnOnce } from './warn-once';
 import { VideoTrackHost, LayerShell, PlateHost, type PlanBoundary } from './video-track-plan';
 import { EdgePlate } from '../transitions/edge-plate';
@@ -87,129 +52,16 @@ export { computeVideoLayout, type VideoLayoutEntry };
  *  progress-1 frame too (see BOUNDARY_TAIL below). */
 type Range = readonly [number, number];
 
-/** Renders `children` except on the frames a boundary has taken over. The
- *  frames are item-relative, so this must be mounted INSIDE the item's own
- *  Sequence.
- *
- *  TASK R1 — FIX 1, PREVIEW-GATED. Returning `null` on a blanked frame is a
- *  real React unmount of everything beneath it, and the boundary's re-based
- *  copy of the SAME content mounts fresh in a different position in the tree
- *  (see video-track.tsx's module docblock) — so crossing a boundary meant a
- *  footage `<video>` was destroyed and recreated. That is invisible at render
- *  time (frames are extracted independently of any DOM) but is a real
- *  re-fetch + re-seek — a background-colour flash and a stall — in the Player
- *  or Studio, so this branch is gated on `isPreviewEnvironment()`: outside
- *  preview, behaviour is BYTE-IDENTICAL to before this task (`return null`).
- *
- *  `display:none`, not `visibility:hidden`: nothing here needs to keep taking
- *  up space (this Sequence's `layout` is the default `absolute-fill`, so a
- *  visible sibling would have to fight a hidden one's box otherwise), and
- *  `OffthreadVideo`/`Video` seek to an explicit frame-derived time regardless
- *  of the element's own visibility — Remotion's own `premountFor` (Fix 2,
- *  below) hides a premounting Sequence with `display:none` for the identical
- *  reason (see `use-premounting.js`'s `hideWhilePremounted` default).
- *
- *  THE WRAPPER MUST BE STRUCTURALLY CONSTANT ACROSS THE BLANKED/DRAWN
- *  TOGGLE, not just present-while-blanked: React reconciles by position and
- *  TYPE, so switching between `<div>…</div>` (blanked) and a `<>…</>`
- *  Fragment (drawn) at the same tree position is ITSELF a type change and
- *  remounts `children` — exactly the defect this fix exists to remove, just
- *  moved to the OTHER edge of the blanked window. In preview the wrapper is
- *  therefore a `<div>` for the item's entire mounted life, toggling only its
- *  `style`; outside preview there is no wrapper at all, ever (byte-identical
- *  to pre-Task-R1).
- *
- *  WHEN DRAWN, THE WRAPPER IS `position:absolute; inset:0`, NOT a bare
- *  `undefined` style (Review Round 1, Minor 1). Every renderer this repo or
- *  either brand repo ships roots its content at `AbsoluteFill`/
- *  `position:absolute`, so an unstyled `<div>` is layout-neutral TODAY — but
- *  that is a property of the current renderers, not of this wrapper, and a
- *  future renderer rooting at a static/relative element with e.g.
- *  `height:100%` would silently collapse to zero height inside this div, in
- *  PREVIEW ONLY (outside preview there is no wrapper at all) — precisely the
- *  preview/render divergence this whole gate exists to avoid. Filling the
- *  wrapper explicitly removes that dependency on every current renderer's
- *  shape.
- *
- *  TASK R2 — `drawnThrough`: HIDING IS ONLY WORTH IT IF THE ITEM COMES BACK.
- *  Fix 1 keeps a blanked item's media alive so that when the boundary hands
- *  the frames back, the element is already warm. At the item's LAST boundary
- *  there are no frames to hand back: `computeVideoLayout` gives the outgoing
- *  side of a cut exactly `outHalf` frames of handle and the boundary claims
- *  all of them, so an item's final blank window runs to the end of its own
- *  Sequence (verified: a 3s clip with a 20-frame centred `fade` out has
- *  `seqDuration` 100 and a blank range of [80, 100] — see
- *  `video-track-remount.test.tsx`'s geometry). Keeping THAT copy mounted buys
- *  nothing and costs a second `<video>` decoding the same frames of the same
- *  file as the boundary's own copy, at the one moment in the reel when the
- *  decoder is busiest. `drawnThrough` is the item's last frame that is NOT
- *  claimed by any boundary (-1 if a boundary claims all of them), so a blanked
- *  frame past it is provably never followed by a drawn one and the media is
- *  released instead of hidden.
- *
- *  This is where the four media elements alive around a footage cut become
- *  three, and three is the FLOOR under Task 1.3's contract (a node owns its
- *  two inputs as children it renders, so an input that outlives the boundary
- *  must exist both inside the node and in its own Sequence — see this module's
- *  docblock).
- *
- *  The div→null step happens at most once per mount and is never reversed
- *  during forward playback, so it is not the wrapper-type toggle the paragraph
- *  above warns about. A BACKWARD scrub can reverse it, remounting a cold copy
- *  where Fix 1 alone would have had a hidden warm one — accepted deliberately:
- *  a backward scrub across a cut forces a seek on that element either way, and
- *  during a scrub from any distance the "warm" copy was not continuously
- *  mounted to begin with. */
-const ItemBody: React.FC<{
-  blank: readonly Range[];
-  /** The last item-relative frame this item is drawn on itself, or -1 if a
-   *  boundary claims every frame it has. */
-  drawnThrough: number;
-  children: React.ReactNode;
-}> = ({ blank, drawnThrough, children }) => {
-  const frame = useCurrentFrame();
-  const blanked = blank.some(([a, b]) => frame >= a && frame <= b);
-  if (!isPreviewEnvironment()) {
-    if (blanked) return null;
-    // eslint-disable-next-line react/jsx-no-useless-fragment
-    return <>{children}</>;
-  }
-  if (blanked && frame > drawnThrough) return null;
-  return (
-    <div style={blanked ? { display: 'none' } : { position: 'absolute', inset: 0 }}>
-      {children}
-    </div>
-  );
-};
-
-/** The boundary Sequence is `frames + 1` long, not `frames`.
+/** The boundary window (and every plan Sequence emitted for it) is
+ *  `frames + 1` long, not `frames`.
  *
  *  The transition's progress runs 0..1 INCLUSIVE, and progress 1 is a real
- *  frame that something has to draw. Before Task 1.3 that frame was drawn by
- *  the entering wrapper with its progress clamped to 1; keeping it inside the
- *  boundary is what reproduces those pixels. It costs nothing at the other end
- *  of a cut, because the outgoing clip's own range has expired by then and its
- *  re-based Sequence renders nothing — exactly as its real Sequence did. */
+ *  frame something has to draw — `VideoTrackHost` still evaluates the plan at
+ *  local frame `b.frames` (design §1.2), so the Sequences carrying its plates
+ *  and edge plates have to still be MOUNTED there. It costs nothing at the
+ *  other end of a cut, because the outgoing clip's own Sequence has already
+ *  ended by then. */
 const BOUNDARY_TAIL = 1;
-
-/** TASK R1 — FIX 2, PREVIEW-GATED. The boundary's re-based `from`/`to` copies
- *  (see `rebased()` below) mount fresh at the boundary Sequence's own first
- *  frame — cold, with no chance to fetch or seek before that frame is due to
- *  paint. Remotion's `premountFor` mounts a Sequence's subtree early, hidden,
- *  and PROPAGATES that "premounting" state into every nested Sequence
- *  (including a `layout="none"` one, which cannot take `premountFor` itself —
- *  its type is `{layout:'none'}`, which the `AbsoluteFillLayout` variant
- *  carrying `premountFor` is not a member of; verified against this repo's
- *  pinned `remotion@4.0.498`, `Sequence.d.ts`). So this is applied to the
- *  boundary's OWN Sequence, one level up from `rebased()` — its two re-based
- *  children inherit the premount for free, exactly the mechanism `<Video>`/
- *  `<OffthreadVideo>` rely on to preload during a premount window.
- *
- *  ONE SECOND (fps frames): Remotion's own eventual default for an
- *  unspecified `premountFor` once `ENABLE_V5_BREAKING_CHANGES` ships (see
- *  `use-premounting.js`: `premountFor ?? fps`) — borrowed here rather than
- *  invented, since this repo does not carry that flag yet. */
-const PREVIEW_BOUNDARY_PREMOUNT_FRAMES = (fps: number): number => fps;
 
 /** One boundary between two clips (or between a clip and the edge of the reel). */
 interface Boundary {
@@ -279,10 +131,6 @@ export function buildVideoNodes(
   const brandKinds = opts.transitions ? new Set(Object.keys(opts.transitions)) : undefined;
   const layout = computeVideoLayout(items, opts.fps, { brandKinds });
   const dims = { width: opts.width, height: opts.height, palette: opts.palette, transitions: opts.transitions };
-  const nodeDims = {
-    width: opts.width, height: opts.height, fps: opts.fps,
-    palette: opts.palette, background: opts.background,
-  };
 
   const drawn = (i: number) => i >= 0 && i < items.length && layout[i].seqDuration > 0;
   const content = (i: number) =>
@@ -324,25 +172,22 @@ export function buildVideoNodes(
     }
   });
 
-  // ---- which ARM each boundary takes (Phase 5 Task 1.2) ---------------------
+  // ---- resolve each boundary's node, once ------------------------------------
   //
-  // Resolved ONCE per boundary here rather than inline at the JSX site, because
-  // the answer decides the SHAPE of what is emitted, not just what a component
-  // does with it. `transitionNodeFor` is memoized (see its docblock), so the
-  // composite arm receives the exact same node reference it received when this
-  // call lived in the JSX — no new element type, no remount.
+  // `transitionNodeFor` is memoized (see its docblock), so this receives the
+  // exact same node reference across renders when a boundary's authored
+  // config is unchanged — no new element type, no remount.
   //
-  // `typeof node.plan === 'function'`, NOT `'plan' in node`: `plan?: never` is
-  // OPTIONAL, so `{ composite: X, plan: undefined }` — a plausible shape for a
-  // spread-built node — has the KEY without a callable value, and `in` would
-  // route it down the plan path and render nothing. Same discriminant as
-  // `isTransitionNode` and `AtCutTransition`.
-  const nodeFor = new Map<string, TransitionNode | null>();
+  // A boundary whose kind resolves to NO node (an unrecognised brand kind,
+  // already warned by `resolveTransition`) contributes nothing further: no
+  // `PlanBoundary`, no shell styling, no plates. The items either side just
+  // draw through their own Sequences uninterrupted — the same picture a hard
+  // cut always was, since `computeVideoLayout`'s handle-borrowing overlap
+  // does not depend on a boundary rendering anything.
   const planned = new Map<string, PlanBoundary>();
   for (const b of boundaries) {
-    const node = transitionNodeFor(b.record, dims);
-    nodeFor.set(b.key, node);
-    if (typeof node?.plan !== 'function') continue;
+    const node: TransitionNode | null = transitionNodeFor(b.record, dims);
+    if (!node) continue;
     const props: PlanBoundary['props'] = {
       from: handleFor(b.fromIndex, b, layout),
       to: handleFor(b.toIndex, b, layout),
@@ -368,45 +213,15 @@ export function buildVideoNodes(
   }
   const isPlanned = (b: Boundary) => planned.has(b.key);
 
-  // Every frame a boundary draws an item on is a frame that item's own Sequence
-  // must NOT draw itself on.
-  //
-  // PLAN BOUNDARIES DO NOT BLANK, and that is the whole point of them: the
-  // clip stays mounted and drawn under its own Sequence for the entire window,
-  // and the node styles THAT mount instead of instantiating a second copy. So
-  // the blanking map — and `lastDrawnFrame`, which is derived from it — is
-  // built from the COMPOSITE boundaries alone.
-  //
-  // `claimed` is the same map built over EVERY boundary, plan or composite. It
-  // is what the overlapping-boundaries diagnostic below reads, so that
-  // diagnostic keeps seeing the whole timeline: two overlapping windows are a
-  // pathology on either arm (on the composite arm the clip is composited
-  // twice; on the plan arm one item's two shells are styled by two different
-  // live nodes at once, compounding). Today every boundary is composite and
-  // the two maps are identical.
-  const blanked = new Map<number, Range[]>();
-  const claimed = new Map<number, Range[]>();
-  const claim = (target: Map<number, Range[]>, i: number | null, b: Boundary) => {
-    if (i === null) return;
-    const rel = b.start - layout[i].seqFrom;
-    const list = target.get(i) ?? [];
-    list.push([rel, rel + b.frames] as const);
-    target.set(i, list);
-  };
-  for (const b of boundaries) {
-    claim(claimed, b.fromIndex, b);
-    claim(claimed, b.toIndex, b);
-    if (isPlanned(b)) continue;
-    claim(blanked, b.fromIndex, b);
-    claim(blanked, b.toIndex, b);
-  }
-
   // OVERLAPPING BOUNDARIES — a clip shorter than its own in+out transition
-  // windows is claimed by two boundaries at once, so it is composited TWICE on
-  // the frames they share. The one-sided model had its own pathology here (both
-  // wrappers mid-progress over one Sequence); this one shows up as a double
-  // image, which is a mystery unless something says so. This is a DIAGNOSTIC,
+  // windows is claimed by two boundaries at once, so a node styling it is
+  // handed two different live ops on the same frames. This is a DIAGNOSTIC,
   // not a guard: it never changes what renders.
+  //
+  // Built over EVERY boundary in `boundaries`, whether or not its kind
+  // resolved to a node — the pathology is about AUTHORED TIMING (two windows
+  // overlapping a clip shorter than either), which exists independently of
+  // whether anything ends up rendering for them.
   //
   // TASK 1.4 LOOKED AT IT AND LEFT IT A DIAGNOSTIC, deliberately. 1.3 expected
   // alignment to fix it in passing; it does not. Alignment moves a window
@@ -422,6 +237,18 @@ export function buildVideoNodes(
   //
   // warnOnce because buildVideoNodes runs on every frame of every render (see
   // warn-once.ts), and the message is a thunk for the same reason.
+  const claimed = new Map<number, Range[]>();
+  const claim = (i: number | null, b: Boundary) => {
+    if (i === null) return;
+    const rel = b.start - layout[i].seqFrom;
+    const list = claimed.get(i) ?? [];
+    list.push([rel, rel + b.frames] as const);
+    claimed.set(i, list);
+  };
+  for (const b of boundaries) {
+    claim(b.fromIndex, b);
+    claim(b.toIndex, b);
+  }
   for (const [i, ranges] of claimed) {
     for (let a = 0; a < ranges.length; a += 1) {
       for (let b = a + 1; b < ranges.length; b += 1) {
@@ -436,51 +263,14 @@ export function buildVideoNodes(
     }
   }
 
-  // TASK R2 — the last frame each item DRAWS ITSELF on, i.e. the last frame of
-  // its own Sequence that no boundary has claimed (-1 when every frame it has
-  // is claimed). `ItemBody` needs it to tell "hidden, and coming back" from
-  // "hidden, and never coming back" — see its docblock for why the difference
-  // is a whole media element per cut.
-  //
-  // Walked by JUMPING to just before each covering range rather than
-  // decrementing frame by frame: this runs on every frame of every render (via
-  // buildVideoNodes), and a long item wholly claimed by boundaries would
-  // otherwise cost one step per frame of its duration. Ranges are few (one per
-  // boundary touching the item), so this is O(ranges²) at worst.
-  const lastDrawnFrame = (i: number): number => {
-    const ranges = blanked.get(i) ?? [];
-    let last = layout[i].seqDuration - 1;
-    for (;;) {
-      const covering = ranges.find(([lo, hi]) => last >= lo && last <= hi);
-      if (!covering) return last;
-      last = covering[0] - 1;
-      if (last < 0) return -1;
-    }
-  };
-
-  /** An item's content re-based into the boundary's coordinates. `layout="none"`
-   *  because this Sequence exists only to carry a time origin and a range — it
-   *  is not a layer, and adding one would change what a transition composites
-   *  against. */
-  const rebased = (i: number, boundaryStart: number) => (
-    <Sequence
-      from={layout[i].seqFrom - boundaryStart}
-      durationInFrames={layout[i].seqDuration}
-      layout="none"
-    >
-      {content(i)}
-    </Sequence>
-  );
-
-  // A plan boundary's plates and edge plates, as REAL TIMELINE SIBLINGS
-  // spanning the window plus its progress-1 frame (the same `+1` the composite
-  // arm spells `BOUNDARY_TAIL`, for the same reason).
-  //
-  // Emitted BETWEEN the two item Sequences — after the `from` side, before the
-  // `to` side — which is what makes `z: 'between'` expressible with no
-  // `z-index` at all. `under` and `over` are not reachable by tree position
-  // from one insertion point and carry an explicit `z-index` instead (see THE
-  // STACKING RULE in ./video-track-plan.tsx).
+  /** A plan boundary's plates and edge plates, as REAL TIMELINE SIBLINGS
+   *  spanning the window plus its progress-1 frame.
+   *
+   *  Emitted BETWEEN the two item Sequences — after the `from` side, before the
+   *  `to` side — which is what makes `z: 'between'` expressible with no
+   *  `z-index` at all. `under` and `over` are not reachable by tree position
+   *  from one insertion point and carry an explicit `z-index` instead (see THE
+   *  STACKING RULE in ./video-track-plan.tsx). */
   const planSequence = (b: Boundary, suffix: string, body: React.ReactNode) => (
     <Sequence
       key={`${b.key}--${suffix}`}
@@ -495,8 +285,9 @@ export function buildVideoNodes(
   /** The missing side of an edge boundary, materialised. The node's own
    *  `from`/`to` op is applied to it through the SAME shell an item gets, which
    *  is what lets a node written for two clips work unchanged at a reel edge —
-   *  `edgeInput`'s idea (Phase 4 Task 2.2), promoted from something the node
-   *  instantiates to something the timeline holds. */
+   *  `edgeInput`'s idea (Phase 4 Task 2.2, since retired — see edge-plate.tsx),
+   *  promoted from something the node instantiates to something the timeline
+   *  holds. */
   const edge = (b: Boundary, side: 'from' | 'to') =>
     planSequence(
       b,
@@ -521,41 +312,18 @@ export function buildVideoNodes(
       // boundary AFTER this item, where the item is the `from`), INNER = enter
       // (the boundary BEFORE it, where it is the `to`). Mounted for the item's
       // whole life whether or not either boundary is live, and structurally
-      // constant: they change `style` only. `boundaryKey === null` is the inert
-      // case — which, until the first kind migrates, is every shell of every
-      // item in every reel.
+      // constant: they change `style` only. `boundaryKey === null` is the
+      // inert case — a boundary with no live plan on this side, or none at
+      // all.
       const exitOf = boundaries.find((b) => isPlanned(b) && b.fromIndex === i);
       const enterOf = boundaries.find((b) => isPlanned(b) && b.toIndex === i);
       nodes.push(
         <Sequence key={item.id} from={entry.seqFrom} durationInFrames={entry.seqDuration} name={item.id}>
           <LayerShell boundaryKey={exitOf?.key ?? null} side="from">
             <LayerShell boundaryKey={enterOf?.key ?? null} side="to">
-              <ItemBody blank={blanked.get(i) ?? []} drawnThrough={lastDrawnFrame(i)}>{content(i)}</ItemBody>
+              {content(i)}
             </LayerShell>
           </LayerShell>
-        </Sequence>,
-      );
-    }
-    // A COMPOSITE boundary is emitted right after the item that owns it, so the
-    // painting order across a cut is unchanged: the incoming clip's boundary
-    // sits above the outgoing clip's own Sequence, as its Sequence used to.
-    for (const b of boundaries.filter((x) => x.owner === i)) {
-      if (isPlanned(b)) continue;
-      nodes.push(
-        <Sequence
-          key={b.key}
-          from={b.start}
-          durationInFrames={b.frames + BOUNDARY_TAIL}
-          name={`${b.record.kind} @ ${item.id}`}
-          {...(isPreviewEnvironment() ? { premountFor: PREVIEW_BOUNDARY_PREMOUNT_FRAMES(opts.fps) } : {})}
-        >
-          <AtCutTransition
-            node={nodeFor.get(b.key) ?? null}
-            from={b.fromIndex === null ? null : rebased(b.fromIndex, b.start)}
-            to={b.toIndex === null ? null : rebased(b.toIndex, b.start)}
-            frames={b.frames}
-            dims={nodeDims}
-          />
         </Sequence>,
       );
     }
@@ -572,32 +340,6 @@ export function buildVideoNodes(
   // unchanged (`React.ReactNode[]`) because 12 hand-rolled call sites across
   // the two brand repos depend on it, and returning a bare element instead of
   // an array would break every one of them.
-  //
-  // `isolate` IS CONDITIONAL, AND THE DESIGN SAYS "UNCONDITIONALLY". This is a
-  // deliberate, measured deviation, recorded here because it is the kind of
-  // thing that reads like an oversight:
-  //
-  //   `isolation: 'isolate'` creates a stacking context, which is a BLENDING
-  //   GROUP boundary. Applied unconditionally it changes what a `mixBlendMode`
-  //   inside the video track blends against — today, the composition
-  //   background beneath the track; with it, only the track's own content.
-  //   That is not hypothetical: measured on this tree, `npm run
-  //   pixel-gate:strict` over the blend-using kinds reported real PIXEL DRIFT
-  //   (whip-pan and pixelate cells, max 8x8 cell delta 5) with the wrapper
-  //   added and nothing else changed — see the Task 1.2 report for the numbers.
-  //   Since this task migrates ZERO kinds and its acceptance criterion is that
-  //   all 300 goldens stay byte-identical, an unconditional isolate would fail
-  //   the one instrument that can prove the assembly is neutral.
-  //
-  //   The property the design actually argues for is preserved EXACTLY: it
-  //   warns against a stacking context that appears and disappears BETWEEN
-  //   FRAMES ("in-window vs out-of-window"), because that makes one reel blend
-  //   two different ways at two different times. This flag is derived from the
-  //   reel's CONFIG — does any boundary resolve to a plan? — and is therefore
-  //   constant across every frame of a given composition. What it does couple
-  //   is a reel's blending to whether it contains a plan kind AT ALL, which
-  //   Stage 2 must adjudicate when the first kind migrates and its goldens move
-  //   for that reason.
   return [
     <VideoTrackHost key="video-track" boundaries={[...planned.values()]} isolate={planned.size > 0}>
       {nodes}

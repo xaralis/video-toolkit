@@ -185,9 +185,12 @@ function pickPost(post: React.CSSProperties): React.CSSProperties {
   return out;
 }
 
-/** Progress across a boundary, clamped — the SAME arithmetic (and the same
- *  clamp, for the same reason) as `AtCutTransition`'s: a node must never clamp,
- *  and several presentations rely on never seeing a value outside [0,1]. */
+/** Progress across a boundary, clamped — a node must never clamp, and several
+ *  presentations rely on never seeing a value outside [0,1]. (PHASE 5 TASK
+ *  5: this used to say "the SAME arithmetic as `AtCutTransition`'s" — that
+ *  component, the old `composite`-arm boundary compositor, applied the
+ *  identical clamp for the identical reason; it is deleted, and this is now
+ *  the only place the clamp lives.) */
 export function planProgress(local: number, frames: number): number {
   return frames > 0 ? Math.max(0, Math.min(1, local / frames)) : 1;
 }

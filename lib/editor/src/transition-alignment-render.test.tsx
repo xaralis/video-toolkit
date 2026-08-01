@@ -44,18 +44,27 @@ vi.mock('remotion', async () => {
 
 import { buildVideoNodes } from '@video-toolkit/lib/render/video-track';
 import { resetWarnOnce } from '@video-toolkit/lib/render/warn-once';
-import type { TransitionNodeProps, TransitionRegistry } from '@video-toolkit/lib/theming/transitions';
+import type { TransitionComposite, TransitionPlanProps, TransitionRegistry } from '@video-toolkit/lib/theming/transitions';
 import type { VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
-/** Every progress value the node was called with on the drawn frame. */
-const calls: number[] = [];
+// PHASE 5 TASK 5 — `{ composite: SpyComposite }` (a JSX component receiving
+// `progress` as a prop, called once per live frame) is replaced with
+// `{ plan: SpyPlan }`, a plain function. Every `(progress, frame)` pair the
+// node was called with — not just `progress` alone — because `plan` is now
+// ALSO sampled once per `buildVideoNodes` call regardless of whether the
+// boundary is live (`wrapFor` in `lib/render/video-track.tsx`, learning
+// whether either side declares a `wrap`), with the deliberately-inconsistent
+// marker pair `{ progress: 0, frame: -1 }`. `progressAt` below filters that
+// sample out, the same way `single-mount-assembly.test.tsx` does, so "has the
+// transition begun" still means a genuine LIVE call, not the wrap probe.
+const calls: Array<{ progress: number; frame: number }> = [];
 
-const SpyComposite: React.FC<TransitionNodeProps> = ({ progress }) => {
-  calls.push(progress);
-  return <div data-testid="boundary" />;
+const SpyPlan = (p: TransitionPlanProps): TransitionComposite => {
+  calls.push({ progress: p.progress, frame: p.frame });
+  return {};
 };
 
-const registry: TransitionRegistry = { spy: { renderer: () => ({ composite: SpyComposite }) } };
+const registry: TransitionRegistry = { spy: { renderer: () => ({ plan: SpyPlan }) } };
 
 const clip = (id: string, startMs: number, endMs: number, extra: Record<string, unknown> = {}): VideoItem =>
   ({ id, kind: 'clip', startMs, endMs, source: `${id}.mp4`, sourceInMs: 0, sourceOutMs: endMs - startMs, ...extra }) as VideoItem;
@@ -84,7 +93,8 @@ function progressAt(items: VideoItem[], frame: number): number | null {
       })}
     </>,
   );
-  return calls.length === 0 ? null : calls[0];
+  const live = calls.filter((c) => c.frame !== -1);
+  return live.length === 0 ? null : live[0].progress;
 }
 
 beforeEach(() => {

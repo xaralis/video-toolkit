@@ -54,7 +54,6 @@ export {
 export type {
   AnyPresentation,
   TransitionNode,
-  TransitionNodeProps,
   ResolvedTransition,
   TransitionRenderProps,
   TransitionRenderer,

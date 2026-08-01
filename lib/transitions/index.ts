@@ -25,10 +25,12 @@
  */
 
 // The reel's leading/trailing edge, as a picture a two-input node can
-// composite against (Phase 4 Task 2.2). Shared by core's lifter
-// (lib/render/at-cut-transitions.tsx) and by the native nodes under
-// ./presentations, and available to a brand writing its own node.
-export { EdgePlate, edgeInput } from './edge-plate';
+// composite against (Phase 4 Task 2.2). `EdgePlate` is a timeline sibling
+// materialised by `video-track.tsx`'s `edge()`, reached through the same
+// `LayerShell` a real clip is. `edgeInput` (the `composite`-arm helper that
+// used to resolve a nullable React-subtree input to this plate) is deleted —
+// Phase 5 Task 5, see `edge-plate.tsx`'s own note.
+export { EdgePlate } from './edge-plate';
 
 // Custom transitions
 export { glitch } from './presentations/glitch';

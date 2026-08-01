@@ -57,7 +57,7 @@ import {
   isCut,
 } from '@video-toolkit/lib/reel-config-base/transition-schema';
 import type { TransitionKind } from '@video-toolkit/lib/reel-config-base/transition-schema';
-import type { TransitionNode, TransitionNodeProps } from '@video-toolkit/lib/render/at-cut-transitions';
+import type { TransitionNode } from '@video-toolkit/lib/render/at-cut-transitions';
 import {
   TRANSITIONS,
   transitionMap,
@@ -98,8 +98,18 @@ describe('the gallery covers the whole catalog', () => {
 // is supposed to throw for it.
 describe('the gallery table is DERIVED, not listed', () => {
   const FAKE = 'probe-only-kind' as TransitionKind;
+  // PHASE 5 TASK 5 — `{ composite }` (a JSX component receiving `{from, to}`
+  // as props) is replaced with `{ plan }`, a plain function returning a
+  // `TransitionComposite`. The marker div moves onto a media-free `layers`
+  // entry (a `PlateLayer`, mounted only while the boundary is live) rather
+  // than a JSX composite — the closest `plan`-arm equivalent of "render
+  // something identifiable", and still proves the SAME thing: that the render
+  // path resolved THIS fixture's node through `dimsWithFake.transitions`, not
+  // some other one.
   const fakeNode: TransitionNode = {
-    composite: (_props: TransitionNodeProps) => <div data-testid="fake-transition" />,
+    plan: () => ({
+      layers: [{ key: 'fake', z: 'over', style: {}, content: <div data-testid="fake-transition" /> }],
+    }),
   };
   const dimsWithFake = {
     ...GALLERY_DIMS,

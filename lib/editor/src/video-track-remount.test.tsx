@@ -2,30 +2,48 @@
 //
 // Diagnosed in
 // .superpowers/sdd/2026-07-26-phase4-node-contract/editor-transition-regression.md:
-// Phase 4 Task 1.3 (`8ed0c13`) renders an item's content at a DIFFERENT
-// POSITION in the React tree for the frames a boundary owns (once under the
+// Phase 4 Task 1.3 (`8ed0c13`) rendered an item's content at a DIFFERENT
+// POSITION in the React tree for the frames a boundary owned (once under the
 // item's own Sequence, once re-based inside the boundary's compositor).
-// React reconciles by position, so a footage `<video>` is destroyed and
+// React reconciles by position, so a footage `<video>` was destroyed and
 // recreated TWICE per boundary — once on the OPENING edge (the boundary's
-// re-based copies mount cold) and once on the CLOSING edge (the item's own
-// copy was unmounted for the whole window and has to mount fresh the instant
-// the window closes). In the editor's `<Player>` that is a real re-fetch +
-// re-seek: a background-colour flash and a stall. At render time frames are
-// extracted independently of any DOM, so it is invisible there — which is why
-// the fixes below are PREVIEW-GATED (`isPreviewEnvironment`,
-// lib/render/preview-environment.ts) rather than universal.
+// re-based copies mounted cold) and once on the CLOSING edge (the item's own
+// copy was unmounted for the whole window and had to mount fresh the instant
+// the window closed). In the editor's `<Player>` that was a real re-fetch +
+// re-seek: a background-colour flash and a stall.
 //
-// GEOMETRY, straight from the diagnosis: two 3s clips, a 20-frame `fade` on
-// the cut, 30fps — boundary window is composition frames 80-100 inclusive
-// (BOUNDARY_TAIL makes it `frames + 1` = 21 long).
+// PHASE 5 TASK 5 — THE FIX THIS FILE ONCE PINNED IS DELETED, AND SO IS THE
+// DEFECT IT FIXED. R1's two PREVIEW-GATED fixes (`ItemBody`'s blanking,
+// `isPreviewEnvironment()`, the boundary's `premountFor`) existed only
+// because a `composite`-arm node received its inputs as SUBTREES it
+// instantiated itself, which is what forced the re-based copy in the first
+// place. Every catalog kind is `plan` now (Stages 2-4), and `TransitionNode`
+// no longer HAS a `.composite` arm to build one (`lib/theming/
+// transitions.ts`) — so there is no remaining shape that could reproduce the
+// diagnosed defect, and no fixture this file could build to keep pinning the
+// fix for it. `lib/render/preview-environment.ts` is deleted with it. The
+// hand-written tests that measured the fix directly (Fix 1 "closing edge",
+// Fix 2 "opening edge", the preview-gate parity statement, Task R2's
+// mount-count floors, and the Task 1.2 shell-depth parity check) are deleted
+// below, each with a note on why it could no longer fail. What survives is
+// this file's OTHER job: the derived catalog-wide identity ratchet
+// (`§ THE DERIVED IDENTITY RATCHET`, further down), now recast as a pure
+// "every catalog kind persists" pin, plus two positive/negative capability
+// proofs that keep it honest.
 //
-// The Sequence mock below is `transition-alignment-render.test.tsx`'s
-// frame-gating + time-rebasing mock, EXTENDED to actually implement
-// `premountFor` (mount early, hidden, inheriting into nested Sequences via a
-// Premounting context) — real Remotion propagates premounting to children
-// exactly this way (see `Sequence.js`'s `premounting = parentSequence
-// premounting || …`), so this is not a stand-in shape, it is the same
-// mechanism at the one property these tests read.
+// The Sequence mock below still implements `premountFor` (mount early,
+// hidden, inheriting into nested Sequences via a Premounting context) even
+// though nothing under the `plan` arm sets it — `video-track.tsx`'s plan/plate
+// Sequences never do — because the mock is shared with, and kept faithful to,
+// `transition-alignment-render.test.tsx`'s own frame-gating + time-rebasing
+// mock, which other suites still rely on. `clock.preview`/`getRemotionEnvironment`
+// likewise no longer gate any production branch (there is nothing left in
+// `lib/render` that calls `isPreviewEnvironment` — it is deleted) but are left
+// wired for the same reason: several tests below still set `clock.preview`
+// out of habit from before this task, and toggling an inert flag is
+// harmless, whereas ripping it out of every call site is churn this task's
+// mandate (delete what stopped being able to fail; don't rewrite what still
+// passes for an unrelated reason) does not ask for.
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
@@ -85,53 +103,42 @@ vi.mock('remotion', async () => {
 
 import { buildVideoNodes, computeVideoLayout } from '@video-toolkit/lib/render/video-track';
 import type { VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
-import type { TransitionNodeProps, TransitionRegistry } from '@video-toolkit/lib/theming/transitions';
+import type { TransitionRegistry } from '@video-toolkit/lib/theming/transitions';
 
 const clip = (id: string, startMs: number, endMs: number, extra: Record<string, unknown> = {}): VideoItem =>
   ({ id, kind: 'clip', startMs, endMs, source: `${id}.mp4`, sourceInMs: 0, sourceOutMs: endMs - startMs, ...extra }) as VideoItem;
-
-// PHASE 5 TASK 4 — `checkerboard` (this fixture's kind since Task 3) migrates
-// to the `plan` arm this task, and it was the catalog's LAST composite kind
-// (Task 3's own comment on this fixture named the coming collision
-// explicitly: "the NEXT migration (Stage 4, `checkerboard` itself) collides
-// with this fixture directly and has to introduce a test-only composite node
-// instead of substituting a real catalog kind, because none will be left").
-// That collision has now happened. `COMPOSITE_PROBE` is that test-only node —
-// the SIMPLEST possible composite (`({from, to}) => <>{from}{to}</>`, drawing
-// both inputs once each, unconditionally) — built the same way a brand
-// registration would build one, via `TransitionRegistry`. Every hand-written
-// test below exercises the GENERIC composite-arm assembly (the boundary
-// Sequence, `rebased()` copies, `ItemBody`'s blanking, the R1/R2 mount-count
-// floors) — none of it depends on what a composite draws internally beyond
-// "both inputs, once each", so this substitution changes nothing about what
-// these tests pin.
-const COMPOSITE_PROBE: TransitionRegistry = {
-  'composite-probe': {
+// PHASE 5 TASK 5 — the fixture below is `plan`-arm only. The `composite` arm
+// this file used to pin (a boundary Sequence holding a node that RECEIVED its
+// two inputs as subtrees, `rebased()` copies, `ItemBody`'s blanking of the
+// item's own Sequence, `isPreviewEnvironment()`-gated premounting) is
+// deleted along with `TransitionNode`'s `.composite` arm
+// (`lib/theming/transitions.ts`) — there is no longer any shape a test-only
+// registration could build to exercise it, so every hand-written test that
+// used to pin it is deleted too (Fix 1 "closing edge", Fix 2 "opening edge",
+// the preview-gate parity statement, Task R2's mount-count floors, and the
+// Task 1.2 "shells do not disturb the composite arm" shell-depth assertion —
+// each asserted a mount count or a premount timing that only the deleted
+// boundary-Sequence/`ItemBody` assembly could ever produce; none of them can
+// be adapted, because the mechanism they measured no longer exists to
+// measure). `PLAN_PROBE` is this file's plan-arm equivalent of the old
+// `COMPOSITE_PROBE` — the simplest possible plan, styling both shells by
+// opacity — built the same way a Stage 2+ brand registration would build one.
+const PLAN_PROBE: TransitionRegistry = {
+  'plan-probe': {
     renderer: () => ({
-      composite: ({ from, to }: TransitionNodeProps) => <>{from}{to}</>,
+      plan: ({ progress }: { progress: number }) => ({
+        from: { style: { opacity: 1 - progress } },
+        to: { style: { opacity: progress } },
+      }),
     }),
   },
 };
 
-// a: 0-3000ms with a 20-frame composite-arm transition out. b: 3000-6000ms.
+// a: 0-3000ms with a 20-frame plan-arm transition out. b: 3000-6000ms.
 // 30fps -> cut at frame 90, the default (center) alignment gives a window of
 // [80, 100].
-//
-// PHASE 5 TASK 2.1 changed this fixture's KIND from `fade` to `burn`; TASK 2.3
-// changed it to `scanline-glitch`; TASK 3 changed it to `checkerboard`; TASK 4
-// changes it a fourth and LAST time, from `checkerboard` to the test-only
-// `composite-probe` (see `COMPOSITE_PROBE` above) — every prior swap moved to
-// the last remaining real composite catalog kind; this one has none left to
-// move to, exactly as Task 3's own comment on this fixture predicted. Every
-// hand-written test below (Fix 1/2/3, R2, and the Task 1.2 shell-parity test)
-// exercises `composite`-arm mechanics specifically: the boundary Sequence,
-// `rebased()` copies, `ItemBody`'s blanking, the R1/R2 mount-count floors —
-// none of it depends on `checkerboard`'s (or any real kind's) own picture, so
-// a test-only composite pins the identical assembly. The DERIVED section
-// below (Task 1.3) still names catalog kinds directly where it means to —
-// this substitution is scoped to the hand-written fixture alone.
 const reel = (): VideoItem[] => [
-  clip('a', 0, 3000, { transitionOut: { kind: 'composite-probe', frames: 20 } }),
+  clip('a', 0, 3000, { transitionOut: { kind: 'plan-probe', frames: 20 } }),
   clip('b', 3000, 6000),
 ];
 
@@ -143,7 +150,7 @@ const tree = () => (
       height: 960,
       fps: 30,
       palette: undefined,
-      transitions: COMPOSITE_PROBE,
+      transitions: PLAN_PROBE,
     })}
   </>
 );
@@ -152,162 +159,16 @@ beforeEach(() => {
   clock.preview = false;
 });
 
-describe('closing edge — item b keeps its own DOM identity across the boundary (Fix 1)', () => {
-  it('does not remount b when the boundary hands its frames back at frame 101', () => {
-    clock.preview = true;
-    clock.frame = 80;
-    const { container, rerender } = render(tree());
-    const atOpen = container.querySelectorAll('[data-testid="vid-b"]');
-    // With Fix 1, b's own Sequence keeps its child mounted (hidden) through
-    // the whole window, alongside the boundary's own visible copy: TWO nodes
-    // exist simultaneously. The FIRST in document order is b's own — item
-    // Sequences are pushed into buildVideoNodes' array before the boundary
-    // that owns them (see video-track.tsx, `items.forEach`).
-    expect(atOpen.length).toBe(2);
-    const ownAtOpen = atOpen[0];
-
-    clock.frame = 100;
-    rerender(tree());
-    const ownAtWindowEnd = container.querySelectorAll('[data-testid="vid-b"]')[0];
-    expect(ownAtWindowEnd).toBe(ownAtOpen);
-
-    clock.frame = 101;
-    rerender(tree());
-    const afterWindow = container.querySelectorAll('[data-testid="vid-b"]');
-    // The boundary has closed: only b's own copy remains.
-    expect(afterWindow.length).toBe(1);
-    expect(afterWindow[0]).toBe(ownAtOpen);
-  });
-});
-
-describe('opening edge — the boundary premounts before its window opens (Fix 2)', () => {
-  it('mounts the boundary (and its re-based copies) before frame 80, and keeps that identity once the window opens', () => {
-    clock.preview = true;
-    clock.frame = 65; // 15 frames before the window opens
-    const { container, rerender } = render(tree());
-    const premounted = container.querySelectorAll('[data-testid="vid-b"]');
-    expect(premounted.length).toBe(1); // the boundary's premounted, hidden copy
-    const premountedNode = premounted[0];
-
-    clock.frame = 80;
-    rerender(tree());
-    const atOpen = container.querySelectorAll('[data-testid="vid-b"]');
-    // Fix 1 also applies here (preview), so b's own hidden copy joins in —
-    // the boundary's copy (now visible) is what must have SURVIVED from the
-    // premount frame with no new mount.
-    expect(atOpen).toContain(premountedNode);
-  });
-});
-
-describe('preview gate — the render path takes neither fix (parity statement)', () => {
-  it('Fix 1: ItemBody still unmounts on blanked frames outside preview', () => {
-    clock.preview = false;
-    clock.frame = 85; // inside the window
-    const { container } = render(tree());
-    // No hidden own-copy of b coexisting with the boundary's copy — exactly
-    // one node, the boundary's, as before Task R1.
-    expect(container.querySelectorAll('[data-testid="vid-b"]').length).toBe(1);
-  });
-
-  it('Fix 2: the boundary does not premount outside preview', () => {
-    clock.preview = false;
-    clock.frame = 65; // 15 frames before the window opens
-    const { container } = render(tree());
-    expect(container.querySelectorAll('[data-testid="vid-b"]').length).toBe(0);
-  });
-});
-
-// TASK R2 — THE RESIDUAL COST, PINNED. R1 removed every remount of a SHOWN
-// media element, but left up to FOUR alive around one cut in preview (item a's
-// own copy, item b's own copy, and the boundary's two re-based copies), two of
-// them decoding the same frames of the same file at the same time. Nothing
-// asserted that count, so nothing could tell an improvement from a regression.
-//
-// Three is the FLOOR under Task 1.3's contract, and the argument is structural,
-// not empirical: a node RENDERS its two inputs as children, so an input that
-// outlives the boundary window has to exist inside the node AND in its own
-// Sequence. The one copy that is neither of those — the OUTGOING clip's own
-// copy, hidden for a window that runs to the end of its Sequence and therefore
-// never shown again — is what Task R2 releases.
-describe('media elements alive around a footage cut (Task R2)', () => {
-  it('preview: exactly three — the incoming clip keeps its own copy, the outgoing clip does not', () => {
-    clock.preview = true;
-    clock.frame = 85; // mid-window
-    const { container } = render(tree());
-    // a: only the boundary's re-based copy. Its own copy is blanked from frame
-    // 80 to the end of its Sequence (frame 99), so it can never be shown again.
-    expect(container.querySelectorAll('[data-testid="vid-a"]').length).toBe(1);
-    // b: its own copy (hidden, warm, and it IS shown again at frame 101) plus
-    // the boundary's re-based copy.
-    expect(container.querySelectorAll('[data-testid="vid-b"]').length).toBe(2);
-    expect(container.querySelectorAll('video').length).toBe(3);
-  });
-
-  it('render path: exactly two — the boundary\'s own two copies, unchanged since Task 1.3', () => {
-    clock.preview = false;
-    clock.frame = 85;
-    const { container } = render(tree());
-    expect(container.querySelectorAll('[data-testid="vid-a"]').length).toBe(1);
-    expect(container.querySelectorAll('[data-testid="vid-b"]').length).toBe(1);
-    expect(container.querySelectorAll('video').length).toBe(2);
-  });
-
-  it('releases the outgoing clip\'s own copy on the FIRST frame the boundary claims, not one before it', () => {
-    clock.preview = true;
-    clock.frame = 79; // a's last unclaimed frame — it is still DRAWN here
-    const { container, rerender } = render(tree());
-    // a's own (visible) copy + the boundary's premounted re-based one.
-    expect(container.querySelectorAll('[data-testid="vid-a"]').length).toBe(2);
-
-    clock.frame = 80; // the boundary's first frame
-    rerender(tree());
-    expect(container.querySelectorAll('[data-testid="vid-a"]').length).toBe(1);
-  });
-});
-
-// PHASE 5 TASK 1.2 — THE SHELLS ARE INERT HERE, AND THAT IS THE POINT.
-//
-// Every video item is now wrapped in two always-mounted, style-only shells and
-// the whole track in one wrapper (lib/render/video-track-plan.tsx), so that a
-// `plan`-arm boundary has something to style. `composite-probe` (this file's
-// fixture kind, Task 4) is a `composite`-arm node, so this file's geometry,
-// counts and identities above must be UNCHANGED by the shells' arrival —
-// which is what makes them a parity statement for the shells rather than only
-// for R1/R2.
-//
-// The single-mount path's own identity assertions live in
-// `single-mount-assembly.test.tsx`; this file stays the pin for the composite
-// arm, which is what the whole staged migration is measured against.
-describe('Phase 5 Task 1.2 — the shells do not disturb the composite arm', () => {
-  it('wraps the item in two extra divs without changing its DOM identity across the window', () => {
-    clock.preview = true;
-    clock.frame = 80;
-    const { container, rerender } = render(tree());
-    const own = container.querySelectorAll('[data-testid="vid-b"]')[0];
-    // ItemBody's preview wrapper + the two shells = three divs between the
-    // clip and its Sequence. Asserted as a COUNT so a shell silently
-    // disappearing (or a third appearing) is caught here too.
-    let depth = 0;
-    for (let el = own.parentElement; el && el !== container; el = el.parentElement) depth += 1;
-    expect(depth).toBe(4); // 3 wrappers + the track wrapper
-
-    clock.frame = 101;
-    rerender(tree());
-    expect(container.querySelectorAll('[data-testid="vid-b"]')[0]).toBe(own);
-  });
-
-  it('returns ONE node — the always-mounted track wrapper — not one per item', () => {
-    const nodes = buildVideoNodes(reel(), {
-      renderItem: () => null, width: 540, height: 960, fps: 30, palette: undefined,
-      transitions: COMPOSITE_PROBE,
-    });
-    expect(nodes.length).toBe(1);
-  });
-});
-
+// THE AMPLIFIER (Task R1 Fix 3) — a boundary keeps its resolved-node identity
+// across an unrelated re-render, and `buildVideoNodes` still returns exactly
+// ONE always-mounted wrapper node. Neither property is composite/plan
+// specific: `transitionNodeFor`'s LRU cache (`at-cut-transitions.tsx`) and
+// the single-wrapper-array invariant both apply identically to a plan-arm
+// boundary, so this is the same test as before this task, on the `PLAN_PROBE`
+// fixture instead of `COMPOSITE_PROBE`.
 describe('the amplifier — a boundary keeps its node identity across an unrelated re-render (Fix 3)', () => {
   it('does not remount the boundary contents when buildVideoNodes is called again with unchanged config', () => {
-    clock.frame = 85; // inside the window, independent of the preview gate
+    clock.frame = 85; // inside the window
     const { container, rerender } = render(tree());
     const first = Array.from(container.querySelectorAll('[data-testid="vid-a"], [data-testid="vid-b"]'));
     expect(first.length).toBeGreaterThan(0);
@@ -324,6 +185,14 @@ describe('the amplifier — a boundary keeps its node identity across an unrelat
     // that actually pins "no remount happened".
     expect(second.length).toBe(first.length);
     second.forEach((el, i) => expect(el).toBe(first[i]));
+  });
+
+  it('returns ONE node — the always-mounted track wrapper — not one per item', () => {
+    const nodes = buildVideoNodes(reel(), {
+      renderItem: () => null, width: 540, height: 960, fps: 30, palette: undefined,
+      transitions: PLAN_PROBE,
+    });
+    expect(nodes.length).toBe(1);
   });
 });
 
@@ -371,106 +240,40 @@ const RESOLVE_DIMS = { width: 540, height: 960 };
 
 const CATALOG_KINDS = TRANSITION_CATALOG.map((e) => e.kind).filter((k) => !isCut(k));
 
-/** THE PARTITION RULE — a function, not a list, so it re-derives on every run
- *  rather than going stale the way a hand-maintained set of kind names would
- *  (this programme has been bitten by exactly that shape four times in its own
- *  docs, per the task brief). Reads the resolved node through the identical
- *  entry point `buildVideoNodes` uses (`transitionNodeFor`), with no brand
- *  `transitions` registry — this is the CATALOG's own partition, independent
- *  of what any one brand registers.
- *
- *  `getTransitionRecord` — not a cast — is what turns `defaultTransition`'s
- *  loosely-typed `DraftTransition` (`{ kind: string; frames?: number; [key:
- *  string]: unknown }`) into a real `TransitionRecord`: it is the SAME
- *  production function `computeVideoLayout` calls to do exactly this
- *  narrowing (`transition-record.ts`), so reusing it here means the type
- *  guarantee comes from real validation logic, not an `as unknown as` escape
- *  hatch past the type system at the one point the entire partition is
- *  derived from. `DraftTransition`'s index signature makes it a structural
- *  `Record<string, unknown>`, which is the exact alternative
- *  `getTransitionRecord` already accepts — no cast needed at the call site
- *  either. */
-function armOf(kind: string): 'plan' | 'composite' {
-  const record = getTransitionRecord(defaultTransition(kind, { frames: IDENTITY_FRAMES }));
-  const node = transitionNodeFor(record, RESOLVE_DIMS);
-  return typeof node?.plan === 'function' ? 'plan' : 'composite';
-}
-
+/** PHASE 5 TASK 5 — THE PARTITION IS RETIRED, NOT JUST EMPTIED. Tasks 1.3-4
+ *  partitioned `CATALOG_KINDS` into `PLAN_KINDS`/`COMPOSITE_KINDS` by
+ *  `armOf(kind)`, so a kind was covered by the RIGHT bucket the day it
+ *  migrated. `TransitionNode` no longer HAS a `composite` arm to resolve to
+ *  (`lib/theming/transitions.ts`), so `armOf` can only ever answer `'plan'`
+ *  now for anything that resolves at all — the partition itself, not merely
+ *  one side of it, is moot. Kept as `CATALOG_KINDS` alone: every catalog kind
+ *  (`cut` excluded, same reasoning as before — it is the absence of a
+ *  transition, not a kind) must resolve to a working `plan` node, checked
+ *  directly rather than through a bucket that can no longer have two
+ *  members. */
 resetTransitionNodeCache();
-const PLAN_KINDS = CATALOG_KINDS.filter((k) => armOf(k) === 'plan');
-const COMPOSITE_KINDS = CATALOG_KINDS.filter((k) => armOf(k) !== 'plan');
 
-describe('DERIVED — the plan/composite partition over the catalog is pinned', () => {
+describe('DERIVED — every catalog kind resolves to a plan node (the migration\'s own success condition)', () => {
   it('excludes exactly the cut literal — "no transition" is not a transition kind', () => {
     expect.hasAssertions();
     expect(TRANSITION_CATALOG.map((e) => e.kind)).toContain('cut');
     expect(CATALOG_KINDS.length).toBe(TRANSITION_CATALOG.length - 1);
   });
 
-  // THE PIN ITSELF. Deliberately a literal array, not a `.length` count: a
-  // failure here prints the offending kind NAMES, which is what the NEXT
-  // migration needs to see to update this line deliberately, rather than a
-  // bare count telling it only that something moved.
-  //
-  // PHASE 5 TASK 2.1 moved exactly SEVEN catalog kinds across this
-  // partition — `fromRemotionPresentation` → `LayerOp.wrap` for the five
-  // official `@remotion/transitions` presentations, the `fade`/`dissolve`
-  // alias, and `fade-to-color` AT ITS CATALOG DEFAULT: `defaultTransition`
-  // seeds no `color` (only booleans get seeded — `transition-schema.ts`'s
-  // own note), so the record `armOf` builds for it has none, which resolves
-  // through the plain `fade()` exactly like `fade` and `dissolve` do (see
-  // `WRAP_PLAN_KINDS` in `at-cut-transitions.tsx`).
-  //
-  // PHASE 5 TASK 2.2 adds THREE more — `wipe`, `gradient-wipe`, `pixelate` —
-  // by a DIFFERENT mechanism: these are native two-input nodes whose factory
-  // now returns `{ plan }` instead of `{ composite }` directly (no
-  // `WRAP_PLAN_KINDS` entry needed or added for them; a native node is
-  // `isTransitionNode(resolved)` straight out of `resolveTransition`, so
-  // `transitionNodeFor`'s wrap-lift branch never runs for them at all).
-  // `fade-to-color`'s COLOUR route also migrated Task 2.2, but
-  // `defaultTransition('fade-to-color', …)` seeds no colour, so THIS derived
-  // list — built off the catalog DEFAULT — still only ever reaches the
-  // no-colour fallback already counted above; the colour route's own arm is
-  // pinned separately in `at-cut-transitions.test.tsx`.
-  //
-  // PHASE 5 TASK 2.3 adds SIX more — `glitch`, `burn`, `light-leak`,
-  // `whip-pan`, `zoom-through`, `zoom-blur` — by the SAME mechanism as Task
-  // 2.1 (`WRAP_PLAN_KINDS` in `at-cut-transitions.tsx`; none of these six is
-  // a native two-input node). This was Stage 2's last migration: after that
-  // task exactly three catalog kinds remained composite (`rgb-split`,
-  // `scanline-glitch`, `checkerboard`).
-  //
-  // PHASE 5 TASK 3 adds the two re-baseline kinds — `rgb-split` (native
-  // `plan`, `ghosts`) and `scanline-glitch` (native `plan`, `post`) — bringing
-  // the partition to EIGHTEEN. After that task exactly ONE catalog kind
-  // remained composite: `checkerboard` (Stage 4's carve-out).
-  //
-  // PHASE 5 TASK 4 adds `checkerboard` itself — the carve-out (§3 row 20):
-  // its default `squareAnimation: 'fade'` moves onto `LayerOp.wrap` (an SVG
-  // mask, the first NATIVE node to need one), `'scale'`/`'flip'` onto
-  // `ghosts`. Bringing the partition to NINETEEN — the WHOLE catalog. This is
-  // the LAST migration: `COMPOSITE_KINDS` is now EMPTY, which is why the
-  // "DERIVED proof" block just below THIS one exists — a `describe.each([])`
-  // over an empty array runs zero tests, silently, and that emptiness is
-  // exactly the trap the task brief calls out ("a derived assertion over an
-  // empty set passes trivially").
-  //
-  // Order matches `CATALOG_KINDS`' own order (`TRANSITION_CATALOG`'s
-  // declaration order: `dissolve`, `fade`, `fade-to-color`, `glitch`,
-  // `rgb-split`, `scanline-glitch`, `burn`, `light-leak`, `slide`, `flip`,
-  // `whip-pan`, `zoom-through`, `zoom-blur`, `clock-wipe`, `iris`, `wipe`,
-  // `gradient-wipe`, `pixelate`, `checkerboard`), not the brief's prose order.
-  it('is exactly the nineteen Task 2.1+2.2+2.3+3+4 migrated kinds — re-derive; do not carry forward', () => {
+  // THE WHOLE CATALOG RESOLVES TO `plan`. Deliberately checked per kind (not
+  // `.every(...)`, which would print only a boolean on failure): a failure
+  // here names the offending kind directly. `getTransitionRecord` — not a
+  // cast — is the SAME production function `computeVideoLayout` calls to
+  // narrow a `DraftTransition` into a real `TransitionRecord`, so the
+  // guarantee comes from real validation logic, not an escape hatch.
+  it('every catalog kind resolves to a node with a callable `plan`', () => {
     expect.hasAssertions();
-    expect(PLAN_KINDS).toEqual([
-      'dissolve', 'fade', 'fade-to-color', 'glitch', 'rgb-split', 'scanline-glitch', 'burn', 'light-leak',
-      'slide', 'flip', 'whip-pan', 'zoom-through', 'zoom-blur',
-      'clock-wipe', 'iris', 'wipe', 'gradient-wipe', 'pixelate', 'checkerboard',
-    ]);
-    expect(COMPOSITE_KINDS.length).toBe(CATALOG_KINDS.length - PLAN_KINDS.length);
-    // THE WHOLE CATALOG HAS MIGRATED. `COMPOSITE_KINDS` is empty — the
-    // MIGRATION's own success condition, not a gap in this pin.
-    expect(COMPOSITE_KINDS).toEqual([]);
+    for (const kind of CATALOG_KINDS) {
+      const record = getTransitionRecord(defaultTransition(kind, { frames: IDENTITY_FRAMES }));
+      const node = transitionNodeFor(record, RESOLVE_DIMS);
+      expect(node, kind).not.toBeNull();
+      expect(typeof node?.plan, kind).toBe('function');
+    }
   });
 });
 
@@ -544,12 +347,12 @@ function sameElements(a: readonly Element[], b: readonly Element[]): boolean {
  *  `distinct > 1` correctly flags it either way. `rgb-split` migrated to the
  *  `plan` arm at Task 3, where its 4 ghost mounts (2 per side) are a
  *  LEGITIMATE, authored multi-mount (`LayerOp.ghosts`) — this historical
- *  measurement documents what `distinct > 1` catches on the COMPOSITE arm
- *  specifically, not a claim about `rgb-split`'s current arm. `checkerboard`
- *  (Task 4) was the LAST catalog kind this bucket exercised for real;
- *  `COMPOSITE_KINDS` is empty now, and `composite-probe` (the "DERIVED proof"
- *  block below) is what keeps this bucket's own machinery provably capable of
- *  failing, not merely never asked to.
+ *  measurement documents what `distinct > 1` caught on the (now deleted)
+ *  COMPOSITE arm specifically, not a claim about `rgb-split`'s current arm.
+ *  `checkerboard` (Task 4) was the LAST catalog kind that arm ever exercised
+ *  for real; Task 5 deletes the arm itself, and `distinct > 1`'s continued
+ *  ability to catch a real defect is now proven on the PLAN side instead —
+ *  see the unstable-`wrap` proof further down.
  *
  *  `persists` — REVIEW ROUND 2, IMPORTANT 1 REWRITE. The original
  *  formulation ("every reference on the first observed frame survives to
@@ -625,26 +428,16 @@ function sameElements(a: readonly Element[], b: readonly Element[]): boolean {
  *  IS trivially a pass on both metrics (one frame is its own intersection
  *  and its own in-window baseline), which is exactly why `observed` must be
  *  checked before either metric is trusted, every time. `observed`
- *  has PER-ARM floors (see `IDENTITY_OBSERVED_FLOOR_COMPOSITE` /
- *  `_PLAN`), not one shared constant — Review Round 2's "consider, not
- *  require" note: the composite arm's own copy can be released mid-window
- *  (R2's `drawnThrough`) and `wipe` additionally shows only one side per
- *  half, so its floor stays loose (`Math.ceil(frames / 2)`, Review Round 1);
- *  the PLAN arm never blanks at all (`video-track.tsx`'s `blanked` map is
- *  built from composite boundaries only), so its measured minimum on this
- *  fixture is `window.frames + IDENTITY_PAD` exactly (25 of 20+5, the
- *  tightest of the four axes) — a floor roughly 3x tighter than the
- *  composite one is both correct and cheap to state precisely, so it is
- *  stated precisely rather than left at the loose shared constant. */
+ *  had PER-ARM floors before this task (`IDENTITY_OBSERVED_FLOOR_COMPOSITE`,
+ *  now deleted with the composite bucket it measured — the composite arm's
+ *  own copy could be released mid-window, R2's `drawnThrough`, and `wipe`
+ *  additionally showed only one side per half, so ITS floor stayed loose,
+ *  `Math.ceil(frames / 2)`). The PLAN arm never blanks at all
+ *  (`video-track.tsx` has no `blanked` map any more — see its own updated
+ *  doc comment), so its measured minimum on this fixture is
+ *  `window.frames + IDENTITY_PAD` exactly (25 of 20+5, tighter than the
+ *  deleted composite floor was) and is now the ONLY floor this file needs. */
 const IDENTITY_PAD = 5;
-
-/** See `sweepIdentity`'s docblock, "`observed` is the VACUITY GUARD...". A
- *  first draft used this same formula (`Math.ceil(window.frames / 2)`) for
- *  BOTH arms; kept here for the composite bucket specifically because it is
- *  the one arm whose own copy can be released mid-window (R2) and whose
- *  `wipe` axis is measured at 15 of a 20-frame window (5 pre-window PAD +
- *  half the window, `wipe` rendering only one side per half). */
-const IDENTITY_OBSERVED_FLOOR_COMPOSITE = (window: { frames: number }) => Math.ceil(window.frames / 2);
 
 /** The PLAN arm never blanks (`video-track.tsx`: `blanked` is built from
  *  composite boundaries only), so an item is on screen for essentially the
@@ -663,12 +456,11 @@ function sweepIdentity(
   window: { start: number; frames: number },
   registry?: TransitionRegistry,
 ): { distinct: number; persists: boolean; observed: number } {
-  // Preview only — the R1/R2 defect class (and therefore the `plan` arm's
-  // whole reason to exist) is gated on `isPreviewEnvironment()`; outside
-  // preview `ItemBody` returns `null` on every blanked frame regardless of
-  // arm, byte-identical to before Task R1. Sweeping the render-mode axis too
-  // is out of scope for this task, not an oversight — noted explicitly so a
-  // reader doesn't mistake the absence of a `preview` parameter for one.
+  // PHASE 5 TASK 5 — `clock.preview` NO LONGER GATES ANYTHING PRODUCTION-SIDE
+  // (`isPreviewEnvironment` is deleted, and the plan arm was never gated on
+  // it to begin with — Task 1.2's mounts are life-long unconditionally). Set
+  // for continuity with this file's other fixtures, not because it changes
+  // what this sweep observes.
   clock.preview = true;
   const from = Math.max(0, window.start - IDENTITY_PAD);
   const to = window.start + window.frames + IDENTITY_PAD;
@@ -796,48 +588,65 @@ beforeEach(() => {
 // separately, so a broken query fails loudly on ITS OWN assertion rather than
 // being laundered through `distinct`.
 //
-// PHASE 5 TASK 4 — `COMPOSITE_KINDS` IS EMPTY. Every catalog kind has
-// migrated; `describe.each([])` below runs ZERO tests, silently — the exact
-// "a derived assertion over an empty set passes trivially" trap the task
-// brief names as the single most likely place THIS task ships a green suite
-// that means nothing. The block immediately below (`composite-probe`) is
-// what keeps this bucket's own machinery provably capable of catching a real
-// composite-arm remount defect, not merely never asked to — the load-bearing
-// counterpart of the "capable of PASSING" proof `PLAN_KINDS`' own empty run
-// already relies on, one section down.
-describe.each(COMPOSITE_KINDS)('DERIVED — composite-arm "%s" remounts across the crossing (ratchet: RED today)', (kind) => {
-  it.each(casesFor(kind).map((c): [string, IdentityCase] => [c.label, c]))('%s', (_label, c) => {
-    expect.hasAssertions();
-    const { distinct, observed } = sweepIdentity(c.items, c.testid, c.window);
-    expect(observed).toBeGreaterThanOrEqual(IDENTITY_OBSERVED_FLOOR_COMPOSITE(c.window));
-    expect(distinct).toBeGreaterThan(1);
+// PHASE 5 TASK 5 — THE COMPOSITE BUCKET IS DELETED, NOT LEFT EMPTY.
+//
+// Before this task, `COMPOSITE_KINDS` was empty (every catalog kind had
+// migrated) and this section existed to prove the empty `describe.each([])`
+// above it was not silently vacuous: a hand-built `composite-remount-probe`
+// node (`{ composite: ({from,to}) => <>{from}{to}{to}</> }`), registered the
+// same way a brand would, demonstrated `sweepIdentity` still reports
+// `distinct > 1` for a genuine composite-arm defect.
+//
+// `TransitionNode` no longer HAS a `composite` field to build that fixture
+// out of (`lib/theming/transitions.ts`) — `{ composite: someFn }` is a
+// compile error against a `TransitionRegistry`'s `renderer`, not a runtime
+// value this suite could construct and feed to `sweepIdentity` even if it
+// wanted to. So both the `describe.each(COMPOSITE_KINDS)` ratchet (already
+// empty) and its vacuity-guard proof are deleted — not merely emptied — for
+// the same reason `armOf`/`PLAN_KINDS`/`COMPOSITE_KINDS` were deleted above:
+// the shape they measured cannot be expressed any more, at the type level,
+// so there is nothing left for either to test. `IDENTITY_OBSERVED_FLOOR_
+// COMPOSITE` is deleted with them (its only callers were these two blocks).
+//
+// WHAT REPLACES THE VACUITY-GUARD PROOF. The mandate this task's brief states
+// explicitly — "prove what you keep can still fail" — cannot be satisfied by
+// resurrecting a composite fixture, so it is satisfied on the PLAN side
+// instead: `LayerOp.wrap`'s contract requires a STABLE component reference
+// for an item's whole life (see the doc comment on `LayerOp.wrap`,
+// `lib/theming/transitions.ts`); a `plan` violating that — returning a FRESH
+// component reference on different calls — is exactly the same remount-class
+// defect the deleted composite bucket existed to catch, reached through the
+// PLAN arm's own contract rather than through the (deleted) assembly. The
+// proof below builds exactly that violation and confirms `sweepIdentity`
+// still reports it: `persists === false`, `distinct > 1`. This is the load-
+// bearing counterpart of the "capable of PASSING" proof directly below it —
+// together they establish the instrument can report BOTH outcomes correctly,
+// which is the property a bucket that is ALWAYS asked to pass (see next
+// comment) cannot demonstrate on its own.
+describe('DERIVED proof — the identity sweep is capable of FAILING on a real remount, via an unstable `wrap` (replaces the deleted composite-arm vacuity guard)', () => {
+  const unstableWrapPlan = (): TransitionComposite => ({
+    // A FRESH closure every call, on BOTH sides — violates `LayerOp.wrap`'s
+    // "stable reference for the item's whole life" contract. `wrapFor`
+    // (`video-track.tsx`) re-invokes `plan()` on every `buildVideoNodes`
+    // call specifically so this is detectable (see its own doc comment,
+    // "Deliberately UNCACHED"); this fixture is what confirms that design
+    // intent still holds after this task's deletions. Both sides carry it
+    // because the three cases below each exercise a DIFFERENT side of the
+    // boundary: `interior/outgoing` and `trailing` read the item's `from`
+    // shell (the item is the boundary's outgoing side); `leading` reads its
+    // `to` shell (the item is the boundary's incoming, and only, side).
+    from: { wrap: ({ children }) => <span data-testid="unstable-wrap-marker">{children}</span> },
+    to: { wrap: ({ children }) => <span data-testid="unstable-wrap-marker">{children}</span> },
   });
-});
-
-// THE VACUITY GUARD FOR THE (NOW EMPTY) COMPOSITE BUCKET ABOVE. Built exactly
-// the way `rgb-split`'s PRE-TASK-3 composite actually behaved (measured, not
-// invented — see `sweepIdentity`'s own docblock above): the SAME element
-// reference reused at THREE tree positions (main + two "ghost" copies with no
-// `ghosts`-shaped contract to legitimise them), which React mounts as three
-// separate DOM nodes. Registered under a kind NOT in `TRANSITION_CATALOG`, so
-// this can never be confused with a catalog kind quietly staying composite.
-describe('DERIVED proof — the identity sweep is capable of FAILING on a real composite-arm defect, not only of running zero tests', () => {
-  const remountingComposite: React.FC<TransitionNodeProps> = ({ from, to }) => (
-    <>
-      {from}
-      {to}
-      {to}
-    </>
-  );
   const REMOUNTING_REGISTRY: TransitionRegistry = {
-    'composite-remount-probe': { renderer: () => ({ composite: remountingComposite }) },
+    'unstable-wrap-remount-probe': { renderer: () => ({ plan: unstableWrapPlan }) },
   };
   const opts = { brandKinds: new Set(Object.keys(REMOUNTING_REGISTRY)) };
 
-  it('reports distinct > 1 for a real (test-only) composite-arm boundary that duplicates its child, interior and both edges', () => {
+  it('reports persists === false and distinct > 1 for a plan whose `wrap` is a fresh reference every call, interior and both edges', () => {
     expect.hasAssertions();
     const interior: VideoItem[] = [
-      clip('a', 0, 3000, { transitionOut: { kind: 'composite-remount-probe', frames: IDENTITY_FRAMES } }),
+      clip('a', 0, 3000, { transitionOut: { kind: 'unstable-wrap-remount-probe', frames: IDENTITY_FRAMES } }),
       clip('b', 3000, 6000),
     ];
     const layoutInterior = computeVideoLayout(interior, IDENTITY_FPS, opts);
@@ -845,21 +654,19 @@ describe('DERIVED proof — the identity sweep is capable of FAILING on a real c
       start: layoutInterior[0].seqFrom + layoutInterior[0].seqDuration - layoutInterior[0].outFrames,
       frames: layoutInterior[0].outFrames,
     };
-    const inWindow = { start: layoutInterior[1].seqFrom, frames: layoutInterior[1].inFrames };
 
     const leading: VideoItem[] = [
-      clip('solo', 0, 3000, { transitionIn: { kind: 'composite-remount-probe', frames: IDENTITY_FRAMES } }),
+      clip('solo', 0, 3000, { transitionIn: { kind: 'unstable-wrap-remount-probe', frames: IDENTITY_FRAMES } }),
     ];
     const layoutLeading = computeVideoLayout(leading, IDENTITY_FPS, opts);
 
     const trailing: VideoItem[] = [
-      clip('solo', 0, 3000, { transitionOut: { kind: 'composite-remount-probe', frames: IDENTITY_FRAMES } }),
+      clip('solo', 0, 3000, { transitionOut: { kind: 'unstable-wrap-remount-probe', frames: IDENTITY_FRAMES } }),
     ];
     const layoutTrailing = computeVideoLayout(trailing, IDENTITY_FPS, opts);
 
     const cases: IdentityCase[] = [
       { label: 'interior/outgoing', items: interior, testid: 'vid-a', window: outWindow },
-      { label: 'interior/incoming', items: interior, testid: 'vid-b', window: inWindow },
       {
         label: 'leading', items: leading, testid: 'vid-solo',
         window: { start: layoutLeading[0].seqFrom, frames: layoutLeading[0].inFrames },
@@ -873,40 +680,58 @@ describe('DERIVED proof — the identity sweep is capable of FAILING on a real c
       },
     ];
     for (const c of cases) {
-      const { distinct, observed } = sweepIdentity(c.items, c.testid, c.window, REMOUNTING_REGISTRY);
-      expect(observed, c.label).toBeGreaterThanOrEqual(IDENTITY_OBSERVED_FLOOR_COMPOSITE(c.window));
+      const { distinct, persists, observed } = sweepIdentity(c.items, c.testid, c.window, REMOUNTING_REGISTRY);
+      expect(observed, c.label).toBeGreaterThan(0);
+      expect(persists, c.label).toBe(false);
       expect(distinct, c.label).toBeGreaterThan(1);
     }
   });
 
-  // THERE IS NO NEGATIVE CONTROL HERE, AND THAT ABSENCE IS THE FINDING, NOT A
-  // GAP. Tried one: `COMPOSITE_PROBE` (this file's own ordinary, non-
-  // duplicating composite fixture, `({from, to}) => <>{from}{to}</>`) ALSO
-  // reports `distinct > 1` on the SAME cases — measured, not assumed
-  // (`sweepIdentity(interior, 'vid-a', outWindow, COMPOSITE_PROBE)` → distinct
-  // 2, same as the deliberately-duplicating probe above). This is not this
-  // test file being unable to tell them apart: it is `sweepIdentity`'s own
-  // docblock's argument, made concrete — the composite arm's REBASE mechanism
-  // itself (Fix 1/2: the item keeps its own hidden copy AND the boundary
-  // mounts a re-based one) is what produces a second distinct element for
-  // ANY composite, independent of whether that composite's own JSX ALSO
-  // duplicates its child. There is no "well-behaved" composite under this
-  // model — which is exactly why Phase 5 removes the whole arm rather than
-  // fixing kinds one at a time, and exactly why the COMPOSITE bucket's
-  // assertion is worded as "the composite arm has NO legitimate multi-mount
-  // concept AT ALL", not "does not duplicate its own child".
+  // THE NEGATIVE CONTROL: the SAME fixture shape with a STABLE wrap (one
+  // component reference, built once, outside `plan`) reports `persists ===
+  // true` on the identical geometry — proving the proof above fails for the
+  // INSTABILITY, not merely because this is a hand-built test-only kind.
+  it('the identical fixture with a STABLE wrap reference reports persists === true — isolates instability, not "test-only kind"', () => {
+    expect.hasAssertions();
+    const StableWrap: React.FC<{ active: boolean; children: React.ReactNode }> = ({ children }) => (
+      <span data-testid="unstable-wrap-marker">{children}</span>
+    );
+    const STABLE_REGISTRY: TransitionRegistry = {
+      'unstable-wrap-remount-probe': { renderer: () => ({ plan: () => ({ from: { wrap: StableWrap } }) }) },
+    };
+    const interior: VideoItem[] = [
+      clip('a', 0, 3000, { transitionOut: { kind: 'unstable-wrap-remount-probe', frames: IDENTITY_FRAMES } }),
+      clip('b', 3000, 6000),
+    ];
+    const layoutInterior = computeVideoLayout(interior, IDENTITY_FPS, {
+      brandKinds: new Set(Object.keys(STABLE_REGISTRY)),
+    });
+    const outWindow = {
+      start: layoutInterior[0].seqFrom + layoutInterior[0].seqDuration - layoutInterior[0].outFrames,
+      frames: layoutInterior[0].outFrames,
+    };
+    const { persists, observed } = sweepIdentity(interior, 'vid-a', outWindow, STABLE_REGISTRY);
+    expect(observed).toBeGreaterThan(0);
+    expect(persists).toBe(true);
+  });
 });
 
-// PLAN kinds are asserted to PASS. Zero iterations today (`PLAN_KINDS` is
-// pinned empty above) — `describe.each([])` runs no tests, which is exactly
-// the "derived assertion over an empty set" the brief warns can pass
-// trivially by having nothing to check. The block immediately below is what
-// keeps this branch from being vacuous: it proves, with a test-only plan node
-// built the same way a Stage 2+ brand registration would build one, that this
-// SAME machinery (`sweepIdentity`, `casesFor`'s geometry) actually reports
-// `persists === true` for a real single-mount boundary — not just that it
-// never gets the chance to fail.
-describe.each(PLAN_KINDS)('DERIVED — plan-arm "%s" never remounts across the crossing (ratchets green as kinds migrate)', (kind) => {
+// PHASE 5 TASK 5 — EVERY CATALOG KIND IS ASSERTED TO PASS, NOT JUST THE
+// (formerly partial) PLAN BUCKET. Before this task this ran over `PLAN_KINDS`
+// (a subset that grew Stage by Stage); now that `TransitionNode` has only one
+// arm, the partition is gone and this runs over the WHOLE catalog directly —
+// the ratchet's final, pure form: "every catalog kind persists across every
+// boundary crossing", derived, not filtered. The block immediately below is
+// what keeps this from being a vacuous "of course it's empty, nothing was
+// ever asked to fail" run: it proves, with a test-only plan node built the
+// same way a brand registration would build one, that this SAME machinery
+// (`sweepIdentity`, `casesFor`'s geometry) actually reports `persists ===
+// true` for a real single-mount boundary — and the block above THIS one
+// (the unstable-`wrap` proof) proves the same machinery can still report
+// `persists === false` for a real defect. Together the two are the "capable
+// of passing AND capable of failing" pair a bucket that runs 19-for-19 green
+// cannot demonstrate on its own.
+describe.each(CATALOG_KINDS)('DERIVED — "%s" never remounts across the crossing (every catalog kind, post-flip)', (kind) => {
   it.each(casesFor(kind).map((c): [string, IdentityCase] => [c.label, c]))('%s', (_label, c) => {
     expect.hasAssertions();
     const { persists, observed } = sweepIdentity(c.items, c.testid, c.window);

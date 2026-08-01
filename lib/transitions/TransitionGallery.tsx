@@ -272,8 +272,9 @@ export const GALLERY_DIMS = { width: 1920, height: 1080, fps: 30 };
 
 /** What `galleryTransitionNode` resolves against: `transitionNodeFor`'s own
  *  dimensions bag (pixel size, and optionally a palette and a BRAND transition
- *  registry) plus the `fps` `AtCutTransition` needs. Read off the resolver's
- *  signature rather than restated, so it cannot drift from it. */
+ *  registry) plus the `fps` `buildVideoNodes` needs (PHASE 5 TASK 5:
+ *  `AtCutTransition`, which used to need it, is deleted). Read off the
+ *  resolver's signature rather than restated, so it cannot drift from it. */
 export type GalleryDims = Parameters<typeof transitionNodeFor>[1] & { fps: number };
 
 /** RESOLVES A CATALOG KIND THE WAY A REEL DOES — the single line that ends the
@@ -304,10 +305,14 @@ export function galleryTransitionNode(kind: TransitionKind, dims: GalleryDims = 
  *
  *  FIX ROUND 1 (Task 2.1 review, Important 1) — REWRITTEN TO GO THROUGH
  *  `buildVideoNodes`, THE SAME ASSEMBLY A REEL USES, rather than hand-rolling
- *  a 3-`Sequence` mini-assembly around `AtCutTransition` directly.
- *  `AtCutTransition` is the `composite` ARM's boundary compositor — its
- *  `plan` branch is a defined dead end (it warns
- *  `at-cut-transition:plan-arm-wrong-entry-point` and hard-cuts, "reached
+ *  a 3-`Sequence` mini-assembly around `AtCutTransition` directly (PHASE 5
+ *  TASK 5: `AtCutTransition` no longer exists at all — see
+ *  `lib/render/at-cut-transitions.tsx`'s own note on its deletion — so this
+ *  history is preserved only to explain why this component goes through
+ *  `buildVideoNodes` rather than a leaner hand-rolled assembly). At the time,
+ *  `AtCutTransition` was the `composite` ARM's boundary compositor — its
+ *  `plan` branch was a defined dead end (it warned
+ *  `at-cut-transition:plan-arm-wrong-entry-point` and hard-cut, "reached
  *  through the wrong entry point", not "not built yet"). Since Task 2.1 seven
  *  kinds (`fade`, `dissolve`, `slide`, `flip`, `clock-wipe`, `iris`,
  *  colourless `fade-to-color`) resolve to `plan`, so driving them through

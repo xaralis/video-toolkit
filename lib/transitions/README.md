@@ -88,16 +88,22 @@ directly confirm or refute.
 | `burn()` | `burn` | At-cut | Cloud-masked burn-through with a hot edge | Organic reveals, warm brand moments |
 | `fadeToColor()` | `fade-to-color` | **Two-input node** (with a colour) | Dip to a colour the BRAND names; with no colour, the plain crossfade | Section breaks, a beat of brand colour between clips |
 
-**Four kinds are ALWAYS NATIVE TWO-INPUT NODES** (`wipe`, `checkerboard`, `pixelate`,
-`scanline-glitch`), marked above; `fade-to-color` is one **only when a colour actually
-resolves** — with none it hands back Remotion's own `fade()`, so its arity is conditional
-on the brand's palette. Their factories return a `TransitionNode` —
-`{ composite }`, one component invoked ONCE per boundary with `(from, to, progress)` —
-not a `TransitionPresentation`. They cannot be used with `TransitionSeries`, which hands a
-presentation one clip at a time; drive them through `transitionNodeFor()` +
-`AtCutTransition` (or `buildVideoNodes`), which is what a layered reel already does.
-`presentationFor()` returns `null` for them and warns. Every other kind is still one-sided
-and core lifts it. See `docs/superpowers/phase4-migrations.md` § Task 2.1.
+**Six kinds are ALWAYS NATIVE TWO-INPUT NODES** (`wipe`, `checkerboard`, `pixelate`,
+`scanline-glitch`, `gradient-wipe`, `rgb-split` — this table is stale on the count in
+several rows above; re-derive with `lib/editor/src/at-cut-transitions.test.tsx`'s `NODE_KINDS`
+rather than trusting this prose, per Phase 5 Task 5's finding that this exact paragraph had
+drifted); `fade-to-color` is one **only when a colour actually resolves** — with none it
+hands back Remotion's own `fade()`, so its arity is conditional on the brand's palette.
+Their factories return a `TransitionNode` — `{ plan }` (PHASE 5: this used to be
+`{ composite }`, a React component invoked once per boundary with `(from, to, progress)`
+as already-instantiated subtrees; every catalog kind is `plan` now, and there is no
+`composite` shape left at all — see `lib/render/at-cut-transitions.tsx`'s own note). They
+cannot be used with `TransitionSeries`, which hands a presentation one clip at a time;
+drive them through `transitionNodeFor()` + `buildVideoNodes` (`AtCutTransition`, the old
+alternative render path, is deleted). `presentationFor()` returns `null` for them and warns.
+Every other kind is still one-sided at the `resolveTransition`/`presentationFor` level and
+core lifts it (through `wrapRemotionPresentation`, universally, since Task 5). See
+`docs/superpowers/phase4-migrations.md` § Task 2.1 and `docs/superpowers/phase5-migrations.md`.
 
 **One name per concept** (Task 2.5). Every kind spells the in/out or 4-way axis `direction` —
 `zoom-through` used to call it `from`, and that field survives only as a deprecated alias so

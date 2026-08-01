@@ -171,8 +171,10 @@ const ConformanceSticker: BrandRenderer = ({ item }) => {
 // catalogued. Returned as a one-sided `@remotion/transitions`-shaped
 // presentation (passedProps/presentationDirection/presentationProgress/
 // presentationDurationInFrames) — core LIFTS it into the two-input model
-// (see lib/render/at-cut-transitions.tsx, `fromRemotionPresentation`), so a
-// brand never has to write the two-input compositing itself. A zigzag
+// (see lib/render/at-cut-transitions.tsx, `wrapRemotionPresentation` — Phase
+// 5 Task 5 replaced `fromRemotionPresentation`, the old `composite`-arm
+// lift, with this one), so a brand never has to write the two-input
+// compositing itself. A zigzag
 // clip-path reveal, unmistakably not one of core's own wipes.
 // ---------------------------------------------------------------------------
 const ShardCut: React.FC<{

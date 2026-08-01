@@ -59,9 +59,8 @@ import { defaultTransition } from '@video-toolkit/lib/reel-config-base/transitio
 import type { TransitionKind } from '@video-toolkit/lib/reel-config-base/transition-schema';
 import {
   transitionNodeFor,
-  fromRemotionPresentation,
+  wrapRemotionPresentation,
   type TransitionNode,
-  type TransitionNodeProps,
   type TransitionRecord,
 } from '@video-toolkit/lib/render/at-cut-transitions';
 import { TRANSITIONS, transitionMap } from '@video-toolkit/lib/transitions/TransitionGallery';
@@ -82,16 +81,6 @@ const GALLERY_DIMS = { width: 1920, height: 1080, fps: 30 };
  *  comparison is for. */
 const normalizeMountIds = (html: string): string =>
   html.replace(/(\bid="|url\(#)[^"')]*/g, '$1UID');
-
-// Phase 5 Task 1.1 widened `TransitionNode` into a `plan`/`composite` union.
-// Task 2.1 is the first to make a CATALOG kind resolve to `plan`
-// (`fade`/`dissolve`/`slide`/`flip`/`clock-wipe`/`iris`/colourless
-// `fade-to-color`), so `pictureOf` below now branches on the arm instead of
-// assuming composite-only.
-function compositeOf(node: TransitionNode): React.ComponentType<TransitionNodeProps> {
-  if (typeof node.plan === 'function') throw new Error('expected a composite-arm TransitionNode in this test');
-  return node.composite;
-}
 
 /** The picture a `plan`-arm node draws across its whole window — mirrors what
  *  `LayerShell` (`lib/render/video-track-plan.tsx`) actually applies to an
@@ -136,31 +125,12 @@ const planPictureOf = (node: TransitionNode, durationInFrames = 40): string =>
     .join('\n');
 
 /** The picture a node draws across its whole window, as one comparable string.
- *  Both inputs are inert markers, so any difference is the TRANSITION's. */
-const pictureOf = (node: TransitionNode): string => {
-  if (typeof node.plan === 'function') return planPictureOf(node);
-  return [0, 0.25, 0.5, 0.75, 1]
-    .map((progress) => {
-      const Composite = compositeOf(node);
-      const { container, unmount } = render(
-        <Composite
-          from={<div data-testid="a" />}
-          to={<div data-testid="b" />}
-          progress={progress}
-          durationInFrames={40}
-          width={GALLERY_DIMS.width}
-          height={GALLERY_DIMS.height}
-          fps={GALLERY_DIMS.fps}
-          palette={[]}
-          background="transparent"
-        />,
-      );
-      const html = normalizeMountIds(container.innerHTML);
-      unmount();
-      return `p=${progress} ${html}`;
-    })
-    .join('\n');
-};
+ *  Both inputs are inert markers, so any difference is the TRANSITION's.
+ *
+ *  PHASE 5 TASK 5 — every node is `{ plan }` now, so this is just an alias for
+ *  `planPictureOf`; kept as its own name because every call site below reads
+ *  as "the picture this node draws", not "the picture this PLAN draws". */
+const pictureOf = (node: TransitionNode): string => planPictureOf(node);
 
 /** What a REEL draws for this kind — the production resolver, at the gallery's
  *  own dimensions and with the kind's catalog defaults. */
@@ -218,7 +188,7 @@ describe('the gallery shows what reels render', () => {
   // two have silently become the same thing and the assertion above has stopped
   // meaning anything.
   it('does NOT show @remotion/transitions/wipe, which is a different component', () => {
-    const official = pictureOf(fromRemotionPresentation(officialWipe() as never));
+    const official = pictureOf(wrapRemotionPresentation(officialWipe() as never));
     expect(reelPictureFor('wipe')).not.toBe(official);
   });
 });

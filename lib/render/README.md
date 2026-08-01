@@ -1,12 +1,12 @@
 # lib/render
 
-Shared "at-the-cut" transition engine for layered-model reel renderers (every brand template consumes it), split into two files: `transition-record.ts` is the pure, Remotion-free "is this a real transition?" gate (`TransitionRecord`, `getTransitionRecord`) and is unit-tested here in core (`lib/editor/src/transition-record.test.ts`); `at-cut-transitions.tsx` is the Remotion engine (`resolveTransition`/`transitionNodeFor`/`presentationFor`, `fromRemotionPresentation`, `TransitionLayer`, `AtCutTransition`, plus a re-export of the pure gate so consumers can import everything from one path).
+Shared "at-the-cut" transition engine for layered-model reel renderers (every brand template consumes it), split into two files: `transition-record.ts` is the pure, Remotion-free "is this a real transition?" gate (`TransitionRecord`, `getTransitionRecord`) and is unit-tested here in core (`lib/editor/src/transition-record.test.ts`); `at-cut-transitions.tsx` is the Remotion engine (`resolveTransition`/`transitionNodeFor`/`presentationFor`, `wrapRemotionPresentation`, plus a re-export of the pure gate so consumers can import everything from one path).
 
-**Since Phase 4 Task 1.3 a transition is ONE NODE WITH TWO INPUTS.** `AtCutTransition` is a *boundary* compositor: it resolves one node and calls it ONCE with `(from, to, progress)`, where `from` is the outgoing clip, `to` the incoming one, and either may be `null` — which is how the reel's leading and trailing edges stop being special cases. It is no longer a per-item wrapper invoked twice with a `direction`; that was `TransitionSeries`' shape and the root of the defect family (seven kinds that no-op when exiting, `checkerboard`'s empty cells, `wipe`'s two beats running at once, a trailing edge that drew nothing). One-sided presentations — the five official `@remotion/transitions` ones, and any brand registration written against the Task 1.2 contract — are LIFTED into the two-input form by `fromRemotionPresentation`, so nothing that already worked had to migrate. `buildVideoNodes` (`video-track.tsx`) emits one `Sequence` per boundary and blanks each clip's own `Sequence` for the frames the boundary took over, so nothing is painted twice. Task 1.3 was behaviour-preserving and measured so: `examples/layered-minimal`'s `npm run pixel-gate:strict` reported 293 of 300 cells byte-identical with 0 same-picture-different-bytes; the 7 that moved were all `glitch`, the one presentation that reads `useCurrentFrame()` itself and therefore changes clock when its mount moves from the clip to the boundary (see `docs/superpowers/phase4-migrations.md` §1.3-d). The split originally existed because `lib/editor` had no `@remotion/transitions`, so the engine half could not even be imported here. **That is no longer true** — both `remotion` and `@remotion/transitions` are now declared `lib/editor` devDependencies — so the split is now about what a unit test can *settle*, not what it can load: **core can render** — `examples/layered-minimal` is a complete, installed Remotion project (`npx remotion still src/index.ts MinimalReel out/probe.png --frame=45` bundles and renders a real PNG there, exit 0) — so whether a transition looks right *at a cut* is settleable here, by authoring a reel literal in `examples/layered-minimal` that exercises the transition at a cut and rendering a still. See `docs/superpowers/HANDOFF.md`'s at-cut visual-confirmation risk entry.
+**PHASE 5 TASK 5 — THE FLIP. There is only ONE arm now: `plan`.** A transition node is `{ plan: (props) => TransitionComposite }`, called through `buildVideoNodes` (`video-track.tsx`), which applies the returned description to the mounts that ALREADY EXIST — two always-mounted, style-only shells (`video-track-plan.tsx`'s `LayerShell`) that wrap every item for its whole life — rather than instantiating the clip a second time. Nothing is ever relocated in the tree, so nothing ever remounts. A plan's media-free `PlateLayer`s and its materialised reel-edge plate are emitted as real timeline siblings between the two item Sequences; its `post` (`filter`/`transform` only) goes on the track wrapper. `buildVideoNodes` keeps its `React.ReactNode[]` signature and returns a **single-element array** holding the always-mounted wrapper — unchanged, because 12 hand-rolled brand call sites depend on it.
 
-**Since Phase 5 Task 1.2 the arm is selected PER BOUNDARY.** A node may expose `composite` (Task 1.3's JSX form, what every catalog kind still resolves to) or `plan` — a declarative two-sided description core applies to the mounts that already exist. `buildVideoNodes` discriminates with `typeof node.plan === 'function'` (never `'plan' in node`: `plan?: never` is optional, so `{composite, plan: undefined}` is a legal composite node) and emits a different shape for each: a `composite` boundary keeps its own `Sequence`, `rebased()` copies, `BOUNDARY_TAIL` and `ItemBody`'s blanking, exactly as before; a `plan` boundary gets none of them — the clip stays mounted and drawn under its own Sequence for the whole window and the node styles THAT mount, through two always-mounted, style-only shells (`video-track-plan.tsx`'s `LayerShell`) that wrap every item for its whole life. A plan's media-free `PlateLayer`s and its materialised reel-edge plate are emitted as real timeline siblings between the two item Sequences; its `post` (`filter`/`transform` only) goes on the track wrapper. `buildVideoNodes` keeps its `React.ReactNode[]` signature and returns a **single-element array** holding that wrapper. Zero kinds are migrated so far, and the assembly landing was measured neutral: `npm run pixel-gate:strict` reported 300 accepted, 0 drifted, 0 missing, in five independent processes (three in the task, one by the reviewer, one in the fix round) — renders here are bimodal and process-dependent, so one run is not evidence in either direction.
+**What used to be here, historically (Phase 4 Task 1.3 → Phase 5 Task 5).** Before this task, a node could ALSO expose `composite` — a JSX component `AtCutTransition` (a *boundary* compositor) called once with `(from, to, progress)` where `from`/`to` were subtrees the component instantiated itself. One-sided presentations — the five official `@remotion/transitions` ones, and any brand registration — were LIFTED into that two-input form by `fromRemotionPresentation`. That arm required re-basing each clip into the boundary's own coordinates and blanking the clip's own Sequence for the frames the boundary took over (`ItemBody`), which is what forced the exact remount defect this whole phase exists to remove: React reconciles by tree position, and content rendered inside the boundary for some frames and under its own Sequence for the rest is two mounts, not one moved mount. Stages 0-4 migrated every catalog kind off that arm onto `plan`, one mechanism at a time; Task 5 deleted the arm itself — `AtCutTransition`, `fromRemotionPresentation`, `TransitionLayer`'s public export, `ItemBody`, the boundary `Sequence`/`rebased()`/`BOUNDARY_TAIL`-blanking in `video-track.tsx`, and `lib/render/preview-environment.ts` (its only consumer) — once nothing resolved to it any more. `wrapRemotionPresentation` is `fromRemotionPresentation`'s full replacement: it lifts a one-sided presentation into `plan`/`wrap` instead, universally (core's own kinds and any brand renderer's alike — the old `WRAP_PLAN_KINDS` gate that limited this to a named subset is gone too, since there is no second lift target left to gate against). Full account: `.superpowers/sdd/phase5-single-mount-design/task-5-report.md`.
 
-Accordingly, the engine half now *is* unit-tested here too, in `lib/editor/src/at-cut-transitions.test.tsx` — but only for its **wiring**, and the file says so at the top. Driven off `TRANSITION_CATALOG` (never a hardcoded kind list, so a kind added to the catalog is covered the moment it exists), it pins that every kind resolves to a presentation, mounts in both directions across the progress range without throwing, and receives its authored params under the key the presentation actually reads — plus accent-key→hex resolution through a brand palette, and `AtCutTransition`'s progress ramps and compositing order. It settles **nothing** about appearance.
+The engine half is unit-tested here too, in `lib/editor/src/at-cut-transitions.test.tsx` — but only for its **wiring**, and the file says so at the top. Driven off `TRANSITION_CATALOG` (never a hardcoded kind list, so a kind added to the catalog is covered the moment it exists), it pins that every kind resolves to a node, mounts in both directions across the progress range without throwing, and receives its authored params under the key the node/presentation actually reads — plus accent-key→hex resolution through a brand palette. It settles **nothing** about appearance.
 
 > **⚠ The paragraph below is HISTORICAL.** All **four** defects it names —
 > `checkerboard`'s exiting no-op, `pixelate`'s opaque-black root, and
@@ -27,49 +27,34 @@ The same split applies to brand font loading: `fonts.ts` is the pure side — `F
 
 **The spread must be written inline.** The editor's surgical reader/writer (`lib/editor/src/default-props-writer.ts`) resolves a `<Composition>`'s `id` through a `{...layeredCompositionProps({ id: '…', … })}` spread by reading the `id:` property straight out of the call's first-argument object literal — it does not evaluate the call. `{...layeredCompositionProps(OPTS)}` with a hoisted `OPTS` const has no literal to read and fails loudly instead of guessing. Always write the options object inline on `<Composition>`, as every current `Root.tsx` does.
 
-## Preview vs. render, and what is actually preview-gated
+## Preview vs. render — the divergence is gone (Phase 5 Task 5)
 
 Studio/the editor `<Player>` ("preview") and a headless render extract frames differently — a
 preview keeps a live DOM across frames and reconciles it the way any React app does, while a
 render calls Remotion's frame-extraction independently per frame with no persistent DOM. That gap
-is real and has produced a real regression: Phase 4 Task R1 found that `buildVideoNodes`
-(`video-track.tsx`) mounts an item's media at two different POSITIONS in the React tree across a
-transition boundary's frames, which React reconciles by tree position — so the element unmounted
-and remounted twice per boundary in a live preview, visible as a colour flash. A render is
-unaffected regardless, because there is no persistent DOM to flash.
+used to matter here: Phase 4 Task R1 found that `buildVideoNodes` (`video-track.tsx`) mounted an
+item's media at two different POSITIONS in the React tree across a transition boundary's frames
+(the `composite` arm's re-based copy vs. the item's own Sequence), which React reconciles by tree
+position — so the element unmounted and remounted twice per boundary in a live preview, visible as
+a colour flash. Task R1's fixes (hiding instead of unmounting a blanked frame; premounting the
+boundary's rebased copy) were **preview-gated** on `isPreviewEnvironment()`
+(`preview-environment.ts`), because the defect itself only manifested where a persistent DOM
+existed to flash.
 
-**Not everything R1 shipped is preview-gated, and that distinction matters for anyone changing
-this file.** Three fixes landed:
+**Phase 5 Task 5 deletes all of it** — `ItemBody`, the boundary `Sequence`/`rebased()`/
+`BOUNDARY_TAIL`-blanking, `isPreviewEnvironment()` and `preview-environment.ts` itself — because the
+`composite` arm that made the re-based copy necessary is gone (every catalog kind is `plan` now,
+Stages 0-4). The `plan` arm was NEVER preview-gated in the first place: a plan's shells
+(`video-track-plan.tsx`'s `LayerShell`) are mounted life-long, unconditionally, in every
+environment, since Task 1.2. So the preview/render divergence this section used to document does
+not move to a new gate — it simply stops existing. This is the single largest maintenance win of
+the whole phase: one code path, one set of pixels, everywhere.
 
-1. Hiding instead of unmounting a blanked frame (`video-track.tsx` ~`:81`) — gated on
-   `isPreviewEnvironment()` (`preview-environment.ts`). Outside preview this branch never runs.
-2. Premounting the boundary's rebased copy (`video-track.tsx` ~`:182`) — also gated on
-   `isPreviewEnvironment()`.
-3. **The `transitionNodeFor` memoization cache** (`at-cut-transitions.tsx` ~`:449`) — **universal,
-   not preview-gated**. It runs unconditionally, preview or render, because it is pure caching of
-   a pure function's result: it changes nothing about what a given (transition record, palette,
-   size) resolves to, only whether two calls with the same inputs get back the identical node
-   reference or two equivalent-but-distinct ones.
-
-Calling all three "preview-gated, so the render path is unchanged by construction" — which this
-programme's own review told reviewers more than once — overstates the guarantee for #3
-specifically: it was never gated OUT of the render path, because it never entered it in a way
-that could change output in the first place. The reasoning that makes it safe is an ARGUMENT, not
-a structural guarantee: every current transition presentation's own per-mount state is limited to
-FOUR unseeded random SVG element `id`s — `burn.tsx` and `glitch.tsx` (`useState(() =>
-String(random(null))...)`, one mask/filter id each), and, since Phase 5, `checkerboard.tsx`'s
-default `squareAnimation: 'fade'` path (Task 0.1) and `scanline-glitch.tsx` (Task 0.2) — both the
-identical `random(null)`-derived pattern reused verbatim from `burn.tsx`/`glitch.tsx` rather than a
-new technique each time — no presentation holds any OTHER
-`useState` across frames, and none runs a `useEffect`, so handing back a cached node instead of a
-freshly-constructed one changes nothing a render (or a preview, past the R1/R2 fixes) can observe:
-the cached node still re-derives a fresh random id on its own next mount, exactly as an uncached
-one would. **The first transition presentation that accumulates frame state in `useState` OTHER
-THAN a random, per-mount, never-revisited id breaks that argument**, not the cache's own
-correctness, and would need this section re-read before assuming the cache is still inert for it.
-This count has drifted before — re-derive it (`git grep -n "useState(() =>" lib/transitions/`)
-rather than carrying it forward the next time a presentation changes. See
-`docs/superpowers/HANDOFF.md`'s Task R1/R2 entry for the fuller account and the corrected framing.
+`transitionNodeFor`'s memoization cache (`at-cut-transitions.tsx`) is UNCHANGED by this and remains
+universal, not preview-gated — it always was pure caching of a pure function's result and never
+depended on the arm split. See its own doc comment for the argument (every transition's own
+per-mount state is limited to a handful of unseeded random SVG element `id`s, re-derive with
+`git grep -n "useState(() =>" lib/transitions/` rather than trusting any count carried forward).
 
 ## Consumption requirement (webpack `resolve.modules`)
 
@@ -92,7 +77,7 @@ The **test runner needs the same class of workaround**, for the same reason, and
 
 ## Type-check gate
 
-`lib/editor`'s tsconfig `include` names `src`/`app`/`host`/`../theming` **and, explicitly, five files from this directory** — `at-cut-transitions.tsx`, `audio-track.tsx`, `layered-composition.tsx`, `video-track.tsx` and `load-fonts.ts`. They are *declared* rather than left to arrive through `src/at-cut-transitions.test.tsx`'s and `load-fonts.test.ts`'s imports, so deleting a test can't silently shrink the gate. The rest of this directory and all of `lib/transitions` still ride in transitively from those entry points — which is why `lib/editor/tsconfig.json` gained the same `@remotion/transitions*` and `react`/`react/jsx-runtime` `paths` that `examples/layered-minimal` carries. In total that program pulls in **14** `lib/render` files (the five named directly above, plus `audio-gain.ts`, `fonts.ts`, `layered-composition-props.ts`, `overlay-anchor.ts`, `overlay-routing.ts`, `preview-environment.ts`, `transition-record.ts`, `video-track-layout.ts`, `warn-once.ts`, riding in transitively) and **16** `lib/transitions` files (`index.ts`, `edge-plate.tsx`, all 13 presentations, **and `TransitionGallery.tsx`** — it arrives through `lib/editor/src/transition-gallery*.test.tsx`, not the other way round) — check with `npx tsc --noEmit --listFiles`; the counts grow as presentations are added, re-derive rather than trust this line. (Side effect worth knowing: those mappings also resolved 25 of `lib/editor`'s 29 pre-existing errors, which were unresolved-`react`/`remotion` noise in the out-of-tree `../theming` files. Its baseline is now **3**.)
+`lib/editor`'s tsconfig `include` names `src`/`app`/`host`/`../theming` **and, explicitly, five files from this directory** — `at-cut-transitions.tsx`, `audio-track.tsx`, `layered-composition.tsx`, `video-track.tsx` and `load-fonts.ts`. They are *declared* rather than left to arrive through `src/at-cut-transitions.test.tsx`'s and `load-fonts.test.ts`'s imports, so deleting a test can't silently shrink the gate. The rest of this directory and all of `lib/transitions` still ride in transitively from those entry points — which is why `lib/editor/tsconfig.json` gained the same `@remotion/transitions*` and `react`/`react/jsx-runtime` `paths` that `examples/layered-minimal` carries. In total that program pulls in **14** `lib/render` files (the five named directly above, plus `audio-gain.ts`, `fonts.ts`, `layered-composition-props.ts`, `overlay-anchor.ts`, `overlay-routing.ts`, `transition-record.ts`, `video-track-layout.ts`, `video-track-plan.tsx`, `warn-once.ts`, riding in transitively — PHASE 5 TASK 5: `preview-environment.ts` is deleted and drops off this list; `video-track-plan.tsx` was already transitively reachable and keeps the count at 14, re-derived with `npx tsc --noEmit --listFiles`, not carried forward from before this task) and **16** `lib/transitions` files (`index.ts`, `edge-plate.tsx`, all 13 presentations, **and `TransitionGallery.tsx`** — it arrives through `lib/editor/src/transition-gallery*.test.tsx`, not the other way round) — check with `npx tsc --noEmit --listFiles`; the counts grow as presentations are added, re-derive rather than trust this line. (Side effect worth knowing: those mappings also resolved 25 of `lib/editor`'s 29 pre-existing errors, which were unresolved-`react`/`remotion` noise in the out-of-tree `../theming` files. Its baseline is now **3**.)
 
 The authoritative surface for the render/transitions **`.tsx` components** is still **`examples/layered-minimal`**, core's only real Remotion install — it is the one that also enforces file-count coverage. (It does not reach every file in `lib/render/`: `load-fonts.ts` and `fonts.ts` are not in that program at all — `load-fonts.ts` is checked only by `lib/editor`'s `tsc` gate, where it is named directly in that tsconfig's `include` — precisely so it no longer depends on `load-fonts.test.ts`'s import surviving; see `docs/superpowers/HANDOFF.md`'s Minor-4 note.)
 

@@ -34,9 +34,13 @@ export const EdgePlate: React.FC<{ background: string }> = ({ background }) => (
   <AbsoluteFill style={{ backgroundColor: background }} />
 );
 
-/** A transition input, with a reel edge resolved to the background plate.
- *  `input ?? plate` — deliberately NOT a truthiness test, because a legitimate
- *  input can be any ReactNode. */
-export function edgeInput(input: React.ReactNode | null, background: string): React.ReactNode {
-  return input === null || input === undefined ? <EdgePlate background={background} /> : input;
-}
+// PHASE 5 TASK 5 — `edgeInput` DELETED. It resolved a `composite` node's
+// nullable `from`/`to` React-subtree input to the background plate
+// (`input ?? plate`, deliberately not a truthiness test, since a legitimate
+// input can be any ReactNode) — `fromRemotionPresentation`'s only caller
+// (`lib/render/at-cut-transitions.tsx`), which is deleted with it. A reel
+// edge's missing side is now materialised as an `EdgePlate` TIMELINE SIBLING
+// (`video-track.tsx`'s `edge()`), reached through the same `LayerShell` a
+// real clip is — the `plan` arm's answer to the same problem, already true
+// for every kind that had migrated before this task. `git grep -n edgeInput`
+// before this task found no other caller, in core or either brand repo.
