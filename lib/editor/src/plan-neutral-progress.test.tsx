@@ -273,22 +273,35 @@ function expectedNeutralFilter(kind: string): string {
 //     genuinely ramps down, so it is NOT the identity and must differ live.
 //   - `rgb-split.entering = true`: `to.style.opacity =
 //     interpolate(progress,[0,1],[0,1])`, symmetric, also a real curve.
-//   - `scanline-glitch.exiting = false`: `from: {}` — no style at all, the
-//     identity, exactly like `fade`/`burn`'s exiting branch. The `post` SVG
-//     filter it also emits is applied to the TRACK, not to `from`'s own
-//     ancestor chain in a way this file's `findStyle` would see as `from`'s
-//     property at a frame with no other live boundary — and in any case
-//     `post` is undefined whenever this boundary itself is not live, so it
-//     does not leak into the "far outside window" neutral sample either.
+//   - `scanline-glitch.exiting = true` — CORRECTED (fix round 1; the original
+//     `false` here was WRONG, caught by review, not by this file going red:
+//     `from: {}` is the identity on `from`'s OWN op, but `post`'s `filter` is
+//     spread onto the TRACK WRAPPER's `style` (`video-track-plan.tsx`'s
+//     `VideoTrackHost`, the `style` object built from `isolate`/`post`), and
+//     that wrapper is a DIRECT ANCESTOR of every item Sequence, `vid-a`
+//     included. `findStyle` walks every ancestor to the root and `pictureOf`
+//     reads `filter` — so at a LIVE mid-window frame the picture genuinely
+//     carries `filter: url(#scanline-glitch-…)`, absent at the neutral frame
+//     (no live boundary at all far outside the window, so `post` is
+//     `undefined` there — the neutral sample is unaffected, only the LIVE
+//     one differs). A wrong `false` here silently skipped the one positive
+//     control this table exists to run — exactly the failure mode the
+//     design's own hand-authored-table warning names. This also restores,
+//     for the real kind, the one assertion the pre-Task-3
+//     `scanline-glitch-single-mount.test.tsx` had and the rewrite dropped:
+//     that the filtered wrapper actually CONTAINS what it filters — this
+//     table's live-frame check on `vid-a` IS that containment, now proven
+//     against `post`'s real value rather than a local `filter` on `from`.
 //   - `scanline-glitch.entering = true`: `to.style.opacity = progress`, a
-//     real linear ramp.
+//     real linear ramp (and `post`'s filter differs live here too, for the
+//     identical reason as `exiting` — both sides read the same ancestor).
 const EXPECT_LIVE_DIFFERS: Record<string, { exiting: boolean; entering: boolean }> = {
   dissolve: { exiting: false, entering: true },
   fade: { exiting: false, entering: true },
   'fade-to-color': { exiting: false, entering: true },
   glitch: { exiting: true, entering: true },
   'rgb-split': { exiting: true, entering: true },
-  'scanline-glitch': { exiting: false, entering: true },
+  'scanline-glitch': { exiting: true, entering: true },
   burn: { exiting: false, entering: true },
   'light-leak': { exiting: true, entering: true },
   slide: { exiting: true, entering: true },

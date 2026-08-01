@@ -235,19 +235,39 @@ describe('scanline-glitch: the RGB contribution is zero at both ends, exactly th
 // MOUNT (`useState`) — two JSX call sites were always two component
 // instances, so two structurally-identical boundaries never collided before.
 //
-// This does NOT create a wrong picture on the CSS side: `video-track-plan.tsx`
-// applies `post.filter` to the WHOLE TRACK from at most one boundary's value
-// per frame (`pickPost`, "the LATER one wins", dev-warned). But if BOTH
-// boundaries are live on the same frame, BOTH boundaries' plates still render
-// (`PlateHost` is per-boundary, unconditional), so the DOM would carry TWO
-// `<filter id="scanline-glitch-XYZ">` elements sharing the SAME id — an SVG
-// duplicate-id hazard: `url(#id)` resolves to whichever such element is FIRST
-// in document order, regardless of which boundary's filter value the track
-// wrapper's `style.filter` actually carries. This is checked here, not fixed —
-// out of this task's scope (the brief asks to "check", not "fix"; two live
-// `post` boundaries is already a warned pathology, and the two-clip-wide
-// overlap needed to reach it is itself the `overlapping-boundaries` diagnostic
-// in `video-track.tsx`).
+// CORRECTED IN FIX ROUND 1 (opus review) — an earlier version of this comment
+// claimed "this does NOT create a wrong picture on the CSS side" reasoning
+// from "identical config ⇒ identical filter". That argument does NOT hold in
+// general: `video-track-plan.tsx`'s `pickPost` selects the applied `filter`
+// BY VALUE ("the LATER one wins", dev-warned), but a duplicate-id `url(#id)`
+// resolves BY DOCUMENT ORDER — two entirely different selection rules. If
+// both boundaries are live on the same frame, BOTH still render their own
+// `<filter id="scanline-glitch-XYZ">` defs (`PlateHost` is per-boundary,
+// unconditional) sharing the SAME id, and each boundary's `dx`/`peak` are
+// functions of ITS OWN live progress/frame, not of the shared config — so a
+// document-order id resolution can serve one boundary's `feOffset`/`peak`
+// values while `pickPost` applied the OTHER boundary's `filter` VALUE (in
+// this case both are simply `url(#sameId)`, so the two mechanisms cannot
+// even disagree on which STRING wins — the disagreement, if any, is entirely
+// inside the shared `<filter>` graph the string points at).
+//
+// What actually makes this benign TODAY is ARITHMETIC, not the shared config:
+// the only reachable simultaneity in a legal reel is two ABUTTING transition
+// windows (one boundary's closing frame is the next boundary's opening
+// frame), and at that ONE shared frame both boundaries' `peak =
+// interpolate(progress, [0,0.5,1], [0,1,0])` is exactly `0` (progress is 0 or
+// 1 at a window's own edge) — so REGARDLESS of which duplicate-id `<filter>`
+// element `url(#id)` happens to resolve to, both are the identity filter at
+// that frame, and the ambiguity is invisible. This benignity is
+// KIND-SPECIFIC and EVAPORATES for a future `post`-kind whose filter is
+// NON-identity at its own window's endpoints — checked here, not fixed
+// (the brief asked to "check", not "fix"; two live `post` boundaries is
+// already a warned pathology, and the two-clip-wide overlap needed to reach
+// it is itself the `overlapping-boundaries` diagnostic in `video-track.tsx`).
+// The cheap fix, if a later stage wants it: derive `filterId` INSIDE `plan`
+// from something boundary-stable (e.g. the `from`/`to` `LayerHandle.range`)
+// rather than once at factory time — still stable for one boundary's whole
+// life, but distinct per boundary rather than per distinct authored config.
 describe('scanline-glitch: two simultaneous `post` boundaries (the discipline hazard design §7 flags)', () => {
   it('two byte-identically-configured boundaries share the SAME node, and therefore the SAME filter id', () => {
     resetTransitionNodeCache();

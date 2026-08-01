@@ -49,14 +49,20 @@
 // sites are two component instances. A `plan` node is memoized by
 // `transitionNodeFor` PER DISTINCT (record, dims) — so two boundaries with
 // byte-identical authored config (same `kind`+`frames`+`rgbShiftPx`) now SHARE
-// one node object and therefore one `filterId`. In practice this can only
-// collide if both boundaries are LIVE SIMULTANEOUSLY (only a live boundary's
-// plate ever renders its `<filter>` defs at all), which is already the
-// `post`-conflict pathology `video-track-plan.tsx`'s `auditGhosts`-sibling
-// warning dev-warns ("two live transitions... both set `post`... the LATER one
-// wins") — see task-3-report.md for the measured behaviour of two
-// simultaneous `scanline-glitch` boundaries and why this is flagged, not
-// fixed, in this task's scope.
+// one node object and therefore one `filterId`. This can only collide if both
+// boundaries are LIVE SIMULTANEOUSLY (only a live boundary's plate ever
+// renders its `<filter>` defs at all) — already the `post`-conflict pathology
+// `video-track-plan.tsx` dev-warns ("two live transitions... both set
+// `post`... the LATER one wins"). What keeps a shared id benign in the ONE
+// simultaneity a legal reel can reach (two abutting windows sharing exactly
+// one frame) is ARITHMETIC, not the shared config: `peak` is exactly 0 at
+// every window's own edge, so both boundaries' filter graphs are the
+// identity there regardless of which duplicate-id element `url(#id)`
+// resolves to by document order. That benignity is kind-specific and does
+// NOT generalise to a future `post` kind whose filter is non-identity at its
+// own endpoints — see `scanline-glitch-single-mount.test.tsx`'s "two
+// simultaneous post boundaries" block and task-3-report.md for the measured
+// detail, and why this is flagged, not fixed, in this task's scope.
 //
 // `frame` REPLACES `useCurrentFrame()`. A `plan` is a plain function and
 // cannot call hooks (design's contract) — `xJitter` used to read
