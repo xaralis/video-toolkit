@@ -551,7 +551,7 @@ The user's third requirement. Measured against the plan's own table
 | `alignment` | `computeVideoLayout` | **unchanged** — §1.2 proves the layout is untouched |
 | `enabled`, `config`, presets | works | **unchanged** |
 | `fromRemotionPresentation` lifts the 5 official one-sided presentations | works | **works** — via `LayerOp.wrap`, which is *literally* what `TransitionSeries` does (`dist/TransitionSeries.js:369-381`); the adapter stops being a lift-by-double-render and becomes the native path |
-| Core's kinds driven by `TransitionSeries` / `presentationFor` | **broken for 4 kinds** — a node returns `null` and hard-cuts (`at-cut-transitions.tsx:394-410`) | **restored for all 20** — a plan adapts *down* to a one-sided presentation (§8.5 point 2) |
+| Core's kinds driven by `TransitionSeries` / `presentationFor` | **broken for 4 kinds** — a node returns `null` and hard-cuts (`at-cut-transitions.tsx:394-410`) | ~~**restored for all 20** — a plan adapts *down* to a one-sided presentation (§8.5 point 2)~~ **WRONG — see §8.5 point 2's in-place correction.** No adapter was built; the broken set went from 4/5 kinds to 7, not to 0. |
 | Brand-only exotic kinds stay supported | yes | yes, and `wrap` + `ghosts` are the escape hatches |
 | Accent-slot colour resolution | `resolveAccentColorOrWarn` | **unchanged** — resolution happens at `resolveTransition`, before the node |
 
@@ -566,12 +566,16 @@ The user's third requirement. Measured against the plan's own table
   prose at `scanline-glitch.tsx:20-24`.
 - **`ghosts`** makes media duplication a reviewable, budgeted decision.
 - A brand can express a style-only transition **without writing a React component at all**.
-- **All 20 kinds become drivable by `TransitionSeries` again.** A plan adapts *downward* into a
+- ~~**All 20 kinds become drivable by `TransitionSeries` again.** A plan adapts *downward* into a
   one-sided `TransitionPresentation` (apply `plan.from` on the exiting call, `plan.to` +
   `plan.layers` on the entering one). Today four kinds cannot go through that path at all and
   silently hard-cut, which is why `TransitionGallery` needed `NodeTransitionDemo` and why PP's
   six `web-program-intro` files cannot use `wipe`/`pixelate`/`checkerboard`/`scanline-glitch`
-  (§8.5). **This is capability the current contract removed, returned.**
+  (§8.5). **This is capability the current contract removed, returned.**~~ **WRONG — see §8.5
+  point 2's in-place correction.** No such adapter was ever built. At HEAD, `presentationFor` hard-
+  cuts `wipe`/`checkerboard`/`pixelate`/`scanline-glitch`/coloured-`fade-to-color` exactly as
+  before, PLUS `gradient-wipe` and `rgb-split`, which were one-sided at the merge base and are
+  native two-input nodes now — the broken set grew from 5 kinds to 7, it did not shrink to 0.
 
 **What gets narrower — the honest cost:**
 
@@ -812,15 +816,34 @@ brands *do* consume is two things:
 1. **`buildVideoNodes` keeps its signature** — `(items, opts) => React.ReactNode[]` — so all 12
    hand-rolls keep compiling and keep rendering. They get the single mount for free. This is why
    §2.6 insists on returning a one-element array rather than a bare element.
-2. **The 6 `presentationFor` sites get *better*, not worse.** Today a two-input kind returns
+2. ~~**The 6 `presentationFor` sites get *better*, not worse.** Today a two-input kind returns
    `null` there and the boundary silently hard-cuts, warned
    (`at-cut-transitions.tsx:394-410`) — so `wipe`, `pixelate`, `checkerboard` and
    `scanline-glitch` are *unusable* in `web-program-intro` right now. A `plan` can be adapted
    *back* into a one-sided `TransitionPresentation`: apply `plan.from` on the exiting call,
    `plan.to` plus `plan.layers` on the entering call. That is exactly the shell semantics, and it
    restores all 20 kinds to `TransitionSeries`. **This is a capability the current contract
-   removed and the new one gives back.** It also deletes the gallery's parallel
-   `NodeTransitionDemo` path (§6).
+   removed and the new one gives back.**~~ **CORRECTED IN PLACE — the phase-5 whole-branch review
+   measured this point false; do not follow it.** No `plan`→one-sided adapter was ever built, in
+   this task or any other stage of Phase 5 — `presentationFor` (`at-cut-transitions.tsx:437-453`)
+   still hard-cuts every native two-input kind with a `warnOnce`, unchanged. And the capability
+   moved in the OPPOSITE direction from this point's claim: at the merge base before this phase,
+   `gradient-wipe` and `rgb-split` were one-sided (`resolveTransition` returned a plain
+   `AnyPresentation` for both), so the 6 `presentationFor` sites *could* drive them. Both are
+   native `{ plan }` nodes today with no one-sided form, so `presentationFor` now hard-cuts them
+   too — the two-input, `presentationFor`-unusable set grew from 5 kinds to 7
+   (`wipe`/`checkerboard`/`pixelate`/`scanline-glitch`/coloured-`fade-to-color` plus the newly
+   arrived `gradient-wipe`/`rgb-split`). If either of those two kinds is authored at a boundary in
+   PP's `web-program-intro`-shaped projects, that boundary silently degrades from a rendered
+   transition to a hard cut on this pin bump — a read-only census of the PP brand repo at
+   fix-round time found none authored there today, but the contract regression is real regardless
+   of current usage. Full detail: `docs/superpowers/phase5-migrations.md`'s "Nothing else in the
+   public contract moved" section. The gallery's parallel-table split did disappear (§6), but not
+   because of any `presentationFor`-adapter this point claimed — `TransitionGallery.tsx` unifies
+   on `NodeTransitionDemo` because it renders every kind through `transitionNodeFor`, which lifts a
+   one-sided presentation into the same two-input shape a native node already has; the gallery
+   never goes through `presentationFor`/`TransitionSeries` at all (see the comment at
+   `TransitionGallery.tsx:40-56`).
 3. **17 project directories hold a vendored file on the transition contract surface** (PP 16 of
    16, ROOST 1 of 1). None vendors a *copy of a core file* — they all resolve through
    `@video-toolkit/…` — so `sync-template` work is about the vendored *brand* code drifting from

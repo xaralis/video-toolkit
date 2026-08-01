@@ -45,9 +45,12 @@ returns `{ composite: SomeComponent }`, it will now fail to compile.
 
 **What you almost certainly do NOT need to touch:** if your renderer returns a plain
 `AnyPresentation` (the same `{ component, props }` shape `@remotion/transitions/fade` etc.
-return) — the ordinary way to register a one-sided custom transition — nothing changes for you.
-Core lifts that into `plan` automatically (`wrapRemotionPresentation`, previously
-`fromRemotionPresentation`), the same as it always has for the five official presentations.
+return) — the ordinary way to register a one-sided custom transition — nothing changes for you
+**at the call site.** Core lifts that into `plan` automatically (`wrapRemotionPresentation`,
+previously `fromRemotionPresentation`), the same as it always has for the five official
+presentations — but the lift is now unconditional and life-long rather than boundary-scoped; see
+Rule 5 under "The new authoring surface" below before assuming your presentation needs no
+changes at all.
 
 **What DOES need a migration:** only a renderer that used to hand back `{ composite: MyComponent }`
 directly — a natively two-input transition your brand wrote by hand, receiving `from`/`to` as
@@ -84,10 +87,11 @@ JSX to render:
   track blends against what's beneath it, which is a reel-level decision no single boundary is
   entitled to make.
 
-Four rules carry real consequences if you break them — none of them are enforced by a compile
+Five rules carry real consequences if you break them — none of them are enforced by a compile
 error, and only ONE of them is enforced by a dev-only console warning. `wrap`'s stability (Rule 2)
 and `wrap`'s unconditional declaration (Rule 4) both have NO dev warning at all — see "the two
-known gaps" below:
+known gaps" below. **Rule 5 has no dev warning either, and it is the one that applies even if you
+never write a `plan` at all** — see below.
 
 1. **`ghosts.length` must not vary with `progress`.** Each ghost is an extra mount of the clip; a
    count that changes mid-window destroys and recreates a media element mid-transition — the
@@ -125,6 +129,29 @@ known gaps" below:
    PARAMS only (e.g. `squareAnimation === 'fade'`), never of `progress`, `frame`, or any other
    per-call value — vary what the wrap DOES with `style`/its own `active` prop, never whether it is
    present at all.
+5. **A one-sided `AnyPresentation` must be visually the identity at its own inert end — progress
+   0 for something entering, progress 1 for something exiting — because core now wraps EVERY
+   `AnyPresentation` your brand registers, unconditionally, for the item's whole mounted life, not
+   just inside its boundary window.** `at-cut-transitions.tsx:713`
+   (`isTransitionNode(resolved) ? resolved : wrapRemotionPresentation(resolved)`) has no gate any
+   more — the Stage 5 flip deleted the `WRAP_PLAN_KINDS` allowlist that used to limit this lift to
+   core's own kinds. `wrapRemotionPresentation`'s `Wrap` mounts a live `TransitionLayer` for the
+   item's entire life and feeds it `NEUTRAL_PROGRESS` outside the transition's actual window — it
+   does not skip rendering your presentation just because the boundary isn't live yet. **Measured,
+   not assumed:** registering a brand kind that returns a plain `AnyPresentation` — exactly the
+   shape the section above says needs no migration — and driving it through the real
+   `buildVideoNodes` shows the clip nested in a live wrapper at `opacity: 0` with the
+   presentation's colour showing through, for the ~80 frames BEFORE its boundary opens (and
+   symmetrically after it closes on the other side). If your presentation's neutral/rest state
+   at progress 0/1 is not a true visual no-op — a solid colour, a non-zero blur, a translate off
+   its rest position — your clip is wrong for most of its life, not just at the cut. Core's own 13
+   lifted kinds are checked for this by `plan-neutral-progress.test.tsx`, which derives its kind
+   list from `TRANSITION_CATALOG` — it structurally cannot see a brand-registered kind, so nothing
+   in core will catch a violation of this rule for you. **This qualifies the "nothing changes for
+   you" claim in "What actually changed under the hood" above:** a plain-`AnyPresentation` renderer still compiles and still
+   renders without code changes, but its correctness now depends on a contract (identity at the
+   inert end) that did not exist, and was not required, before this phase — audit your
+   presentation against it before relying on the "no migration needed" guidance.
 
 At most one live boundary may set `post` on a given frame — a second is a **warned** conflict
 (`video-track:post-conflict:<a>+<b>`), and the later one wins. This closes a carried hazard: two
@@ -171,32 +198,63 @@ same 1-mount-per-side technique `scanline-glitch` already uses (`feOffset`/`feCo
 `feBlend`) is a real, separate, optional future task — not something this phase or this
 migration note commits you to.
 
-## Goldens: 68 cells moved across Stages 2-4, and why
+## Goldens: 80 cells moved versus the pre-Phase-5 merge base, and why
+
+**RE-DERIVED — the fix-round review measured the previous version of this section wrong, in the
+direction that under-warns a brand author.** The number below comes from a direct key-by-key diff
+of `examples/layered-minimal/goldens/transition-matrix.json`'s `frames` map, merge base `2e6265e`
+(the last commit before Phase 5 started) versus this document's own HEAD — not from summing
+per-stage subtotals recorded as each stage landed, which is what the previous version of this
+section did and which is where it went wrong. Reproduce it yourself:
+
+```
+git show 2e6265e:examples/layered-minimal/goldens/transition-matrix.json > /tmp/base-goldens.json
+# then diff /tmp/base-goldens.json's "frames" keys against the current file's, by value
+```
 
 If you pin an OLDER core commit than this one and re-render, you will see pixel differences on
-**68 of 300** golden cells versus a core commit from before Phase 5 started (measured across
-Stages 2-4; **0 moved** at this task, Stage 5 — see the flip's own report for the full
-zero-movement measurement). Each was argued from a measured cause at the time it moved, not a
-side effect of "changing the strategy":
+**80 of 300** golden cells versus that pre-Phase-5 commit — 0 cells added, 0 removed, only
+existing cells' hashes changed. By kind:
 
-- **Stage 2 (48 cells).** `glitch` moved 15 cells — it is the one presentation that reads
-  `useCurrentFrame()` itself, so its own internal clock changed when its mount moved from a
-  freshly-instantiated boundary subtree to a life-long shell (this exact clock-origin shift was
-  already measured and accepted back in Phase 4 Task 1.3 for the SAME reason, the first time
-  `glitch` crossed a mount-strategy boundary). The rest of Stage 2's movement is `checkerboard`'s
-  and `scanline-glitch`'s technique rewrites (SVG mask / SVG filter chain replacing a DOM-copy
-  technique) landing on the `plan` arm.
-- **Stage 3 (20 cells).** `rgb-split` (moved to un-conditioned `ghosts`) and `scanline-glitch`
-  (moved to `post`) — 10 cells each, reviewed picture by picture; the other 10 of each kind's 15
-  were already byte-exact at the endpoints where the relevant threshold/blend is inert.
-- **Stage 4 (0 cells).** `checkerboard`'s carve-out (the mask/`foreignObject` mechanism itself was
-  unchanged — only its host, a `LayerOp.wrap` instead of a JSX sibling inside a `composite`,
-  moved) was measured byte-identical against its own Stage 0.1 goldens.
+| Kind | Cells changed (of 15) |
+|---|---|
+| `checkerboard` | 12 |
+| `glitch` | 10 |
+| `light-leak` | 10 |
+| `rgb-split` | 10 |
+| `scanline-glitch` | 10 |
+| `whip-pan` | 10 |
+| `pixelate` | 9 |
+| `zoom-blur` | 9 |
 
-If your brand's `projects/` renders were captured against a pre-Phase-5 core, expect these 68
-cells' worth of kinds (`glitch`, `checkerboard`, `scanline-glitch`, `rgb-split`) to look very
-slightly different after the pin bump, and treat that as expected, reviewed drift — not a
-regression to chase.
+**Three errors in the previous version of this section, corrected:**
+
+1. **The headline number was 68, not 80.** 68 was a Stages-2-4 subtotal (`glitch`/`checkerboard`
+   Stage 2, `rgb-split`/`scanline-glitch` Stage 3, `checkerboard`-carve-out Stage 4 at 0), but the
+   surrounding text framed it as the comparison "versus a core commit from before Phase 5
+   started" — which IS the merge base, where the directly measured answer is 80. This document no
+   longer carries the old per-stage subtotal narrative forward (it cannot be re-verified without
+   re-running each stage's own goldens in turn), only the merge-base total above, which is
+   reproducible from the current tree in one diff. The practical effect of the old framing: four
+   kinds' worth of movement — `light-leak`, `whip-pan`, `zoom-blur`, `pixelate`, 38 cells — never
+   appeared in the total at all.
+2. **`glitch` was said to move 15 cells; measured 10.** All 15 of `glitch`'s cells were not
+   compared correctly, or the count was carried from an earlier, partial measurement and never
+   re-verified against the merge base directly.
+3. **`checkerboard` and `scanline-glitch`'s technique rewrites (SVG mask / SVG filter chain
+   replacing a DOM-copy technique) were attributed to "Stage 2 landing on the `plan` arm."** Both
+   rewrites happened at **Stage 0**, inside the old `composite` contract, before either kind ever
+   touched `plan` — the technique change and the mount-contract migration are two separate events
+   that this section's old wording conflated into one.
+
+**If your brand's `projects/` renders were captured against a pre-Phase-5 core, expect ALL EIGHT
+of these kinds — `checkerboard`, `glitch`, `light-leak`, `rgb-split`, `scanline-glitch`,
+`whip-pan`, `pixelate`, `zoom-blur` — to look very slightly different after the pin bump.** The
+previous version of this list named only four (`glitch`, `checkerboard`, `scanline-glitch`,
+`rgb-split`) and told a brand author nothing about `light-leak`, `whip-pan`, `zoom-blur` or
+`pixelate` — 38 cells across those four kinds that would have read as unexplained regressions to
+chase instead of the reviewed, expected drift they are. Treat all 80 cells as expected drift, not
+a regression to chase.
 
 ## The two known gaps: no dev warning for an unstable `wrap`, or for a conditionally-declared one
 
@@ -228,11 +286,23 @@ at all must depend only on the transition's authored params, never on `progress`
 `presentationFor`, `isTransitionNode` — all unchanged in shape and behaviour. `presentationFor`
 still returns `null` and warns once for a kind that resolves to a native two-input node (unusable
 with `TransitionSeries`); only the warning's wording changed (it no longer names the deleted
-`AtCutTransition` as an alternative — it names `buildVideoNodes`). If your brand calls
-`presentationFor` directly to drive `TransitionSeries` (as PP's `web-program-intro` template
-does, per the design census), nothing about that call site's behaviour changes for any of the 20
-catalog kinds; if you author a NEW brand kind returning a native `{ plan }` node, `presentationFor`
-will (correctly) hard-cut it with a warning, exactly as it already does for `wipe`/`checkerboard`/
+`AtCutTransition` as an alternative — it names `buildVideoNodes`). **CORRECTED — the fix-round
+review measured this section's next claim false.** `presentationFor` the *function* is unchanged
+in shape and behaviour, but the SET of catalog kinds it hard-cuts is not: at the merge base before
+this phase (`2e6265e`), `gradient-wipe` and `rgb-split` were one-sided (`resolveTransition`
+returned a plain `AnyPresentation` for them, `at-cut-transitions.tsx:235,240` at that commit), so
+`presentationFor` returned a real presentation for both. Both are native two-input `{ plan }` nodes
+today (`lib/transitions/presentations/gradient-wipe.tsx`, `rgb-split.tsx`) with no one-sided form,
+so `presentationFor` now returns `null` + `warnOnce` for them too — the two-input set went from
+5 to 7 kinds. If your brand calls `presentationFor` directly to drive `TransitionSeries` (as PP's
+`web-program-intro` template does, per the design census) and any boundary in your project is
+authored with `gradient-wipe` or `rgb-split`, **that boundary changes picture on this pin bump** —
+from a rendered transition to a silent hard cut (with a dev-console warning, nothing visible in the
+rendered output). Audit your `transitionOut`/`transitionIn` config for these two kinds before
+bumping the pin; if you use either, move that boundary's call site to `buildVideoNodes` (or accept
+the hard cut). For every other of the 20 catalog kinds, nothing about the call site's behaviour
+changes. If you author a NEW brand kind returning a native `{ plan }` node, `presentationFor` will
+(correctly) hard-cut it with a warning, exactly as it already does for `wipe`/`checkerboard`/
 `pixelate`/`gradient-wipe`/`rgb-split`/`scanline-glitch`/coloured `fade-to-color` today.
 
 **No adapter recovers those seven kinds for `TransitionSeries`.** The original design

@@ -325,11 +325,24 @@ from upstream — it does not and should not run these six.
 **`--strict` is the mode a parity claim must use — the plain `pixel-gate` is for day-to-day
 iteration only.** The lenient default treats a near-miss (8×8 mean delta within tolerance) as a
 warning; `--strict` makes it fatal. Renders here are **not byte-deterministic**: a per-render coin
-flip (9-50% depending on the cell) produces one of two *stable, recorded* attractor hashes on 24
-cells, concentrated in the rightmost 8 columns of the frame — this is renderer nondeterminism,
-reproduced in fresh processes, not harness state leakage. `--strict` still passes reliably on an
-unchanged tree because both attractors are accepted goldens; a hash that is neither is a real
-`drifted`. Read `docs/superpowers/transition-pixel-harness.md` for the full mechanism (union rule
+flip (9-50% depending on the cell) produces one of two *stable, recorded* attractor hashes on
+**18** cells (re-derived from `bimodalCells.length` in the goldens file at this HEAD — **not 24**,
+a stale figure from an earlier phase that contradicted this same section's own gate row and
+:457's paragraph for at least three tasks running; always re-count from the goldens file, never
+copy a number quoted at you), concentrated in the rightmost 8 columns of the frame — this is
+renderer nondeterminism, reproduced in fresh processes, not harness state leakage. **`--strict`
+does NOT reliably pass on an unchanged tree** — the phase 5 whole-branch fix round measured a
+clean-tree `--strict` failure on `light-leak__exit__p075` (bytes differ, picture identical, max
+cell delta 0 — fatal only because `--strict` has no tolerance) and, on a second run, a different
+cell (`light-leak__cut__p025`), neither of which was in the recorded `bimodalCells` list at the
+time. The fix-round re-seed (`node scripts/render-transition-matrix.mjs light-leak
+--update-goldens --repeat=24`, union rule — the list only ever grows) did not reproduce a new
+attractor for either cell in this environment despite multiple `--repeat=24` attempts, and
+repeated `--strict` runs afterward (and before) passed every time on this machine — consistent with
+this repo's standing finding that the flake's rate is machine-dependent, not merely
+process-dependent. Treat "passes on an unchanged tree" as an expectation on THIS machine at THIS
+moment, not a guarantee; a hash that is neither attractor is still a real `drifted`. Read
+`docs/superpowers/transition-pixel-harness.md` for the full mechanism (union rule
 for re-seeding, `--audit-bimodal`, why the scope is a cell and never a kind) — it has changed more
 than once this phase and a stale paraphrase here would be worse than a pointer to it.
 
