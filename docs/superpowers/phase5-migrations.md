@@ -84,9 +84,10 @@ JSX to render:
   track blends against what's beneath it, which is a reel-level decision no single boundary is
   entitled to make.
 
-Three rules carry real consequences if you break them — none of them are enforced by a compile
-error, and two of them are enforced by a dev-only console warning (the third, `wrap`'s stability,
-has no dev warning at all — see "the one known gap" below):
+Four rules carry real consequences if you break them — none of them are enforced by a compile
+error, and only ONE of them is enforced by a dev-only console warning. `wrap`'s stability (Rule 2)
+and `wrap`'s unconditional declaration (Rule 4) both have NO dev warning at all — see "the two
+known gaps" below:
 
 1. **`ghosts.length` must not vary with `progress`.** Each ghost is an extra mount of the clip; a
    count that changes mid-window destroys and recreates a media element mid-transition — the
@@ -106,6 +107,24 @@ has no dev warning at all — see "the one known gap" below):
    styled sub-component), put that in a `wrap` instead — `wrap` IS a real React component and may
    use hooks (it can read `useActiveTransitionProgress()` for the live progress, scoped correctly
    even when the same node is shared across two different boundaries).
+4. **Declare `wrap` UNCONDITIONALLY, or not at all — never depending on `progress`, `frame`, or
+   any other per-call input.** Core does not read `wrap` off your `plan`'s live, per-frame return
+   value. It samples your `plan` exactly ONCE per `buildVideoNodes` call, with a synthetic
+   out-of-window probe (`progress: 0, frame: -1` — a pair no live call ever produces), and mounts
+   ONLY what that one sample declared, for the item's entire life. This is intentional (it is what
+   makes an item's `wrap` mountable before its boundary has ever gone live, and it is what makes an
+   unstable `wrap` detectable at all — see Rule 2) but it has a sharp, silent edge: **a `plan` that
+   returns `wrap` conditionally — e.g. `wrap: progress > 0 ? MyWrap : undefined`, the natural way
+   to write "only wrap while something is happening" — is evaluated at the sample's `progress: 0`,
+   so `wrap` is `undefined` there, and your wrap is NEVER MOUNTED, on any frame, ever.** Nothing
+   errors and nothing warns; the transition simply renders as if you had never declared a `wrap` at
+   all, and the only symptom is your effect not showing up. There is no dev warning for this today —
+   it is the same class of gap as the missing unstable-`wrap` warning above, just for a different
+   mistake with the same root cause (a brand author cannot see the sampling `plan` is subjected to).
+   The rule: whether a `plan` result includes a `wrap` key must be a function of the AUTHORED
+   PARAMS only (e.g. `squareAnimation === 'fade'`), never of `progress`, `frame`, or any other
+   per-call value — vary what the wrap DOES with `style`/its own `active` prop, never whether it is
+   present at all.
 
 At most one live boundary may set `post` on a given frame — a second is a **warned** conflict
 (`video-track:post-conflict:<a>+<b>`), and the later one wins. This closes a carried hazard: two
@@ -119,13 +138,21 @@ stays benign; the warning is what will tell you if it stops being so.
 ### `'mask-scale'` (added Stage 4) — a cheap alternative to a 64-mount carve-out
 
 `checkerboard`'s `squareAnimation: 'scale'` and `'flip'` sub-options are authored, visible-on-purpose
-multi-mount effects: at progress 1 they render **`gridSize²` separate mounts** of the incoming
-clip (one per cell) so each cell can independently scale/flip in. This is a deliberate exception
-to the "avoid extra mounts" spirit of the single-mount contract, not an oversight — some visual
-effects genuinely need per-cell independent transforms, and `ghosts` is exactly the contract for
-"extra STYLED copies, count held constant within any one progress value" (it varies from `0` at
-progress 0 to `gridSize²` at progress 1, in discrete jumps as each cell "locks in" — never varying
-*mid-cell*, so `auditGhosts`' dev warning does not fire for it).
+multi-mount effects: they render **`gridSize²` separate ghost mounts** of the incoming clip (one
+per cell) so each cell can independently scale/flip in. This is a deliberate exception to the
+"avoid extra mounts" spirit of the single-mount contract, not an oversight — some visual effects
+genuinely need per-cell independent transforms.
+
+**The ghost count is CONSTANT — `gridSize²` at every progress value, including 0 — which is
+exactly what Rule 1 above requires and exactly why this complies with it rather than being an
+exception to it.** `checkerboard.tsx`'s `plan` maps over every cell unconditionally
+(`cells.map(...)`, `presentations/checkerboard.tsx:409`) on every call; what changes with
+`progress` is each ghost's own `style` — `opacity` (0 until that cell's eased progress crosses its
+reveal threshold, 1 after), plus `scale`/`rotateY` for the two animated variants — never whether
+the ghost exists. A cell that looks "not there yet" is a real mount sitting at `opacity: 0`, not an
+absent one. This is `auditGhosts`' own invariant working as designed, not an exemption from it: the
+audit samples five progress points and the live frame and compares COUNTS, and every one of those
+samples sees the same `gridSize²`, so it correctly does not warn.
 
 If your brand does not need the exact per-cell scale/flip look, `'mask-scale'` is the cheap
 alternative added in the same stage: it reuses `checkerboard`'s default SVG-mask technique (3
@@ -171,7 +198,7 @@ cells' worth of kinds (`glitch`, `checkerboard`, `scanline-glitch`, `rgb-split`)
 slightly different after the pin bump, and treat that as expected, reviewed drift — not a
 regression to chase.
 
-## The one known gap: no dev warning for an unstable `wrap`, for a brand author specifically
+## The two known gaps: no dev warning for an unstable `wrap`, or for a conditionally-declared one
 
 Core's own test suite catches an unstable `wrap` reference — a fresh component on different
 calls — through a derived DOM-identity check
@@ -185,6 +212,16 @@ this phase — this is a real, acknowledged gap for brand authors specifically, 
 If you write your own `wrap`, the rule to hold onto by hand is: **build it once, outside `plan`,
 and never construct a new component inline inside `plan`'s own body.**
 
+The second gap is Rule 4 above, and it is arguably sharper because its failure mode is silent
+rather than merely flickery: a `plan` that declares `wrap` conditionally on `progress`/`frame`
+(rather than unconditionally, gated only on authored params) has that `wrap` sampled once at the
+synthetic out-of-window probe (`progress: 0, frame: -1`) and never re-sampled from a live call — so
+a condition like `progress > 0` reads `false` at the sample and the `wrap` silently never mounts,
+on any frame, with no error and no warning. Nothing in core catches this either, for a brand
+author or otherwise (it has no equivalent test in core's own suite because no core-owned kind
+writes a conditional `wrap`). Hold onto Rule 4 by hand: **whether your `plan` returns a `wrap` key
+at all must depend only on the transition's authored params, never on `progress` or `frame`.**
+
 ## Nothing else in the public contract moved
 
 `TransitionRenderProps`, `TransitionRegistry`, `TransitionRegistration`, `resolveTransition`,
@@ -197,3 +234,13 @@ does, per the design census), nothing about that call site's behaviour changes f
 catalog kinds; if you author a NEW brand kind returning a native `{ plan }` node, `presentationFor`
 will (correctly) hard-cut it with a warning, exactly as it already does for `wipe`/`checkerboard`/
 `pixelate`/`gradient-wipe`/`rgb-split`/`scanline-glitch`/coloured `fade-to-color` today.
+
+**No adapter recovers those seven kinds for `TransitionSeries`.** The original design
+(`phase5-single-mount-design.md` §8.5 point 2) floated the possibility of a `plan`→one-sided
+adapter — applying `plan.from` on the exiting call and `plan.to` (plus `plan.layers`) on the
+entering one — that would let all 20 catalog kinds work through `presentationFor`/
+`TransitionSeries`, restoring a capability the two-input contract removed. **That adapter was
+never built, in this phase or any stage of it.** If you need `wipe`/`checkerboard`/`pixelate`/
+`gradient-wipe`/`rgb-split`/`scanline-glitch`, or `fade-to-color` with a colour, in a
+`TransitionSeries`-driven template today, they are unusable there — drive them through
+`buildVideoNodes` instead, which every layered reel already does.
