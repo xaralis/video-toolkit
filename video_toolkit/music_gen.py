@@ -10,7 +10,7 @@ Capabilities:
 - Stem extraction (--extract)
 - Audio repainting — regenerate a time segment (--repaint)
 - Audio continuation — extend existing audio (--continuation)
-- Batch variations — generate multiple takes (--variations)
+- Multiple takes — N sequential generations, distinct seeds (--variations)
 - 5Hz LM thinking mode for richer output (--thinking, default on acemusic)
 - Scene presets for video production (--preset)
 - Brand-aware generation (--brand)
@@ -24,7 +24,7 @@ Examples:
   # Basic background music (uses acemusic cloud API by default)
   python3 -m video_toolkit.music_gen --prompt "Subtle corporate tech" --duration 60 --output bg.mp3
 
-  # Generate 4 variations, pick the best
+  # Generate 4 takes (4 sequential requests), pick the best
   python3 -m video_toolkit.music_gen --prompt "Upbeat electronic" --duration 30 --variations 4 --output intro.mp3
 
   # Disable thinking mode for faster generation
@@ -67,6 +67,7 @@ import argparse
 import base64
 import json
 import os
+import random
 import sys
 from pathlib import Path
 from typing import Optional
@@ -302,7 +303,6 @@ def call_acemusic_api(
     audio_format: str = "mp3",
     seed: Optional[int] = None,
     thinking: bool = True,
-    variations: int = 1,
     # Audio editing modes
     task_type: str = "text2music",
     src_audio_path: Optional[str] = None,
@@ -344,8 +344,6 @@ def call_acemusic_api(
         log(f"BPM: {bpm}", "dim")
     if key_scale:
         log(f"Key: {key_scale}", "dim")
-    if variations > 1:
-        log(f"Variations: {variations}", "dim")
 
     # Build message content using XML tag format
     content_parts = []
@@ -395,9 +393,10 @@ def call_acemusic_api(
     if time_signature:
         payload["audio_config"]["time_signature"] = str(time_signature)
 
-    # Batch
-    if variations > 1:
-        payload["batch_size"] = variations
+    # NOTE: no `batch_size`. Asking acemusic for N takes in one request reliably
+    # returns HTTP 504 for N > 1 — the whole batch dies together and nothing is
+    # written. Multiple takes are N sequential requests instead; see
+    # run_variations().
 
     # Seed
     if seed is not None:
@@ -572,6 +571,73 @@ def call_acemusic_api(
         output["seed"] = seed
 
     return output
+
+
+# --- Multiple takes ---
+
+def variation_paths(output_path: str, variations: int) -> list:
+    """Numbered siblings of `output_path` — bg.mp3 -> bg_1.mp3, bg_2.mp3, ..."""
+    if variations == 1:
+        return [output_path]
+    p = Path(output_path)
+    return [str(p.parent / f"{p.stem}_{i}{p.suffix}") for i in range(1, variations + 1)]
+
+
+def variation_seeds(seed: Optional[int], variations: int) -> list:
+    """Distinct seeds, one per take.
+
+    A single take keeps whatever the caller asked for (including None — let the
+    provider randomise). For multiple takes the seeds MUST differ, or the same
+    prompt returns the same track N times; an unset seed is anchored to a random
+    base so the series is still reproducible from the reported values.
+    """
+    if variations == 1:
+        return [seed]
+    base = seed if seed is not None else random.randrange(1, 2**31 - variations)
+    return [base + i for i in range(variations)]
+
+
+def run_variations(variations: int, output_path: str, seed: Optional[int], generate) -> Optional[dict]:
+    """Call `generate(output_path=..., seed=...)` once per take, sequentially.
+
+    Sequential rather than batched: see the `batch_size` note in
+    call_acemusic_api(). A failed take does not abort the rest — the caller gets
+    whatever was produced, with `success` False unless every take landed.
+
+    Returns the single result dict for one take, an aggregate for several, or
+    None if nothing at all was produced.
+    """
+    paths = variation_paths(output_path, variations)
+    seeds = variation_seeds(seed, variations)
+
+    results, files, produced_seeds = [], [], []
+    for i, (path, take_seed) in enumerate(zip(paths, seeds), start=1):
+        if variations > 1:
+            log(f"Take {i}/{variations} (seed {take_seed})", "info")
+        result = generate(output_path=path, seed=take_seed)
+        if result:
+            results.append(result)
+            files.append(path)
+            produced_seeds.append(take_seed)
+        elif variations > 1:
+            log(f"Take {i}/{variations} failed — continuing with the rest", "warn")
+
+    if not files:
+        return None
+    if variations == 1:
+        return results[0]
+
+    if len(files) < variations:
+        log(f"{len(files)} of {variations} takes produced audio", "warn")
+    return {
+        "success": len(files) == variations,
+        "output": files,
+        "files": files,
+        "variations": len(files),
+        "requested_variations": variations,
+        "seeds": produced_seeds,
+        "results": results,
+    }
 
 
 # --- RunPod API ---
@@ -1216,7 +1282,8 @@ Examples:
     adv_group.add_argument("--no-thinking", action="store_true",
                            help="Disable thinking mode (faster generation)")
     adv_group.add_argument("--variations", type=int, default=1,
-                           help="Generate N variations (1-8, acemusic only, default: 1)")
+                           help="Generate N takes as N sequential requests, one seed each "
+                                "(any provider, default: 1)")
     adv_group.add_argument("--guidance-scale", type=float,
                            help="Prompt adherence (1.0-15.0, default: 7.0)")
     adv_group.add_argument("--infer-method", choices=["ode", "sde"],
@@ -1226,9 +1293,10 @@ Examples:
 
     # Cloud provider
     cloud_group = parser.add_argument_group("Cloud")
-    cloud_group.add_argument("--cloud", type=str, default="acemusic",
+    cloud_group.add_argument("--cloud", type=str, default=None,
                              choices=["acemusic", "modal", "runpod"],
-                             help="Cloud provider (default: acemusic)")
+                             help="Cloud provider (default: acemusic, falling back to "
+                                  "modal if it is down; naming one pins it — no fallback)")
 
     # Setup
     setup_group = parser.add_argument_group("Setup")
@@ -1244,6 +1312,10 @@ Examples:
                              "or json (JSON Lines to stderr for bots/agents)")
 
     args = parser.parse_args()
+
+    # An explicit --cloud pins the provider; the default chains acemusic -> modal.
+    cloud_pinned = args.cloud is not None
+    args.cloud = args.cloud or "acemusic"
 
     # Handle --list-presets
     if args.list_presets:
@@ -1275,8 +1347,6 @@ Examples:
     if args.cloud != "acemusic":
         if args.repaint or args.continuation:
             parser.error("--repaint and --continuation require --cloud acemusic")
-        if args.variations > 1:
-            parser.error("--variations requires --cloud acemusic")
         if args.sample_mode:
             parser.error("--sample-mode requires --cloud acemusic")
 
@@ -1523,29 +1593,29 @@ Examples:
         sys.exit(0)
 
     print()
-    if args.cloud == "acemusic":
-        result = call_acemusic_api(
+
+    def generate_one(provider, output_path, seed):
+        if provider == "acemusic":
+            return call_acemusic_api(
+                prompt=prompt,
+                output_path=output_path,
+                duration=args.duration,
+                bpm=bpm,
+                key_scale=key_scale,
+                time_signature=args.time_sig,
+                lyrics=args.lyrics,
+                vocal_language=args.vocal_language,
+                audio_format=args.audio_format,
+                seed=seed,
+                thinking=thinking,
+                guidance_scale=args.guidance_scale,
+                infer_method=args.infer_method,
+                json_output=args.json,
+                progress=reporter,
+            )
+        return generate_music(
             prompt=prompt,
-            output_path=args.output,
-            duration=args.duration,
-            bpm=bpm,
-            key_scale=key_scale,
-            time_signature=args.time_sig,
-            lyrics=args.lyrics,
-            vocal_language=args.vocal_language,
-            audio_format=args.audio_format,
-            seed=args.seed,
-            thinking=thinking,
-            variations=args.variations,
-            guidance_scale=args.guidance_scale,
-            infer_method=args.infer_method,
-            json_output=args.json,
-            progress=reporter,
-        )
-    else:
-        result = generate_music(
-            prompt=prompt,
-            output_path=args.output,
+            output_path=output_path,
             duration=args.duration,
             bpm=bpm,
             key_scale=key_scale,
@@ -1554,16 +1624,38 @@ Examples:
             vocal_language=args.vocal_language,
             steps=args.steps,
             audio_format=args.audio_format,
-            seed=args.seed,
+            seed=seed,
             json_output=args.json,
-            cloud=args.cloud,
+            cloud=provider,
             progress=reporter,
         )
+
+    # Provider chain: the documented acemusic -> modal fallback, unless --cloud
+    # pinned one or Modal has no endpoint configured.
+    providers = [args.cloud]
+    if (not cloud_pinned and args.cloud == "acemusic"
+            and os.environ.get("MODAL_MUSIC_GEN_ENDPOINT_URL")):
+        providers.append("modal")
+
+    result = None
+    for i, provider in enumerate(providers):
+        result = run_variations(
+            variations=args.variations,
+            output_path=args.output,
+            seed=args.seed,
+            generate=lambda output_path, seed, _p=provider: generate_one(_p, output_path, seed),
+        )
+        if result:
+            if provider != providers[0]:
+                result["provider"] = provider
+            break
+        if i + 1 < len(providers):
+            log(f"{provider} unavailable — falling back to {providers[i + 1]}.", "warn")
 
     if args.json and result:
         print(json.dumps(result, indent=2))
 
-    sys.exit(0 if result else 1)
+    sys.exit(0 if result and result.get("success") else 1)
 
 
 if __name__ == "__main__":

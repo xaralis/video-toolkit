@@ -67,15 +67,21 @@ python3 -m video_toolkit.music_gen \
 If a `--brand` is set in screenplay frontmatter, pass `--brand <name>` so
 brand-specific hints (BPM/key/style) flow from `brands/<name>/toolkit:brand.json`.
 
-**Provider strategy:**
+**Provider strategy** (implemented in `music_gen.py` — you don't re-run it by hand):
 
-- **Default**: omit `--cloud` → music_gen.py defaults to `acemusic`.
-- **On acemusic failure** (504, network error, timeout > 180s):
-  - Print: "acemusic.ai unavailable — falling back to Modal."
-  - Re-run with `--cloud modal`. Slower but reliable as long as the Modal
-    music-gen app is deployed (`MODAL_MUSIC_GEN_ENDPOINT_URL` in `.env`).
-- **`--provider modal`**: skip acemusic, go straight to Modal.
-- **`--provider acemusic`**: never fall back; fail loudly if acemusic is down.
+- **Default**: omit `--cloud` → acemusic, falling back to Modal automatically if
+  acemusic produces nothing (504, network error, timeout). The fallback only
+  fires when `MODAL_MUSIC_GEN_ENDPOINT_URL` is set in `.env`; otherwise the run
+  fails outright.
+- **`--cloud modal`**: skip acemusic, go straight to Modal.
+- **`--cloud acemusic`**: pins the provider — never falls back, fails loudly if
+  acemusic is down.
+
+**Exit code is the source of truth.** `music_gen.py` exits non-zero whenever it
+did not produce every file that was asked for — including a partial
+`--variations` run. Never report success off stdout alone, and never pipe the
+run through `tee` without checking `PIPESTATUS` / `pipefail`, or you will read
+the pipe's exit code instead of the tool's.
 
 If NEITHER provider is configured (no `ACEMUSIC_API_KEY`, no
 `MODAL_MUSIC_GEN_ENDPOINT_URL`):
@@ -149,10 +155,12 @@ Re-running `/toolkit:add-music` on a project with existing music:
 
 ## Notes
 
-- `music_gen.py` already supports `--variations N` (acemusic only) to
-  generate 4 picks and pick the best. `/toolkit:add-music` doesn't expose this
-  by default to keep the command simple — pass `--variations 4` through
-  if you want it.
+- `music_gen.py` supports `--variations N` to generate N takes and pick the
+  best. It works on any provider: N takes are **N sequential requests** with
+  distinct seeds, never one batched request (acemusic 504s on a batch, losing
+  all N at once). Budget the wall-clock accordingly — N takes cost N× the time.
+  `/toolkit:add-music` doesn't expose this by default to keep the command
+  simple — pass `--variations 4` through if you want it.
 - For songs with vocals (`--lyrics`), use `python3 -m video_toolkit.music_gen` directly.
   `/toolkit:add-music` is scoped to instrumental background tracks for reels.
 - The brand rule for PP audio mixing: music sits at `-6 dB` (loud enough

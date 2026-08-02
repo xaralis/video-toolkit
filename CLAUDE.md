@@ -216,6 +216,29 @@ Audio, video, and image tools in `video_toolkit/`. Three things you need to know
 - **Always invoke from toolkit root** (`cd /path/to/claude-code-video-toolkit && python3 -m video_toolkit.<tool>`). Critical for background commands.
 - **Every tool supports `--help`** for full CLI options.
 
+### Read the exit code, and don't let a pipe eat it
+
+**Every tool here exits non-zero when it did not produce what was asked for.**
+Trust that, not stdout — several of them print a red `!!` error and keep the
+process alive long enough that a skimmed log looks like it worked.
+
+The trap is the invocation, not the tool. `cmd 2>&1 | tee /tmp/x.log` reports
+**`tee`'s** exit code — always `0` — so a background runner announces "completed
+(exit code 0)" for a run that produced nothing. This has already burned a real
+session: two `music_gen --variations 3` runs 504'd, wrote no files, and were
+read as successful. Redirect (`> log 2>&1`) instead of piping, or set
+`set -o pipefail` / check `${PIPESTATUS[0]}`.
+
+### Ask cloud providers for one thing at a time
+
+`music_gen --variations N` runs **N sequential requests** with distinct seeds,
+never one batched request. acemusic's `batch_size` reliably 504s for N > 1 and
+the whole batch dies together. If you add batching to any cloud tool, expect the
+same and prefer the sequential loop — a partial result beats an all-or-nothing
+timeout. `music_gen` also chains acemusic → Modal automatically when acemusic
+produces nothing and `MODAL_MUSIC_GEN_ENDPOINT_URL` is set; naming `--cloud`
+explicitly pins the provider and disables the fallback.
+
 Per-tool categories:
 
 | Type | Tools | When to Use |

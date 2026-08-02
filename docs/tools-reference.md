@@ -189,7 +189,8 @@ self-hosted 2B model.
 # Background music (acemusic cloud API by default)
 python3 -m video_toolkit.music_gen --prompt "Upbeat tech corporate" --duration 60 --bpm 128 --key "G Major" --output music.mp3
 
-# Generate 4 variations, pick the best
+# Generate 4 takes, pick the best — 4 sequential requests -> bg_1.mp3 .. bg_4.mp3
+# (never batched: acemusic 504s on batch_size > 1 and loses all of them)
 python3 -m video_toolkit.music_gen --prompt "Subtle corporate tech" --duration 60 --variations 4 --output bg.mp3
 
 # Fast mode (disable thinking)
