@@ -26,7 +26,7 @@ export interface WaveformProps {
 // fills the container (preserveAspectRatio="none", stretches). With `pxPerSec`
 // it renders at a fixed px width anchored to one edge (see the prop docs) so a
 // live trim holds the samples in place instead of sliding them.
-export function Waveform({ peaks, sourceInMs = 0, spanMs, color = 'rgba(255,255,255,0.28)', pxPerSec, anchor = 'right' }: WaveformProps) {
+export function Waveform({ peaks, sourceInMs = 0, spanMs, color = 'rgba(255,255,255,0.55)', pxPerSec, anchor = 'right' }: WaveformProps) {
   if (!peaks || peaks.length === 0) return null;
   const startIdx = Math.floor((sourceInMs / 1000) * PEAKS_PER_SEC);
   const count = Math.max(1, Math.round((spanMs / 1000) * PEAKS_PER_SEC));
