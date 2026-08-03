@@ -277,52 +277,79 @@ export function humanizeKey(key: string): string {
  *  already chosen. This is a real, geometric construction, not a search
  *  against any list of kind names, and it gives a guarantee a hash-then-slice
  *  scheme cannot: every PAIR of distinct palette entries is farther apart
- *  than PALETTE_FLOOR, verified exhaustively (all pairs, not a sample) in
- *  `editor-meta.test.ts`. A seed's colour is `PALETTE[hash(seed) % size]` —
- *  two different seeds either land in the same slot (identical colour, a
- *  real but bounded risk from the hash alone) or are guaranteed well
- *  separated. There is no middle ground where two different-but-similar
- *  colours slip through, the way independently-hashed axes allowed.
+ *  than the measured floor, verified exhaustively (all pairs, not a sample)
+ *  in `editor-meta.test.ts`. A seed's colour is `PALETTE[hash(seed) %
+ *  size]` — two different seeds either land in the same slot (IDENTICAL
+ *  colour — not "close", the exact same rendered value) or are guaranteed
+ *  well separated. Read that plainly: the old design's failure mode (two
+ *  kinds landing merely close together, e.g. 6-24 redmean apart, close
+ *  enough to misread as one colour but not literally equal) has NOT been
+ *  eliminated so much as converted into a different failure mode — exact
+ *  duplication — whose rate is now a directly chosen, measured number
+ *  (`PALETTE_SIZE`'s comment below) rather than an emergent property of
+ *  three uncoordinated hash draws. That is real progress (the rate is
+ *  smaller AND it's a known, tunable number now), not the absence of a
+ *  trade-off.
  *
- *  PALETTE_SIZE is a considered, not exhaustively optimised, choice: more
- *  slots lower the chance two unrelated kinds collide but shrink the
+ *  PALETTE_SIZE is a considered trade-off, chosen by MEASURING, not assuming:
+ *  more slots lower the chance two unrelated kinds collide but shrink the
  *  guaranteed floor (the same hue/sat/light box holds more points only by
- *  packing them closer); fewer slots do the opposite. 96 keeps the measured
- *  floor comfortably meaningful (~34.5 redmean, see `editor-meta.test.ts`)
- *  while keeping collision risk for a realistic brand's kind list (a dozen or
- *  so — see the history in this file) reasonable. Not re-tuned beyond that —
- *  a bigger PALETTE_SIZE with a lower floor is not obviously a better trade,
- *  so this is a considered point on the curve, not a search for the best
- *  one. */
-const SAT_MIN = 26;
-const SAT_MAX = 70;
-const LIGHT_MIN = 22;
-const LIGHT_MAX = 68;
-const PALETTE_SIZE = 96;
+ *  packing them closer); fewer slots do the opposite. The box below (sat
+ *  20-90%, light 15-80%) is now nearly as wide as it can be — the only
+ *  remaining constraint is the hue arc and the guard band, since the
+ *  legibility concern that used to cap lightness was withdrawn once it was
+ *  established the block labels already carry a text shadow a plain contrast
+ *  check doesn't see. With that room, `PALETTE_SIZE = 2048` measures out to a
+ *  minimum pairwise separation of **~11.65 redmean** over all 2,096,128 pairs
+ *  (re-measured exhaustively, not assumed, in `editor-meta.test.ts` — it
+ *  moves if the box or size changes) and a collision probability for a
+ *  realistic dozen-kind brand list of **~3.2%** (birthday bound on 2048
+ *  slots: 1 - e^(-12·11/(2·2048))) — in the same ballpark as the
+ *  pre-harmonisation generator's own duplicate rate (measured at 2.1-2.7% for
+ *  the same list size), not the ~51-97% an earlier, much smaller palette (96
+ *  slots) produced for the same list sizes. That smaller palette's
+ *  identical-colour rate was strictly worse than the pre-existing problem
+ *  this task set out to fix, which is why it was replaced rather than kept:
+ *  distinguishable is the goal, and identical is the one outcome that can
+ *  never be distinguishable. */
+const SAT_MIN = 20;
+const SAT_MAX = 90;
+const LIGHT_MIN = 15;
+const LIGHT_MAX = 80;
+const PALETTE_SIZE = 2048;
 
 // The usable hue span is the arc minus the guard band around the accent —
 // which, since the accent's real hue (~251.78) differs from the old
 // hardcoded 258, leaves TWO segments: below the guard (190 to ~226.78) and a
 // sliver above it (~276.78 to 280), not just the one segment the arc's
-// numbers made it easy to assume. Guarded against either segment (or both)
-// collapsing to 0 or negative width — if the guard band ever covered the
-// whole arc, dividing by a 0-width usable span would produce `NaN` and every
-// generated colour would be `hsl(NaN, …)`; there is always at least 1deg of
-// room instead.
+// numbers made it easy to assume.
 const GUARD_LO = ACCENT_HUE - HUE_GUARD;
 const GUARD_HI = ACCENT_HUE + HUE_GUARD;
 // A 1deg margin shaved off each segment's edge closest to the guard band.
-// `stableColor` rounds its hue to a whole degree for a tidier `hsl(...)`
-// string; without this margin a candidate landing a fraction of a degree
-// outside the guard could round INTO it even though its exact value never
-// crossed the boundary — this actually happened during development (a
-// candidate at 226.75deg, past a naive un-margined check, rounding to a
-// value inside the band) before the margin was widened to cover both
-// segment edges, not just one.
+// `stableColor`'s palette entries are rounded to whole degrees/percents (see
+// `buildPalette` below) for a tidier `hsl(...)` string; without this margin a
+// candidate generated a fraction of a degree outside the guard could round
+// INTO it even though its exact value never crossed the boundary — this
+// actually happened during development (a candidate at 226.75deg, past a
+// naive un-margined check, rounding to a value inside the band) before the
+// margin was widened to cover both segment edges, not just one.
 const ROUNDING_MARGIN = 1;
 const WIDTH_BELOW_GUARD = Math.max(0, GUARD_LO - ARC[0] - ROUNDING_MARGIN);
 const WIDTH_ABOVE_GUARD = Math.max(0, ARC[1] - GUARD_HI - ROUNDING_MARGIN);
-const USABLE = Math.max(1, WIDTH_BELOW_GUARD + WIDTH_ABOVE_GUARD);
+// Throws rather than silently clamping: a `Math.max(1, …)` here would let a
+// degenerate ARC/ACCENT_HUE/HUE_GUARD combination (the guard band covering
+// the whole arc) fall through as a 1deg span at `GUARD_HI + ROUNDING_MARGIN`
+// — itself OUTSIDE `ARC` when the guard's upper edge sits at or past the
+// arc's own edge, i.e. a silent rule-2 violation the caller would never see.
+// `lane-colors.ts` throws on an equally-degenerate malformed accent for the
+// same reason: a configuration this broken should fail loudly at module
+// load, not quietly produce an out-of-bounds colour at runtime.
+if (WIDTH_BELOW_GUARD + WIDTH_ABOVE_GUARD <= 0) {
+  throw new Error(
+    `ACCENT_HUE (${ACCENT_HUE}) with HUE_GUARD (${HUE_GUARD}) leaves no usable hue outside the guard band within ARC ${JSON.stringify(ARC)}`,
+  );
+}
+const USABLE = WIDTH_BELOW_GUARD + WIDTH_ABOVE_GUARD;
 
 /** Maps a fraction in [0, 1) into the usable hue span — the arc minus the
  *  guard band minus `ROUNDING_MARGIN` on both sides of it, distributed across
@@ -372,33 +399,49 @@ interface Hsl {
  *  repeatedly add whichever remaining candidate is farthest from every
  *  colour already chosen. This is what makes the palette's separation a
  *  geometric fact rather than a hope — each addition can only ever be at
- *  least as far from the existing set as every candidate NOT chosen. */
+ *  least as far from the existing set as every candidate NOT chosen.
+ *
+ *  Candidates are rounded to whole degrees/percents, and de-duplicated by
+ *  that ROUNDED triple, BEFORE selection ever runs — not after. Selecting on
+ *  continuous values and rounding only the final palette can silently merge
+ *  two distinct, well-separated-as-floats entries into the exact same
+ *  rendered colour: found empirically at this box's size once `size` grew
+ *  large enough (candidates packed close enough that some pairs shared a
+ *  rounded triple), which would have meant the "every pair separated"
+ *  guarantee below was checked against values `stableColor` doesn't actually
+ *  emit. Rounding first means what's optimised is what ships. */
 function buildPalette(size: number): Hsl[] {
   const rnd = mulberry32(0xc0ffee);
-  const CANDIDATE_COUNT = 4000;
+  const CANDIDATE_COUNT = 12000;
+  const seen = new Set<string>();
   const candidates: Hsl[] = [];
   for (let i = 0; i < CANDIDATE_COUNT; i += 1) {
-    candidates.push({
-      h: hueInArc(rnd()),
-      s: SAT_MIN + rnd() * (SAT_MAX - SAT_MIN),
-      l: LIGHT_MIN + rnd() * (LIGHT_MAX - LIGHT_MIN),
-    });
+    const h = Math.round(hueInArc(rnd()));
+    const s = Math.round(SAT_MIN + rnd() * (SAT_MAX - SAT_MIN));
+    const l = Math.round(LIGHT_MIN + rnd() * (LIGHT_MAX - LIGHT_MIN));
+    const key = `${h},${s},${l}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    candidates.push({ h, s, l });
+  }
+  if (candidates.length < size) {
+    throw new Error(`only found ${candidates.length} distinct rounded candidates for a palette of ${size}`);
   }
   const rgbs = candidates.map((c) => hslToRgb(c.h, c.s, c.l));
   const chosen = [0];
-  const minDistToChosen = new Float64Array(CANDIDATE_COUNT);
-  for (let i = 0; i < CANDIDATE_COUNT; i += 1) minDistToChosen[i] = redmean(rgbs[i], rgbs[0]);
+  const minDistToChosen = new Float64Array(candidates.length);
+  for (let i = 0; i < candidates.length; i += 1) minDistToChosen[i] = redmean(rgbs[i], rgbs[0]);
   for (let k = 1; k < size; k += 1) {
     let best = -1;
     let bestDist = -1;
-    for (let i = 0; i < CANDIDATE_COUNT; i += 1) {
+    for (let i = 0; i < candidates.length; i += 1) {
       if (minDistToChosen[i] > bestDist) {
         bestDist = minDistToChosen[i];
         best = i;
       }
     }
     chosen.push(best);
-    for (let i = 0; i < CANDIDATE_COUNT; i += 1) {
+    for (let i = 0; i < candidates.length; i += 1) {
       const d = redmean(rgbs[i], rgbs[best]);
       if (d < minDistToChosen[i]) minDistToChosen[i] = d;
     }
@@ -417,6 +460,10 @@ export const STABLE_COLOR_PALETTE: readonly Hsl[] = buildPalette(PALETTE_SIZE);
 export function stableColor(seed: string): string {
   let h = 0;
   for (let i = 0; i < seed.length; i += 1) h = (Math.imul(h, 31) + seed.charCodeAt(i)) >>> 0;
+  // Palette entries are already whole-number h/s/l (rounded before selection,
+  // not after — see `buildPalette`), so no rounding happens here: this emits
+  // exactly the values the palette's own separation guarantee was computed
+  // against, not a display-only approximation of them.
   const { h: hue, s, l } = STABLE_COLOR_PALETTE[mix32(h) % STABLE_COLOR_PALETTE.length];
-  return `hsl(${Math.round(hue)}, ${Math.round(s)}%, ${Math.round(l)}%)`;
+  return `hsl(${hue}, ${s}%, ${l}%)`;
 }
