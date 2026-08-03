@@ -143,24 +143,108 @@ export function clipFootageCapMs(item: VideoItem, decodedMs: number | undefined)
 
 // Real-time resize bounds (ms) for a clip/broll edge, fed to the timeline as the
 // action's minStart/maxEnd so the handle HARD-STOPS at the boundary during the
-// drag (instead of overshooting and snapping back on release). Left bound: the
-// source head (startMs - sourceInMs) — you can't reveal footage before frame 0.
-// Right bound: the nearer of the real footage end and the next clip's start —
-// you can't invent frames past the file, and clips can't overlap. Clip and broll
-// are treated identically: a broll's max length is its footage, same as a clip.
-// A source with no decoded duration (a still image) has no footage bound → it's
-// limited only by the next clip (or unbounded when it's the last item).
+// drag (instead of overshooting and snapping back on release).
+//
+// BOTH bounds are the FOOTAGE, and only the footage: left = the source head
+// (startMs - sourceInMs), right = the source tail (start + (file - sourceIn)).
+// You cannot invent frames the file does not have, in either direction.
+//
+// A NEIGHBOUR IS DELIBERATELY NOT A BOUND. The right bound used to also stop at
+// the next clip's start, which made the two handles behave differently for no
+// reason a user could see: the left handle has never been stopped by the
+// PREVIOUS clip's end, so dragging left over a neighbour worked while dragging
+// right over one did not. Overlapping neighbours are a legitimate, useful edit
+// here (it is how you give a transition the frames it needs to borrow — see
+// handle-room.ts), the model represents them (`layeredToTimeline` stacks
+// overlapping items into sub-rows), and nothing downstream forbids them. So the
+// asymmetry is resolved in the permissive direction: the handle stops at the
+// media, never at a sibling.
+//
+// Clip and broll are treated identically: a broll's max length is its footage,
+// same as a clip. A source with no decoded duration (a still image) has no
+// footage bound at all → its right handle is unbounded.
 export function resizeBoundsMs(
   item: VideoItem,
   decodedMs: number | undefined,
-  nextStartMs: number | undefined,
 ): { minStartMs: number; maxEndMs?: number } | null {
   if (item.kind !== 'clip' && item.kind !== 'broll') return null;
-  const footageEndMs = decodedMs && decodedMs > 0 ? item.startMs + (decodedMs - item.sourceInMs) : undefined;
-  const rights: number[] = [];
-  if (footageEndMs !== undefined) rights.push(footageEndMs);
-  if (nextStartMs !== undefined) rights.push(nextStartMs);
-  return { minStartMs: item.startMs - item.sourceInMs, maxEndMs: rights.length ? Math.min(...rights) : undefined };
+  const maxEndMs = decodedMs && decodedMs > 0 ? item.startMs + (decodedMs - item.sourceInMs) : undefined;
+  return { minStartMs: item.startMs - item.sourceInMs, maxEndMs };
+}
+
+// OVERWRITE — what a trim does when it runs into the clip next door.
+//
+// This is the plain NLE answer to "and if I drag over the WHOLE neighbour?":
+// the neighbour yields, in proportion to how far you went. Cover part of it and
+// it is trimmed back to your new edge; cover all of it and it is gone. Premiere
+// and Resolve both do exactly this on a single track, in both directions, and
+// the result is always what the timeline shows — no clip is left alive
+// underneath another one where the render would silently paint over it.
+//
+// It is symmetric on purpose. The rule this replaces only ran one way (a clip's
+// start dragged left trimmed the PREVIOUS clip's end) and, worse, the same rule
+// snapped a rightward trim straight back to the next clip's start — so lifting
+// the drag bound alone would have produced a gesture that visibly did nothing.
+//
+// A partial overwrite is a real trim of the survivor, not just a span edit: it
+// goes through resizeVideoItem so the source in/out-point rides along and the
+// span invariant holds.
+//
+// ONLY THE EDGE THAT ACTUALLY MOVED CONSUMES ANYTHING. Overwriting on the mere
+// fact of an overlap would let a drag eat a neighbour it never touched: pull a
+// clip's END to the right while its head already overlaps the clip before it,
+// and that untouched head overlap would silently trim the previous clip too.
+// `orig` is the dragged clip's span before this edit; it grew right → it may
+// take the next clip's head, grew left → the previous clip's tail.
+function overwriteNeighbours(
+  items: VideoItem[],
+  draggedId: string,
+  orig: { startMs: number; endMs: number },
+  footageMsById: Record<string, number> = {},
+): { items: VideoItem[]; removedIds: Set<string> } {
+  const r = items.find((v) => v.id === draggedId);
+  const removedIds = new Set<string>();
+  if (!r) return { items, removedIds };
+  const grewRight = r.endMs > orig.endMs;
+  const grewLeft = r.startMs < orig.startMs;
+  if (!grewRight && !grewLeft) return { items, removedIds };
+  const kept: VideoItem[] = [];
+  for (const x of items) {
+    if (x.id === draggedId) {
+      kept.push(x);
+      continue;
+    }
+    // Swallowed whole — but only if it lies in ground this drag newly claimed,
+    // so a clip that was already buried before the edit is not collected as a
+    // side effect of an unrelated trim.
+    if (
+      x.startMs >= r.startMs && x.endMs <= r.endMs &&
+      ((grewRight && x.endMs > orig.endMs) || (grewLeft && x.startMs < orig.startMs))
+    ) {
+      removedIds.add(x.id);
+      continue;
+    }
+    if (grewRight && x.startMs >= r.startMs && x.startMs < r.endMs) {
+      // Its head is under the dragged clip → trim the head to the new edge.
+      // Anything left shorter than MIN_CLIP_MS goes entirely: resizeVideoItem
+      // refuses to shrink a clip past that floor, so without this a drag over
+      // 99% of a neighbour would strand an unusable sliver of it instead.
+      if (x.endMs - r.endMs < MIN_CLIP_MS) { removedIds.add(x.id); continue; }
+      kept.push(resizeVideoItem(x, { startMs: r.endMs, endMs: x.endMs }, footageMsById[x.id]));
+      continue;
+    }
+    if (grewLeft && x.endMs > r.startMs && x.endMs <= r.endMs) {
+      // Its tail is under the dragged clip → trim the tail back (same floor).
+      if (r.startMs - x.startMs < MIN_CLIP_MS) { removedIds.add(x.id); continue; }
+      kept.push(resizeVideoItem(x, { startMs: x.startMs, endMs: r.startMs }, footageMsById[x.id]));
+      continue;
+    }
+    // Remaining case: x CONTAINS r entirely. An NLE would split x in two; that
+    // is a different edit with its own undo semantics, so x is left untouched
+    // and the two simply overlap (the timeline stacks them into sub-rows).
+    kept.push(x);
+  }
+  return { items: kept, removedIds };
 }
 
 // Time-bearing tracks a ripple edit shifts (music is a single spanning layer;
@@ -183,6 +267,9 @@ function spanApplied<T extends { startMs: number; endMs: number }>(item: T, np: 
 // endMs drifts past its footage — e.g. a config sourceOutMs that overshoots the
 // real file — locking the whole clip.) Multi-clip / card / outro have no single
 // trim, and a move (both edges) is span-only.
+/** Shortest a clip may be left by a trim or an overwrite (ms). */
+export const MIN_CLIP_MS = 100;
+
 function resizeVideoItem(item: VideoItem, np: { startMs: number; endMs: number }, footageMs?: number): VideoItem {
   const dStart = np.startMs - item.startMs;
   const dEnd = np.endMs - item.endMs;
@@ -191,10 +278,10 @@ function resizeVideoItem(item: VideoItem, np: { startMs: number; endMs: number }
     return { ...item, startMs: np.startMs, endMs: np.endMs };
   }
   if (dStart !== 0) {
-    const applied = Math.min(Math.max(dStart, -item.sourceInMs), item.endMs - item.startMs - 100); // clamp in>=0 and keep >0 duration
+    const applied = Math.min(Math.max(dStart, -item.sourceInMs), item.endMs - item.startMs - MIN_CLIP_MS); // clamp in>=0 and keep >0 duration
     return { ...item, startMs: item.startMs + applied, sourceInMs: item.sourceInMs + applied };
   }
-  const rawOut = Math.max(item.sourceInMs + 100, item.sourceOutMs + dEnd);
+  const rawOut = Math.max(item.sourceInMs + MIN_CLIP_MS, item.sourceOutMs + dEnd);
   const sourceOutMs = footageMs && footageMs > 0 ? Math.min(footageMs, rawOut) : rawOut; // can't pass the footage end
   return { ...item, endMs: item.startMs + (sourceOutMs - item.sourceInMs), sourceOutMs };
 }
@@ -508,25 +595,31 @@ export function applyTimelineChange(
     if (rippled) return withTotalDuration(relinkAudio(reelM, rippled));
   }
 
-  // Butt adjacent video clips (model B: clips don't overlap). If a clip's start
-  // was dragged left over the previous clip, trim the PREVIOUS clip's end to
-  // this clip's start — so it really ends earlier instead of dangling at full
-  // length, and its transitionOut marker re-derives at the new cut.
-  const video = resolvedVideo.map((v, i) => {
-    const next = resolvedVideo[i + 1];
-    return next && next.startMs > v.startMs && next.startMs < v.endMs ? { ...v, endMs: next.startMs } : v;
+  // OVERWRITE: a trim that runs into a neighbour consumes it (see the function).
+  // Only the clip the user actually dragged may overwrite, so a pre-existing
+  // overlap elsewhere on the track is left exactly as it was.
+  const dragged = reelM.tracks.video.find((v) => {
+    const np = newMs('video', v.id);
+    return np && (np.startMs !== v.startMs || np.endMs !== v.endMs);
   });
+  const { items: video, removedIds } = dragged
+    ? overwriteNeighbours(resolvedVideo, dragged.id, dragged, opts.footageMsById)
+    : { items: resolvedVideo, removedIds: new Set<string>() };
   const result: LayeredReel = {
     ...reelM,
     tracks: {
       ...reelM.tracks,
       video,
       overlays: reelM.tracks.overlays.map((o) => spanApplied(o, newMs('overlays', o.id))),
-      // Audio is trim-linked like a clip (in/out-point move with the edges).
-      audio: reelM.tracks.audio.map((a) => {
-        const np = newMs('audio', a.id);
-        return np ? resizeAudioItem(a, np) : a;
-      }),
+      // Audio is trim-linked like a clip (in/out-point move with the edges). A
+      // bed bound to a clip an overwrite consumed goes with it — the same rule
+      // deleteItem applies, so an overwritten clip cannot leave its voice behind.
+      audio: reelM.tracks.audio
+        .filter((a) => !(a.followsVideoId && removedIds.has(a.followsVideoId)))
+        .map((a) => {
+          const np = newMs('audio', a.id);
+          return np ? resizeAudioItem(a, np) : a;
+        }),
       brand: reelM.tracks.brand.map((b) => spanApplied(b, newMs('brand', b.id))),
     },
   };
@@ -543,7 +636,12 @@ export function applyTimelineChange(
 function relinkAudio(orig: LayeredReel, result: LayeredReel): LayeredReel {
   const vOrig = new Map(orig.tracks.video.map((v) => [v.id, v]));
   const vNew = new Map(result.tracks.video.map((v) => [v.id, v]));
-  const audio = result.tracks.audio.map((a, i) => {
+  // Paired BY ID, not by index: an overwrite can drop a consumed clip's bed from
+  // the result, after which the two arrays no longer line up positionally and an
+  // index pairing would re-derive each surviving bed from its NEIGHBOUR's
+  // original.
+  const aOrig = new Map(orig.tracks.audio.map((a) => [a.id, a]));
+  const audio = result.tracks.audio.map((a) => {
     if (!a.followsVideoId) return a;
     const o = vOrig.get(a.followsVideoId);
     const n = vNew.get(a.followsVideoId);
@@ -551,7 +649,8 @@ function relinkAudio(orig: LayeredReel, result: LayeredReel): LayeredReel {
     const dStart = n.startMs - o.startMs;
     const dEnd = n.endMs - o.endMs;
     if (dStart === 0 && dEnd === 0) return a; // video unchanged → keep the pipeline result
-    const base = orig.tracks.audio[i]; // re-derive from the original bed, not the pipeline copy
+    const base = aOrig.get(a.id); // re-derive from the original bed, not the pipeline copy
+    if (!base) return a;
     return resizeAudioItem(base, { startMs: base.startMs + dStart, endMs: base.endMs + dEnd });
   });
   return { ...result, tracks: { ...result.tracks, audio } };

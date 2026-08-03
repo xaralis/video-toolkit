@@ -83,8 +83,12 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   // Timeline zoom (px/s). 80 px/s = 100%; the readout is shown as a percentage.
   const ZOOM_MIN = 16;
   const ZOOM_MAX = 400;
+  // NOT rounded to whole px/s: a trackpad pinch arrives as many small factors
+  // (see zoomFactorFor), and rounding each one would quantise a 0.5% step back
+  // to zero at low zoom levels — the gesture would simply stop working there.
+  // The readout rounds for display instead.
   const zoomBy = useCallback(
-    (factor: number) => setScaleWidth((w) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(w * factor)))),
+    (factor: number) => setScaleWidth((w) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, w * factor))),
     [],
   );
 
@@ -396,7 +400,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
               scaleWidth={scaleWidth}
               snapping={snapping}
               snapToBeats={snapping && snapToBeats}
-              onZoom={(dir) => zoomBy(dir > 0 ? 1.15 : 1 / 1.15)}
+              onZoom={zoomBy}
               savedReel={savedReel}
               guidesMs={reel.meta.guidesMs}
               meta={meta}
