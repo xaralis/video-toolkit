@@ -35,4 +35,32 @@ describe('scrubValue', () => {
   it('returns the start value for zero travel', () => {
     expect(scrubValue(0.85, 0, 0.05)).toBe(0.85);
   });
+
+  it('does not drag an off-grid start onto the step grid on zero travel', () => {
+    // Regression: snapping the absolute value (instead of the delta) onto a
+    // grid anchored at zero would yank 42 to 44 on a mere click, with no
+    // drag at all.
+    expect(scrubValue(42, 0, 4)).toBe(42);
+    expect(scrubValue(1.37, 0, 0.05)).toBeCloseTo(1.37, 10);
+  });
+
+  it('moves an off-grid start by exactly one step', () => {
+    expect(scrubValue(42, 4, 4)).toBe(46);
+    expect(scrubValue(42, -4, 4)).toBe(38);
+    expect(scrubValue(1.37, 4, 0.05)).toBeCloseTo(1.42, 10);
+  });
+
+  it('keeps a three-decimal step on its own grid', () => {
+    expect(scrubValue(0, 4, 0.125)).toBe(0.125);
+    expect(scrubValue(0, 8, 0.125)).toBe(0.25);
+  });
+
+  it('does not throw on a zero step', () => {
+    expect(scrubValue(5, 4, 0)).toBe(5);
+  });
+
+  it('does not silently propagate NaN into the result', () => {
+    expect(scrubValue(NaN, 4, 0.05)).toBeNaN();
+    expect(scrubValue(NaN, 4, 0.05, { min: 0 })).toBe(0);
+  });
 });
