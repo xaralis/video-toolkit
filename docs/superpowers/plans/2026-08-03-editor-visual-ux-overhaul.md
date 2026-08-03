@@ -1896,6 +1896,19 @@ return (
 
 Import `framesForReel` from `../host/host-duration` and `formatTimecode` from `./controls/timecode`.
 
+- [ ] **Step 6b: Convert the last orphaned inline colour while you are in this file**
+
+`LayeredInspector.tsx` still has one hardcoded note colour that no other task's
+scope reaches: the `"No editable params."` fallback, `color: '#7a7d85'` — 4.20:1
+on `bg-panel` at 11px, a marginal AA fail. It is the same content-class string
+as `noteCls`, so give it `ed:text-[11px] ed:text-ink-2`. (Find it with
+`grep -n "No editable params" lib/editor/app/LayeredInspector.tsx` — the line
+number has moved repeatedly.)
+
+The two other survivors, the reel-summary counts and
+`"Select a timeline item to edit it."`, are inside the `!selectedId` block Step 6
+rewrites wholesale, so they are already handled — do not convert them separately.
+
 - [ ] **Step 7: Pin the omitted-when-healthy behaviour**
 
 Add to the inspector's existing test file:
