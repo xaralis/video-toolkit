@@ -47,28 +47,36 @@ export interface LayeredInspectorProps {
   sourceDurations?: Record<string, number>;
 }
 
-const label: React.CSSProperties = { fontSize: 11, color: '#7a7d85', display: 'block', marginBottom: 2 };
-const field: React.CSSProperties = { marginBottom: 8, flex: 1, minWidth: 0 };
-const input: React.CSSProperties = {
-  width: '100%',
-  background: '#1c1e22',
-  color: '#e8e8ea',
-  border: '1px solid #34363e',
-  borderRadius: 4,
-  padding: '5px 7px',
-  fontSize: 12,
-  boxSizing: 'border-box',
-};
-const heading: React.CSSProperties = { fontSize: 12, color: '#e8e8ea', margin: '0 0 10px', fontWeight: 600 };
-const panel: React.CSSProperties = { padding: 12, width: '100%', height: '100%', overflowY: 'auto', boxSizing: 'border-box' };
-const section: React.CSSProperties = { fontSize: 10, color: '#5f626a', textTransform: 'uppercase', letterSpacing: 0.4, margin: '10px 0 6px' };
-
-const Row = ({ children }: { children: ReactNode }) => <div style={{ display: 'flex', gap: 8 }}>{children}</div>;
-
+const panelCls = 'ed:p-3 ed:w-full ed:h-full ed:overflow-y-auto ed:box-border';
+const headingCls = 'ed:text-xs ed:text-ink ed:mb-2.5 ed:font-semibold';
+const sectionCls = 'ed:text-[10px] ed:text-ink-3 ed:uppercase ed:tracking-wider ed:mt-2.5 ed:mb-1.5';
+const fieldCls = 'ed:mb-2 ed:flex-1 ed:min-w-0';
+// Deliberately carries no `mb-*` of its own — a checkbox's label needs
+// margin-bottom 0 and every other label needs margin-bottom 1, and stacking
+// two utilities for the same property on one element depends on stylesheet
+// emission order rather than class-attribute order. Each consumer states its
+// own margin explicitly instead (see the non-checkbox `${labelCls} ed:mb-1`
+// call sites below and `CheckboxField`, which adds none).
+const labelCls = 'ed:block ed:text-[11px] ed:text-ink-2';
+const inputCls =
+  'ed:w-full ed:box-border ed:bg-control ed:text-ink ed:border ed:border-line ed:rounded ed:px-2 ed:py-1 ed:text-xs';
+// A value the user reads (not a label about it) — must stay in `ink`/`ink-2`,
+// never `ink-3`: `ink-3` at 12px is below WCAG AA against the shell.
+const readonlyValueCls = 'ed:text-xs ed:text-ink ed:font-mono';
 // A one-line reason printed under a control that has gone inert, so a disabled
 // field explains itself instead of reading as a bug. Deliberately quiet — it is
 // an answer to "why can't I type here", not a warning.
-const note: React.CSSProperties = { fontSize: 11, color: '#7a7d85', margin: '-4px 0 8px' };
+const noteCls = 'ed:text-[11px] ed:text-ink-3 ed:-mt-1 ed:mb-2';
+const rowCls = 'ed:flex ed:gap-2';
+const disabledCls = 'ed:opacity-45 ed:cursor-not-allowed';
+// Shared "input chrome" for the plain buttons below (seek/link/add-effect),
+// deliberately without `cursor`, `width`, `padding` or margin utilities — each
+// call site's enabled/disabled state needs its own `cursor-*`, and its own
+// sizing, so folding those in here would risk two utilities for the same
+// property landing on one element (the same hazard `labelCls` avoids above).
+const btnCls = 'ed:box-border ed:bg-control ed:text-ink ed:border ed:border-line ed:rounded ed:text-xs';
+
+const Row = ({ children }: { children: ReactNode }) => <div className={rowCls}>{children}</div>;
 
 // Live-commit field state: controlled local text that commits on every valid
 // keystroke (preview updates immediately, not on blur), and resyncs from the
@@ -95,11 +103,11 @@ function useLiveField(external: string) {
 function NumberField({ lbl, value, step = 1, min, max, onCommit, disabled, title }: { lbl: string; value: number | undefined; step?: number; min?: number; max?: number; onCommit: (n: number) => void; disabled?: boolean; title?: string }) {
   const f = useLiveField(value === undefined ? '' : String(value));
   return (
-    <div style={field} title={title}>
-      <label style={label}>{lbl}</label>
+    <div className={fieldCls} title={title}>
+      <label className={`${labelCls} ed:mb-1`}>{lbl}</label>
       <input
         aria-label={lbl}
-        style={disabled ? { ...input, opacity: 0.45, cursor: 'not-allowed' } : input}
+        className={disabled ? `${inputCls} ${disabledCls}` : inputCls}
         type="number"
         step={step}
         min={min}
@@ -123,11 +131,11 @@ function NumberField({ lbl, value, step = 1, min, max, onCommit, disabled, title
 function TextField({ lbl, value, onCommit }: { lbl: string; value: string | undefined; onCommit: (s: string) => void }) {
   const f = useLiveField(value ?? '');
   return (
-    <div style={field}>
-      <label style={label}>{lbl}</label>
+    <div className={fieldCls}>
+      <label className={`${labelCls} ed:mb-1`}>{lbl}</label>
       <input
         aria-label={lbl}
-        style={input}
+        className={inputCls}
         type="text"
         value={f.text}
         onFocus={f.onFocus}
@@ -156,9 +164,9 @@ function SelectField({
 }) {
   const opts = value && !options.includes(value) ? [value, ...options] : options;
   return (
-    <div style={field}>
-      <label style={label}>{lbl}</label>
-      <select aria-label={lbl} style={input} value={value ?? ''} onChange={(e) => onChange(e.target.value)}>
+    <div className={fieldCls}>
+      <label className={`${labelCls} ed:mb-1`}>{lbl}</label>
+      <select aria-label={lbl} className={inputCls} value={value ?? ''} onChange={(e) => onChange(e.target.value)}>
         {value === undefined && <option value="">—</option>}
         {opts.map((o) => (
           <option key={o} value={o}>
@@ -174,9 +182,16 @@ function SelectField({
 // has never been set; that renders as unchecked and commits `true` on click.
 function CheckboxField({ lbl, value, onChange }: { lbl: string; value: boolean | undefined; onChange: (b: boolean) => void }) {
   return (
-    <div style={field}>
-      <label style={{ ...label, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 0, cursor: 'pointer' }}>
-        <input type="checkbox" checked={value ?? false} onChange={(e) => onChange(e.target.checked)} />
+    <div className={fieldCls}>
+      <label className={`${labelCls} ed:flex ed:items-center ed:gap-1.5 ed:cursor-pointer`}>
+        {/* Preflight strips a bare checkbox's default background — an
+            explicit accent colour keeps it visible and on-brand. */}
+        <input
+          type="checkbox"
+          className="ed:accent-accent"
+          checked={value ?? false}
+          onChange={(e) => onChange(e.target.checked)}
+        />
         {lbl}
       </label>
     </div>
@@ -192,8 +207,8 @@ function ColorField({ lbl, value, onCommit }: { lbl: string; value: string | und
   const f = useLiveField(value ?? '');
   const swatch = /^#[0-9a-fA-F]{6}$/.test(f.text) ? f.text : '#000000';
   return (
-    <div style={field}>
-      <label style={label}>{lbl}</label>
+    <div className={fieldCls}>
+      <label className={`${labelCls} ed:mb-1`}>{lbl}</label>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <input
           aria-label={`${lbl} swatch`}
@@ -207,7 +222,7 @@ function ColorField({ lbl, value, onCommit }: { lbl: string; value: string | und
         />
         <input
           aria-label={lbl}
-          style={input}
+          className={inputCls}
           type="text"
           value={f.text}
           onFocus={f.onFocus}
@@ -741,9 +756,13 @@ function EffectEditor({
   return <ParamFields values={params} fields={fields} onPatch={onPatch} accentSlots={accentSlots} axis="effect" kind={type} />;
 }
 
-const seekBtn: React.CSSProperties = { ...input, cursor: 'pointer', marginBottom: 10, width: 'auto', padding: '4px 10px' };
-const linkBtn: React.CSSProperties = { ...input, cursor: 'pointer', marginTop: 4, width: '100%', padding: '6px 10px', textAlign: 'left', fontSize: 12 };
-const readonlyValue: React.CSSProperties = { fontSize: 13, color: '#c8cbd2', padding: '3px 0' };
+// `btnCls` plus this call site's own sizing and margin. `seekBtnCls` has no
+// disabled variant anywhere it's used, so its `cursor-pointer` is baked in;
+// `linkBtnCls` DOES gain a disabled variant at one call site (`AddEffectControl`
+// below), so — same hazard `btnCls` itself is written to avoid — it carries no
+// `cursor-*` of its own; every consumer adds its own.
+const seekBtnCls = `${btnCls} ed:cursor-pointer ed:mb-2.5 ed:w-auto ed:px-2.5 ed:py-1`;
+const linkBtnCls = `${btnCls} ed:mt-1 ed:w-full ed:px-2.5 ed:py-1.5 ed:text-left`;
 
 // The addable effects: core's own catalog plus whatever the brand declared.
 // Core ships only what core RENDERS (ken-burns and grade via SegmentMedia) —
@@ -771,8 +790,13 @@ function AddEffectControl({
   const catalog = effectCatalog(meta);
   return (
     <div style={{ marginTop: 8 }}>
-      <button type="button" onClick={() => setOpen((o) => !o)}
-        style={{ ...seekBtn, marginBottom: 4 }}>+ Add effect</button>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`${btnCls} ed:cursor-pointer ed:mb-1 ed:w-auto ed:px-2.5 ed:py-1`}
+      >
+        + Add effect
+      </button>
       {open &&
         catalog.map((e) => {
           const isBlocked = blockedTypes?.has(e.type) ?? false;
@@ -787,7 +811,7 @@ function AddEffectControl({
                 onAdd({ type: e.type, ...(e.defaults ?? {}) });
                 setOpen(false);
               }}
-              style={isBlocked ? { ...linkBtn, opacity: 0.4, cursor: 'not-allowed' } : { ...linkBtn }}
+              className={isBlocked ? `${linkBtnCls} ed:opacity-40 ed:cursor-not-allowed` : `${linkBtnCls} ed:cursor-pointer`}
             >
               {e.label ?? e.type}
             </button>
@@ -820,20 +844,20 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
 
   if (!selectedId) {
     return (
-      <div style={panel}>
-        <h3 style={heading}>Reel</h3>
+      <div className={panelCls}>
+        <h3 className={headingCls}>Reel</h3>
         {/* All read-only — plain text, not field-styled boxes (they aren't editable). */}
-        <div style={field}>
-          <label style={label}>Topic</label>
-          <div style={readonlyValue}>{reel.meta.topic}</div>
+        <div className={fieldCls}>
+          <label className={`${labelCls} ed:mb-1`}>Topic</label>
+          <div className={readonlyValueCls}>{reel.meta.topic}</div>
         </div>
-        <div style={field}>
-          <label style={label}>Total duration</label>
-          <div style={readonlyValue}>{(reel.meta.totalDurationMs / 1000).toFixed(2)}s</div>
+        <div className={fieldCls}>
+          <label className={`${labelCls} ed:mb-1`}>Total duration</label>
+          <div className={readonlyValueCls}>{(reel.meta.totalDurationMs / 1000).toFixed(2)}s</div>
         </div>
-        <div style={field}>
-          <label style={label}>Music</label>
-          <div style={readonlyValue}>{reel.tracks.music.source ?? '(none)'} · base {reel.tracks.music.baseVolumeDb}dB</div>
+        <div className={fieldCls}>
+          <label className={`${labelCls} ed:mb-1`}>Music</label>
+          <div className={readonlyValueCls}>{reel.tracks.music.source ?? '(none)'} · base {reel.tracks.music.baseVolumeDb}dB</div>
         </div>
         <div style={{ fontSize: 11, color: '#5f626a', marginTop: 8 }}>
           {reel.tracks.video.length} video · {reel.tracks.overlays.length} overlays · {reel.tracks.audio.length} audio · {reel.tracks.brand.length} brand
@@ -873,8 +897,8 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     const maxFrames =
       edge === 'in' || isLast ? undefined : Math.max(1, maxTransitionFrames(roomOf(idx), roomOf(idx + 1), transitionAlignmentOf(t)));
     return (
-      <div style={panel}>
-        <h3 style={heading}>
+      <div className={panelCls}>
+        <h3 className={headingCls}>
           Transition {edge === 'in' ? 'in' : 'out'} · {transitionKindLabel(kind, meta?.transitionProps)}
         </h3>
         <TransitionFields t={t} accentSlots={slots} meta={meta} maxFrames={maxFrames} onChange={(next) => patchItem('video', id, { [edgeField]: next })} />
@@ -886,9 +910,9 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     const v = reel.tracks.video.find((x) => x.id === id);
     if (!v) return null;
     return (
-      <div style={panel}>
-        <h3 style={heading}>Clip · {v.kind}</h3>
-        <button type="button" style={seekBtn} onClick={() => onSeek(Math.round((v.startMs / 1000) * fps))}>
+      <div className={panelCls}>
+        <h3 className={headingCls}>Clip · {v.kind}</h3>
+        <button type="button" className={seekBtnCls} onClick={() => onSeek(Math.round((v.startMs / 1000) * fps))}>
           ⇥ seek to start
         </button>
         {(v.kind === 'clip' || v.kind === 'broll') && (
@@ -948,7 +972,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                       onCommit={(n) => patchItem('video', id, { focalY: n })}
                     />
                   </Row>
-                  {isBlurPad && <p style={note}>Nothing is cropped — the whole shot is visible.</p>}
+                  {isBlurPad && <p className={noteCls}>Nothing is cropped — the whole shot is visible.</p>}
                   <Row>
                     <NumberField
                       lbl="Backdrop blur"
@@ -1008,7 +1032,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           };
           return (
             <>
-              <div style={section}>
+              <div className={sectionCls}>
                 Color{hasGradeEffect ? ' (disabled — this item has its own grade effect)' : ''}
               </div>
               <GradeFields g={g} onPatch={patchGrade} disabled={hasGradeEffect} />
@@ -1026,7 +1050,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           if (!declared?.length && !Object.keys(props).length) return null;
           return (
             <>
-              <div style={section}>{humanizeKey(v.kind)}</div>
+              <div className={sectionCls}>{humanizeKey(v.kind)}</div>
               <ParamFields
                 values={props}
                 fields={declared}
@@ -1104,7 +1128,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           const maxFrames = isLast ? undefined : Math.max(1, maxTransitionFrames(roomOf(idx), roomOf(idx + 1), transitionAlignmentOf(t)));
           return (
             <>
-              <div style={section}>Transition out</div>
+              <div className={sectionCls}>Transition out</div>
               <TransitionFields t={t} accentSlots={slots} meta={meta} maxFrames={maxFrames} onChange={(next) => patchItem('video', id, { transitionOut: next })} />
             </>
           );
@@ -1119,14 +1143,14 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     const content = o.content as { kind?: string; text?: string; lines?: string[]; reveal?: string; fontSize?: number };
     const patchContent = (patch: Record<string, unknown>) => patchItem('overlays', id, { content: { ...o.content, ...patch } });
     return (
-      <div style={panel}>
-        <h3 style={heading}>Overlay · {content.kind ?? 'overlay'}</h3>
-        <button type="button" style={seekBtn} onClick={() => onSeek(Math.round((o.startMs / 1000) * fps))}>
+      <div className={panelCls}>
+        <h3 className={headingCls}>Overlay · {content.kind ?? 'overlay'}</h3>
+        <button type="button" className={seekBtnCls} onClick={() => onSeek(Math.round((o.startMs / 1000) * fps))}>
           ⇥ seek to start
         </button>
         {content.text !== undefined && (
-          <div style={field}>
-            <label style={label}>Text</label>
+          <div className={fieldCls}>
+            <label className={`${labelCls} ed:mb-1`}>Text</label>
             {/* Multi-line WYSIWYG accent editor — an overlay's text can span
                 several lines (e.g. a stacked pull-quote look). */}
             <AccentEditor value={content.text ?? ''} onChange={(next) => patchContent({ text: next })} colors={slots} multiline />
@@ -1209,8 +1233,8 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     const a = reel.tracks.audio.find((x) => x.id === id);
     if (!a) return null;
     return (
-      <div style={panel}>
-        <h3 style={heading}>Audio</h3>
+      <div className={panelCls}>
+        <h3 className={headingCls}>Audio</h3>
         <TextField lbl="Source" value={a.source} onCommit={(s) => s.trim() && patchItem('audio', id, { source: s })} />
         <Row>
           <NumberField lbl="Trim in (s)" step={0.05} value={a.sourceInMs / 1000} disabled={!!a.followsVideoId} title={a.followsVideoId ? 'Linked to a clip — unlink to trim independently' : undefined} onCommit={(n) => patchItem('audio', id, { sourceInMs: Math.round(n * 1000) })} />
@@ -1235,7 +1259,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
         {a.followsVideoId ? (
           <button
             type="button"
-            style={linkBtn}
+            className={`${linkBtnCls} ed:cursor-pointer`}
             title={`This bed moves and trims with clip ${a.followsVideoId}. Unlink to edit it on its own.`}
             onClick={() => patchItem('audio', id, { followsVideoId: undefined })}
           >
@@ -1244,7 +1268,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
         ) : (
           <button
             type="button"
-            style={linkBtn}
+            className={`${linkBtnCls} ed:cursor-pointer`}
             title="Bind this bed to its clip and snap it exactly onto the clip's span."
             onClick={() => {
               // Prefer the clip this bed was named after (seg-002-audio → seg-002),
@@ -1278,8 +1302,8 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     const patchMusic = (patch: Record<string, unknown>) =>
       onChange(withTotalDuration({ ...reel, tracks: { ...reel.tracks, music: { ...m, ...patch } } }));
     return (
-      <div style={panel}>
-        <h3 style={heading}>Music</h3>
+      <div className={panelCls}>
+        <h3 className={headingCls}>Music</h3>
         <TextField lbl="Source" value={m.source} onCommit={(s) => patchMusic({ source: s.trim() || undefined })} />
         <NumberField lbl="Base volume (dB)" value={m.baseVolumeDb} onCommit={(n) => patchMusic({ baseVolumeDb: n })} />
         <NumberField
@@ -1304,8 +1328,8 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
   const b = reel.tracks.brand.find((x) => x.id === id);
   if (!b) return null;
   return (
-    <div style={panel}>
-      <h3 style={heading}>Brand · {b.kind}</h3>
+    <div className={panelCls}>
+      <h3 className={headingCls}>Brand · {b.kind}</h3>
       <Row>
         <NumberField lbl="Start (s)" step={0.05} value={b.startMs / 1000} onCommit={(n) => patchItem('brand', id, { startMs: Math.round(n * 1000) })} />
         <NumberField lbl="End (s)" step={0.05} value={b.endMs / 1000} onCommit={(n) => patchItem('brand', id, { endMs: Math.round(n * 1000) })} />
