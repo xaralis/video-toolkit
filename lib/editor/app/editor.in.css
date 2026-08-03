@@ -3,18 +3,30 @@
 @source "./**/*.tsx";
 @source "../host/**/*.tsx";
 
-/* Tailwind v4 only emits a utility class that some scanned source actually
- * uses. No template consumes an `ed:` class yet (later tasks convert the
- * shell/inspector/timeline to utilities) and no source in this repo can
- * reference a class from inside a brand's separate submodule checkout, so
- * without this the compiled stylesheet would carry theme variables but zero
- * utilities — a pipeline that looks wired up but produces nothing to apply.
- * Safelist the two utilities the interface names explicitly (the accent
- * color, the mono font) so the pipeline is provably live today; delete these
- * two lines once a real consumer references `ed:` classes directly. */
+/* TEMPORARY scaffolding, unlike `static` below. No template consumes an
+ * `ed:` class yet (later tasks convert the shell/inspector/timeline to
+ * utilities), and with zero real consumers Tailwind emits zero `ed:`
+ * utility classes at all — a pipeline that looks wired up but produces
+ * nothing to apply. Safelist the two utilities the interface names
+ * explicitly (the accent color, the mono font) so the pipeline is provably
+ * live today; delete these two lines once a real consumer references
+ * `ed:` classes directly. */
 @source inline("ed:bg-accent");
 @source inline("ed:font-mono");
 
+/* PERMANENT — keep `static` even after later tasks give every token a real
+ * utility consumer. Not every token is read through a scanned Tailwind
+ * utility: a later task keeps GRIP_CSS in LayeredTimeline.tsx as
+ * hand-written CSS styling `.timeline-editor-action`, a class the
+ * third-party timeline library owns that no `ed:` utility can reach, and
+ * has it read `var(--ed-color-line)` directly. Plain `@theme` only keeps a
+ * custom property when some scanned utility uses it, so a variable read
+ * exclusively from raw CSS — never via a class Tailwind can see — would be
+ * silently tree-shaken out the moment nothing else happens to reference it.
+ * `static` forces every declared theme key to emit unconditionally, so a
+ * raw `var(--ed-color-*)` consumer can never go dark without a build error.
+ * (Verified directly: without `static`, all 13 `--color-*` custom
+ * properties are dropped, not merely the utilities.) */
 @theme static {
   --color-stage: #0e0e12;
   --color-shell: #131318;
