@@ -1,6 +1,15 @@
 import { useEffect, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import styles from './FrameOverlay.module.css';
+
+const rootCls = 'ed:absolute ed:inset-0 ed:pointer-events-none';
+const dotCls =
+  'ed:absolute ed:-translate-x-1/2 ed:-translate-y-1/2 ed:flex ed:flex-col ed:items-center ed:gap-1 ed:pointer-events-auto ed:cursor-grab ed:touch-none';
+const markerCls =
+  'ed:w-[18px] ed:h-[18px] ed:rounded-full ed:bg-accent ed:border-2 ed:border-panel ed:shadow-[0_0_0_1px_var(--ed-color-accent)]';
+const labelCls =
+  'ed:text-[10px] ed:text-accent-ink ed:bg-accent ed:py-px ed:px-1 ed:rounded-[2px] ed:whitespace-nowrap';
+const readoutCls =
+  'ed:text-[10px] ed:text-ink ed:bg-panel/85 ed:py-px ed:px-1 ed:rounded-[2px] ed:whitespace-nowrap';
 
 export interface FrameOverlayProps {
   /** Horizontal crop focus, 0..1 (0=left, 0.5=center, 1=right). Defaults to 0.5. */
@@ -116,21 +125,20 @@ export function FrameOverlay({
   return (
     <div
       ref={rootRef}
-      className={styles.root}
+      className={rootCls}
       data-testid="frame-overlay"
-      style={{ pointerEvents: 'none' }}
     >
       <div
-        className={styles.dot}
+        className={dotCls}
         data-testid="focus-dot"
         data-fx={fx}
         data-fy={fy}
         title="Drag to set which part of the shot stays in frame"
-        style={{ left: `${fx * 100}%`, top: `${fy * 100}%`, pointerEvents: 'auto' }}
+        style={{ left: `${fx * 100}%`, top: `${fy * 100}%` }}
         onPointerDown={startDrag}
       >
-        <span className={styles.marker} />
-        <span className={styles.label}>focus</span>
+        <span className={markerCls} />
+        <span className={labelCls}>focus</span>
         {/*
           Live numeric readout of the current focal position — makes it clear
           whether a drag registered (and by how much) without requiring the
@@ -138,7 +146,7 @@ export function FrameOverlay({
           (not only while dragging) so it also confirms the value that was
           loaded from the segment before any interaction happens.
         */}
-        <span className={styles.readout} data-testid="focal-readout">
+        <span className={readoutCls} data-testid="focal-readout">
           {`x ${fx.toFixed(2)} · y ${fy.toFixed(2)}`}
         </span>
       </div>

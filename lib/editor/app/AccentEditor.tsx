@@ -2,7 +2,13 @@ import { useLayoutEffect, useMemo, useRef } from 'react';
 import { parseAccents } from '@video-toolkit/lib/transcripts/accent-parser';
 import { runsToString, applyAccentToRange, type Run, type AccentColor } from './accent-runs';
 import { paletteMap, type AccentSlot } from '../../theming/palette';
-import styles from './AccentEditor.module.css';
+
+const editorCls = 'ed:flex ed:flex-col ed:gap-1.5 ed:w-full';
+const toolbarCls = 'ed:flex ed:gap-1.5';
+const buttonCls =
+  'ed:bg-control ed:border ed:border-line ed:rounded ed:px-2.5 ed:py-1 ed:text-[11px] ed:font-semibold ed:text-ink ed:cursor-pointer ed:hover:border-accent';
+const contentCls =
+  'ed:bg-control ed:border ed:border-line ed:rounded ed:px-2.5 ed:py-2 ed:text-[13px] ed:text-ink ed:leading-[1.4] ed:whitespace-nowrap ed:overflow-x-auto ed:focus:outline-none ed:focus:border-accent';
 
 /** The editor's accent palette entry IS a brand accent slot. */
 export type AccentEditorColor = AccentSlot;
@@ -176,13 +182,13 @@ export function AccentEditor({ value, onChange, colors = NO_COLORS, multiline = 
   };
 
   return (
-    <div className={styles.editor}>
-      <div className={styles.toolbar}>
+    <div className={editorCls}>
+      <div className={toolbarCls}>
         {colors.map((c) => (
           <button
             key={c.key}
             type="button"
-            className={styles.button}
+            className={buttonCls}
             data-accent-button={c.key}
             // Keep the editor selection alive when the button takes focus.
             onMouseDown={(e) => e.preventDefault()}
@@ -197,7 +203,7 @@ export function AccentEditor({ value, onChange, colors = NO_COLORS, multiline = 
         ))}
         <button
           type="button"
-          className={styles.button}
+          className={buttonCls}
           data-accent-button="clear"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => applyColor(null)}
@@ -207,7 +213,7 @@ export function AccentEditor({ value, onChange, colors = NO_COLORS, multiline = 
       </div>
       <div
         ref={ref}
-        className={styles.content}
+        className={contentCls}
         contentEditable
         suppressContentEditableWarning
         role="textbox"

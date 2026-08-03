@@ -245,11 +245,11 @@ export function followScrollLeft(
 // Default: faint. Hover the block: its grips brighten (shows WHICH clip's handle
 // you'll grab at a butted seam). Muted: hatched + dim (this edge can't extend).
 const GRIP_CSS = `
-.vt-grip { position: absolute; top: 4px; bottom: 4px; width: 5px; border-radius: 2px; pointer-events: none; background: rgba(255,255,255,0.30); transition: background 0.12s ease, box-shadow 0.12s ease; }
+.vt-grip { position: absolute; top: 4px; bottom: 4px; width: 5px; border-radius: 2px; pointer-events: none; background: color-mix(in oklab, var(--ed-color-ink) 30%, transparent); transition: background 0.12s ease, box-shadow 0.12s ease; }
 .vt-grip-left { left: 2px; }
 .vt-grip-right { right: 2px; }
-.timeline-editor-action:hover .vt-grip { background: rgba(255,255,255,0.92); box-shadow: 0 0 0 1px rgba(0,0,0,0.35); }
-.vt-grip-muted, .timeline-editor-action:hover .vt-grip-muted { background: repeating-linear-gradient(45deg, rgba(255,255,255,0.16) 0 2px, rgba(255,255,255,0) 2px 4px); box-shadow: none; }
+.timeline-editor-action:hover .vt-grip { background: color-mix(in oklab, var(--ed-color-ink) 92%, transparent); box-shadow: 0 0 0 1px color-mix(in oklab, var(--ed-color-stage) 35%, transparent); }
+.vt-grip-muted, .timeline-editor-action:hover .vt-grip-muted { background: repeating-linear-gradient(45deg, color-mix(in oklab, var(--ed-color-ink) 16%, transparent) 0 2px, transparent 2px 4px); box-shadow: none; }
 /* The block being dragged paints above its neighbours. xzdarcy stacks the action
    wrappers by DOM order alone, so a clip whose right edge is dragged over the
    next clip goes UNDER it and stays invisible until release — you cannot see the
@@ -257,6 +257,13 @@ const GRIP_CSS = `
    owns that node, not the wrapper), so the wrapper is reached with :has(). */
 .timeline-editor-action:has(.vt-block-active) { z-index: 4; }
 `;
+
+// Video/audio block base look (position/height/layout/typography — every
+// constant part of the block's style). `background` (per-item colour),
+// `boxShadow` (selection ring) and `cursor` (slip affordance) stay inline —
+// see the getActionRender block below — because they vary per action.
+const BLOCK_BASE_CLS =
+  'ed:relative ed:h-full ed:flex ed:items-center ed:px-1.5 ed:rounded-[3px] ed:text-ink ed:font-sans ed:text-[11px] ed:overflow-hidden';
 
 export function timelineLabel(action: TimelineAction, reel: LayeredReel, fps: number, meta?: EditorMeta): string {
   const { lane, id } = parseActionId(action.id);
@@ -328,7 +335,8 @@ const SNAP_PX = 8;
 // Transitions are markers at the cut, not full clips — a thinner row keeps
 // the lane visually distinct from the video/audio blocks above and below it.
 const TRANSITIONS_ROW_H = 18;
-const TRANSITION_MARKER_COLOR = '#c9a227';
+// Transition marker fill — a one-off amber, not one of the semantic tokens
+// (used directly as an `ed:bg-[#c9a227]` arbitrary value below).
 
 // Lanes whose items are display-only (their span is derived / not an item
 // array): brand span is content-end-derived, transitions are derived from
@@ -654,32 +662,22 @@ function LayeredTimelineImpl({
   return (
     <div
       ref={rootRef}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        minHeight: 0,
-        background: '#161719',
-        fontFamily: FONT,
-        userSelect: 'none',
-        WebkitUserSelect: 'none',
-      }}
+      className="ed:flex ed:flex-col ed:h-full ed:min-h-0 ed:bg-shell ed:font-sans ed:select-none"
     >
       <style>{GRIP_CSS}</style>
-      <div style={{ display: 'flex', flex: '1 1 auto', minHeight: 0 }}>
+      <div className="ed:flex ed:flex-auto ed:min-h-0">
       {/* Fixed lane-header column. xzdarcy renders only the track area, so the
           labels live in a parallel scroll container kept in two-way sync with
           the timeline's vertical scroll (its official scroll-sync mechanism):
           timeline scroll → list.scrollTop, list scroll → TimelineState.setScrollTop.
           The ruler spacer stays fixed on top. */}
-      <div style={{ width: 92, flex: 'none', borderRight: '1px solid #2a2c32', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ height: HEADER_OFFSET, flex: 'none' }} />
+      <div className="ed:w-[92px] ed:flex-none ed:border-r ed:border-line ed:flex ed:flex-col ed:overflow-hidden">
+        <div className="ed:flex-none" style={{ height: HEADER_OFFSET }} />
         <div
           ref={listRef}
           onScroll={(e) => stateRef.current?.setScrollTop(e.currentTarget.scrollTop)}
-          style={
-            { flex: '1 1 auto', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', msOverflowStyle: 'none' } as CSSProperties
-          }
+          className="ed:flex-auto ed:overflow-y-auto ed:overflow-x-hidden"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as CSSProperties}
         >
           {/* One header per timeline ROW (lanes can span several sub-rows when
               their items overlap). The lane name shows on its first sub-row; the
@@ -690,16 +688,8 @@ function LayeredTimelineImpl({
             return (
               <div
                 key={row.id}
-                style={{
-                  height: row.rowHeight ?? ROW_H,
-                  display: 'flex',
-                  alignItems: 'center',
-                  paddingLeft: 10,
-                  fontSize: 11,
-                  color: isFirst ? '#9a9da5' : '#61646c',
-                  borderBottom: '1px solid #202227',
-                  boxSizing: 'border-box',
-                }}
+                className={`ed:flex ed:items-center ed:pl-2.5 ed:text-[11px] ed:border-b ed:border-line ed:box-border ${isFirst ? 'ed:text-ink-2' : 'ed:text-ink-3'}`}
+                style={{ height: row.rowHeight ?? ROW_H }}
               >
                 {isFirst ? LANE_LABELS[lane] : '↳'}
               </div>
@@ -708,7 +698,7 @@ function LayeredTimelineImpl({
         </div>
       </div>
 
-      <div style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', position: 'relative' }}>
+      <div className="ed:flex-auto ed:min-w-0 ed:overflow-hidden ed:relative">
         {guidesMs && guidesMs.length > 0 && (
           // Ticks are positioned in UNSCROLLED content coordinates (left = 12 +
           // ms·scaleWidth); the whole layer is translated by the timeline's
@@ -718,26 +708,18 @@ function LayeredTimelineImpl({
           <div
             ref={guidesRef}
             aria-hidden
-            style={{
-              position: 'absolute',
-              inset: 0,
-              pointerEvents: 'none',
-              zIndex: 5,
-              willChange: 'transform',
+            className={`ed:absolute ed:inset-0 ed:pointer-events-none ed:z-[5] ed:will-change-transform ${
               // Prominent when snapping to beats, faint (still a manual-alignment
               // aid) when it's off.
-              opacity: snapToBeats ? 1 : 0.35,
-            }}
+              snapToBeats ? 'ed:opacity-100' : 'ed:opacity-[0.35]'
+            }`}
           >
             {guidesMs.map((ms, i) => (
               <div
                 key={i}
                 data-guide-tick
-                style={{
-                  position: 'absolute', top: 0, bottom: 0,
-                  left: TIMELINE_START_LEFT + (ms / 1000) * scaleWidth,
-                  width: 1, background: 'rgba(182,255,90,0.35)',
-                }}
+                className="ed:absolute ed:inset-y-0 ed:w-px ed:bg-accent/35"
+                style={{ left: TIMELINE_START_LEFT + (ms / 1000) * scaleWidth }}
               />
             ))}
           </div>
@@ -766,33 +748,20 @@ function LayeredTimelineImpl({
               const starved = starvedTargets.has(action.id);
               return (
                 <div
-                  style={{
-                    position: 'relative',
-                    height: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '0 6px',
-                    borderRadius: 999,
-                    background: TRANSITION_MARKER_COLOR,
-                    color: '#1a1a1a',
-                    fontFamily: FONT,
-                    fontSize: 10,
-                    overflow: 'hidden',
-                    boxShadow: action.selected ? 'inset 0 0 0 2px #e8e8ea' : undefined,
-                  }}
+                  className="ed:relative ed:h-full ed:flex ed:items-center ed:justify-center ed:px-1.5 ed:rounded-full ed:bg-[#c9a227] ed:text-[#1a1a1a] ed:font-sans ed:text-[10px] ed:overflow-hidden"
+                  style={{ boxShadow: action.selected ? 'inset 0 0 0 2px var(--ed-color-ink)' : undefined }}
                   title={starved ? diagnostics.find((d) => d.targetId === action.id)!.message : action.id}
                 >
                   {/* Same hatch vocabulary as a muted trim grip ("nothing more to
-                      take this way") — an overlay, not a className on this div: the
-                      pill's own background is opaque, so a class carrying only
-                      `background`/`box-shadow` would be invisible if it competed
-                      with this div's inline background instead of sitting on top
-                      of it. */}
+                      take this way") — the fill/box-shadow still come from the
+                      raw `.vt-grip-muted` rule (GRIP_CSS): the pill's own
+                      background is opaque, so that rule would be invisible if it
+                      competed with this div's own background instead of sitting
+                      on top of it as a separate absolutely-positioned overlay. */}
                   {starved && (
-                    <div className="vt-grip-muted" style={{ position: 'absolute', inset: 0, borderRadius: 999 }} />
+                    <div className="vt-grip-muted ed:absolute ed:inset-0 ed:rounded-full" />
                   )}
-                  <span style={{ position: 'relative', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <span className="ed:relative ed:whitespace-nowrap ed:overflow-hidden ed:text-ellipsis">
                     {timelineLabel(action, reel, fps, meta)}
                   </span>
                 </div>
@@ -810,20 +779,10 @@ function LayeredTimelineImpl({
                 // above its neighbours for the duration of the gesture — see
                 // GRIP_CSS. Without it, a clip dragged right disappears under the
                 // clip it is being dragged over and only reappears on release.
-                className={action.id === activeActionId ? 'vt-block vt-block-active' : 'vt-block'}
+                className={`${BLOCK_BASE_CLS} ${action.id === activeActionId ? 'vt-block vt-block-active' : 'vt-block'}`}
                 style={{
-                  position: 'relative',
-                  height: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '0 6px',
-                  borderRadius: 3,
                   background: blockColor(action, reel, meta),
-                  color: '#f2f2f2',
-                  fontFamily: FONT,
-                  fontSize: 11,
-                  overflow: 'hidden',
-                  boxShadow: action.selected ? 'inset 0 0 0 2px #e8e8ea' : undefined,
+                  boxShadow: action.selected ? 'inset 0 0 0 2px var(--ed-color-ink)' : undefined,
                   cursor: slippable ? 'ew-resize' : undefined,
                 }}
                 title={action.id}
@@ -860,7 +819,7 @@ function LayeredTimelineImpl({
                 {linkedAudioIds.has(action.id) && (
                   <span
                     title="Linked to its clip — unlink in the inspector to trim it on its own"
-                    style={{ position: 'absolute', right: 5, top: '50%', transform: 'translateY(-50%)', fontSize: 11, opacity: 0.85, pointerEvents: 'none' }}
+                    className="ed:absolute ed:right-[5px] ed:top-1/2 ed:-translate-y-1/2 ed:text-[11px] ed:opacity-[0.85] ed:pointer-events-none"
                   >
                     🔒
                   </span>
@@ -897,7 +856,7 @@ function LayeredTimelineImpl({
                     {/* Draggable BASE level; the derived envelope boosts ride above it. */}
                     <VolumeLine
                       volumeDb={reel.tracks.music.baseVolumeDb}
-                      color="rgba(182,255,90,0.9)"
+                      color="rgba(124,92,255,0.9)"
                       resetDb={-8}
                       onChange={(db) =>
                         onChange({ ...reel, tracks: { ...reel.tracks, music: { ...reel.tracks.music, baseVolumeDb: db } } })
@@ -912,19 +871,13 @@ function LayeredTimelineImpl({
                     undraggable along its whole width. Nothing here is
                     interactive, so it opts out of hit-testing entirely. */}
                 <span
-                  style={{
-                    position: 'relative',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    pointerEvents: 'none',
-                    // Reads over the waveform, which is bright and dense enough to
-                    // break up the glyphs behind it. A shadow rather than a
-                    // backplate or a dimmer waveform: the waveform IS the useful
-                    // picture on an audio block, so the label yields to it and
-                    // stays legible on its own.
-                    textShadow: '0 1px 2px rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,0.65)',
-                  }}
+                  className="ed:relative ed:whitespace-nowrap ed:overflow-hidden ed:text-ellipsis ed:pointer-events-none"
+                  // Reads over the waveform, which is bright and dense enough to
+                  // break up the glyphs behind it. A shadow rather than a
+                  // backplate or a dimmer waveform: the waveform IS the useful
+                  // picture on an audio block, so the label yields to it and
+                  // stays legible on its own.
+                  style={{ textShadow: '0 1px 2px rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,0.65)' }}
                 >
                   {timelineLabel(action, reel, fps, meta)}
                 </span>
@@ -992,36 +945,22 @@ function LayeredTimelineImpl({
       </div>
       </div>
       {/* Gesture legend — the timeline's non-obvious interactions. */}
-      <div
-        style={{
-          flex: 'none',
-          height: 20,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-          padding: '0 12px',
-          borderTop: '1px solid #2a2c32',
-          fontSize: 10.5,
-          color: '#6b6f78',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-        }}
-      >
+      <div className="ed:flex-none ed:h-5 ed:flex ed:items-center ed:gap-4 ed:px-3 ed:border-t ed:border-line ed:text-[10.5px] ed:text-ink-2 ed:whitespace-nowrap ed:overflow-hidden">
         <span>
-          <span style={{ color: ripple ? '#b6ff5a' : '#9a9a95' }}>Ripple {ripple ? 'on' : 'off'}</span>
+          <span className={ripple ? 'ed:text-accent' : 'ed:text-ink'}>Ripple {ripple ? 'on' : 'off'}</span>
           {ripple ? ' — resize shifts the rest; drag carries everything behind it' : ' — only what you grab moves'}
         </span>
         <span>
-          <span style={{ color: '#9a9a95' }}>⌥/Alt + drag a clip</span> — slip the shot inside its window
+          <span className="ed:text-ink">⌥/Alt + drag a clip</span> — slip the shot inside its window
         </span>
         <span>
-          <span style={{ color: '#9a9a95' }}>Drag the volume line</span> — set level (double-click to reset)
+          <span className="ed:text-ink">Drag the volume line</span> — set level (double-click to reset)
         </span>
         <span>
-          <span style={{ color: '#9a9a95' }}>⌘/Ctrl + scroll</span> — zoom the timeline
+          <span className="ed:text-ink">⌘/Ctrl + scroll</span> — zoom the timeline
         </span>
         <span>
-          <span style={{ color: '#9a9a95' }}>⌫</span> delete · <span style={{ color: '#9a9a95' }}>⌘Z</span> undo
+          <span className="ed:text-ink">⌫</span> delete · <span className="ed:text-ink">⌘Z</span> undo
         </span>
       </div>
     </div>
