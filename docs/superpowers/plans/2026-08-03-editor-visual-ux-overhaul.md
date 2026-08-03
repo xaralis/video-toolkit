@@ -41,6 +41,30 @@
 
 ## Phase 1 — Tailwind pipeline and repaint
 
+> ### ⚠️ Cascade-layer hazard, binding on Tasks 3, 4 and 5
+>
+> Tailwind emits every utility into `@layer utilities`. **Unlayered CSS —
+> which is what every surviving `*.module.css` compiles to — outranks any
+> cascade layer regardless of specificity.** So the moment an element carries
+> both a module class setting `background` and `ed:bg-panel`, the module wins
+> and the utility appears to do nothing, with no build error and no failing
+> test.
+>
+> The rule while converting: **convert an element's module class and its
+> utilities in the same edit — never leave an element wearing both.** If a
+> conversion looks like it had no effect, this is the first thing to check,
+> not the token names.
+>
+> The window closes at the end of this phase: Task 5 deletes the last two
+> `*.module.css` files, after which nothing unlayered competes.
+>
+> Related, same commit that introduced it: Phase 1 is also the first time
+> Tailwind Preflight applies to the whole editor page. The unconverted surface
+> was spot-checked and is safe (the inspector's fields all carry inline
+> styles), with one cosmetic exception — the bare `<input type="checkbox">` at
+> `LayeredInspector.tsx:179` loses its default background. Task 4 owns that
+> file and should give the checkbox an explicit style while it is there.
+
 ### Task 1: Tailwind pipeline and design tokens
 
 **Files:**
