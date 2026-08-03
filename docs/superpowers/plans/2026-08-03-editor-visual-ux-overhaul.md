@@ -202,10 +202,10 @@ The mapping, one line per former rule:
 | `.projectName` | `ed:text-sm ed:font-semibold ed:text-ink` |
 | `.saveGroup` | `ed:flex ed:items-center ed:gap-3` |
 | `.unsavedIndicator` | `ed:text-xs ed:font-medium ed:text-warn` |
-| `.saveButton` | `ed:bg-accent ed:text-accent-ink ed:border-0 ed:rounded-md ed:px-[18px] ed:py-2 ed:text-[13px] ed:font-semibold ed:cursor-pointer disabled:ed:bg-control disabled:ed:text-ink-3 disabled:ed:cursor-default` |
+| `.saveButton` | `ed:bg-accent ed:text-accent-ink ed:border-0 ed:rounded-md ed:px-[18px] ed:py-2 ed:text-[13px] ed:font-semibold ed:cursor-pointer ed:disabled:bg-control ed:disabled:text-ink-3 ed:disabled:cursor-default` |
 | `.saveButtonClean` | `ed:bg-control ed:text-ink-3 ed:cursor-default` |
-| `.discardButton` | `ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:px-[14px] ed:py-2 ed:text-[13px] ed:cursor-pointer hover:ed:border-ink-3 hover:ed:text-ink disabled:ed:opacity-45 disabled:ed:cursor-default` |
-| `.iconButton` | `ed:inline-flex ed:items-center ed:gap-1.5 ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:px-3 ed:py-[7px] ed:text-[13px] ed:cursor-pointer hover:not-disabled:ed:text-ink disabled:ed:opacity-40 disabled:ed:cursor-default` |
+| `.discardButton` | `ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:px-[14px] ed:py-2 ed:text-[13px] ed:cursor-pointer ed:hover:border-ink-3 ed:hover:text-ink ed:disabled:opacity-45 ed:disabled:cursor-default` |
+| `.iconButton` | `ed:inline-flex ed:items-center ed:gap-1.5 ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:px-3 ed:py-[7px] ed:text-[13px] ed:cursor-pointer ed:hover:not-disabled:text-ink ed:disabled:opacity-40 ed:disabled:cursor-default` |
 | `.divider` | `ed:w-px ed:h-[22px] ed:bg-line ed:mx-0.5` |
 | `.main` | `ed:flex ed:flex-1 ed:min-h-0` |
 | `.stage` | `ed:flex ed:items-center ed:justify-center ed:flex-1 ed:min-w-0 ed:bg-stage ed:p-6` |
