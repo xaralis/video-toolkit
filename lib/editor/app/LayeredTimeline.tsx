@@ -98,31 +98,32 @@ const LANE_LABELS: Record<LaneId, string> = {
 // specific one declares it in `meta.laneColors`.
 //
 // Every hue here is drawn from the arc declared in `lane-colors.ts` (190-280,
-// at least 25deg from the accent hue 258) — see `lane-colors.test.ts`, which
-// asserts both rules over this exact map. `music` and `video-multi-clip` used
-// to sit almost exactly on the accent hue (a lane permanently "selected");
-// `video-broll` and `video-card` used to be an unrelated green/gold that
-// clashed with the rest.
+// at least 25deg from the accent hue) — see `lane-colors.test.ts`, which
+// asserts both rules, PLUS pairwise distinguishability, over this exact map.
+// `music` and `video-multi-clip` used to sit almost exactly on the accent
+// hue (a lane permanently "selected"); `video-broll` and `video-card` used to
+// be an unrelated green/gold that clashed with the rest.
 //
-// The accent-guard band eats most of the arc (258±25 covers 233-283, and the
-// arc tops out at 280), so the actually-usable hue span is ~43deg (190-233) —
-// not enough room to separate seven lanes on hue alone. Saturation and
-// lightness are varied deliberately per entry for that reason (chosen by
-// maximising the minimum pairwise "redmean" RGB distance — the same measure
-// `stableColor.test` uses — over muted, panel-appropriate S/L ranges); the
-// worst pair here (`video-card` vs `audio`) is ~66 apart, comfortably a "two
-// different colours" gap rather than the ~25 the old rainbow's worst pair
-// (`video-multi-clip` vs `audio`) had. Exported so the rules test (and
-// nothing else) can read it directly.
+// The accent hue is DERIVED from `EDITOR_ACCENT` (`lane-colors.ts`), not the
+// hardcoded 258 an earlier pass here used — the real hue is ~251.78. Against
+// that corrected value, `video-broll` and `video-card`'s first re-pick
+// (227.1deg / 229.0deg) both landed INSIDE the guard band (226.78-276.78) —
+// a real rule-1 violation that only the correction surfaced. Both are
+// re-picked again here, along with the rest, by maximising the minimum
+// pairwise "redmean" RGB distance (the same measure `stableColor.test`
+// uses) over muted, panel-appropriate hue/sat/light ranges within the
+// corrected usable arc. Worst pair now is `video-broll` vs `video-photo` at
+// ~62 — comfortably a "two different colours" gap. Exported so the rules
+// test (and nothing else) can read it directly.
 export const CORE_LANE_COLOR: Record<string, string> = {
-  'video-clip': '#2c6777',
-  'video-broll': '#4d5c93',
-  'video-photo': '#4271b8',
-  'video-multi-clip': '#52828e',
-  'video-card': '#2d3f8f',
+  'video-clip': '#5987a1',
+  'video-broll': '#3252a4',
+  'video-photo': '#415381',
+  'video-multi-clip': '#457487',
+  'video-card': '#367bb5',
   'video-outro': '#4a4c54',
-  audio: '#304769',
-  music: '#4698b9',
+  audio: '#2e3f66',
+  music: '#46a7be',
   'brand-watermark': '#4a4c54',
   'brand-disclaimer': '#4a4c54',
 };

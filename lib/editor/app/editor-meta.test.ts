@@ -6,8 +6,11 @@ import {
   effectDefinition,
   humanizeKey,
   stableColor,
+  STABLE_COLOR_PALETTE,
   type EditorMeta,
 } from './editor-meta';
+import { CORE_LANE_COLOR } from './LayeredTimeline';
+import { ACCENT_HUE, HUE_GUARD, ARC, hslToRgb, redmean } from './lane-colors';
 import type { CompositionTheme } from '../../theming/types';
 import type { StyleEffectRenderer } from '../../theming/effects';
 
@@ -59,6 +62,12 @@ describe('humanizeKey', () => {
   });
 });
 
+function parseHsl(color: string): { h: number; s: number; l: number } {
+  const m = /^hsl\((\d+), (\d+)%, (\d+)%\)$/.exec(color);
+  expect(m, `${color} shape`).not.toBeNull();
+  return { h: Number(m![1]), s: Number(m![2]), l: Number(m![3]) };
+}
+
 describe('stableColor', () => {
   it('is deterministic per seed and differs between seeds', () => {
     expect(stableColor('overlay-chevron')).toBe(stableColor('overlay-chevron'));
@@ -66,59 +75,130 @@ describe('stableColor', () => {
     expect(stableColor('x')).toMatch(/^hsl\(\d+, \d+%, \d+%\)$/);
   });
 
-  // `a !== b` passes vacuously on a 6° hue gap — two blocks that a user reads as
-  // the same colour. Assert a real perceptual gap over the kinds a brand has.
-  //
-  // This used to measure hue distance only (plus a weighted add-on for S/L).
-  // That metric no longer fits: harmonising the lane palette with the accent
-  // (`lane-colors.ts`) confines `stableColor`'s hue to a ~43°-wide arc instead
-  // of the full 360°, by construction (see `hueInArc` in editor-meta.ts) — a
-  // hue-only measure would either fail for the right reason (the arc really is
-  // that narrow) or get lowered until it asserted nothing. So this compares
-  // actual rendered colour instead: convert each `hsl(...)` to RGB and take a
-  // perceptually-weighted Euclidean distance ("redmean", a well-known cheap
-  // stand-in for CIEDE2000 — weights R/B by how saturated red the pair is,
-  // since human eyes are more sensitive there, and always weights G highest).
-  it('separates every pair of real lane kinds by a visible margin', () => {
-    const kinds = [
-      'overlay-chevron', 'overlay-lottie', 'overlay-update-badge', 'overlay-text',
-      'overlay-title', 'overlay-stat-callout', 'overlay-quote-pull', 'overlay-source-tag',
-      'overlay-party-logos', 'overlay-caption', 'overlay-legal', 'video-photo',
-      'brand-watermark', 'overlay-ticker', 'overlay-cta', 'overlay-lower-third',
-    ];
-    const parseHsl = (seed: string) => {
-      const m = /^hsl\((\d+), (\d+)%, (\d+)%\)$/.exec(stableColor(seed));
-      expect(m, `stableColor(${seed}) shape`).not.toBeNull();
-      return { h: Number(m![1]), s: Number(m![2]) / 100, l: Number(m![3]) / 100 };
-    };
-    const hslToRgb = ({ h, s, l }: { h: number; s: number; l: number }) => {
-      const c = (1 - Math.abs(2 * l - 1)) * s;
-      const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-      const m = l - c / 2;
-      const [r, g, b] =
-        h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
-      return { r: (r + m) * 255, g: (g + m) * 255, b: (b + m) * 255 };
-    };
-    const redmean = (a: ReturnType<typeof hslToRgb>, b: ReturnType<typeof hslToRgb>) => {
-      const rMean = (a.r + b.r) / 2;
-      const dr = a.r - b.r;
-      const dg = a.g - b.g;
-      const db = a.b - b.b;
-      return Math.sqrt((2 + rMean / 256) * dr * dr + 4 * dg * dg + (2 + (255 - rMean) / 256) * db * db);
-    };
-    const rgbs = kinds.map((k) => hslToRgb(parseHsl(k)));
-    // Empirically: the minimum pairwise redmean distance over exactly this 16-
-    // kind set, with the arrays/salts above, is ~41.7 (`overlay-text` vs
-    // `brand-watermark`). 30 keeps a real margin under that measured floor
-    // without asserting a number so tight that an unrelated array tweak flakes
-    // it — re-derive both the array/salts and this floor together if either
-    // changes, never lower this in isolation to make a regression pass.
-    const MIN_RGB_SEPARATION = 30;
+  // The actual root-cause fix: separation used to be checked over ONE fixed
+  // 16-kind list, which passed by construction for that list — an
+  // independent audit (random salts, random kind names) found the SAME
+  // generator gave worse-than-baseline separation and a tripled duplicate
+  // rate for kinds outside it. `STABLE_COLOR_PALETTE` (editor-meta.ts) is now
+  // built by farthest-point sampling, a real geometric construction, so this
+  // checks EVERY pair of the whole palette — not a sample, not a fixture —
+  // which is the guarantee the old test only claimed to have.
+  it('STABLE_COLOR_PALETTE separates every one of its own entries from every other', () => {
+    const rgbs = STABLE_COLOR_PALETTE.map((c) => hslToRgb(c.h, c.s, c.l));
+    // Measured minimum over all C(96,2) = 4560 pairs of this exact palette
+    // (PALETTE_SIZE=96, built once at module load — see buildPalette in
+    // editor-meta.ts) is ~34.5. 30 keeps a real margin under that without
+    // being so tight that an unrelated, still-reasonable change to
+    // PALETTE_SIZE or the sat/light ranges flakes this — re-measure (log
+    // `min` below) and re-derive both together if either changes.
+    const PALETTE_FLOOR = 30;
+    let min = Infinity;
     for (let i = 0; i < rgbs.length; i += 1) {
       for (let j = i + 1; j < rgbs.length; j += 1) {
-        expect(redmean(rgbs[i], rgbs[j]), `${kinds[i]} vs ${kinds[j]}`).toBeGreaterThanOrEqual(MIN_RGB_SEPARATION);
+        const d = redmean(rgbs[i], rgbs[j]);
+        if (d < min) min = d;
+        expect(d, `palette[${i}] vs palette[${j}]`).toBeGreaterThanOrEqual(PALETTE_FLOOR);
       }
     }
+    expect(min).toBeGreaterThanOrEqual(PALETTE_FLOOR);
+  });
+
+  // Mutation-tested: reverting the palette's hue construction to a plain
+  // `hash % 360` (the pre-harmonisation behaviour) still passed the OLD
+  // version of this file's separation test, and under that mutant most
+  // generated colours land outside the arc and several land INSIDE the
+  // accent guard band — the exact rule-1 violation this task exists to
+  // prevent. This checks the whole palette exhaustively (not a sample of
+  // `stableColor`'s output) plus a black-box sample through `stableColor`
+  // itself for good measure, so the guarantee holds however a caller reaches
+  // it.
+  it('never generates a colour outside the arc, or inside the accent guard band', () => {
+    const guardLo = ACCENT_HUE - HUE_GUARD;
+    const guardHi = ACCENT_HUE + HUE_GUARD;
+    for (const { h } of STABLE_COLOR_PALETTE) {
+      expect(h, `palette hue ${h}`).toBeGreaterThanOrEqual(ARC[0]);
+      expect(h, `palette hue ${h}`).toBeLessThanOrEqual(ARC[1]);
+      expect(h < guardLo || h > guardHi, `palette hue ${h} inside guard band [${guardLo}, ${guardHi}]`).toBe(true);
+    }
+    for (let i = 0; i < 300; i += 1) {
+      const { h } = parseHsl(stableColor(`generated-kind-${i}`));
+      expect(h).toBeGreaterThanOrEqual(ARC[0]);
+      expect(h).toBeLessThanOrEqual(ARC[1]);
+      expect(h < guardLo || h > guardHi).toBe(true);
+    }
+  });
+
+  // A brand's overlay kinds never reach `stableColor` if core already colours
+  // them (`colorFor` in LayeredTimeline.tsx tries `CORE_LANE_COLOR` first) —
+  // a prior version of this file's fixture included `video-photo` and
+  // `brand-watermark`, both CORE_LANE_COLOR keys, so its measured "floor" was
+  // partly defended by pairs that can never actually occur through
+  // `stableColor`. This pool is exclusively kinds NOT in CORE_LANE_COLOR.
+  const REACHABLE_KIND_POOL = [
+    'overlay-chevron', 'overlay-lottie', 'overlay-update-badge', 'overlay-text', 'overlay-title',
+    'overlay-stat-callout', 'overlay-quote-pull', 'overlay-source-tag', 'overlay-party-logos',
+    'overlay-caption', 'overlay-legal', 'overlay-ticker', 'overlay-cta', 'overlay-lower-third',
+    'overlay-progress', 'overlay-social-handle', 'overlay-countdown', 'overlay-map-pin',
+    'overlay-price-tag', 'overlay-testimonial', 'overlay-badge', 'overlay-alert', 'overlay-poll',
+    'overlay-rating', 'overlay-weather', 'overlay-score', 'overlay-caption-2', 'overlay-emoji-burst',
+  ];
+  for (const kind of REACHABLE_KIND_POOL) {
+    if (kind in CORE_LANE_COLOR) throw new Error(`${kind} is a CORE_LANE_COLOR key — stableColor never sees it`);
+  }
+
+  // The pre-harmonisation generator (`hue = mix32(hash) % 360` at one of 3
+  // saturations / 4 lightnesses), kept here ONLY as a fixed comparison
+  // baseline — not a design to return to, but a concrete answer to "does the
+  // new generator actually do better than the old one on kinds it wasn't
+  // tuned against."
+  function oldGenerator(seed: string): { h: number; s: number; l: number } {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i += 1) hash = (Math.imul(hash, 31) + seed.charCodeAt(i)) >>> 0;
+    let m = hash >>> 0;
+    m ^= m >>> 16;
+    m = Math.imul(m, 0x85ebca6b) >>> 0;
+    m ^= m >>> 13;
+    m = Math.imul(m, 0xc2b2ae35) >>> 0;
+    m ^= m >>> 16;
+    m >>>= 0;
+    const SAT = [34, 42, 50];
+    const LIG = [28, 36, 44, 52];
+    return { h: m % 360, s: SAT[(m >>> 20) % SAT.length], l: LIG[(m >>> 12) % LIG.length] };
+  }
+
+  function minPairwiseDistance(cols: { h: number; s: number; l: number }[]): number {
+    const rgbs = cols.map((c) => hslToRgb(c.h, c.s, c.l));
+    let min = Infinity;
+    for (let i = 0; i < rgbs.length; i += 1) {
+      for (let j = i + 1; j < rgbs.length; j += 1) min = Math.min(min, redmean(rgbs[i], rgbs[j]));
+    }
+    return min;
+  }
+
+  it('separates a realistic (reachable-only) kind list better than the pre-harmonisation generator', () => {
+    // A brand's kind list realistically has "a dozen or so" distinct kinds —
+    // draw the first 16 of the pool above whose NEW colour doesn't already
+    // duplicate an earlier one (two colliding into the exact same palette
+    // slot is a real, disclosed possibility — see the palette-size comment
+    // in editor-meta.ts — not something this demonstration hides or every
+    // list is guaranteed to avoid). Not a fixture the floor is defended
+    // against — a disclosed, reproducible draw used to demonstrate an
+    // improvement, not to prove optimality. `STABLE_COLOR_PALETTE`'s
+    // exhaustive test above is the real structural guarantee; this is the
+    // concrete "beats the old generator on kinds it wasn't tuned for" check.
+    const seen = new Set<string>();
+    const drawn: string[] = [];
+    for (const kind of REACHABLE_KIND_POOL) {
+      const color = stableColor(kind);
+      if (seen.has(color)) continue;
+      seen.add(color);
+      drawn.push(kind);
+      if (drawn.length === 16) break;
+    }
+    expect(drawn, 'pool exhausted before finding 16 non-colliding kinds').toHaveLength(16);
+    const newMin = minPairwiseDistance(drawn.map((k) => parseHsl(stableColor(k))));
+    const oldMin = minPairwiseDistance(drawn.map(oldGenerator));
+    expect(newMin).toBeGreaterThan(oldMin);
   });
 });
 

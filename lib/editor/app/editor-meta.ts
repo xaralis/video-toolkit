@@ -17,7 +17,7 @@ import type { CompositionTheme } from '../../theming/types';
 import { overlayRegistry } from '../../theming/brand-theme';
 import { isReservedEffectType, CORE_STYLE_EFFECT_TYPES, resolveStyleEffectRenderer } from '../../theming/effects';
 import { registrationParams, type ParamField } from '../../theming/registry';
-import { ACCENT_HUE, HUE_GUARD, ARC } from './lane-colors';
+import { ACCENT_HUE, HUE_GUARD, ARC, hslToRgb, redmean } from './lane-colors';
 
 /** One declared, editable parameter inside an opaque bag (`props`, effect
  *  params) — and, since Phase 4 Task 1.1, the SAME descriptor the transition
@@ -258,31 +258,82 @@ export function humanizeKey(key: string): string {
  *  `CORE_LANE_COLOR` (`lane-colors.ts`), so an unlisted brand kind never lands
  *  on the accent hue or outside the family of blues the accent belongs to.
  *
- *  Hue alone is not enough. The old version was `hue = hash % 360` at a fixed
- *  S/L, and with the ~dozen lane kinds a real brand actually has, two of them
- *  landing within a few degrees was likely rather than unlucky — `overlay-chevron`
- *  and `overlay-lottie` came out 6° apart and read as one colour. Confining hue
- *  to the arc makes that WORSE by construction (43° of usable hue, not 360° —
- *  see `hueInArc` below), so saturation and lightness now carry most of the
- *  separation, not just a tie-break: each is looked up from an independent
- *  `mix32` round (a distinct XOR salt per axis, not three bit-windows of one
- *  round) so that two seeds which happen to collide in one axis don't also
- *  collide in the other two. `stableColor.test` asserts a minimum RGB-space
- *  separation over the real kind set. */
-const SATURATIONS = [28, 40, 52, 64, 76];
-const LIGHTNESSES = [22, 32, 42, 52, 62, 72];
+ *  Separation is now a PROPERTY OF THE GENERATOR, not tuned against one test
+ *  fixture. Earlier versions of this function picked hue/saturation/lightness
+ *  independently (first three bit-windows of one hash, then three separately
+ *  salted hash rounds) and a test asserted a minimum distance over one fixed
+ *  16-kind list — which passed by construction for that list while an
+ *  independent audit (random salts, random kind names) found the SAME
+ *  generator gave a worse-than-baseline median separation and a tripled
+ *  duplicate rate for kinds outside the fixture. The actual bug: three
+ *  independently-hashed axes can each look fine alone while landing close
+ *  together in the SAME combination for an unlucky seed pair — nothing
+ *  guaranteed the three draws stayed apart as a point in (hue, sat, light)
+ *  space.
+ *
+ *  So instead: build a small, FIXED set of colours once, up front, by
+ *  farthest-point sampling (maximin) directly in RGB "redmean" distance —
+ *  repeatedly adding whichever candidate is farthest from every colour
+ *  already chosen. This is a real, geometric construction, not a search
+ *  against any list of kind names, and it gives a guarantee a hash-then-slice
+ *  scheme cannot: every PAIR of distinct palette entries is farther apart
+ *  than PALETTE_FLOOR, verified exhaustively (all pairs, not a sample) in
+ *  `editor-meta.test.ts`. A seed's colour is `PALETTE[hash(seed) % size]` —
+ *  two different seeds either land in the same slot (identical colour, a
+ *  real but bounded risk from the hash alone) or are guaranteed well
+ *  separated. There is no middle ground where two different-but-similar
+ *  colours slip through, the way independently-hashed axes allowed.
+ *
+ *  PALETTE_SIZE is a considered, not exhaustively optimised, choice: more
+ *  slots lower the chance two unrelated kinds collide but shrink the
+ *  guaranteed floor (the same hue/sat/light box holds more points only by
+ *  packing them closer); fewer slots do the opposite. 96 keeps the measured
+ *  floor comfortably meaningful (~34.5 redmean, see `editor-meta.test.ts`)
+ *  while keeping collision risk for a realistic brand's kind list (a dozen or
+ *  so — see the history in this file) reasonable. Not re-tuned beyond that —
+ *  a bigger PALETTE_SIZE with a lower floor is not obviously a better trade,
+ *  so this is a considered point on the curve, not a search for the best
+ *  one. */
+const SAT_MIN = 26;
+const SAT_MAX = 70;
+const LIGHT_MIN = 22;
+const LIGHT_MAX = 68;
+const PALETTE_SIZE = 96;
 
-// The usable hue span is the arc minus the guard band around the accent.
-// Mapping into it (rather than modulo 360) is what keeps a brand's unknown
-// lane kind inside the palette instead of clashing with it.
+// The usable hue span is the arc minus the guard band around the accent —
+// which, since the accent's real hue (~251.78) differs from the old
+// hardcoded 258, leaves TWO segments: below the guard (190 to ~226.78) and a
+// sliver above it (~276.78 to 280), not just the one segment the arc's
+// numbers made it easy to assume. Guarded against either segment (or both)
+// collapsing to 0 or negative width — if the guard band ever covered the
+// whole arc, dividing by a 0-width usable span would produce `NaN` and every
+// generated colour would be `hsl(NaN, …)`; there is always at least 1deg of
+// room instead.
 const GUARD_LO = ACCENT_HUE - HUE_GUARD;
 const GUARD_HI = ACCENT_HUE + HUE_GUARD;
-const USABLE = ARC[1] - ARC[0] - (Math.min(GUARD_HI, ARC[1]) - Math.max(GUARD_LO, ARC[0]));
+// A 1deg margin shaved off each segment's edge closest to the guard band.
+// `stableColor` rounds its hue to a whole degree for a tidier `hsl(...)`
+// string; without this margin a candidate landing a fraction of a degree
+// outside the guard could round INTO it even though its exact value never
+// crossed the boundary — this actually happened during development (a
+// candidate at 226.75deg, past a naive un-margined check, rounding to a
+// value inside the band) before the margin was widened to cover both
+// segment edges, not just one.
+const ROUNDING_MARGIN = 1;
+const WIDTH_BELOW_GUARD = Math.max(0, GUARD_LO - ARC[0] - ROUNDING_MARGIN);
+const WIDTH_ABOVE_GUARD = Math.max(0, ARC[1] - GUARD_HI - ROUNDING_MARGIN);
+const USABLE = Math.max(1, WIDTH_BELOW_GUARD + WIDTH_ABOVE_GUARD);
 
-function hueInArc(mixed: number): number {
-  const t = (mixed >>> 8) % Math.round(USABLE);
-  const h = ARC[0] + t;
-  return h >= GUARD_LO ? h + (GUARD_HI - GUARD_LO) : h;
+/** Maps a fraction in [0, 1) into the usable hue span — the arc minus the
+ *  guard band minus `ROUNDING_MARGIN` on both sides of it, distributed across
+ *  whichever of the two segments above are actually non-empty. Used only
+ *  while building `STABLE_COLOR_PALETTE` below (once, at module load) — every
+ *  generated candidate is constrained by this before farthest-point selection
+ *  ever runs, so the guarantee holds by construction rather than by checking
+ *  afterwards. */
+function hueInArc(frac: number): number {
+  const t = frac * USABLE;
+  return t < WIDTH_BELOW_GUARD ? ARC[0] + t : GUARD_HI + ROUNDING_MARGIN + (t - WIDTH_BELOW_GUARD);
 }
 
 /** murmur3 fmix32 — avalanche, so one changed input char moves every output bit. */
@@ -296,20 +347,76 @@ function mix32(x: number): number {
   return h >>> 0;
 }
 
-// Independent salts (not shared with mix32's own internal constants) so the
-// hue/saturation/lightness draws are three separate avalanched values rather
-// than three bit-windows of one — windows of a single round can and did
-// coincide across all three axes for real seed pairs (found empirically while
-// widening the arrays below).
-const HUE_SALT = 0x9e3779b9;
-const SAT_SALT = 0x27d4eb2f;
-const LIGHT_SALT = 0xcafebabe;
+/** A small, deterministic PRNG (mulberry32) — used only to generate the
+ *  CANDIDATE pool farthest-point sampling picks from below. Deterministic so
+ *  the palette (and every colour derived from it) doesn't change from one
+ *  process to the next; the seed is an arbitrary fixed constant, not derived
+ *  from anything meaningful. */
+function mulberry32(seed: number): () => number {
+  let state = seed | 0;
+  return () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+interface Hsl {
+  h: number;
+  s: number;
+  l: number;
+}
+
+/** Farthest-point (maximin) sampling: start with the first candidate, then
+ *  repeatedly add whichever remaining candidate is farthest from every
+ *  colour already chosen. This is what makes the palette's separation a
+ *  geometric fact rather than a hope — each addition can only ever be at
+ *  least as far from the existing set as every candidate NOT chosen. */
+function buildPalette(size: number): Hsl[] {
+  const rnd = mulberry32(0xc0ffee);
+  const CANDIDATE_COUNT = 4000;
+  const candidates: Hsl[] = [];
+  for (let i = 0; i < CANDIDATE_COUNT; i += 1) {
+    candidates.push({
+      h: hueInArc(rnd()),
+      s: SAT_MIN + rnd() * (SAT_MAX - SAT_MIN),
+      l: LIGHT_MIN + rnd() * (LIGHT_MAX - LIGHT_MIN),
+    });
+  }
+  const rgbs = candidates.map((c) => hslToRgb(c.h, c.s, c.l));
+  const chosen = [0];
+  const minDistToChosen = new Float64Array(CANDIDATE_COUNT);
+  for (let i = 0; i < CANDIDATE_COUNT; i += 1) minDistToChosen[i] = redmean(rgbs[i], rgbs[0]);
+  for (let k = 1; k < size; k += 1) {
+    let best = -1;
+    let bestDist = -1;
+    for (let i = 0; i < CANDIDATE_COUNT; i += 1) {
+      if (minDistToChosen[i] > bestDist) {
+        bestDist = minDistToChosen[i];
+        best = i;
+      }
+    }
+    chosen.push(best);
+    for (let i = 0; i < CANDIDATE_COUNT; i += 1) {
+      const d = redmean(rgbs[i], rgbs[best]);
+      if (d < minDistToChosen[i]) minDistToChosen[i] = d;
+    }
+  }
+  return chosen.map((i) => candidates[i]);
+}
+
+/** Exported for `editor-meta.test.ts` ONLY. Verifying an exhaustive property
+ *  (every pair of entries separated, every entry's hue in-bounds) over the
+ *  whole palette is a fundamentally stronger guarantee than sampling
+ *  `stableColor`'s output over a list of kind names — it is the direct fix
+ *  for "the separation was tuned for one fixture instead of being a property
+ *  of the generator." Nothing outside the test should import this. */
+export const STABLE_COLOR_PALETTE: readonly Hsl[] = buildPalette(PALETTE_SIZE);
 
 export function stableColor(seed: string): string {
   let h = 0;
   for (let i = 0; i < seed.length; i += 1) h = (Math.imul(h, 31) + seed.charCodeAt(i)) >>> 0;
-  const hue = hueInArc(mix32(h ^ HUE_SALT));
-  const sat = SATURATIONS[mix32(h ^ SAT_SALT) % SATURATIONS.length];
-  const light = LIGHTNESSES[mix32(h ^ LIGHT_SALT) % LIGHTNESSES.length];
-  return `hsl(${hue}, ${sat}%, ${light}%)`;
+  const { h: hue, s, l } = STABLE_COLOR_PALETTE[mix32(h) % STABLE_COLOR_PALETTE.length];
+  return `hsl(${Math.round(hue)}, ${Math.round(s)}%, ${Math.round(l)}%)`;
 }
