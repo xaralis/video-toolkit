@@ -6,6 +6,7 @@ import { SHORTCUTS, type ShortcutGroup } from './shortcuts';
 export const GESTURES: readonly { keys: string; label: string }[] = [
   { keys: '⌘ + scroll', label: 'Zoom the timeline' },
   { keys: '⌥ + drag', label: 'Slip the shot inside its window' },
+  { keys: 'drag', label: "Set the volume line's level (double-click to reset)" },
 ];
 
 const ORDER: ShortcutGroup[] = ['Playback', 'Editing', 'Timeline', 'File', 'Help'];

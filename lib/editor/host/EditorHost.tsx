@@ -410,7 +410,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
               <button type="button" onClick={() => playerRef.current?.seekTo(Math.max(0, durationInFrames - 1))} className={zoomBtnClass} title="Jump to end">
                 ⏭
               </button>
-              <button type="button" onClick={() => setRipple((r) => !r)} className={toggleBtnClass(ripple)} title="Ripple: resizing a clip shifts everything after it (and before it) to keep the timeline butted">
+              <button type="button" onClick={() => setRipple((r) => !r)} className={toggleBtnClass(ripple)} title="Ripple: resizing a clip shifts everything after it (and before it) to keep the timeline butted; dragging carries everything behind it too. Off: only what you grab moves.">
                 ⇹ Ripple {ripple ? 'on' : 'off'}
               </button>
               <button
