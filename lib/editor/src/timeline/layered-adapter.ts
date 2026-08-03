@@ -199,6 +199,16 @@ function resizeVideoItem(item: VideoItem, np: { startMs: number; endMs: number }
   return { ...item, endMs: item.startMs + (sourceOutMs - item.sourceInMs), sourceOutMs };
 }
 
+// Whether an item has a single trim source that slip can shift — the ONE
+// decision "can this be slipped?" needs, shared by the gesture (beginSlip) and
+// the cursor hint in LayeredTimeline.tsx so the two can't drift apart (a real
+// whole-branch-review finding: the cursor advertised slip on kinds the gesture
+// refused). A type guard, not a plain boolean, so callers keep the clip/broll
+// narrowing afterwards — see slipVideoItem below.
+export function isSlippable(item: VideoItem | undefined): item is Extract<VideoItem, { kind: 'clip' | 'broll' }> {
+  return !!item && (item.kind === 'clip' || item.kind === 'broll');
+}
+
 // SLIP: move the media INSIDE a clip's window while its position and length on
 // the timeline stay put — the fourth operation in this algebra, beside move and
 // the two trims. Both source fields shift by the same delta, so the adapter's
@@ -221,7 +231,7 @@ export function slipVideoItem(
   footageMsById: Record<string, number> = {},
 ): LayeredReel {
   const item = reel.tracks.video.find((v) => v.id === id);
-  if (!item || (item.kind !== 'clip' && item.kind !== 'broll')) return reel;
+  if (!isSlippable(item)) return reel;
 
   const beds = reel.tracks.audio.filter((a) => a.followsVideoId === id);
   // Most-negative delta anyone can take (each party's own head), then the

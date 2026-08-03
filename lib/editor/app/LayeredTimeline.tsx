@@ -12,6 +12,7 @@ import {
   resizeBoundsMs,
   laneOfRow,
   slipVideoItem,
+  isSlippable,
   type LaneId,
 } from '../src/timeline/layered-adapter';
 import { stripAccents } from './accent';
@@ -448,11 +449,15 @@ function LayeredTimelineImpl({
   }, [playerRef, fps]);
 
   const beginSlip = (e: ReactPointerEvent<HTMLDivElement>, actionId: string) => {
-    if (!e.altKey) return;
+    // button !== 0 excludes alt+right-click: that opens the native context
+    // menu, which can swallow the pointerup and leave slipRef stuck set (the
+    // next pointer to cross ANY block would then slip the wrong clip from a
+    // stale x0/base — see the whole-branch review finding this guards against).
+    if (e.button !== 0 || !e.altKey) return;
     const { lane, id } = parseActionId(actionId);
     if (lane !== 'video') return;
     const item = reel.tracks.video.find((v) => v.id === id);
-    if (!item || (item.kind !== 'clip' && item.kind !== 'broll')) return;
+    if (!isSlippable(item)) return;
     // Keep xzdarcy out: without this it starts its own move on the same press.
     e.preventDefault();
     e.stopPropagation();
@@ -616,6 +621,11 @@ function LayeredTimelineImpl({
               );
             }
             const wf = waveformFor(action, reel, peaks);
+            // Same test the gesture uses (isSlippable) — not just "is this the
+            // video lane" — so the cursor never promises a slip on a kind
+            // beginSlip would refuse (multi-clip/card/photo/outro).
+            const { lane: blockLane, id: blockId } = parseActionId(action.id);
+            const slippable = altHeld && blockLane === 'video' && isSlippable(reel.tracks.video.find((v) => v.id === blockId));
             return (
               <div
                 style={{
@@ -631,7 +641,7 @@ function LayeredTimelineImpl({
                   fontSize: 11,
                   overflow: 'hidden',
                   boxShadow: action.selected ? 'inset 0 0 0 2px #e8e8ea' : undefined,
-                  cursor: parseActionId(action.id).lane === 'video' && altHeld ? 'ew-resize' : undefined,
+                  cursor: slippable ? 'ew-resize' : undefined,
                 }}
                 title={action.id}
                 onPointerDownCapture={(e) => beginSlip(e, action.id)}

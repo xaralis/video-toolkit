@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { LayeredReel, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
-import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem, duplicateItem, clipFootageCapMs, resizeBoundsMs, laneOfRow, slipVideoItem } from './layered-adapter';
+import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem, duplicateItem, clipFootageCapMs, resizeBoundsMs, laneOfRow, slipVideoItem, isSlippable } from './layered-adapter';
 
 // Small schema-valid LayeredReel fixture: one item per track.
 const REEL: LayeredReel = {
@@ -1033,5 +1033,35 @@ describe('slipVideoItem', () => {
       tracks: { ...SLIP_REEL.tracks, video: [{ id: 'v1', kind: 'clip', startMs: 0, endMs: 3000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 3000 }] },
     };
     expect(slipVideoItem(reel, 'v1', 500, { v1: 2000 })).toBe(reel);
+  });
+});
+
+// The single decision "can this item be slipped?" — shared by beginSlip and the
+// cursor hint in LayeredTimeline.tsx (whole-branch review: the two used to
+// disagree, since the cursor only checked the lane, not the kind). Every video
+// kind is covered so a seventh kind added later can't silently opt in/out on
+// only one side.
+describe('isSlippable', () => {
+  const base = { startMs: 0, endMs: 3000 };
+  it('is true for clip', () => {
+    expect(isSlippable({ ...base, id: 'v1', kind: 'clip', source: 'a.mp4', sourceInMs: 0, sourceOutMs: 3000 })).toBe(true);
+  });
+  it('is true for broll', () => {
+    expect(isSlippable({ ...base, id: 'v1', kind: 'broll', source: 'a.mp4', sourceInMs: 0, sourceOutMs: 3000 })).toBe(true);
+  });
+  it('is false for multi-clip', () => {
+    expect(isSlippable({ ...base, id: 'v1', kind: 'multi-clip', layout: 'split-h', sources: [] })).toBe(false);
+  });
+  it('is false for card', () => {
+    expect(isSlippable({ ...base, id: 'v1', kind: 'card', cardKind: 'stat' })).toBe(false);
+  });
+  it('is false for photo', () => {
+    expect(isSlippable({ ...base, id: 'v1', kind: 'photo', source: 'a.jpg' })).toBe(false);
+  });
+  it('is false for outro', () => {
+    expect(isSlippable({ ...base, id: 'v1', kind: 'outro' })).toBe(false);
+  });
+  it('is false for undefined (item not found)', () => {
+    expect(isSlippable(undefined)).toBe(false);
   });
 });
