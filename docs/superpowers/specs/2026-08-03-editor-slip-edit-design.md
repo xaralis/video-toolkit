@@ -165,9 +165,23 @@ The sixth row carries the most risk and gets its own `it`, not a rider on the li
 test: a sync break raises no exception and reddens no other test — it surfaces weeks
 later in a render.
 
-Two modest jsdom tests in `LayeredTimeline.test.tsx`: Alt+pointerdown produces a
-slip-shaped change, a plain pointerdown still moves. Pointer capture cannot be
-honestly verified further in jsdom.
+**The gesture cannot be tested through the rendered block, and an earlier draft of
+this spec was wrong to promise it.** `LayeredTimeline.test.tsx:36-39` records why:
+xzdarcy virtualises its rows, so with jsdom's zero measured height **no action block
+ever mounts**. Verified rather than taken on trust — nothing in the editor's tests
+touches `vt-grip`, `blockColor` on real DOM, or `getActionRender`. A `pointerdown` on
+the clip body is unreachable there.
+
+Coverage follows the pattern that file already uses — assert the pure helpers:
+
+- `slipDeltaMs(dxPx, scaleWidth)` carries the px→ms conversion **and the sign**, which
+  §2 names as the natural implementation mistake. Tested directly: a positive `dx`
+  must produce a negative delta.
+- `slipVideoItem` carries every decision worth defending (the table above).
+
+**What stays unpinned, stated plainly:** the wiring itself — pointer capture, the
+`stopPropagation` that keeps xzdarcy out, the cursor, the playhead seek. These are
+verified by hand in the editor, not by a test. Do not claim otherwise in a report.
 
 ## Gates
 
