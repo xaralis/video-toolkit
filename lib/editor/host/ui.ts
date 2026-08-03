@@ -1,9 +1,11 @@
 import type { CSSProperties } from 'react';
 
-/** The editor chrome's "on" accent. This is core's editor UI colour — the same
- *  literal EditorShell.module.css already uses for its Save button — NOT a brand
- *  colour. A brand's palette reaches the editor only through `accentSlots`. */
-export const EDITOR_ACCENT = '#b6ff5a';
+/** The editor chrome's "on" accent — core's editor UI colour, NOT a brand
+ *  colour. Mirrors `--ed-color-accent` in `app/editor.in.css`; kept as a JS
+ *  string for the few consumers that cannot use a class (an SVG stroke, a
+ *  spinner border). A brand's palette reaches the editor only through
+ *  `accentSlots`. */
+export const EDITOR_ACCENT = '#7c5cff';
 
 /** One button metric across the whole timeline toolbar. */
 export const BTN_H = 28;

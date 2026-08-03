@@ -1,0 +1,34 @@
+@import "tailwindcss" prefix(ed);
+
+@source "./**/*.tsx";
+@source "../host/**/*.tsx";
+
+/* Tailwind v4 only emits a utility class that some scanned source actually
+ * uses. No template consumes an `ed:` class yet (later tasks convert the
+ * shell/inspector/timeline to utilities) and no source in this repo can
+ * reference a class from inside a brand's separate submodule checkout, so
+ * without this the compiled stylesheet would carry theme variables but zero
+ * utilities — a pipeline that looks wired up but produces nothing to apply.
+ * Safelist the two utilities the interface names explicitly (the accent
+ * color, the mono font) so the pipeline is provably live today; delete these
+ * two lines once a real consumer references `ed:` classes directly. */
+@source inline("ed:bg-accent");
+@source inline("ed:font-mono");
+
+@theme static {
+  --color-stage: #0e0e12;
+  --color-shell: #131318;
+  --color-panel: #1a1a21;
+  --color-control: #22222b;
+  --color-line: #2a2a35;
+  --color-line-strong: #3a3a48;
+  --color-ink: #e6e6ea;
+  --color-ink-2: #a0a0ae;
+  --color-ink-3: #6a6a78;
+  --color-accent: #7c5cff;
+  --color-accent-ink: #12101f;
+  --color-accent-soft: #2e2547;
+  --color-warn: #ffb454;
+  --color-danger: #ff5c5c;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
