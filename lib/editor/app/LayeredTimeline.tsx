@@ -911,7 +911,21 @@ function LayeredTimelineImpl({
                     name is long enough to span the block, the level is then
                     undraggable along its whole width. Nothing here is
                     interactive, so it opts out of hit-testing entirely. */}
-                <span style={{ position: 'relative', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>
+                <span
+                  style={{
+                    position: 'relative',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    pointerEvents: 'none',
+                    // Reads over the waveform, which is bright and dense enough to
+                    // break up the glyphs behind it. A shadow rather than a
+                    // backplate or a dimmer waveform: the waveform IS the useful
+                    // picture on an audio block, so the label yields to it and
+                    // stays legible on its own.
+                    textShadow: '0 1px 2px rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,0.65)',
+                  }}
+                >
                   {timelineLabel(action, reel, fps, meta)}
                 </span>
               </div>
