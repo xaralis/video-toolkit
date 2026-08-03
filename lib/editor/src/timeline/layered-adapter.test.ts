@@ -951,7 +951,7 @@ describe('splitItem', () => {
     },
   };
   it('splits a clip at the playhead into two butted pieces, each with its own trim', () => {
-    const r = splitItem(reel, 'video:A', 60, 30); // frame 60 @ 30fps = 2000ms
+    const { reel: r, selectedId } = splitItem(reel, 'video:A', 60, 30); // frame 60 @ 30fps = 2000ms
     const [l, right] = r.tracks.video;
     expect(l).toMatchObject({ id: 'A', startMs: 0, endMs: 2000 });
     expect(l.kind === 'clip' && l.sourceOutMs).toBe(3000); // 1000 + 2000
@@ -960,9 +960,31 @@ describe('splitItem', () => {
     // bound audio split too
     expect(r.tracks.audio.map((a) => a.id)).toEqual(['A-audio', 'A-audio-b']);
     expect(r.tracks.audio[1]).toMatchObject({ startMs: 2000, sourceInMs: 3000, followsVideoId: 'A-b' });
+    // selection moves to the new (right-hand) piece — that's the one the
+    // author is now working on.
+    expect(selectedId).toBe('video:A-b');
   });
-  it('is a no-op when the playhead is outside the clip', () => {
-    expect(splitItem(reel, 'video:A', 300, 30).tracks.video).toHaveLength(1); // frame 300 = 10s, past the clip
+  it('is a no-op when the playhead is outside the clip, and leaves selection alone', () => {
+    const { reel: r, selectedId } = splitItem(reel, 'video:A', 300, 30); // frame 300 = 10s, past the clip
+    expect(r.tracks.video).toHaveLength(1);
+    expect(selectedId).toBe('video:A');
+  });
+
+  // Regression: repeat-splitting the same clip without moving the playhead (or
+  // re-selecting) previously reused the same deterministic `-b` suffix,
+  // producing two video items — and two bound-audio items — sharing one id.
+  it('splitting twice without moving selection gives the second right piece its own id', () => {
+    const once = splitItem(reel, 'video:A', 60, 30); // → A, A-b
+    // The author is still on 'video:A' (e.g. split fired from a stale
+    // selection) — split it again at a later frame, inside the still-'A' left
+    // piece (endMs 2000, so frame 30 = 1000ms is inside it).
+    const twice = splitItem(once.reel, 'video:A', 30, 30);
+    const ids = twice.reel.tracks.video.map((v) => v.id);
+    expect(new Set(ids).size).toBe(ids.length); // no duplicate ids
+    expect(ids).toEqual(['A', 'A-b-2', 'A-b']);
+    expect(twice.selectedId).toBe('video:A-b-2');
+    const audioIds = twice.reel.tracks.audio.map((a) => a.id);
+    expect(new Set(audioIds).size).toBe(audioIds.length);
   });
 });
 
@@ -980,13 +1002,39 @@ describe('duplicateItem', () => {
     },
   };
   it('inserts a copy after the clip (+ bound audio), shifting the rest right', () => {
-    const r = duplicateItem(reel, 'video:A');
+    const { reel: r, selectedId } = duplicateItem(reel, 'video:A');
     expect(r.tracks.video.map((v) => v.id)).toEqual(['A', 'A-copy', 'B']);
     expect(r.tracks.video[1]).toMatchObject({ startMs: 5000, endMs: 10000 });
     expect(r.tracks.video[2]).toMatchObject({ id: 'B', startMs: 10000, endMs: 14000 }); // shifted right
     expect(r.tracks.audio.map((a) => a.id)).toEqual(['A-audio', 'A-audio-copy']);
     expect(r.tracks.audio[1]).toMatchObject({ startMs: 5000, followsVideoId: 'A-copy' });
     expect(r.meta.totalDurationMs).toBe(14000);
+    // selection moves to the new copy — that's the one the author is now
+    // working on.
+    expect(selectedId).toBe('video:A-copy');
+  });
+
+  it('is a no-op for a non-video selection, and leaves selection alone', () => {
+    const { reel: r, selectedId } = duplicateItem(reel, 'overlays:seg-1-ov');
+    expect(r).toBe(reel);
+    expect(selectedId).toBe('overlays:seg-1-ov');
+  });
+
+  // Regression: repeat-duplicating the same clip without moving selection
+  // (e.g. two fast ⌘D presses) previously reused the same deterministic
+  // `-copy` suffix, producing two video items — and two bound-audio items —
+  // sharing one id. That reached the render (which keys by item.id) and let
+  // `deleteItem` remove both copies at once instead of just one.
+  it('duplicating twice without moving selection gives the second copy its own id', () => {
+    const once = duplicateItem(reel, 'video:A');
+    // The author is still on 'video:A' (stale selection) — duplicate again.
+    const twice = duplicateItem(once.reel, 'video:A');
+    const ids = twice.reel.tracks.video.map((v) => v.id);
+    expect(new Set(ids).size).toBe(ids.length); // no duplicate ids
+    expect(ids).toEqual(['A', 'A-copy-2', 'A-copy', 'B']);
+    expect(twice.selectedId).toBe('video:A-copy-2');
+    const audioIds = twice.reel.tracks.audio.map((a) => a.id);
+    expect(new Set(audioIds).size).toBe(audioIds.length);
   });
 });
 

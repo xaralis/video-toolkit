@@ -24,7 +24,10 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'undo', keys: '⌘Z', group: 'Editing', label: 'Undo', match: (e) => mod(e) && !e.shiftKey && e.key.toLowerCase() === 'z' },
   { id: 'redo', keys: '⌘⇧Z', group: 'Editing', label: 'Redo', match: (e) => mod(e) && e.shiftKey && e.key.toLowerCase() === 'z' },
   { id: 'delete', keys: '⌫', group: 'Editing', label: 'Delete selected', match: (e) => bare(e) && (e.key === 'Delete' || e.key === 'Backspace') },
-  { id: 'split', keys: 'S', group: 'Editing', label: 'Split at playhead', match: (e) => bare(e) && !e.shiftKey && e.key.toLowerCase() === 's' },
+  // Labelled lowercase, not 'S': `match` deliberately excludes Shift (so a
+  // capital 'S' from Caps Lock/Shift doesn't fire it), and a capitalized
+  // display would read as if Shift+S also worked.
+  { id: 'split', keys: 's', group: 'Editing', label: 'Split at playhead', match: (e) => bare(e) && !e.shiftKey && e.key.toLowerCase() === 's' },
   { id: 'duplicate', keys: '⌘D', group: 'Editing', label: 'Duplicate selected', match: (e) => mod(e) && e.key.toLowerCase() === 'd' },
   { id: 'deselect', keys: 'Esc', group: 'Editing', label: 'Deselect', match: (e) => bare(e) && e.key === 'Escape' },
   { id: 'zoomIn', keys: '+', group: 'Timeline', label: 'Zoom in', match: (e) => bare(e) && (e.key === '+' || e.key === '=') },

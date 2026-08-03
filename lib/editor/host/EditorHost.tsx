@@ -88,6 +88,26 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
     setReel((r) => (r ? deleteItem(r, selectedId, { ripple }) : r));
     setSelectedId(null);
   }, [selectedId, ripple, setReel]);
+  // Split/duplicate both mint a new item and hand back the `selectedId` it
+  // belongs under (see layered-adapter.ts) — moved onto here so the author is
+  // left working on the new piece, not the shrunk original. Repeat-invoking
+  // either one WITHOUT a selection change (e.g. two fast `⌘D` presses) is
+  // safe even so: `duplicateItem`/`splitItem` uniquify the id they mint
+  // against every id already in the reel they're given, so the second call
+  // — reading `reel`, not a functional-update snapshot — still lands a
+  // distinct id rather than colliding with the first call's.
+  const handleSplit = useCallback(() => {
+    if (!reel || !selectedId) return;
+    const { reel: next, selectedId: sel } = splitItem(reel, selectedId, playerRef.current?.getCurrentFrame() ?? 0, fps);
+    setReel(next);
+    setSelectedId(sel);
+  }, [reel, selectedId, fps, setReel]);
+  const handleDuplicate = useCallback(() => {
+    if (!reel || !selectedId) return;
+    const { reel: next, selectedId: sel } = duplicateItem(reel, selectedId);
+    setReel(next);
+    setSelectedId(sel);
+  }, [reel, selectedId, setReel]);
   // Timeline zoom (px/s). 80 px/s = 100%; the readout is shown as a percentage.
   const ZOOM_MIN = 16;
   const ZOOM_MAX = 400;
@@ -275,8 +295,8 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
     jumpFwd: () => playerRef.current?.seekTo(Math.min(durationInFrames - 1, (playerRef.current?.getCurrentFrame() ?? 0) + 10)),
     toStart: () => playerRef.current?.seekTo(0),
     toEnd: () => playerRef.current?.seekTo(Math.max(0, durationInFrames - 1)),
-    split: () => reel && selectedId && setReel(splitItem(reel, selectedId, playerRef.current?.getCurrentFrame() ?? 0, fps)),
-    duplicate: () => reel && selectedId && setReel(duplicateItem(reel, selectedId)),
+    split: handleSplit,
+    duplicate: handleDuplicate,
     zoomIn: () => zoomBy(1.25),
     zoomOut: () => zoomBy(1 / 1.25),
     save: () => !saving && handleSave(),
