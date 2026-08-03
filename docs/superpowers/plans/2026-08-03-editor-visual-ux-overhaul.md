@@ -1199,7 +1199,10 @@ In `GradeFields`, replace each `NumberField` per the spec's table:
   <SliderField lbl="Tint" min={-1} max={1} step={0.05} value={g.tint ?? 0} disabled={disabled} onCommit={(n) => onPatch({ tint: n })} />
   <SliderField lbl="Sepia" min={0} max={1} step={0.05} value={g.sepia ?? 0} disabled={disabled} onCommit={(n) => onPatch({ sepia: n })} />
 </Row>
-<SliderField lbl="Hue rotate (deg)" min={0} max={360} step={1} value={g.hueRotateDeg ?? 0} disabled={disabled} onCommit={(n) => onPatch({ hueRotateDeg: n })} />
+{/* -180..180, NOT 0..360: GradeSchema declares .min(-180).max(180), and a
+    0..360 slider would make the whole negative half unreachable and destroy
+    an authored negative shift on the first click. Corrected in Task 10 review. */}
+<SliderField lbl="Hue rotate (deg)" min={-180} max={180} step={1} value={g.hueRotateDeg ?? 0} disabled={disabled} onCommit={(n) => onPatch({ hueRotateDeg: n })} />
 ```
 
 - [ ] **Step 2: Convert the Ken Burns and crop fields**
