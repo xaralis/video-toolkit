@@ -25,6 +25,8 @@ import { resolveMediaSource, type MediaRole } from '@video-toolkit/lib/theming/m
 import { humanizeKey, stableColor, type EditorMeta } from './editor-meta';
 import { handleRoomFrames, boundaryState, starvationMessage, type HandleRoom } from '@video-toolkit/lib/reel-config-base/handle-room';
 import { EDITOR_ACCENT } from '../host/ui';
+import { SHORTCUTS } from './shortcuts';
+import { GESTURES } from './ShortcutOverlay';
 
 // Media paths go through core's ONE rule (lib/theming/media-source.ts) — the
 // same one SegmentMedia and the audio track use — rather than a third private
@@ -971,24 +973,14 @@ function LayeredTimelineImpl({
         />
       </div>
       </div>
-      {/* Gesture legend — the timeline's non-obvious interactions. */}
-      <div className="ed:flex-none ed:h-5 ed:flex ed:items-center ed:gap-4 ed:px-3 ed:border-t ed:border-line ed:text-[10.5px] ed:text-ink-2 ed:whitespace-nowrap ed:overflow-hidden">
-        <span>
-          <span className={ripple ? 'ed:text-accent' : 'ed:text-ink'}>Ripple {ripple ? 'on' : 'off'}</span>
-          {ripple ? ' — resize shifts the rest; drag carries everything behind it' : ' — only what you grab moves'}
-        </span>
-        <span>
-          <span className="ed:text-ink">⌥/Alt + drag a clip</span> — slip the shot inside its window
-        </span>
-        <span>
-          <span className="ed:text-ink">Drag the volume line</span> — set level (double-click to reset)
-        </span>
-        <span>
-          <span className="ed:text-ink">⌘/Ctrl + scroll</span> — zoom the timeline
-        </span>
-        <span>
-          <span className="ed:text-ink">⌫</span> delete · <span className="ed:text-ink">⌘Z</span> undo
-        </span>
+      {/* Derived from the shortcut registry, so it cannot drift from the bindings. */}
+      <div className="ed:flex ed:gap-4 ed:text-[11px] ed:text-ink-3 ed:px-3 ed:py-1">
+        {[...SHORTCUTS.filter((s) => s.group === 'Timeline'), ...GESTURES].map((s) => (
+          <span key={s.keys}>
+            <span className="ed:font-mono ed:text-ink-2">{s.keys}</span> — {s.label}
+          </span>
+        ))}
+        <span><span className="ed:font-mono ed:text-ink-2">?</span> — all shortcuts</span>
       </div>
     </div>
   );
