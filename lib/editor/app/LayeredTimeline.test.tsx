@@ -172,10 +172,14 @@ describe('zoomFactorFor — wheel/pinch sensitivity', () => {
     expect(small).toBeLessThan(1.02); // a pinch event is a fraction of a percent
   });
 
-  it('gives a mouse notch a usable step', () => {
+  it('gives a mouse notch a brisk step, below the per-event cap', () => {
     const notch = zoomFactorFor(-100); // one detent in pixel mode
-    expect(notch).toBeGreaterThan(1.2);
-    expect(notch).toBeLessThan(1.3);
+    expect(notch).toBeGreaterThan(1.25);
+    expect(notch).toBeLessThan(1.4);
+    // The cap exists for pathological devices, not for ordinary wheels: if it
+    // bound here it would be the sensitivity setting, and tuning ZOOM_PER_PX
+    // would stop having any effect.
+    expect(notch).toBeLessThan(zoomFactorFor(-100000));
   });
 
   it('zooms out for downward travel, in for upward, symmetrically', () => {
@@ -184,8 +188,8 @@ describe('zoomFactorFor — wheel/pinch sensitivity', () => {
   });
 
   it('caps a single event however violent the device', () => {
-    expect(zoomFactorFor(-100000)).toBe(1.3);
-    expect(zoomFactorFor(100000)).toBeCloseTo(1 / 1.3, 10);
+    expect(zoomFactorFor(-100000)).toBe(1.5);
+    expect(zoomFactorFor(100000)).toBeCloseTo(1 / 1.5, 10);
   });
 
   it('puts line- and page-mode wheels on the same scale as pixel mode', () => {

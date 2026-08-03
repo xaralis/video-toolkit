@@ -173,17 +173,24 @@ export function slipDeltaMs(dxPx: number, scaleWidth: number): number {
 }
 
 // Zoom per pixel of wheel travel, as ln(factor). A mouse notch (deltaY ≈ 100 in
-// pixel mode) lands on ~1.25×; a trackpad pinch, which fires dozens of events a
-// second carrying a few px each, moves ~0.5% per event and so reads as one
-// smooth continuous zoom.
+// pixel mode) lands on ~1.33×; a trackpad pinch, which fires dozens of events a
+// second carrying a few px each, moves under a percent per event and so reads as
+// one smooth continuous zoom.
+//
+// TUNED BY HAND, twice. The first pass at 0.0022 was measurably too sluggish in
+// a real edit; this is that value +30%. It is the sensitivity knob — change this
+// one number, not the shape of the curve.
 //
 // THE POINT IS THAT IT IS PROPORTIONAL. This used to apply a flat 1.15× per
 // wheel EVENT regardless of magnitude, which is fine for a mouse (one event per
 // notch) and unusable on a trackpad, where a single pinch delivers ~40 events
 // and multiplied the zoom by 1.15^40 — a factor of 270.
-const ZOOM_PER_PX = 0.0022;
-// One event may not do more than this, whatever the device reports.
-const ZOOM_EVENT_MAX = 1.3;
+const ZOOM_PER_PX = 0.00286;
+// One event may not do more than this, whatever the device reports. It must stay
+// clear of a normal mouse notch (~1.33× at the sensitivity above) — a cap that
+// binds on ordinary input is not a safety rail, it is the sensitivity setting in
+// disguise, and it would silently swallow the tuning.
+const ZOOM_EVENT_MAX = 1.5;
 // deltaMode 1 = lines, 2 = pages (Firefox and some mice). Rough px equivalents,
 // only ever used to put those devices on the same scale as pixel-mode wheels.
 const PX_PER_LINE = 16;
@@ -243,6 +250,12 @@ const GRIP_CSS = `
 .vt-grip-right { right: 2px; }
 .timeline-editor-action:hover .vt-grip { background: rgba(255,255,255,0.92); box-shadow: 0 0 0 1px rgba(0,0,0,0.35); }
 .vt-grip-muted, .timeline-editor-action:hover .vt-grip-muted { background: repeating-linear-gradient(45deg, rgba(255,255,255,0.16) 0 2px, rgba(255,255,255,0) 2px 4px); box-shadow: none; }
+/* The block being dragged paints above its neighbours. xzdarcy stacks the action
+   wrappers by DOM order alone, so a clip whose right edge is dragged over the
+   next clip goes UNDER it and stays invisible until release — you cannot see the
+   edit you are making. The marker class is on the inner block (getActionRender
+   owns that node, not the wrapper), so the wrapper is reached with :has(). */
+.timeline-editor-action:has(.vt-block-active) { z-index: 4; }
 `;
 
 export function timelineLabel(action: TimelineAction, reel: LayeredReel, fps: number, meta?: EditorMeta): string {
@@ -499,6 +512,9 @@ function LayeredTimelineImpl({
   // (anchor left). Only affects the block actually being resized (others keep
   // block-width == waveform-width, so the anchor is a no-op for them).
   const [resizeDir, setResizeDir] = useState<'left' | 'right' | null>(null);
+  // The action under an in-flight gesture (move, resize or slip). Only its
+  // stacking changes — set on start, cleared on end, so no per-move re-render.
+  const [activeActionId, setActiveActionId] = useState<string | null>(null);
   const waveAnchor: 'left' | 'right' = resizeDir === 'left' ? 'right' : 'left';
 
   // A LINKED audio bed follows its clip 1:1, so it can't be trimmed or moved on
@@ -611,6 +627,9 @@ function LayeredTimelineImpl({
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     slipRef.current = { id, x0: e.clientX, base: reel };
+    // Slip never reaches xzdarcy's own start/end callbacks (the capture-phase
+    // stopPropagation above is what keeps it out), so it marks itself active.
+    setActiveActionId(actionId);
     // Feedback needs a live frame FROM THIS CLIP. If the playhead is already
     // inside it, leave it — the user chose that reference frame.
     const nowMs = ((playerRef.current?.getCurrentFrame() ?? 0) / fps) * 1000;
@@ -628,6 +647,7 @@ function LayeredTimelineImpl({
   const endSlip = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!slipRef.current) return;
     slipRef.current = null;
+    setActiveActionId(null);
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
   };
 
@@ -786,6 +806,11 @@ function LayeredTimelineImpl({
             const slippable = altHeld && blockLane === 'video' && isSlippable(reel.tracks.video.find((v) => v.id === blockId));
             return (
               <div
+                // Marks the block being dragged so its WRAPPER can be lifted
+                // above its neighbours for the duration of the gesture — see
+                // GRIP_CSS. Without it, a clip dragged right disappears under the
+                // clip it is being dragged over and only reappears on release.
+                className={action.id === activeActionId ? 'vt-block vt-block-active' : 'vt-block'}
                 style={{
                   position: 'relative',
                   height: '100%',
@@ -880,7 +905,13 @@ function LayeredTimelineImpl({
                     />
                   </>
                 )}
-                <span style={{ position: 'relative', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {/* pointerEvents:none — the label is the LAST child, so it sits
+                    above the volume line and, being a full-height flex item,
+                    swallows the pointer wherever its text runs. On a clip whose
+                    name is long enough to span the block, the level is then
+                    undraggable along its whole width. Nothing here is
+                    interactive, so it opts out of hit-testing entirely. */}
+                <span style={{ position: 'relative', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>
                   {timelineLabel(action, reel, fps, meta)}
                 </span>
               </div>
@@ -910,12 +941,15 @@ function LayeredTimelineImpl({
             // Music can be end-trimmed but never moved (it's pinned at 0).
             return LOCKED_LANES.has(lane) || lane === 'music' || linkedAudioIds.has(action.id) ? false : undefined;
           }}
+          onActionMoveStart={({ action }) => setActiveActionId(action.id)}
+          onActionMoveEnd={() => setActiveActionId(null)}
           // On resize START, arm the live drag clamp for this clip/broll so its
           // handle hard-stops at the end of the FOOTAGE (a neighbour is not a
           // wall — overlaps are allowed from both sides). Cleared on END.
           // (No onActionResizing veto — the bounds do the stopping in real time.)
           onActionResizeStart={({ action, dir }) => {
             setResizeDir(dir); // anchor the waveform to the fixed (opposite) edge
+            setActiveActionId(action.id); // paint it above the clip it may run into
             const { lane, id } = parseActionId(action.id);
             if (lane === 'music') {
               // Right-edge cap = real end of the audio file (when decoded);
@@ -932,6 +966,7 @@ function LayeredTimelineImpl({
           onActionResizeEnd={() => {
             setResizeBound(null);
             setResizeDir(null);
+            setActiveActionId(null);
           }}
           onClickAction={(_e, { action }) => onSelect(action.id)}
           onClickTimeArea={(time) => {
