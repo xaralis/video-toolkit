@@ -172,6 +172,67 @@ export function slipDeltaMs(dxPx: number, scaleWidth: number): number {
   return -(dxPx / scaleWidth) * 1000 || 0;
 }
 
+// Zoom per pixel of wheel travel, as ln(factor). A mouse notch (deltaY ≈ 100 in
+// pixel mode) lands on ~1.25×; a trackpad pinch, which fires dozens of events a
+// second carrying a few px each, moves ~0.5% per event and so reads as one
+// smooth continuous zoom.
+//
+// THE POINT IS THAT IT IS PROPORTIONAL. This used to apply a flat 1.15× per
+// wheel EVENT regardless of magnitude, which is fine for a mouse (one event per
+// notch) and unusable on a trackpad, where a single pinch delivers ~40 events
+// and multiplied the zoom by 1.15^40 — a factor of 270.
+const ZOOM_PER_PX = 0.0022;
+// One event may not do more than this, whatever the device reports.
+const ZOOM_EVENT_MAX = 1.3;
+// deltaMode 1 = lines, 2 = pages (Firefox and some mice). Rough px equivalents,
+// only ever used to put those devices on the same scale as pixel-mode wheels.
+const PX_PER_LINE = 16;
+const PX_PER_PAGE = 400;
+
+/** ⌘/Ctrl + wheel travel → the factor to multiply the zoom by. Pure, so the
+ *  sensitivity curve is testable without a real wheel event. */
+export function zoomFactorFor(deltaY: number, deltaMode = 0): number {
+  const px = deltaY * (deltaMode === 1 ? PX_PER_LINE : deltaMode === 2 ? PX_PER_PAGE : 1);
+  const raw = Math.exp(-px * ZOOM_PER_PX);
+  return Math.min(ZOOM_EVENT_MAX, Math.max(1 / ZOOM_EVENT_MAX, raw));
+}
+
+// xzdarcy's `startLeft`: the px gap between the timeline's left edge and time 0.
+const TIMELINE_START_LEFT = 12;
+
+// How far the playhead may sit from a viewport edge before the timeline scrolls
+// to follow it (px). Small enough that a seek just outside the view scrolls, big
+// enough that the cursor never hugs the very edge.
+const FOLLOW_MARGIN_PX = 36;
+// Where the playhead lands after a follow, as a fraction of the viewport width.
+// Forward: near the LEFT, so playback runs most of a screen before paging again
+// (the page-flip every NLE does). Backward: a quarter in, so what you just
+// scrubbed past stays visible.
+const FOLLOW_REST_AHEAD = 0.1;
+const FOLLOW_REST_BEHIND = 0.25;
+
+/** The scrollLeft that brings the playhead back into view, or `null` when it is
+ *  already comfortably inside. Pure so it can be tested — the DOM measurement it
+ *  reads (`view`) is untestable in jsdom, which has no layout. */
+export function followScrollLeft(
+  cursorX: number,
+  view: { scrollLeft: number; clientWidth: number; scrollWidth: number },
+  margin = FOLLOW_MARGIN_PX,
+): number | null {
+  const { scrollLeft, clientWidth, scrollWidth } = view;
+  if (clientWidth <= 0) return null;
+  const behind = cursorX < scrollLeft + margin;
+  const ahead = cursorX > scrollLeft + clientWidth - margin;
+  if (!behind && !ahead) return null;
+  const rest = clientWidth * (behind ? FOLLOW_REST_BEHIND : FOLLOW_REST_AHEAD);
+  // Clamping at the content end is what stops a follow at the tail of the reel
+  // from re-firing every frame: the target saturates at `max`, equals the
+  // current scrollLeft, and returns null below.
+  const max = Math.max(0, scrollWidth - clientWidth);
+  const next = Math.min(max, Math.max(0, Math.round(cursorX - rest)));
+  return next === scrollLeft ? null : next;
+}
+
 // The trim handles are xzdarcy's own invisible stretch zones; these grips are a
 // visual layer on top (pointer-events:none so the real handles still drag).
 // Default: faint. Hover the block: its grips brighten (shows WHICH clip's handle
@@ -275,8 +336,10 @@ export interface LayeredTimelineProps {
   scaleWidth?: number; // px per second (zoom)
   /** Snap edges/moves to the grid. Default true. */
   snapping?: boolean;
-  /** ⌘/Ctrl + wheel (or pinch) over the timeline. `dir` is +1 to zoom in, -1 out. */
-  onZoom?: (dir: number) => void;
+  /** ⌘/Ctrl + wheel (or pinch) over the timeline. Receives a MULTIPLICATIVE
+   *  factor for the current zoom (>1 in, <1 out), already scaled to how far the
+   *  wheel actually moved — not a direction. See ZOOM_PER_PX. */
+  onZoom?: (factor: number) => void;
   /** The last-saved reel — supplies each clip's AUTHORED length so a trim can be
    * restored to it (even when the file is a touch shorter, i.e. it holds a frame). */
   savedReel?: LayeredReel | null;
@@ -351,7 +414,8 @@ function LayeredTimelineImpl({
     const onWheel = (e: WheelEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       e.preventDefault();
-      if (e.deltaY !== 0) onZoomRef.current?.(e.deltaY < 0 ? 1 : -1);
+      const f = zoomFactorFor(e.deltaY, e.deltaMode);
+      if (f !== 1) onZoomRef.current?.(f);
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
@@ -476,20 +540,61 @@ function LayeredTimelineImpl({
     return e;
   }, [editorData]);
 
+  // The element that actually scrolls horizontally (react-virtualized's grid,
+  // inside xzdarcy's edit area). Looked up lazily and cached: it is the only
+  // honest source of scrollLeft/clientWidth/scrollWidth, and xzdarcy's
+  // TimelineState exposes a setter but no getter for any of the three.
+  //
+  // SCOPED TO THE EDIT AREA ON PURPOSE. There are two `.ReactVirtualized__Grid`
+  // nodes in this tree and the RULER's comes first, so an unscoped querySelector
+  // measures the time area instead of the track area setScrollLeft moves.
+  const scrollElRef = useRef<HTMLElement | null>(null);
+  const scrollEl = (): HTMLElement | null => {
+    if (scrollElRef.current?.isConnected) return scrollElRef.current;
+    const root = stateRef.current?.target ?? rootRef.current;
+    scrollElRef.current = root?.querySelector<HTMLElement>('.timeline-editor-edit-area .ReactVirtualized__Grid') ?? null;
+    return scrollElRef.current;
+  };
+
+  // Keep the playhead in view. Without this a seek (⏮/⏭, a jump, or playback
+  // running off the right edge) moves the cursor while the timeline stays where
+  // it was, so the reel appears not to respond at all. Scrolling goes through
+  // TimelineState.setScrollLeft — the official setter, which also keeps the
+  // ruler and the beat-guide layer in step; the DOM element above is read-only
+  // here, used purely to measure.
+  const followPlayhead = (timeSec: number) => {
+    const el = scrollEl();
+    if (!el) return;
+    const cursorX = TIMELINE_START_LEFT + timeSec * scaleWidth;
+    const next = followScrollLeft(cursorX, {
+      scrollLeft: el.scrollLeft,
+      clientWidth: el.clientWidth,
+      scrollWidth: el.scrollWidth,
+    });
+    if (next !== null) stateRef.current?.setScrollLeft(next);
+  };
+
   // Player → timeline cursor, driven IMPERATIVELY off the player's frameupdate
   // so playback doesn't re-render this component every frame (the parent's
   // per-frame frame state no longer flows in as a prop; see the memo wrapper).
   useEffect(() => {
     const player = playerRef.current;
     if (!player) return;
-    const onFrame = (e: { detail: { frame: number } }) => stateRef.current?.setTime(e.detail.frame / fps);
+    const onFrame = (e: { detail: { frame: number } }) => {
+      const t = e.detail.frame / fps;
+      stateRef.current?.setTime(t);
+      followPlayhead(t);
+    };
     player.addEventListener('frameupdate', onFrame);
     player.addEventListener('seeked', onFrame);
     return () => {
       player.removeEventListener('frameupdate', onFrame);
       player.removeEventListener('seeked', onFrame);
     };
-  }, [playerRef, fps]);
+    // followPlayhead closes over scaleWidth — re-subscribe on zoom so the
+    // cursor's px position is computed at the CURRENT scale.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerRef, fps, scaleWidth]);
 
   const beginSlip = (e: ReactPointerEvent<HTMLDivElement>, actionId: string) => {
     // button !== 0 excludes alt+right-click: that opens the native context
@@ -610,7 +715,7 @@ function LayeredTimelineImpl({
                 data-guide-tick
                 style={{
                   position: 'absolute', top: 0, bottom: 0,
-                  left: 12 + (ms / 1000) * scaleWidth, // 12 = <Timeline startLeft>
+                  left: TIMELINE_START_LEFT + (ms / 1000) * scaleWidth,
                   width: 1, background: 'rgba(182,255,90,0.35)',
                 }}
               />
@@ -627,7 +732,7 @@ function LayeredTimelineImpl({
           rowHeight={ROW_H}
           scale={1}
           scaleWidth={scaleWidth}
-          startLeft={12}
+          startLeft={TIMELINE_START_LEFT}
           onScroll={(param) => {
             if (listRef.current) listRef.current.scrollTop = param.scrollTop;
             // Keep the beat-guide layer aligned with horizontally-scrolled content.
@@ -806,7 +911,8 @@ function LayeredTimelineImpl({
             return LOCKED_LANES.has(lane) || lane === 'music' || linkedAudioIds.has(action.id) ? false : undefined;
           }}
           // On resize START, arm the live drag clamp for this clip/broll so its
-          // handle hard-stops at the footage window / next clip. Cleared on END.
+          // handle hard-stops at the end of the FOOTAGE (a neighbour is not a
+          // wall — overlaps are allowed from both sides). Cleared on END.
           // (No onActionResizing veto — the bounds do the stopping in real time.)
           onActionResizeStart={({ action, dir }) => {
             setResizeDir(dir); // anchor the waveform to the fixed (opposite) edge
@@ -817,11 +923,10 @@ function LayeredTimelineImpl({
               return setResizeBound({ id: action.id, minStart: 0, maxEnd: musicMaxMs !== undefined ? musicMaxMs / 1000 : undefined });
             }
             if (lane !== 'video') return setResizeBound(null);
-            const idx = reel.tracks.video.findIndex((v) => v.id === id);
-            const item = reel.tracks.video[idx];
+            const item = reel.tracks.video.find((v) => v.id === id);
             // The real-time bound uses the SAME cap as the commit clamp: the
             // clip's total length (max of the decoded file and its authored out).
-            const b = item ? resizeBoundsMs(item, capMsById[id], reel.tracks.video[idx + 1]?.startMs) : null;
+            const b = item ? resizeBoundsMs(item, capMsById[id]) : null;
             setResizeBound(b ? { id: action.id, minStart: b.minStartMs / 1000, maxEnd: b.maxEndMs !== undefined ? b.maxEndMs / 1000 : undefined } : null);
           }}
           onActionResizeEnd={() => {

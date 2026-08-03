@@ -292,6 +292,93 @@ describe('applyTimelineChange', () => {
   });
 });
 
+// OVERWRITE: the same NLE rule as the "dragged left over the previous clip" case
+// above, made symmetric. It used to run one way only, and the very same rule
+// SNAPPED a rightward trim back to the next clip's start — so extending a clip
+// over its neighbour was impossible from that side however the drag was bounded.
+describe('applyTimelineChange — a trim overwrites the neighbour it runs into', () => {
+  // A ends at 5s, B runs 5s–9s. Both have footage to spare in both directions.
+  const pair = (): LayeredReel => ({
+    ...REEL,
+    meta: { topic: 'Fixture', totalDurationMs: 9000 },
+    tracks: {
+      ...REEL.tracks,
+      audio: [],
+      video: [
+        { id: 'A', kind: 'clip', startMs: 0, endMs: 5000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 5000 },
+        { id: 'B', kind: 'clip', startMs: 5000, endMs: 9000, source: 'b.mp4', sourceInMs: 2000, sourceOutMs: 6000 },
+      ],
+    },
+  });
+  // Drag one action's edges; every other action stays where it was.
+  const drag = (reel: LayeredReel, id: string, start: number, end: number) => {
+    const { editorData } = layeredToTimeline(reel, 30);
+    return editorData.map((row) =>
+      row.id === 'video'
+        ? { ...row, actions: row.actions.map((a) => (a.id === `video:${id}` ? { ...a, start, end } : a)) }
+        : row,
+    );
+  };
+
+  it("extends A's end over B's head and trims B, instead of snapping A back", () => {
+    const reel = pair();
+    const result = applyTimelineChange(reel, drag(reel, 'A', 0, 6), { footageMsById: { A: 20000, B: 20000 } });
+    const A = result.tracks.video.find((v) => v.id === 'A')!;
+    const B = result.tracks.video.find((v) => v.id === 'B')!;
+    expect(A.endMs).toBe(6000); // the drag stands
+    expect(B.startMs).toBe(6000); // B yields its first second
+    expect(B.kind === 'clip' && B.sourceInMs).toBe(3000); // trim-linked: 2000 + 1000
+    expect(B.endMs).toBe(9000); // B's out-point is untouched
+  });
+
+  it('removes a neighbour that is covered whole', () => {
+    const reel = pair();
+    // A dragged out to 10s — past B's end at 9s.
+    const result = applyTimelineChange(reel, drag(reel, 'A', 0, 10), { footageMsById: { A: 20000, B: 20000 } });
+    expect(result.tracks.video.map((v) => v.id)).toEqual(['A']);
+    expect(result.tracks.video[0].endMs).toBe(10000);
+  });
+
+  it('removes a neighbour left shorter than the minimum rather than stranding a sliver', () => {
+    const reel = pair();
+    // A dragged to 8.95s: B would be left with 50ms, under MIN_CLIP_MS.
+    const result = applyTimelineChange(reel, drag(reel, 'A', 0, 8.95), { footageMsById: { A: 20000, B: 20000 } });
+    expect(result.tracks.video.map((v) => v.id)).toEqual(['A']);
+  });
+
+  it('takes a consumed clip’s linked audio bed with it', () => {
+    const base = pair();
+    const reel: LayeredReel = {
+      ...base,
+      tracks: {
+        ...base.tracks,
+        audio: [
+          { id: 'a-A', startMs: 0, endMs: 5000, source: 'audio/a.mp3', sourceInMs: 0, followsVideoId: 'A' },
+          { id: 'a-B', startMs: 5000, endMs: 9000, source: 'audio/b.mp3', sourceInMs: 0, followsVideoId: 'B' },
+        ],
+      },
+    };
+    const result = applyTimelineChange(reel, drag(reel, 'A', 0, 10), { footageMsById: { A: 20000, B: 20000 } });
+    expect(result.tracks.video.map((v) => v.id)).toEqual(['A']);
+    // B's bed goes with B — an overwritten clip cannot leave its voice behind.
+    expect(result.tracks.audio.map((a) => a.id)).toEqual(['a-A']);
+    // And the survivor is re-derived from ITS OWN original, not from the bed
+    // that happened to sit at its index before the removal.
+    expect(result.tracks.audio[0]).toMatchObject({ startMs: 0, endMs: 10000 });
+  });
+
+  it('leaves an overlap that the user did not just create alone', () => {
+    const base = pair();
+    // A and B already overlap by 1s before this edit.
+    const A: VideoItem = { id: 'A', kind: 'clip', startMs: 0, endMs: 6000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 6000 };
+    const reel: LayeredReel = { ...base, tracks: { ...base.tracks, video: [A, base.tracks.video[1]] } };
+    // Drag B's END (not its head) — the pre-existing head overlap must survive.
+    const result = applyTimelineChange(reel, drag(reel, 'B', 5, 8), { footageMsById: { A: 20000, B: 20000 } });
+    expect(result.tracks.video.find((v) => v.id === 'A')!.endMs).toBe(6000);
+    expect(result.tracks.video.find((v) => v.id === 'B')!.startMs).toBe(5000);
+  });
+});
+
 describe('music end-trim + derived total duration', () => {
   const MREEL: LayeredReel = {
     ...REEL,
@@ -436,20 +523,13 @@ describe('resizeBoundsMs — real-time drag bounds', () => {
   });
 
   it('left bound is the source head (start - sourceIn)', () => {
-    const b = resizeBoundsMs(clip({ startMs: 5000, sourceInMs: 1200 }), 20000, undefined);
+    const b = resizeBoundsMs(clip({ startMs: 5000, sourceInMs: 1200 }), 20000);
     expect(b!.minStartMs).toBe(3800); // 5000 - 1200 → can reveal 1200ms of earlier footage
   });
 
-  it('right bound is the footage end when no next clip', () => {
-    const b = resizeBoundsMs(clip({ startMs: 5000, sourceInMs: 0 }), 8000, undefined);
+  it('right bound is the footage end', () => {
+    const b = resizeBoundsMs(clip({ startMs: 5000, sourceInMs: 0 }), 8000);
     expect(b!.maxEndMs).toBe(13000); // 5000 + (8000 - 0)
-  });
-
-  it('a CLIP right bound is the NEARER of footage end and the next clip start', () => {
-    const nearNext = resizeBoundsMs(clip({ startMs: 5000, sourceInMs: 0 }), 8000, 11000);
-    expect(nearNext!.maxEndMs).toBe(11000); // next clip wall is closer than footage end (13000)
-    const nearFootage = resizeBoundsMs(clip({ startMs: 5000, sourceInMs: 0 }), 8000, 20000);
-    expect(nearFootage!.maxEndMs).toBe(13000); // footage end is closer than the far next clip
   });
 
   const broll = (over: Partial<{ startMs: number; sourceInMs: number }> = {}): VideoItem => ({
@@ -457,30 +537,32 @@ describe('resizeBoundsMs — real-time drag bounds', () => {
     sourceInMs: over.sourceInMs ?? 0, sourceOutMs: 10300,
   });
 
-  it('a BROLL is footage-bounded like a clip (its real file end, even when a next clip is farther)', () => {
+  it('a BROLL is footage-bounded like a clip (its real file end)', () => {
     // seg-002 drift: config sourceOutMs 10300 but the real file is 10042 (ffprobe).
-    // The max is the real footage end (15409), NOT the drifted config or the next clip.
-    const b = resizeBoundsMs(broll(), 10042, 15667);
+    // The max is the real footage end (15409), NOT the drifted config.
+    const b = resizeBoundsMs(broll(), 10042);
     expect(b!.maxEndMs).toBe(15409); // 5367 + 10042 — the real file end
   });
 
-  it('the LAST broll (no next clip) is bounded by its own footage end', () => {
-    const b = resizeBoundsMs(broll(), 10042, undefined);
-    expect(b!.maxEndMs).toBe(15409); // 5367 + 10042
-  });
-
-  it('a still/generated broll (no decoded duration) is limited only by the next clip', () => {
-    expect(resizeBoundsMs(broll(), undefined, 15667)!.maxEndMs).toBe(15667);
-  });
-
-  it('has no right bound when footage is unknown and there is no next clip', () => {
-    const b = resizeBoundsMs(broll(), undefined, undefined);
+  it('a still/generated broll (no decoded duration) has no right bound', () => {
+    const b = resizeBoundsMs(broll(), undefined);
     expect(b!.maxEndMs).toBeUndefined(); // still/generated broll extends freely
   });
 
   it('returns null for kinds without a single trim source', () => {
     const multi: VideoItem = { id: 'A', kind: 'multi-clip', startMs: 0, endMs: 3000, layout: 'split-h', sources: [] };
-    expect(resizeBoundsMs(multi, 8000, undefined)).toBeNull();
+    expect(resizeBoundsMs(multi, 8000)).toBeNull();
+  });
+
+  // The asymmetry this replaced: the right handle stopped at the next clip's
+  // start while the left handle was never stopped by the previous clip's end.
+  // Both directions now yield to the media alone, so a deliberate overlap is
+  // reachable from either side.
+  it('neither bound is set by a neighbour — the right edge may cross the next clip', () => {
+    // Next clip starts at 11000, well before this clip's footage end (13000).
+    const b = resizeBoundsMs(clip({ startMs: 5000, sourceInMs: 0 }), 8000);
+    expect(b!.maxEndMs).toBe(13000); // the file, not the neighbour
+    expect(b!.minStartMs).toBe(5000); // the file head, not a previous clip's end
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
-import { LayeredTimeline, colorFor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics } from './LayeredTimeline';
+import { LayeredTimeline, colorFor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics, zoomFactorFor, followScrollLeft } from './LayeredTimeline';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
 const reel: LayeredReel = {
@@ -140,6 +140,99 @@ describe('slipDeltaMs', () => {
 
   it('is zero for no movement', () => {
     expect(slipDeltaMs(0, 80)).toBe(0);
+  });
+});
+
+describe('the playhead-follow scroll container', () => {
+  // followScrollLeft is pure and well covered below, but it is fed by a DOM
+  // lookup, and a lookup that matches NOTHING disables the feature in complete
+  // silence — which is exactly the bug being fixed. jsdom cannot lay the
+  // timeline out, but it can prove the selector still resolves.
+  it('resolves inside the edit area, not the ruler, which also has one', () => {
+    const { container } = render(
+      <LayeredTimeline reel={reel} onChange={() => {}} selectedId={null} onSelect={() => {}}
+        playerRef={{ current: null }} fps={30} scaleWidth={80} />,
+    );
+    expect(container.querySelector('.timeline-editor-edit-area .ReactVirtualized__Grid')).not.toBeNull();
+    // The ruler's grid comes FIRST in document order — an unscoped selector
+    // would silently measure it instead.
+    expect(container.querySelector('.ReactVirtualized__Grid'))
+      .not.toBe(container.querySelector('.timeline-editor-edit-area .ReactVirtualized__Grid'));
+  });
+});
+
+describe('zoomFactorFor — wheel/pinch sensitivity', () => {
+  it('scales with how far the wheel moved, not just its direction', () => {
+    // The defect this replaced: a flat factor per EVENT, so a trackpad pinch
+    // firing 40 tiny events zoomed as hard as 40 mouse notches.
+    const small = zoomFactorFor(-4);
+    const big = zoomFactorFor(-40);
+    expect(small).toBeGreaterThan(1);
+    expect(big).toBeGreaterThan(small);
+    expect(small).toBeLessThan(1.02); // a pinch event is a fraction of a percent
+  });
+
+  it('gives a mouse notch a usable step', () => {
+    const notch = zoomFactorFor(-100); // one detent in pixel mode
+    expect(notch).toBeGreaterThan(1.2);
+    expect(notch).toBeLessThan(1.3);
+  });
+
+  it('zooms out for downward travel, in for upward, symmetrically', () => {
+    expect(zoomFactorFor(100)).toBeLessThan(1);
+    expect(zoomFactorFor(100) * zoomFactorFor(-100)).toBeCloseTo(1, 10);
+  });
+
+  it('caps a single event however violent the device', () => {
+    expect(zoomFactorFor(-100000)).toBe(1.3);
+    expect(zoomFactorFor(100000)).toBeCloseTo(1 / 1.3, 10);
+  });
+
+  it('puts line- and page-mode wheels on the same scale as pixel mode', () => {
+    expect(zoomFactorFor(-1, 1)).toBeCloseTo(zoomFactorFor(-16, 0), 10); // 1 line = 16px
+    expect(zoomFactorFor(-1, 2)).toBeCloseTo(zoomFactorFor(-400, 0), 10); // 1 page = 400px
+  });
+
+  it('is a no-op for no travel', () => {
+    expect(zoomFactorFor(0)).toBe(1);
+  });
+});
+
+describe('followScrollLeft — keeping the playhead in view', () => {
+  const view = (scrollLeft: number) => ({ scrollLeft, clientWidth: 1000, scrollWidth: 5000 });
+
+  it('does not scroll while the playhead is comfortably inside the viewport', () => {
+    expect(followScrollLeft(500, view(0))).toBeNull();
+  });
+
+  it('pages forward when the playhead runs off the right edge', () => {
+    // Lands near the LEFT (10% in) so playback gets most of a screen before the
+    // next page, rather than re-scrolling every frame at the edge.
+    expect(followScrollLeft(1200, view(0))).toBe(1100);
+  });
+
+  it('scrolls back when the playhead is behind the viewport', () => {
+    // A quarter in, so what was just scrubbed past stays visible.
+    expect(followScrollLeft(1500, view(2000))).toBe(1250);
+  });
+
+  it('treats the margin as the trigger, not the viewport edge itself', () => {
+    expect(followScrollLeft(970, view(0))).toBe(870); // inside the frame, but within 36px of it
+    expect(followScrollLeft(960, view(0))).toBeNull();
+  });
+
+  it('never scrolls past the content end — which is what stops it re-firing there', () => {
+    // Playhead at the very end: the target saturates at scrollWidth-clientWidth.
+    expect(followScrollLeft(4990, view(4000))).toBeNull();
+    expect(followScrollLeft(4990, view(3000))).toBe(4000);
+  });
+
+  it('never scrolls to a negative offset', () => {
+    expect(followScrollLeft(12, view(500))).toBe(0); // jump to start
+  });
+
+  it('does nothing when the viewport has not been laid out yet', () => {
+    expect(followScrollLeft(500, { scrollLeft: 0, clientWidth: 0, scrollWidth: 0 })).toBeNull();
   });
 });
 
