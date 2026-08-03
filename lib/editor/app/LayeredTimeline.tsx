@@ -335,8 +335,9 @@ const SNAP_PX = 8;
 // Transitions are markers at the cut, not full clips — a thinner row keeps
 // the lane visually distinct from the video/audio blocks above and below it.
 const TRANSITIONS_ROW_H = 18;
-// Transition marker fill — a one-off amber, not one of the semantic tokens
-// (used directly as an `ed:bg-[#c9a227]` arbitrary value below).
+// Transition marker fill/ink — `--color-transition-marker(-ink)` in
+// editor.in.css's `@theme static` block, used below as `ed:bg-transition-marker`
+// / `ed:text-transition-marker-ink`.
 
 // Lanes whose items are display-only (their span is derived / not an item
 // array): brand span is content-end-derived, transitions are derived from
@@ -740,7 +741,7 @@ function LayeredTimelineImpl({
             // Keep the beat-guide layer aligned with horizontally-scrolled content.
             if (guidesRef.current) guidesRef.current.style.transform = `translateX(${-param.scrollLeft}px)`;
           }}
-          style={{ width: '100%', height: '100%', background: '#161719', fontFamily: FONT }}
+          style={{ width: '100%', height: '100%', background: 'var(--ed-color-shell)', fontFamily: FONT }}
           getActionRender={(action) => {
             if (parseActionId(action.id).lane === 'transitions') {
               // A derived marker at the cut, not a clip — small centered pill
@@ -748,7 +749,7 @@ function LayeredTimelineImpl({
               const starved = starvedTargets.has(action.id);
               return (
                 <div
-                  className="ed:relative ed:h-full ed:flex ed:items-center ed:justify-center ed:px-1.5 ed:rounded-full ed:bg-[#c9a227] ed:text-[#1a1a1a] ed:font-sans ed:text-[10px] ed:overflow-hidden"
+                  className="ed:relative ed:h-full ed:flex ed:items-center ed:justify-center ed:px-1.5 ed:rounded-full ed:bg-transition-marker ed:text-transition-marker-ink ed:font-sans ed:text-[10px] ed:overflow-hidden"
                   style={{ boxShadow: action.selected ? 'inset 0 0 0 2px var(--ed-color-ink)' : undefined }}
                   title={starved ? diagnostics.find((d) => d.targetId === action.id)!.message : action.id}
                 >
