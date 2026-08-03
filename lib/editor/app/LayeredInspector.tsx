@@ -437,7 +437,25 @@ function renderParamControl({
     // the scrub path is the one that actually runs — that is why it is the
     // foundation rather than an extra.
     return min !== undefined && max !== undefined ? (
-      <SliderField key={field.prop} lbl={lbl} min={min} max={max} step={step} value={v} onCommit={onCommit} />
+      <SliderField
+        key={field.prop}
+        lbl={lbl}
+        min={min}
+        max={max}
+        step={step}
+        value={v}
+        // What an unset value shows: `field.default` when the registration
+        // declared one (its documented "value the schema falls back to when
+        // the field is absent" — param-field.ts) — the closest thing to a
+        // real renderer default this GENERIC path can know, since the actual
+        // component reading this bag is brand code core never sees. No core
+        // registration declares `default` today, so this floors to `min` in
+        // practice; that is a documented, visible floor, not a claim that
+        // `min` IS the renderer's default — the honest answer available when
+        // the true default is unknowable from here.
+        fallback={typeof field.default === 'number' ? field.default : min}
+        onCommit={onCommit}
+      />
     ) : (
       <ScrubField key={field.prop} lbl={lbl} step={step} min={min} max={max} value={v} onCommit={onCommit} />
     );
@@ -645,18 +663,18 @@ function GradeFields({
   return (
     <>
       <Row>
-        <SliderField lbl="Brightness" min={0.2} max={2} step={0.05} value={g.brightness ?? 1} disabled={disabled} onCommit={(n) => onPatch({ brightness: n })} />
-        <SliderField lbl="Contrast" min={0.2} max={2} step={0.05} value={g.contrast ?? 1} disabled={disabled} onCommit={(n) => onPatch({ contrast: n })} />
+        <SliderField lbl="Brightness" min={0.2} max={2} step={0.05} value={g.brightness ?? 1} fallback={1} disabled={disabled} onCommit={(n) => onPatch({ brightness: n })} />
+        <SliderField lbl="Contrast" min={0.2} max={2} step={0.05} value={g.contrast ?? 1} fallback={1} disabled={disabled} onCommit={(n) => onPatch({ contrast: n })} />
       </Row>
       <Row>
-        <SliderField lbl="Saturation" min={0} max={2} step={0.05} value={g.saturation ?? 1} disabled={disabled} onCommit={(n) => onPatch({ saturation: n })} />
-        <SliderField lbl="Temperature" min={-1} max={1} step={0.05} value={g.temperature ?? 0} disabled={disabled} onCommit={(n) => onPatch({ temperature: n })} />
+        <SliderField lbl="Saturation" min={0} max={2} step={0.05} value={g.saturation ?? 1} fallback={1} disabled={disabled} onCommit={(n) => onPatch({ saturation: n })} />
+        <SliderField lbl="Temperature" min={-1} max={1} step={0.05} value={g.temperature ?? 0} fallback={0} disabled={disabled} onCommit={(n) => onPatch({ temperature: n })} />
       </Row>
       <Row>
-        <SliderField lbl="Tint" min={-1} max={1} step={0.05} value={g.tint ?? 0} disabled={disabled} onCommit={(n) => onPatch({ tint: n })} />
-        <SliderField lbl="Sepia" min={0} max={1} step={0.05} value={g.sepia ?? 0} disabled={disabled} onCommit={(n) => onPatch({ sepia: n })} />
+        <SliderField lbl="Tint" min={-1} max={1} step={0.05} value={g.tint ?? 0} fallback={0} disabled={disabled} onCommit={(n) => onPatch({ tint: n })} />
+        <SliderField lbl="Sepia" min={0} max={1} step={0.05} value={g.sepia ?? 0} fallback={0} disabled={disabled} onCommit={(n) => onPatch({ sepia: n })} />
       </Row>
-      <SliderField lbl="Hue rotate (deg)" min={-180} max={180} step={1} value={g.hueRotateDeg ?? 0} disabled={disabled} onCommit={(n) => onPatch({ hueRotateDeg: n })} />
+      <SliderField lbl="Hue rotate (deg)" min={-180} max={180} step={1} value={g.hueRotateDeg ?? 0} fallback={0} disabled={disabled} onCommit={(n) => onPatch({ hueRotateDeg: n })} />
     </>
   );
 }
@@ -673,11 +691,21 @@ function EffectEditor({
   fields,
   onPatch,
   accentSlots,
+  focalX,
 }: {
   eff: Record<string, unknown>;
   fields?: readonly ParamField[];
   onPatch: (patch: Record<string, unknown>) => void;
   accentSlots?: readonly AccentSlot[];
+  /** The owning video item's own focal point X — needed ONLY so the ken-burns
+   *  From X/To X sliders can show the SAME fallback the renderer actually
+   *  uses when a from/to endpoint is omitted (`kb.fromX ?? (focalX ?? 0.5)`,
+   *  ken-burns.ts) rather than a fixed constant that's wrong whenever the
+   *  item has its own focal point set. No `focalY` counterpart — From/To Y
+   *  have no slider control today (only From/To scale, via ScrubField, which
+   *  needs no fallback since it has no renderer-side "unset means something
+   *  else" behaviour to mirror). */
+  focalX?: number;
 }) {
   const type = eff.type as string;
   const num = (k: string) => (typeof eff[k] === 'number' ? (eff[k] as number) : undefined);
@@ -699,9 +727,13 @@ function EffectEditor({
     }
     return (
       <>
+        {/* The renderer's own fallback when an endpoint is omitted is the
+            item's OWN focal point, not a fixed constant — `kb.fromX ?? (focalX
+            ?? 0.5)` (ken-burns.ts:71,73). Mirrored here exactly so the slider
+            never shows a value the render wouldn't actually produce. */}
         <Row>
-          <SliderField lbl="From X" min={0} max={1} step={0.01} value={num('fromX')} onCommit={(n) => onPatch({ fromX: n })} />
-          <SliderField lbl="To X" min={0} max={1} step={0.01} value={num('toX')} onCommit={(n) => onPatch({ toX: n })} />
+          <SliderField lbl="From X" min={0} max={1} step={0.01} value={num('fromX')} fallback={focalX ?? 0.5} onCommit={(n) => onPatch({ fromX: n })} />
+          <SliderField lbl="To X" min={0} max={1} step={0.01} value={num('toX')} fallback={focalX ?? 0.5} onCommit={(n) => onPatch({ toX: n })} />
         </Row>
         <Row>
           <ScrubField lbl="From scale" min={0.5} step={0.05} value={num('fromScale')} onCommit={(n) => onPatch({ fromScale: n })} />
@@ -721,9 +753,15 @@ function EffectEditor({
       <>
         <TextField lbl="To source" value={eff.to as string | undefined} onCommit={(s) => onPatch({ to: s || undefined })} />
         <SelectField lbl="Direction" value={eff.direction as string | undefined} options={BLEND_DIRECTIONS} onChange={(s) => onPatch({ direction: s })} />
+        {/* `blend`'s RENDERER is brand-owned (a registration this repo never
+            sees — e.g. PP's), not core's, so unlike ken-burns/grade there is
+            no formula here to mirror for what an unset startPct/endPct
+            actually plays as. `min`/`max` are the only honest fallback
+            available from core; a brand adding its own inspector for this
+            effect can supply the real one. */}
         <Row>
-          <SliderField lbl="Start %" min={0} max={100} step={1} value={num('startPct')} onCommit={(n) => onPatch({ startPct: n })} />
-          <SliderField lbl="End %" min={0} max={100} step={1} value={num('endPct')} onCommit={(n) => onPatch({ endPct: n })} />
+          <SliderField lbl="Start %" min={0} max={100} step={1} value={num('startPct')} fallback={0} onCommit={(n) => onPatch({ startPct: n })} />
+          <SliderField lbl="End %" min={0} max={100} step={1} value={num('endPct')} fallback={100} onCommit={(n) => onPatch({ endPct: n })} />
         </Row>
       </>
     );
@@ -975,6 +1013,9 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                       max={1}
                       step={0.01}
                       value={v.focalX}
+                      // Matches cropCoverStyle's own fallback (crop.ts) — an
+                      // unset focal point renders centred, not hard-left.
+                      fallback={0.5}
                       disabled={isBlurPad}
                       onCommit={(n) => patchItem('video', id, { focalX: n })}
                     />
@@ -984,6 +1025,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                       max={1}
                       step={0.01}
                       value={v.focalY}
+                      fallback={0.5}
                       disabled={isBlurPad}
                       onCommit={(n) => patchItem('video', id, { focalY: n })}
                     />
@@ -999,6 +1041,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                       // — the defaults live in two places by necessity (schema
                       // and render), and a blank field would suggest "none".
                       value={backdrop.backdropBlur ?? 32}
+                      fallback={32}
                       disabled={!isBlurPad}
                       onCommit={(n) => patchItem('video', id, { backdropBlur: n })}
                     />
@@ -1008,6 +1051,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                       max={1}
                       step={0.05}
                       value={backdrop.backdropDim ?? 0.45}
+                      fallback={0.45}
                       disabled={!isBlurPad}
                       onCommit={(n) => patchItem('video', id, { backdropDim: n })}
                     />
@@ -1078,7 +1122,10 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
             </>
           );
         })()}
-        <SliderField lbl="Music boost (dB)" min={-60} max={12} step={0.5} value={v.musicBoostDb} onCommit={(n) => patchItem('video', id, { musicBoostDb: n })} />
+        {/* Renderer default: music-envelope.ts's `item?.musicBoostDb ?? 0` —
+            an unboosted segment plays the music bed at its plain base volume,
+            not silenced. */}
+        <SliderField lbl="Music boost (dB)" min={-60} max={12} step={0.5} value={v.musicBoostDb} fallback={0} onCommit={(n) => patchItem('video', id, { musicBoostDb: n })} />
         {/* Effects only apply to footage renderers (SegmentMedia + brand wrappers).
             outro/card render bespoke and ignore item.effects, so don't offer them. */}
         {(v.kind === 'clip' || v.kind === 'broll' || v.kind === 'photo' || v.kind === 'multi-clip') && (
@@ -1105,6 +1152,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                   eff={eff as Record<string, unknown>}
                   fields={effectDefinition(meta, type)?.params}
                   accentSlots={accentSlots}
+                  focalX={v.focalX}
                   onPatch={(patch) =>
                     patchItem('video', id, { effects: v.effects!.map((e, j) => (j === i ? { ...(e as Record<string, unknown>), ...patch } : e)) })
                   }
@@ -1264,7 +1312,11 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           />
         </Row>
         <Row>
-          <SliderField lbl="Volume (dB)" min={-60} max={12} step={0.5} value={a.volumeDb} onCommit={(n) => patchItem('audio', id, { volumeDb: n })} />
+          {/* Renderer default: audio-gain.ts's `item.volumeDb ?? 0` — an
+              audio bed authored without explicit gain plays at unity, not
+              muted. This is THE regression this prop exists to fix: shown
+              as `min` (−60dB) before, a live bed looked fully silenced. */}
+          <SliderField lbl="Volume (dB)" min={-60} max={12} step={0.5} value={a.volumeDb} fallback={0} onCommit={(n) => patchItem('audio', id, { volumeDb: n })} />
         </Row>
         <Row>
           <TimecodeField lbl="Fade in" ms={a.fadeInMs ?? 0} fps={fps} onCommit={(ms) => patchItem('audio', id, { fadeInMs: ms > 0 ? ms : undefined })} />
@@ -1321,7 +1373,12 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
       <div className={panelCls}>
         <h3 className={headingCls}>Music</h3>
         <TextField lbl="Source" value={m.source} onCommit={(s) => patchMusic({ source: s.trim() || undefined })} />
-        <SliderField lbl="Base volume (dB)" min={-60} max={12} step={0.5} value={m.baseVolumeDb} onCommit={(n) => patchMusic({ baseVolumeDb: n })} />
+        {/* `baseVolumeDb` carries a zod `.default(-8)` (layered-schema.ts), so
+            `value` is never actually undefined here — `fallback` is stated
+            anyway, matching that same schema default, per this component's
+            "state it explicitly" contract rather than leaning on the schema
+            to keep it unreachable. */}
+        <SliderField lbl="Base volume (dB)" min={-60} max={12} step={0.5} value={m.baseVolumeDb} fallback={-8} onCommit={(n) => patchMusic({ baseVolumeDb: n })} />
         <TimecodeField
           lbl="End"
           ms={m.endMs ?? reel.meta.totalDurationMs}

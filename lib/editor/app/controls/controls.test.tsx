@@ -59,7 +59,7 @@ describe('ScrubField', () => {
 
 describe('SliderField', () => {
   it('renders a range input bounded by min and max', () => {
-    render(<SliderField lbl="Opacity" value={0.8} min={0} max={1} step={0.05} onCommit={() => {}} />);
+    render(<SliderField lbl="Opacity" value={0.8} min={0} max={1} step={0.05} fallback={1} onCommit={() => {}} />);
     const el = screen.getByLabelText('Opacity') as HTMLInputElement;
     expect(el.type).toBe('range');
     expect(el.min).toBe('0');
@@ -68,9 +68,25 @@ describe('SliderField', () => {
 
   it('commits as it is dragged', () => {
     const onCommit = vi.fn();
-    render(<SliderField lbl="Opacity" value={0.8} min={0} max={1} step={0.05} onCommit={onCommit} />);
+    render(<SliderField lbl="Opacity" value={0.8} min={0} max={1} step={0.05} fallback={1} onCommit={onCommit} />);
     fireEvent.change(screen.getByLabelText('Opacity'), { target: { value: '0.5' } });
     expect(onCommit).toHaveBeenCalledWith(0.5);
+  });
+
+  // The regression this prop exists to fix: an unset value must show the
+  // RENDERER's default, not the control's floor. `min` here (-60) is what
+  // the deleted-then-restored bug would show — fully muted — for a value
+  // that actually plays at unity (`fallback`, 0dB).
+  it('shows `fallback`, not `min`, when value is undefined', () => {
+    render(<SliderField lbl="Volume (dB)" value={undefined} min={-60} max={12} step={0.5} fallback={0} onCommit={() => {}} />);
+    const el = screen.getByLabelText('Volume (dB)') as HTMLInputElement;
+    expect(el.value).toBe('0');
+    expect(screen.getByText('0')).toBeInTheDocument(); // the mono readout
+  });
+
+  it('still shows `value` when it is explicitly set, ignoring `fallback`', () => {
+    render(<SliderField lbl="Volume (dB)" value={-12} min={-60} max={12} step={0.5} fallback={0} onCommit={() => {}} />);
+    expect((screen.getByLabelText('Volume (dB)') as HTMLInputElement).value).toBe('-12');
   });
 });
 
