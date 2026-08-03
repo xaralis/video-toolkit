@@ -115,8 +115,13 @@ describe('burn’s mask and glowColor — controls that did not exist before', (
     render(<LayeredInspector reel={bare} selectedId="transition:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
     expect((screen.getByLabelText('Mask') as HTMLInputElement).value).toBe('');
     expect((screen.getByLabelText('Glow color') as HTMLInputElement).value).toBe('');
-    // ...and the numeric knobs it always had are still there, still numeric.
-    expect((screen.getByLabelText('Edge contrast') as HTMLInputElement).type).toBe('number');
+    // ...and the numeric knobs it always had are still there, still numeric —
+    // `edgeContrast` declares no min/max, so (Task 10) it renders as a
+    // ScrubField (`type="text"`, `inputMode="decimal"`), not a native number
+    // input.
+    const edgeContrast = screen.getByLabelText('Edge contrast') as HTMLInputElement;
+    expect(edgeContrast.type).toBe('text');
+    expect(edgeContrast.inputMode).toBe('decimal');
   });
 });
 
@@ -176,20 +181,29 @@ describe('accent — a transition-path control, now available to declared params
 describe('enum choice LABELS — a transition-path affordance, on both paths', () => {
   // The transition path has always rendered `{value,label}` choices, and
   // gradient-wipe's corner codes are the reason VALUE_LABELS exists.
+  // gradient-wipe's `direction` has 4 corner choices, so (Task 10) it routes
+  // to SegmentedField, not SelectField — a button, not an `<option>`.
   it('keeps the human label on the transition path', () => {
-    render(<LayeredInspector reel={gradientReel} selectedId="transition:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
-    const tlbr = screen.getByRole('option', { name: 'Top-left → bottom-right' }) as HTMLOptionElement;
-    expect(tlbr.value).toBe('tl-br');
+    const onChange = vi.fn();
+    render(<LayeredInspector reel={gradientReel} selectedId="transition:v1" onChange={onChange} onSeek={() => {}} fps={30} />);
+    const tlbr = screen.getByRole('button', { name: 'Top-left → bottom-right' });
+    expect(tlbr).toHaveAttribute('aria-pressed', 'true'); // authored direction is tl-br
+    fireEvent.click(tlbr);
+    const next = onChange.mock.calls.at(-1)![0] as LayeredReel;
+    expect((next.tracks.video[0].transitionOut as Record<string, unknown>).direction).toBe('tl-br');
   });
 
   // ...and a declared param may now use the same spelled-out form, which the
-  // bare-`string[]` vocabulary could not express.
+  // bare-`string[]` vocabulary could not express. `style` has 2 choices, so
+  // (Task 10) it routes to SegmentedField too.
   it('accepts spelled-out choices in a DECLARED params list', () => {
     const meta: EditorMeta = {
       videoProps: { outro: [{ prop: 'style', options: [{ value: 'organic', label: 'Organic sweep' }, { value: 'fade', label: 'Straight fade' }] }] },
     };
-    render(<LayeredInspector reel={outroReel} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
-    expect((screen.getByRole('option', { name: 'Organic sweep' }) as HTMLOptionElement).value).toBe('organic');
+    const onChange = vi.fn();
+    render(<LayeredInspector reel={outroReel} selectedId="video:v1" onChange={onChange} onSeek={() => {}} fps={30} meta={meta} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Organic sweep' }));
+    expect((onChange.mock.calls.at(-1)![0] as LayeredReel).tracks.video[0].props).toEqual({ style: 'organic' });
   });
 
   // Backward compatibility, and the reason `options` stayed a union: every
@@ -199,7 +213,7 @@ describe('enum choice LABELS — a transition-path affordance, on both paths', (
   it('still accepts a bare string list, label = the value', () => {
     const meta: EditorMeta = { videoProps: { outro: [{ prop: 'style', options: ['organic', 'fade'] }] } };
     render(<LayeredInspector reel={outroReel} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
-    expect((screen.getByRole('option', { name: 'organic' }) as HTMLOptionElement).value).toBe('organic');
+    expect(screen.getByRole('button', { name: 'organic' })).toBeTruthy();
   });
 });
 
@@ -241,15 +255,23 @@ describe('percent and angle', () => {
     },
   };
 
-  it('bounds a percent to 0–100 and steps an angle in whole degrees', () => {
+  it('bounds a percent to 0–100 (a slider) and gives an angle an unbounded scrub', () => {
     render(<LayeredInspector reel={outroReel} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
+    // `percent`'s preset supplies BOTH bounds, so (Task 10) it renders as a
+    // SliderField (`type="range"`, native min/max attributes).
     const opacity = screen.getByLabelText('Opacity') as HTMLInputElement;
-    expect(opacity.type).toBe('number');
+    expect(opacity.type).toBe('range');
     expect(opacity.min).toBe('0');
     expect(opacity.max).toBe('100');
+    // `angle`'s preset supplies a step but no bounds, so it renders as a
+    // ScrubField (`type="text"`) instead — which sets no `min`/`max`/`step`
+    // DOM attributes at all (those only drive drag-snap granularity, a
+    // hand-verification item per `scrub-value.test.ts`, not something a typed
+    // `fireEvent.change` exercises). The observable claim left for a scrub
+    // control is its identity, not its step.
     const tilt = screen.getByLabelText('Tilt') as HTMLInputElement;
-    expect(tilt.step).toBe('1');
-    expect(tilt.min).toBe('');
+    expect(tilt.type).toBe('text');
+    expect(tilt.inputMode).toBe('decimal');
   });
 
   it('lets an explicit min/max/step win over the unit’s preset', () => {

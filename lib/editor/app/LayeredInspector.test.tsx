@@ -393,7 +393,13 @@ describe('LayeredInspector item props (no brand metadata)', () => {
     expect((screen.getByLabelText('Style') as HTMLInputElement).value).toBe('organic');
     expect((screen.getByLabelText('Variant') as HTMLInputElement).value).toBe('sand-brown');
     const delay = screen.getByLabelText('Logo delay sec') as HTMLInputElement;
-    expect(delay.type).toBe('number');
+    // A number field with no declared min/max renders as a ScrubField now
+    // (Task 10) — a text input (`type="number"`'s spinner/locale-decimal
+    // behaviour is exactly what it removes), not a number input. `inputMode`
+    // (only ScrubField sets it) tells it apart from a plain TextField, which
+    // `type="text"` alone would not.
+    expect(delay.type).toBe('text');
+    expect(delay.inputMode).toBe('decimal');
     expect(delay.value).toBe('0.6');
   });
 
@@ -424,18 +430,22 @@ describe('LayeredInspector item props (brand metadata)', () => {
     },
   };
 
-  it('renders a declared field as a dropdown over the brand values', () => {
+  it('renders a declared 4-or-fewer-choice enum as a segmented control over the brand values', () => {
+    // Task 10: an enum with ≤4 choices routes to SegmentedField, not
+    // SelectField — `style` (3 choices) and `variant` (2) both qualify.
     render(<LayeredInspector reel={outroReel} selectedId="video:o1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
-    const style = screen.getByLabelText('Style') as HTMLSelectElement;
-    expect(style.tagName).toBe('SELECT');
-    expect(style.value).toBe('organic');
-    expect(screen.getByRole('option', { name: 'heartbeat' })).toBeTruthy();
-    expect(screen.getByRole('option', { name: 'white-black' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Style' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'organic' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'heartbeat' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'white-black' })).toBeTruthy();
   });
 
   it('still renders undeclared props generically alongside the declared ones', () => {
     render(<LayeredInspector reel={outroReel} selectedId="video:o1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
-    expect((screen.getByLabelText('Logo delay sec') as HTMLInputElement).type).toBe('number');
+    // ScrubField (Task 10) — see the comment on the equivalent assertion above.
+    const delay = screen.getByLabelText('Logo delay sec') as HTMLInputElement;
+    expect(delay.type).toBe('text');
+    expect(delay.inputMode).toBe('decimal');
   });
 
   it('renders a declared field even when the item does not carry that prop yet', () => {
@@ -444,7 +454,7 @@ describe('LayeredInspector item props (brand metadata)', () => {
       tracks: { ...outroReel.tracks, video: [{ id: 'o1', kind: 'outro', startMs: 0, endMs: 2000, musicBoostDb: 0, props: {} }] },
     };
     render(<LayeredInspector reel={bare} selectedId="video:o1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
-    expect((screen.getByLabelText('Style') as HTMLSelectElement).tagName).toBe('SELECT');
+    expect(screen.getByRole('group', { name: 'Style' })).toBeInTheDocument();
   });
 });
 
@@ -461,10 +471,12 @@ describe('LayeredInspector declared param type (absent key)', () => {
     tracks: { ...outroReel.tracks, video: [{ id: 'o1', kind: 'outro', startMs: 0, endMs: 2000, musicBoostDb: 0, props: {} }] },
   };
 
-  it('renders a number input for a declared-number prop the item does not carry', () => {
+  it('renders a numeric ScrubField for a declared-number prop the item does not carry', () => {
     render(<LayeredInspector reel={bare} selectedId="video:o1" onChange={() => {}} onSeek={() => {}} fps={30} meta={numMeta} />);
     const f = screen.getByLabelText('Logo delay (s)') as HTMLInputElement;
-    expect(f.type).toBe('number');
+    // ScrubField (Task 10) — see the comment on the equivalent assertion above.
+    expect(f.type).toBe('text');
+    expect(f.inputMode).toBe('decimal');
     expect(f.value).toBe('');
   });
 
@@ -515,15 +527,15 @@ describe('LayeredInspector effect catalog', () => {
     expect(next.tracks.video[0].effects!.at(-1)).toEqual({ type: 'vintage', mode: 'film' });
   });
 
-  it('renders a brand effect param as a dropdown over its declared options', () => {
+  it('renders a brand effect param as a segmented control over its declared options', () => {
+    // Task 10: 2 choices is ≤4, so this routes to SegmentedField, not SelectField.
     const meta = {
       effects: [{ type: 'vintage', params: [{ prop: 'mode', label: 'Mode', options: ['film', 'vhs'] }] }],
     };
     render(<LayeredInspector reel={base} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
     fireEvent.click(screen.getByText('Effect · vintage')); // open the collapsible
-    const mode = screen.getByLabelText('Mode') as HTMLSelectElement;
-    expect(mode.tagName).toBe('SELECT');
-    expect(mode.value).toBe('film');
+    expect(screen.getByRole('group', { name: 'Mode' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'film' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('falls back to a generic typed editor for an undeclared effect param', () => {
@@ -751,7 +763,10 @@ describe('LayeredInspector grade unification guards (Phase 4 Task 3.4)', () => {
 
     // And it is genuinely editable again, not just visually re-enabled.
     fireEvent.change(brightness, { target: { value: '1.5' } });
-    expect(screen.getByLabelText('Brightness')).toHaveValue(1.5);
+    // A SliderField (Task 10) is `type="range"` — jest-dom's `toHaveValue`
+    // only special-cases `type="number"`, so a range input's value compares
+    // as a string.
+    expect((screen.getByLabelText('Brightness') as HTMLInputElement).value).toBe('1.5');
   });
 });
 
@@ -896,5 +911,43 @@ describe('LayeredInspector transition length — bounded by the boundary’s act
     );
     expect(screen.getByLabelText('Length (frames)')).toBeInTheDocument();
     expect(screen.queryByLabelText(/Length \(frames, max/)).toBeNull();
+  });
+});
+
+describe('LayeredInspector project overview (no selection)', () => {
+  const reelWithTwoClips: LayeredReel = {
+    version: 'layered-1', meta: { topic: 't', totalDurationMs: 10000 },
+    tracks: {
+      video: [
+        { id: 'v1', kind: 'clip', startMs: 0, endMs: 5000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 5000 },
+        { id: 'v2', kind: 'clip', startMs: 5000, endMs: 10000, source: 'b.mp4', sourceInMs: 0, sourceOutMs: 5000 },
+      ],
+      audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [],
+    },
+  };
+
+  it('shows no diagnostic row when every source loaded', () => {
+    render(
+      <LayeredInspector reel={reelWithTwoClips} selectedId={null} onChange={() => {}} onSeek={() => {}} fps={30}
+        width={1080} height={1920} sourceDurations={{ 'a.mp4': 3000, 'b.mp4': 4000 }} />,
+    );
+    expect(screen.queryByText('Failed to load')).toBeNull();
+  });
+
+  it('names the sources that failed to load', () => {
+    render(
+      <LayeredInspector reel={reelWithTwoClips} selectedId={null} onChange={() => {}} onSeek={() => {}} fps={30}
+        width={1080} height={1920} sourceDurations={{ 'a.mp4': 0, 'b.mp4': 4000 }} />,
+    );
+    expect(screen.getByText('a.mp4')).toBeInTheDocument();
+  });
+
+  it('shows resolution, aspect ratio and frame count', () => {
+    render(
+      <LayeredInspector reel={reelWithTwoClips} selectedId={null} onChange={() => {}} onSeek={() => {}} fps={30}
+        width={1080} height={1920} sourceDurations={{ 'a.mp4': 3000, 'b.mp4': 4000 }} />,
+    );
+    expect(screen.getByText('1080 × 1920')).toBeInTheDocument();
+    expect(screen.getByText('9:16')).toBeInTheDocument();
   });
 });

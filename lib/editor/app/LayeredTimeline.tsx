@@ -1,5 +1,5 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import type { RefObject, CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
+import { forwardRef, memo, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { ForwardedRef, RefObject, CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import { Timeline, type TimelineState } from '@xzdarcy/react-timeline-editor';
 import type { TimelineRow, TimelineAction, TimelineEffect } from '@xzdarcy/timeline-engine';
 import '@xzdarcy/react-timeline-editor/dist/react-timeline-editor.css';
@@ -24,6 +24,9 @@ import { computeMusicEnvelope } from '@video-toolkit/lib/reel-config-base/music-
 import { resolveMediaSource, type MediaRole } from '@video-toolkit/lib/theming/media-source';
 import { humanizeKey, stableColor, type EditorMeta } from './editor-meta';
 import { handleRoomFrames, boundaryState, starvationMessage, type HandleRoom } from '@video-toolkit/lib/reel-config-base/handle-room';
+import { EDITOR_ACCENT } from '../host/ui';
+import { SHORTCUTS } from './shortcuts';
+import { GESTURES } from './ShortcutOverlay';
 
 // Media paths go through core's ONE rule (lib/theming/media-source.ts) — the
 // same one SegmentMedia and the audio track use — rather than a third private
@@ -95,15 +98,34 @@ const LANE_LABELS: Record<LaneId, string> = {
 // core never enumerates them — an overlay (or any unlisted kind) gets a
 // deterministic colour derived from its effectId, and a host that wants a
 // specific one declares it in `meta.laneColors`.
-const CORE_LANE_COLOR: Record<string, string> = {
-  'video-clip': '#3b6ea5',
-  'video-broll': '#2f7d4f',
-  'video-photo': '#3f6a7d',
-  'video-multi-clip': '#6a4fa5',
-  'video-card': '#8a6d1f',
+//
+// Every hue here is drawn from the arc declared in `lane-colors.ts` (190-280,
+// at least 25deg from the accent hue) — see `lane-colors.test.ts`, which
+// asserts both rules, PLUS pairwise distinguishability, over this exact map.
+// `music` and `video-multi-clip` used to sit almost exactly on the accent
+// hue (a lane permanently "selected"); `video-broll` and `video-card` used to
+// be an unrelated green/gold that clashed with the rest.
+//
+// The accent hue is DERIVED from `EDITOR_ACCENT` (`lane-colors.ts`), not the
+// hardcoded 258 an earlier pass here used — the real hue is ~251.78. Against
+// that corrected value, `video-broll` and `video-card`'s first re-pick
+// (227.1deg / 229.0deg) both landed INSIDE the guard band (226.78-276.78) —
+// a real rule-1 violation that only the correction surfaced. Both are
+// re-picked again here, along with the rest, by maximising the minimum
+// pairwise "redmean" RGB distance (the same measure `stableColor.test`
+// uses) over muted, panel-appropriate hue/sat/light ranges within the
+// corrected usable arc. Worst pair now is `video-broll` vs `video-photo` at
+// ~62 — comfortably a "two different colours" gap. Exported so the rules
+// test (and nothing else) can read it directly.
+export const CORE_LANE_COLOR: Record<string, string> = {
+  'video-clip': '#5987a1',
+  'video-broll': '#3252a4',
+  'video-photo': '#415381',
+  'video-multi-clip': '#457487',
+  'video-card': '#367bb5',
   'video-outro': '#4a4c54',
-  audio: '#2a8f8f',
-  music: '#7a5cae',
+  audio: '#2e3f66',
+  music: '#46a7be',
   'brand-watermark': '#4a4c54',
   'brand-disclaimer': '#4a4c54',
 };
@@ -205,7 +227,7 @@ export function zoomFactorFor(deltaY: number, deltaMode = 0): number {
 }
 
 // xzdarcy's `startLeft`: the px gap between the timeline's left edge and time 0.
-const TIMELINE_START_LEFT = 12;
+export const TIMELINE_START_LEFT = 12;
 
 // How far the playhead may sit from a viewport edge before the timeline scrolls
 // to follow it (px). Small enough that a seek just outside the view scrolls, big
@@ -240,16 +262,35 @@ export function followScrollLeft(
   return next === scrollLeft ? null : next;
 }
 
+/** Where to scroll so a zoom keeps the content under `anchorX` in place.
+ *
+ *  Without this the timeline grows around its LEFT EDGE, so the playhead
+ *  slides out of view on every zoom step and has to be chased with a scroll.
+ *
+ *  Pure so the invariant is testable — jsdom runs no layout, so the effect
+ *  that APPLIES this (see the layout effect keyed on `scaleWidth`) is a
+ *  hand-verification item, not something a unit test can pin. */
+export function zoomAnchorScrollLeft(
+  anchorX: number,
+  view: { scrollLeft: number; scrollWidth: number; clientWidth: number },
+  factor: number,
+): number {
+  const offset = anchorX - TIMELINE_START_LEFT;
+  const content = view.scrollLeft + offset;
+  const max = Math.max(0, view.scrollWidth * factor - view.clientWidth);
+  return Math.min(max, Math.max(0, content * factor - offset));
+}
+
 // The trim handles are xzdarcy's own invisible stretch zones; these grips are a
 // visual layer on top (pointer-events:none so the real handles still drag).
 // Default: faint. Hover the block: its grips brighten (shows WHICH clip's handle
 // you'll grab at a butted seam). Muted: hatched + dim (this edge can't extend).
 const GRIP_CSS = `
-.vt-grip { position: absolute; top: 4px; bottom: 4px; width: 5px; border-radius: 2px; pointer-events: none; background: rgba(255,255,255,0.30); transition: background 0.12s ease, box-shadow 0.12s ease; }
+.vt-grip { position: absolute; top: 4px; bottom: 4px; width: 5px; border-radius: 2px; pointer-events: none; background: color-mix(in oklab, var(--ed-color-ink) 30%, transparent); transition: background 0.12s ease, box-shadow 0.12s ease; }
 .vt-grip-left { left: 2px; }
 .vt-grip-right { right: 2px; }
-.timeline-editor-action:hover .vt-grip { background: rgba(255,255,255,0.92); box-shadow: 0 0 0 1px rgba(0,0,0,0.35); }
-.vt-grip-muted, .timeline-editor-action:hover .vt-grip-muted { background: repeating-linear-gradient(45deg, rgba(255,255,255,0.16) 0 2px, rgba(255,255,255,0) 2px 4px); box-shadow: none; }
+.timeline-editor-action:hover .vt-grip { background: color-mix(in oklab, var(--ed-color-ink) 92%, transparent); box-shadow: 0 0 0 1px color-mix(in oklab, var(--ed-color-stage) 35%, transparent); }
+.vt-grip-muted, .timeline-editor-action:hover .vt-grip-muted { background: repeating-linear-gradient(45deg, color-mix(in oklab, var(--ed-color-ink) 16%, transparent) 0 2px, transparent 2px 4px); box-shadow: none; }
 /* The block being dragged paints above its neighbours. xzdarcy stacks the action
    wrappers by DOM order alone, so a clip whose right edge is dragged over the
    next clip goes UNDER it and stays invisible until release — you cannot see the
@@ -257,6 +298,15 @@ const GRIP_CSS = `
    owns that node, not the wrapper), so the wrapper is reached with :has(). */
 .timeline-editor-action:has(.vt-block-active) { z-index: 4; }
 `;
+
+// Video/audio block base look (position/height/layout/typography — every
+// constant part of the block's style). `background` (per-item colour),
+// `outline` (selection ring — the accent, never swapped into `background`,
+// which now carries lane identity) and `cursor` (slip affordance) stay
+// inline — see the getActionRender block below — because they vary per
+// action.
+const BLOCK_BASE_CLS =
+  'ed:relative ed:h-full ed:flex ed:items-center ed:px-1.5 ed:rounded-[3px] ed:text-ink ed:font-sans ed:text-[11px] ed:overflow-hidden';
 
 export function timelineLabel(action: TimelineAction, reel: LayeredReel, fps: number, meta?: EditorMeta): string {
   const { lane, id } = parseActionId(action.id);
@@ -328,7 +378,9 @@ const SNAP_PX = 8;
 // Transitions are markers at the cut, not full clips — a thinner row keeps
 // the lane visually distinct from the video/audio blocks above and below it.
 const TRANSITIONS_ROW_H = 18;
-const TRANSITION_MARKER_COLOR = '#c9a227';
+// Transition marker fill/ink — `--color-transition-marker(-ink)` in
+// editor.in.css's `@theme static` block, used below as `ed:bg-transition-marker`
+// / `ed:text-transition-marker-ink`.
 
 // Lanes whose items are display-only (their span is derived / not an item
 // array): brand span is content-end-derived, transitions are derived from
@@ -351,8 +403,15 @@ export interface LayeredTimelineProps {
   snapping?: boolean;
   /** ⌘/Ctrl + wheel (or pinch) over the timeline. Receives a MULTIPLICATIVE
    *  factor for the current zoom (>1 in, <1 out), already scaled to how far the
-   *  wheel actually moved — not a direction. See ZOOM_PER_PX. */
-  onZoom?: (factor: number) => void;
+   *  wheel actually moved — not a direction. See ZOOM_PER_PX.
+   *
+   *  Returns the ACHIEVED ratio — not necessarily the requested `factor`,
+   *  because the host clamps `scaleWidth` to `[ZOOM_MIN, ZOOM_MAX]`. At the
+   *  clamp boundary a requested ×1.25 might only ever land ×1.14, and the
+   *  anchor math below needs the number that actually happened or it
+   *  overshoots (some 200px of drift on a 2000px content offset was measured
+   *  from exactly this gap). `1` means "no-op — scaleWidth did not change". */
+  onZoom?: (factor: number) => number;
   /** The last-saved reel — supplies each clip's AUTHORED length so a trim can be
    * restored to it (even when the file is a touch shorter, i.e. it holds a frame). */
   savedReel?: LayeredReel | null;
@@ -371,6 +430,22 @@ export interface LayeredTimelineProps {
   onDiagnostics?: (d: Diagnostic[]) => void;
 }
 
+/** Imperative escape hatch for a zoom that has no pointer to anchor on — the
+ *  toolbar buttons and keyboard shortcuts, which change `scaleWidth` from
+ *  OUTSIDE this component. `zoomAtCenter` captures the CURRENT (pre-zoom)
+ *  geometry synchronously, before the caller applies the scale change, and
+ *  feeds it into the exact same `pendingZoom` → layout-effect path the wheel
+ *  handler uses below — no second code path for applying an anchor, only a
+ *  second way of capturing one.
+ *
+ *  `factor` must be the ACHIEVED ratio (what `scaleWidth` will actually move
+ *  by, after the host's own clamp), not the requested one — every caller gets
+ *  this from `zoomBy`'s return value. Passing `1` clears any pending anchor
+ *  instead of scheduling one, for the no-op case (already at min/max zoom). */
+export interface LayeredTimelineHandle {
+  zoomAtCenter: (factor: number) => void;
+}
+
 function LayeredTimelineImpl({
   reel,
   onChange,
@@ -387,7 +462,7 @@ function LayeredTimelineImpl({
   snapToBeats = false,
   meta,
   onDiagnostics,
-}: LayeredTimelineProps) {
+}: LayeredTimelineProps, ref: ForwardedRef<LayeredTimelineHandle>) {
   const stateRef = useRef<TimelineState>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const guidesRef = useRef<HTMLDivElement>(null);
@@ -397,6 +472,19 @@ function LayeredTimelineImpl({
   // clamp stays honest at the edges. History coalesces the stream of commits
   // into one undo step (useHistory.ts:5-8).
   const slipRef = useRef<{ id: string; x0: number; base: LayeredReel } | null>(null);
+
+  // The anchor a pending zoom must preserve, captured in the wheel handler
+  // below and consumed by the layout effect keyed on `scaleWidth` further
+  // down. NOT applied in the handler itself: `scaleWidth` lives in the host,
+  // so a scroll write in that same tick would be clamped against the OLD
+  // scrollWidth (the DOM hasn't re-laid-out yet) — which looks exactly like
+  // the drift this is fixing. `view` is the PRE-zoom geometry — the effect
+  // must use it as captured, not re-measure, or the zoom gets applied twice.
+  const pendingZoom = useRef<{
+    anchorX: number;
+    factor: number;
+    view: { scrollLeft: number; scrollWidth: number; clientWidth: number };
+  } | null>(null);
 
   // Alt held → slippable clips show they can be slipped. Window-level because
   // the key may be pressed before the pointer enters a block. `blur` clears it:
@@ -428,7 +516,33 @@ function LayeredTimelineImpl({
       if (!(e.metaKey || e.ctrlKey)) return;
       e.preventDefault();
       const f = zoomFactorFor(e.deltaY, e.deltaMode);
-      if (f !== 1) onZoomRef.current?.(f);
+      if (f === 1) return;
+      // Ask the host to apply the requested factor FIRST and read back what it
+      // actually achieved (it clamps scaleWidth to [ZOOM_MIN, ZOOM_MAX]) — the
+      // anchor below must use THAT number, not the request, or a clamp-boundary
+      // zoom overshoots (see `onZoom`'s own doc comment). Calling this before
+      // measuring the DOM is safe: `setScaleWidth` only SCHEDULES a re-render,
+      // it does not re-lay-out synchronously, so the geometry read just below
+      // is still the PRE-zoom geometry either way.
+      const achieved = onZoomRef.current?.(f);
+      // No-op at the clamp boundary (already at ZOOM_MIN/ZOOM_MAX): actively
+      // clear any earlier pending anchor rather than leaving it stale.
+      // `scaleWidth` won't change, so the layout effect that would normally
+      // consume and clear `pendingZoom` never runs — an unrelated LATER zoom
+      // (e.g. a toolbar click) would otherwise apply this stale anchor with
+      // the wrong factor against content that has since resized.
+      if (!achieved || Math.abs(achieved - 1) < 1e-9) {
+        pendingZoom.current = null;
+        return;
+      }
+      const scrollTarget = scrollEl();
+      if (!scrollTarget) return;
+      const rect = scrollTarget.getBoundingClientRect();
+      pendingZoom.current = {
+        anchorX: e.clientX - rect.left,
+        factor: achieved,
+        view: { scrollLeft: scrollTarget.scrollLeft, scrollWidth: scrollTarget.scrollWidth, clientWidth: scrollTarget.clientWidth },
+      };
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
@@ -572,6 +686,47 @@ function LayeredTimelineImpl({
     return scrollElRef.current;
   };
 
+  // The zoom-buttons/keyboard-shortcut escape hatch (see LayeredTimelineHandle
+  // above the props interface). No cursor to anchor on, so the centre of the
+  // viewport stands in for it — captured here, synchronously, the same way
+  // the wheel handler captures a pointer position, and fed into the SAME
+  // pendingZoom + layout-effect path below.
+  //
+  // The caller passes the ACHIEVED factor (post-clamp), never the requested
+  // one — see `onZoom`'s doc comment for why the distinction matters. A `1`
+  // means the zoom was a no-op (already at ZOOM_MIN/ZOOM_MAX): actively clear
+  // any earlier pending anchor rather than leaving it stale for a later,
+  // unrelated `scaleWidth` change to pick up (the same hazard the wheel
+  // handler's own no-op branch guards against).
+  useImperativeHandle(ref, () => ({
+    zoomAtCenter: (factor: number) => {
+      if (Math.abs(factor - 1) < 1e-9) {
+        pendingZoom.current = null;
+        return;
+      }
+      const el = scrollEl();
+      if (!el) return;
+      pendingZoom.current = {
+        anchorX: el.clientWidth / 2,
+        factor,
+        view: { scrollLeft: el.scrollLeft, scrollWidth: el.scrollWidth, clientWidth: el.clientWidth },
+      };
+    },
+  }), []);
+
+  // Applies a pending zoom's anchor once the DOM has re-laid-out at the new
+  // scale — keyed on `scaleWidth` because that is the value whose change
+  // means the layout has actually moved. `pendingZoom` was captured BEFORE
+  // that layout happened (wheel handler above, or `zoomAtCenter`), so this
+  // reads the captured view rather than re-measuring `scrollEl()` here, which
+  // by now reflects the NEW scale and would double-apply the zoom.
+  useLayoutEffect(() => {
+    const p = pendingZoom.current;
+    pendingZoom.current = null;
+    if (!p) return;
+    stateRef.current?.setScrollLeft(zoomAnchorScrollLeft(p.anchorX, p.view, p.factor));
+  }, [scaleWidth]);
+
   // Keep the playhead in view. Without this a seek (⏮/⏭, a jump, or playback
   // running off the right edge) moves the cursor while the timeline stays where
   // it was, so the reel appears not to respond at all. Scrolling goes through
@@ -654,32 +809,22 @@ function LayeredTimelineImpl({
   return (
     <div
       ref={rootRef}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        minHeight: 0,
-        background: '#161719',
-        fontFamily: FONT,
-        userSelect: 'none',
-        WebkitUserSelect: 'none',
-      }}
+      className="ed:flex ed:flex-col ed:h-full ed:min-h-0 ed:bg-shell ed:font-sans ed:select-none"
     >
       <style>{GRIP_CSS}</style>
-      <div style={{ display: 'flex', flex: '1 1 auto', minHeight: 0 }}>
+      <div className="ed:flex ed:flex-auto ed:min-h-0">
       {/* Fixed lane-header column. xzdarcy renders only the track area, so the
           labels live in a parallel scroll container kept in two-way sync with
           the timeline's vertical scroll (its official scroll-sync mechanism):
           timeline scroll → list.scrollTop, list scroll → TimelineState.setScrollTop.
           The ruler spacer stays fixed on top. */}
-      <div style={{ width: 92, flex: 'none', borderRight: '1px solid #2a2c32', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ height: HEADER_OFFSET, flex: 'none' }} />
+      <div className="ed:w-[92px] ed:flex-none ed:border-r ed:border-line ed:flex ed:flex-col ed:overflow-hidden">
+        <div className="ed:flex-none" style={{ height: HEADER_OFFSET }} />
         <div
           ref={listRef}
           onScroll={(e) => stateRef.current?.setScrollTop(e.currentTarget.scrollTop)}
-          style={
-            { flex: '1 1 auto', overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'none', msOverflowStyle: 'none' } as CSSProperties
-          }
+          className="ed:flex-auto ed:overflow-y-auto ed:overflow-x-hidden"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as CSSProperties}
         >
           {/* One header per timeline ROW (lanes can span several sub-rows when
               their items overlap). The lane name shows on its first sub-row; the
@@ -690,16 +835,8 @@ function LayeredTimelineImpl({
             return (
               <div
                 key={row.id}
-                style={{
-                  height: row.rowHeight ?? ROW_H,
-                  display: 'flex',
-                  alignItems: 'center',
-                  paddingLeft: 10,
-                  fontSize: 11,
-                  color: isFirst ? '#9a9da5' : '#61646c',
-                  borderBottom: '1px solid #202227',
-                  boxSizing: 'border-box',
-                }}
+                className={`ed:flex ed:items-center ed:pl-2.5 ed:text-[11px] ed:border-b ed:border-line ed:box-border ${isFirst ? 'ed:text-ink-2' : 'ed:text-ink-3'}`}
+                style={{ height: row.rowHeight ?? ROW_H }}
               >
                 {isFirst ? LANE_LABELS[lane] : '↳'}
               </div>
@@ -708,7 +845,7 @@ function LayeredTimelineImpl({
         </div>
       </div>
 
-      <div style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', position: 'relative' }}>
+      <div className="ed:flex-auto ed:min-w-0 ed:overflow-hidden ed:relative">
         {guidesMs && guidesMs.length > 0 && (
           // Ticks are positioned in UNSCROLLED content coordinates (left = 12 +
           // ms·scaleWidth); the whole layer is translated by the timeline's
@@ -718,26 +855,18 @@ function LayeredTimelineImpl({
           <div
             ref={guidesRef}
             aria-hidden
-            style={{
-              position: 'absolute',
-              inset: 0,
-              pointerEvents: 'none',
-              zIndex: 5,
-              willChange: 'transform',
+            className={`ed:absolute ed:inset-0 ed:pointer-events-none ed:z-[5] ed:will-change-transform ${
               // Prominent when snapping to beats, faint (still a manual-alignment
               // aid) when it's off.
-              opacity: snapToBeats ? 1 : 0.35,
-            }}
+              snapToBeats ? 'ed:opacity-100' : 'ed:opacity-[0.35]'
+            }`}
           >
             {guidesMs.map((ms, i) => (
               <div
                 key={i}
                 data-guide-tick
-                style={{
-                  position: 'absolute', top: 0, bottom: 0,
-                  left: TIMELINE_START_LEFT + (ms / 1000) * scaleWidth,
-                  width: 1, background: 'rgba(182,255,90,0.35)',
-                }}
+                className="ed:absolute ed:inset-y-0 ed:w-px ed:bg-accent/35"
+                style={{ left: TIMELINE_START_LEFT + (ms / 1000) * scaleWidth }}
               />
             ))}
           </div>
@@ -758,7 +887,7 @@ function LayeredTimelineImpl({
             // Keep the beat-guide layer aligned with horizontally-scrolled content.
             if (guidesRef.current) guidesRef.current.style.transform = `translateX(${-param.scrollLeft}px)`;
           }}
-          style={{ width: '100%', height: '100%', background: '#161719', fontFamily: FONT }}
+          style={{ width: '100%', height: '100%', background: 'var(--ed-color-shell)', fontFamily: FONT }}
           getActionRender={(action) => {
             if (parseActionId(action.id).lane === 'transitions') {
               // A derived marker at the cut, not a clip — small centered pill
@@ -766,33 +895,23 @@ function LayeredTimelineImpl({
               const starved = starvedTargets.has(action.id);
               return (
                 <div
+                  className="ed:relative ed:h-full ed:flex ed:items-center ed:justify-center ed:px-1.5 ed:rounded-full ed:bg-transition-marker ed:text-transition-marker-ink ed:font-sans ed:text-[10px] ed:overflow-hidden"
                   style={{
-                    position: 'relative',
-                    height: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '0 6px',
-                    borderRadius: 999,
-                    background: TRANSITION_MARKER_COLOR,
-                    color: '#1a1a1a',
-                    fontFamily: FONT,
-                    fontSize: 10,
-                    overflow: 'hidden',
-                    boxShadow: action.selected ? 'inset 0 0 0 2px #e8e8ea' : undefined,
+                    outline: action.selected ? `2px solid ${EDITOR_ACCENT}` : undefined,
+                    outlineOffset: -2,
                   }}
                   title={starved ? diagnostics.find((d) => d.targetId === action.id)!.message : action.id}
                 >
                   {/* Same hatch vocabulary as a muted trim grip ("nothing more to
-                      take this way") — an overlay, not a className on this div: the
-                      pill's own background is opaque, so a class carrying only
-                      `background`/`box-shadow` would be invisible if it competed
-                      with this div's inline background instead of sitting on top
-                      of it. */}
+                      take this way") — the fill/box-shadow still come from the
+                      raw `.vt-grip-muted` rule (GRIP_CSS): the pill's own
+                      background is opaque, so that rule would be invisible if it
+                      competed with this div's own background instead of sitting
+                      on top of it as a separate absolutely-positioned overlay. */}
                   {starved && (
-                    <div className="vt-grip-muted" style={{ position: 'absolute', inset: 0, borderRadius: 999 }} />
+                    <div className="vt-grip-muted ed:absolute ed:inset-0 ed:rounded-full" />
                   )}
-                  <span style={{ position: 'relative', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <span className="ed:relative ed:whitespace-nowrap ed:overflow-hidden ed:text-ellipsis">
                     {timelineLabel(action, reel, fps, meta)}
                   </span>
                 </div>
@@ -810,20 +929,11 @@ function LayeredTimelineImpl({
                 // above its neighbours for the duration of the gesture — see
                 // GRIP_CSS. Without it, a clip dragged right disappears under the
                 // clip it is being dragged over and only reappears on release.
-                className={action.id === activeActionId ? 'vt-block vt-block-active' : 'vt-block'}
+                className={`${BLOCK_BASE_CLS} ${action.id === activeActionId ? 'vt-block vt-block-active' : 'vt-block'}`}
                 style={{
-                  position: 'relative',
-                  height: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '0 6px',
-                  borderRadius: 3,
                   background: blockColor(action, reel, meta),
-                  color: '#f2f2f2',
-                  fontFamily: FONT,
-                  fontSize: 11,
-                  overflow: 'hidden',
-                  boxShadow: action.selected ? 'inset 0 0 0 2px #e8e8ea' : undefined,
+                  outline: action.selected ? `2px solid ${EDITOR_ACCENT}` : undefined,
+                  outlineOffset: -2,
                   cursor: slippable ? 'ew-resize' : undefined,
                 }}
                 title={action.id}
@@ -860,7 +970,7 @@ function LayeredTimelineImpl({
                 {linkedAudioIds.has(action.id) && (
                   <span
                     title="Linked to its clip — unlink in the inspector to trim it on its own"
-                    style={{ position: 'absolute', right: 5, top: '50%', transform: 'translateY(-50%)', fontSize: 11, opacity: 0.85, pointerEvents: 'none' }}
+                    className="ed:absolute ed:right-[5px] ed:top-1/2 ed:-translate-y-1/2 ed:text-[11px] ed:opacity-[0.85] ed:pointer-events-none"
                   >
                     🔒
                   </span>
@@ -897,7 +1007,7 @@ function LayeredTimelineImpl({
                     {/* Draggable BASE level; the derived envelope boosts ride above it. */}
                     <VolumeLine
                       volumeDb={reel.tracks.music.baseVolumeDb}
-                      color="rgba(182,255,90,0.9)"
+                      color="rgba(124,92,255,0.9)"
                       resetDb={-8}
                       onChange={(db) =>
                         onChange({ ...reel, tracks: { ...reel.tracks, music: { ...reel.tracks.music, baseVolumeDb: db } } })
@@ -912,19 +1022,13 @@ function LayeredTimelineImpl({
                     undraggable along its whole width. Nothing here is
                     interactive, so it opts out of hit-testing entirely. */}
                 <span
-                  style={{
-                    position: 'relative',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    pointerEvents: 'none',
-                    // Reads over the waveform, which is bright and dense enough to
-                    // break up the glyphs behind it. A shadow rather than a
-                    // backplate or a dimmer waveform: the waveform IS the useful
-                    // picture on an audio block, so the label yields to it and
-                    // stays legible on its own.
-                    textShadow: '0 1px 2px rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,0.65)',
-                  }}
+                  className="ed:relative ed:whitespace-nowrap ed:overflow-hidden ed:text-ellipsis ed:pointer-events-none"
+                  // Reads over the waveform, which is bright and dense enough to
+                  // break up the glyphs behind it. A shadow rather than a
+                  // backplate or a dimmer waveform: the waveform IS the useful
+                  // picture on an audio block, so the label yields to it and
+                  // stays legible on its own.
+                  style={{ textShadow: '0 1px 2px rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,0.65)' }}
                 >
                   {timelineLabel(action, reel, fps, meta)}
                 </span>
@@ -991,38 +1095,14 @@ function LayeredTimelineImpl({
         />
       </div>
       </div>
-      {/* Gesture legend — the timeline's non-obvious interactions. */}
-      <div
-        style={{
-          flex: 'none',
-          height: 20,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-          padding: '0 12px',
-          borderTop: '1px solid #2a2c32',
-          fontSize: 10.5,
-          color: '#6b6f78',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-        }}
-      >
-        <span>
-          <span style={{ color: ripple ? '#b6ff5a' : '#9a9a95' }}>Ripple {ripple ? 'on' : 'off'}</span>
-          {ripple ? ' — resize shifts the rest; drag carries everything behind it' : ' — only what you grab moves'}
-        </span>
-        <span>
-          <span style={{ color: '#9a9a95' }}>⌥/Alt + drag a clip</span> — slip the shot inside its window
-        </span>
-        <span>
-          <span style={{ color: '#9a9a95' }}>Drag the volume line</span> — set level (double-click to reset)
-        </span>
-        <span>
-          <span style={{ color: '#9a9a95' }}>⌘/Ctrl + scroll</span> — zoom the timeline
-        </span>
-        <span>
-          <span style={{ color: '#9a9a95' }}>⌫</span> delete · <span style={{ color: '#9a9a95' }}>⌘Z</span> undo
-        </span>
+      {/* Derived from the shortcut registry, so it cannot drift from the bindings. */}
+      <div className="ed:flex-none ed:h-5 ed:flex ed:items-center ed:gap-4 ed:px-3 ed:py-1 ed:border-t ed:border-line ed:text-[11px] ed:text-ink-3 ed:whitespace-nowrap ed:overflow-hidden">
+        {[...SHORTCUTS.filter((s) => s.group === 'Timeline'), ...GESTURES].map((s) => (
+          <span key={s.keys}>
+            <span className="ed:font-mono ed:text-ink-2">{s.keys}</span> — {s.label}
+          </span>
+        ))}
+        <span><span className="ed:font-mono ed:text-ink-2">?</span> — all shortcuts</span>
       </div>
     </div>
   );
@@ -1031,4 +1111,4 @@ function LayeredTimelineImpl({
 // Memoized: during playback the parent re-renders every frame (timecode), but
 // the timeline's props are stable (reel changes only on edit), so it skips
 // those re-renders and updates its cursor imperatively instead.
-export const LayeredTimeline = memo(LayeredTimelineImpl);
+export const LayeredTimeline = memo(forwardRef(LayeredTimelineImpl));

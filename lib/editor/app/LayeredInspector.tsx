@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import { withTotalDuration } from '@video-toolkit/lib/reel-config-base/total-duration';
 import { AccentEditor } from './AccentEditor';
@@ -20,8 +20,17 @@ import { PLACEMENTS } from '../../theming/placement';
 import { effectCatalog, effectDefinition, humanizeKey, paramChoices, type EditorMeta, type ParamField } from './editor-meta';
 import { warnOnce } from '../../render/warn-once';
 import { videoUrl } from './LayeredTimeline';
+import { framesForReel } from '../host/host-duration';
+import { formatTimecode } from './controls/timecode';
+import { aspectLabel, failedSources } from './project-summary';
 import { handleRoomFrames, maxTransitionFrames, type HandleRoom } from '@video-toolkit/lib/reel-config-base/handle-room';
 import { transitionAlignmentOf } from '@video-toolkit/lib/reel-config-base/transition-schema';
+import { useLiveField } from './controls/use-live-field';
+import { fieldCls, labelCls, inputCls, rowCls, readonlyValueCls, sectionCls } from './controls/field-classes';
+import { ScrubField } from './controls/ScrubField';
+import { SliderField } from './controls/SliderField';
+import { TimecodeField } from './controls/TimecodeField';
+import { SegmentedField } from './controls/SegmentedField';
 
 // Routes the selected timeline item (by lane) to its editable properties,
 // reusing the existing content editors. Edits produce a new LayeredReel via
@@ -43,91 +52,43 @@ export interface LayeredInspectorProps {
    *  same way `reel`/`fps` are so the transition length field can bound itself
    *  against the SAME handle-room math the timeline hatches with. Optional and
    *  defaults to `{}` (unknown durations, i.e. no bound) — every existing
-   *  caller that doesn't know about this keeps its old, unbounded behaviour. */
+   *  caller that doesn't know about this keeps its old, unbounded behaviour.
+   *  Doubles as the failed-source diagnostic on the no-selection screen (a
+   *  source resolving to `0` — see `project-summary.ts`'s `failedSources`). */
   sourceDurations?: Record<string, number>;
+  /** The composition's pixel dimensions, shown on the no-selection ("project
+   *  overview") screen. Optional (defaults to 0×0, which reads as `—` via
+   *  `aspectLabel`) so every existing caller that doesn't know about this
+   *  keeps working. */
+  width?: number;
+  height?: number;
 }
 
-const label: React.CSSProperties = { fontSize: 11, color: '#7a7d85', display: 'block', marginBottom: 2 };
-const field: React.CSSProperties = { marginBottom: 8, flex: 1, minWidth: 0 };
-const input: React.CSSProperties = {
-  width: '100%',
-  background: '#1c1e22',
-  color: '#e8e8ea',
-  border: '1px solid #34363e',
-  borderRadius: 4,
-  padding: '5px 7px',
-  fontSize: 12,
-  boxSizing: 'border-box',
-};
-const heading: React.CSSProperties = { fontSize: 12, color: '#e8e8ea', margin: '0 0 10px', fontWeight: 600 };
-const panel: React.CSSProperties = { padding: 12, width: '100%', height: '100%', overflowY: 'auto', boxSizing: 'border-box' };
-const section: React.CSSProperties = { fontSize: 10, color: '#5f626a', textTransform: 'uppercase', letterSpacing: 0.4, margin: '10px 0 6px' };
-
-const Row = ({ children }: { children: ReactNode }) => <div style={{ display: 'flex', gap: 8 }}>{children}</div>;
-
+const panelCls = 'ed:p-3 ed:w-full ed:h-full ed:overflow-y-auto ed:box-border';
+const headingCls = 'ed:text-xs ed:text-ink ed:mb-2.5 ed:font-semibold';
 // A one-line reason printed under a control that has gone inert, so a disabled
 // field explains itself instead of reading as a bug. Deliberately quiet — it is
-// an answer to "why can't I type here", not a warning.
-const note: React.CSSProperties = { fontSize: 11, color: '#7a7d85', margin: '-4px 0 8px' };
+// an answer to "why can't I type here", not a warning — but it is the ONLY
+// explanation of why the control is inert, so it's a value the user reads,
+// not a label about one: `ink-2`, never `ink-3` (same rule as `readonlyValueCls`).
+const noteCls = 'ed:text-[11px] ed:text-ink-2 ed:-mt-1 ed:mb-2';
+// Shared "input chrome" for the plain buttons below (seek/link/add-effect),
+// deliberately without `cursor`, `width`, `padding` or margin utilities — each
+// call site's enabled/disabled state needs its own `cursor-*`, and its own
+// sizing, so folding those in here would risk two utilities for the same
+// property landing on one element (the same hazard `labelCls` avoids above).
+const btnCls = 'ed:box-border ed:bg-control ed:text-ink ed:border ed:border-line ed:rounded ed:text-xs';
 
-// Live-commit field state: controlled local text that commits on every valid
-// keystroke (preview updates immediately, not on blur), and resyncs from the
-// external `value` only while UNFOCUSED (external edit / undo / item switch) so
-// typing never fights the caret and a no-op commit reverts cleanly on blur.
-function useLiveField(external: string) {
-  const [text, setText] = useState<string>(external);
-  const focused = useRef(false);
-  useEffect(() => {
-    if (!focused.current) setText(external);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [external]);
-  return {
-    text,
-    setText,
-    onFocus: () => (focused.current = true),
-    onBlur: () => {
-      focused.current = false;
-      setText(external);
-    },
-  };
-}
-
-function NumberField({ lbl, value, step = 1, min, max, onCommit, disabled, title }: { lbl: string; value: number | undefined; step?: number; min?: number; max?: number; onCommit: (n: number) => void; disabled?: boolean; title?: string }) {
-  const f = useLiveField(value === undefined ? '' : String(value));
-  return (
-    <div style={field} title={title}>
-      <label style={label}>{lbl}</label>
-      <input
-        aria-label={lbl}
-        style={disabled ? { ...input, opacity: 0.45, cursor: 'not-allowed' } : input}
-        type="number"
-        step={step}
-        min={min}
-        max={max}
-        disabled={disabled}
-        value={f.text}
-        onFocus={f.onFocus}
-        onBlur={f.onBlur}
-        onChange={(e) => {
-          f.setText(e.target.value);
-          const raw = e.target.value.trim();
-          if (raw === '') return;
-          const n = Number(raw);
-          if (!Number.isNaN(n)) onCommit(n);
-        }}
-      />
-    </div>
-  );
-}
+const Row = ({ children }: { children: ReactNode }) => <div className={rowCls}>{children}</div>;
 
 function TextField({ lbl, value, onCommit }: { lbl: string; value: string | undefined; onCommit: (s: string) => void }) {
   const f = useLiveField(value ?? '');
   return (
-    <div style={field}>
-      <label style={label}>{lbl}</label>
+    <div className={fieldCls}>
+      <label className={`${labelCls} ed:block ed:mb-1`}>{lbl}</label>
       <input
         aria-label={lbl}
-        style={input}
+        className={inputCls}
         type="text"
         value={f.text}
         onFocus={f.onFocus}
@@ -156,9 +117,9 @@ function SelectField({
 }) {
   const opts = value && !options.includes(value) ? [value, ...options] : options;
   return (
-    <div style={field}>
-      <label style={label}>{lbl}</label>
-      <select aria-label={lbl} style={input} value={value ?? ''} onChange={(e) => onChange(e.target.value)}>
+    <div className={fieldCls}>
+      <label className={`${labelCls} ed:block ed:mb-1`}>{lbl}</label>
+      <select aria-label={lbl} className={inputCls} value={value ?? ''} onChange={(e) => onChange(e.target.value)}>
         {value === undefined && <option value="">—</option>}
         {opts.map((o) => (
           <option key={o} value={o}>
@@ -174,9 +135,17 @@ function SelectField({
 // has never been set; that renders as unchecked and commits `true` on click.
 function CheckboxField({ lbl, value, onChange }: { lbl: string; value: boolean | undefined; onChange: (b: boolean) => void }) {
   return (
-    <div style={field}>
-      <label style={{ ...label, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 0, cursor: 'pointer' }}>
-        <input type="checkbox" checked={value ?? false} onChange={(e) => onChange(e.target.checked)} />
+    <div className={fieldCls}>
+      <label className={`${labelCls} ed:flex ed:items-center ed:gap-1.5 ed:cursor-pointer`}>
+        {/* `accent-color` recolours the CHECKED fill/tick to the brand accent
+            instead of the UA default blue — it has no effect on the
+            unchecked state's background. */}
+        <input
+          type="checkbox"
+          className="ed:accent-accent"
+          checked={value ?? false}
+          onChange={(e) => onChange(e.target.checked)}
+        />
         {lbl}
       </label>
     </div>
@@ -192,8 +161,8 @@ function ColorField({ lbl, value, onCommit }: { lbl: string; value: string | und
   const f = useLiveField(value ?? '');
   const swatch = /^#[0-9a-fA-F]{6}$/.test(f.text) ? f.text : '#000000';
   return (
-    <div style={field}>
-      <label style={label}>{lbl}</label>
+    <div className={fieldCls}>
+      <label className={`${labelCls} ed:block ed:mb-1`}>{lbl}</label>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <input
           aria-label={`${lbl} swatch`}
@@ -203,11 +172,16 @@ function ColorField({ lbl, value, onCommit }: { lbl: string; value: string | und
             f.setText(e.target.value);
             onCommit(e.target.value);
           }}
-          style={{ width: 28, height: 26, padding: 0, border: '1px solid #34363e', borderRadius: 4, background: '#1c1e22', flex: '0 0 auto' }}
+          // Border colour and background come from the same tokens the text
+          // input beside it uses (`ed:border-line ed:bg-control`) so the pair
+          // matches; the inline style below sets border WIDTH/STYLE only —
+          // never colour — so it can't out-rank those two utilities.
+          className="ed:border-line ed:bg-control"
+          style={{ width: 28, height: 26, padding: 0, borderWidth: 1, borderStyle: 'solid', borderRadius: 4, flex: '0 0 auto' }}
         />
         <input
           aria-label={lbl}
-          style={input}
+          className={inputCls}
           type="text"
           value={f.text}
           onFocus={f.onFocus}
@@ -397,13 +371,25 @@ function renderParamControl({
   // anything else anyway.
   if (field.options || field.type === 'enum') {
     const choices = paramChoices(field.options) ?? [];
-    return (
+    const optionLabel = (v: string) => choices.find((c) => c.value === v)?.label ?? v;
+    // A short enum reads better as a segmented control than a dropdown; past
+    // four choices a row of buttons stops scanning faster than a select does.
+    return choices.length > 0 && choices.length <= 4 ? (
+      <SegmentedField
+        key={field.prop}
+        lbl={lbl}
+        value={asString}
+        options={choices.map((c) => c.value)}
+        optionLabel={optionLabel}
+        onChange={onCommit}
+      />
+    ) : (
       <SelectField
         key={field.prop}
         lbl={lbl}
         value={asString}
         options={choices.map((c) => c.value)}
-        optionLabel={(v) => choices.find((c) => c.value === v)?.label ?? v}
+        optionLabel={optionLabel}
         onChange={onCommit}
       />
     );
@@ -441,16 +427,36 @@ function renderParamControl({
     // in whole degrees, and an explicit min/max/step on the field still wins.
     const preset: { min?: number; max?: number; step?: number } =
       t === 'percent' ? { min: 0, max: 100, step: 1 } : t === 'angle' ? { step: 1 } : {};
-    return (
-      <NumberField
+    const min = field.min ?? preset.min;
+    const max = field.max ?? preset.max;
+    const step = field.step ?? preset.step ?? numberStep;
+    const v = typeof value === 'number' ? value : undefined;
+    // A declaration with BOTH bounds gets a slider; anything else gets a scrub,
+    // which needs no range. Zero core catalog fields declare min/max today, so
+    // the scrub path is the one that actually runs — that is why it is the
+    // foundation rather than an extra.
+    return min !== undefined && max !== undefined ? (
+      <SliderField
         key={field.prop}
         lbl={lbl}
-        step={field.step ?? preset.step ?? numberStep}
-        min={field.min ?? preset.min}
-        max={field.max ?? preset.max}
-        value={typeof value === 'number' ? value : undefined}
+        min={min}
+        max={max}
+        step={step}
+        value={v}
+        // What an unset value shows: `field.default` when the registration
+        // declared one (its documented "value the schema falls back to when
+        // the field is absent" — param-field.ts) — the closest thing to a
+        // real renderer default this GENERIC path can know, since the actual
+        // component reading this bag is brand code core never sees. No core
+        // registration declares `default` today, so this floors to `min` in
+        // practice; that is a documented, visible floor, not a claim that
+        // `min` IS the renderer's default — the honest answer available when
+        // the true default is unknowable from here.
+        fallback={typeof field.default === 'number' ? field.default : min}
         onCommit={onCommit}
       />
+    ) : (
+      <ScrubField key={field.prop} lbl={lbl} step={step} min={min} max={max} value={v} onCommit={onCommit} />
     );
   }
   if (t === 'boolean')
@@ -511,7 +517,7 @@ function ParamFields({
     ...declared.map((f) => renderOne(f, true)),
     ...rest.map((p) => renderOne({ prop: p }, false)),
   ].filter(Boolean);
-  if (!nodes.length) return <div style={{ fontSize: 11, color: '#7a7d85', padding: '3px 0' }}>No editable params.</div>;
+  if (!nodes.length) return <div className="ed:text-[11px] ed:text-ink-2" style={{ padding: '3px 0' }}>No editable params.</div>;
   return <>{nodes}</>;
 }
 
@@ -607,9 +613,11 @@ export function TransitionFields({
         // `maxFrames` means, so both read as the plain, unbounded label.
         const bounded = maxFrames !== undefined && Number.isFinite(maxFrames);
         return (
-          <NumberField
+          <ScrubField
             lbl={bounded ? `Length (frames, max ${maxFrames})` : 'Length (frames)'}
             value={t.frames}
+            min={1}
+            max={bounded ? maxFrames : undefined}
             onCommit={(n) => onChange({ ...t, frames: Math.min(bounded ? (maxFrames as number) : Infinity, Math.max(1, Math.round(n))) })}
           />
         );
@@ -654,18 +662,18 @@ function GradeFields({
   return (
     <>
       <Row>
-        <NumberField lbl="Brightness" step={0.05} value={g.brightness ?? 1} disabled={disabled} onCommit={(n) => onPatch({ brightness: n })} />
-        <NumberField lbl="Contrast" step={0.05} value={g.contrast ?? 1} disabled={disabled} onCommit={(n) => onPatch({ contrast: n })} />
+        <SliderField lbl="Brightness" min={0.2} max={2} step={0.05} value={g.brightness ?? 1} fallback={1} disabled={disabled} onCommit={(n) => onPatch({ brightness: n })} />
+        <SliderField lbl="Contrast" min={0.2} max={2} step={0.05} value={g.contrast ?? 1} fallback={1} disabled={disabled} onCommit={(n) => onPatch({ contrast: n })} />
       </Row>
       <Row>
-        <NumberField lbl="Saturation" step={0.05} value={g.saturation ?? 1} disabled={disabled} onCommit={(n) => onPatch({ saturation: n })} />
-        <NumberField lbl="Temperature" step={0.05} value={g.temperature ?? 0} disabled={disabled} onCommit={(n) => onPatch({ temperature: n })} />
+        <SliderField lbl="Saturation" min={0} max={2} step={0.05} value={g.saturation ?? 1} fallback={1} disabled={disabled} onCommit={(n) => onPatch({ saturation: n })} />
+        <SliderField lbl="Temperature" min={-1} max={1} step={0.05} value={g.temperature ?? 0} fallback={0} disabled={disabled} onCommit={(n) => onPatch({ temperature: n })} />
       </Row>
       <Row>
-        <NumberField lbl="Tint" step={0.05} value={g.tint ?? 0} disabled={disabled} onCommit={(n) => onPatch({ tint: n })} />
-        <NumberField lbl="Sepia" step={0.05} value={g.sepia ?? 0} disabled={disabled} onCommit={(n) => onPatch({ sepia: n })} />
+        <SliderField lbl="Tint" min={-1} max={1} step={0.05} value={g.tint ?? 0} fallback={0} disabled={disabled} onCommit={(n) => onPatch({ tint: n })} />
+        <SliderField lbl="Sepia" min={0} max={1} step={0.05} value={g.sepia ?? 0} fallback={0} disabled={disabled} onCommit={(n) => onPatch({ sepia: n })} />
       </Row>
-      <NumberField lbl="Hue rotate (deg)" step={1} value={g.hueRotateDeg ?? 0} disabled={disabled} onCommit={(n) => onPatch({ hueRotateDeg: n })} />
+      <SliderField lbl="Hue rotate (deg)" min={-180} max={180} step={1} value={g.hueRotateDeg ?? 0} fallback={0} disabled={disabled} onCommit={(n) => onPatch({ hueRotateDeg: n })} />
     </>
   );
 }
@@ -682,11 +690,21 @@ function EffectEditor({
   fields,
   onPatch,
   accentSlots,
+  focalX,
 }: {
   eff: Record<string, unknown>;
   fields?: readonly ParamField[];
   onPatch: (patch: Record<string, unknown>) => void;
   accentSlots?: readonly AccentSlot[];
+  /** The owning video item's own focal point X — needed ONLY so the ken-burns
+   *  From X/To X sliders can show the SAME fallback the renderer actually
+   *  uses when a from/to endpoint is omitted (`kb.fromX ?? (focalX ?? 0.5)`,
+   *  ken-burns.ts) rather than a fixed constant that's wrong whenever the
+   *  item has its own focal point set. No `focalY` counterpart — From/To Y
+   *  have no slider control today (only From/To scale, via ScrubField, which
+   *  needs no fallback since it has no renderer-side "unset means something
+   *  else" behaviour to mirror). */
+  focalX?: number;
 }) {
   const type = eff.type as string;
   const num = (k: string) => (typeof eff[k] === 'number' ? (eff[k] as number) : undefined);
@@ -698,7 +716,7 @@ function EffectEditor({
     const hasFromTo = ['fromX', 'toX', 'fromScale', 'toScale'].some((k) => typeof eff[k] === 'number');
     if (typeof eff.direction === 'string' || !hasFromTo) {
       return (
-        <SelectField
+        <SegmentedField
           lbl="Direction"
           value={(eff.direction as string | undefined) ?? 'in'}
           options={['in', 'left', 'up']}
@@ -708,13 +726,17 @@ function EffectEditor({
     }
     return (
       <>
+        {/* The renderer's own fallback when an endpoint is omitted is the
+            item's OWN focal point, not a fixed constant — `kb.fromX ?? (focalX
+            ?? 0.5)` (ken-burns.ts:71,73). Mirrored here exactly so the slider
+            never shows a value the render wouldn't actually produce. */}
         <Row>
-          <NumberField lbl="From X" step={0.01} value={num('fromX')} onCommit={(n) => onPatch({ fromX: n })} />
-          <NumberField lbl="To X" step={0.01} value={num('toX')} onCommit={(n) => onPatch({ toX: n })} />
+          <SliderField lbl="From X" min={0} max={1} step={0.01} value={num('fromX')} fallback={focalX ?? 0.5} onCommit={(n) => onPatch({ fromX: n })} />
+          <SliderField lbl="To X" min={0} max={1} step={0.01} value={num('toX')} fallback={focalX ?? 0.5} onCommit={(n) => onPatch({ toX: n })} />
         </Row>
         <Row>
-          <NumberField lbl="From scale" step={0.05} value={num('fromScale')} onCommit={(n) => onPatch({ fromScale: n })} />
-          <NumberField lbl="To scale" step={0.05} value={num('toScale')} onCommit={(n) => onPatch({ toScale: n })} />
+          <ScrubField lbl="From scale" min={0.5} step={0.05} value={num('fromScale')} onCommit={(n) => onPatch({ fromScale: n })} />
+          <ScrubField lbl="To scale" min={0.5} step={0.05} value={num('toScale')} onCommit={(n) => onPatch({ toScale: n })} />
         </Row>
       </>
     );
@@ -730,9 +752,15 @@ function EffectEditor({
       <>
         <TextField lbl="To source" value={eff.to as string | undefined} onCommit={(s) => onPatch({ to: s || undefined })} />
         <SelectField lbl="Direction" value={eff.direction as string | undefined} options={BLEND_DIRECTIONS} onChange={(s) => onPatch({ direction: s })} />
+        {/* `blend`'s RENDERER is brand-owned (a registration this repo never
+            sees — e.g. PP's), not core's, so unlike ken-burns/grade there is
+            no formula here to mirror for what an unset startPct/endPct
+            actually plays as. `min`/`max` are the only honest fallback
+            available from core; a brand adding its own inspector for this
+            effect can supply the real one. */}
         <Row>
-          <NumberField lbl="Start %" value={num('startPct')} onCommit={(n) => onPatch({ startPct: n })} />
-          <NumberField lbl="End %" value={num('endPct')} onCommit={(n) => onPatch({ endPct: n })} />
+          <SliderField lbl="Start %" min={0} max={100} step={1} value={num('startPct')} fallback={0} onCommit={(n) => onPatch({ startPct: n })} />
+          <SliderField lbl="End %" min={0} max={100} step={1} value={num('endPct')} fallback={100} onCommit={(n) => onPatch({ endPct: n })} />
         </Row>
       </>
     );
@@ -741,9 +769,13 @@ function EffectEditor({
   return <ParamFields values={params} fields={fields} onPatch={onPatch} accentSlots={accentSlots} axis="effect" kind={type} />;
 }
 
-const seekBtn: React.CSSProperties = { ...input, cursor: 'pointer', marginBottom: 10, width: 'auto', padding: '4px 10px' };
-const linkBtn: React.CSSProperties = { ...input, cursor: 'pointer', marginTop: 4, width: '100%', padding: '6px 10px', textAlign: 'left', fontSize: 12 };
-const readonlyValue: React.CSSProperties = { fontSize: 13, color: '#c8cbd2', padding: '3px 0' };
+// `btnCls` plus this call site's own sizing and margin. `seekBtnCls` has no
+// disabled variant anywhere it's used, so its `cursor-pointer` is baked in;
+// `linkBtnCls` DOES gain a disabled variant at one call site (`AddEffectControl`
+// below), so — same hazard `btnCls` itself is written to avoid — it carries no
+// `cursor-*` of its own; every consumer adds its own.
+const seekBtnCls = `${btnCls} ed:cursor-pointer ed:mb-2.5 ed:w-auto ed:px-2.5 ed:py-1`;
+const linkBtnCls = `${btnCls} ed:mt-1 ed:w-full ed:px-2.5 ed:py-1.5 ed:text-left`;
 
 // The addable effects: core's own catalog plus whatever the brand declared.
 // Core ships only what core RENDERS (ken-burns and grade via SegmentMedia) —
@@ -771,8 +803,13 @@ function AddEffectControl({
   const catalog = effectCatalog(meta);
   return (
     <div style={{ marginTop: 8 }}>
-      <button type="button" onClick={() => setOpen((o) => !o)}
-        style={{ ...seekBtn, marginBottom: 4 }}>+ Add effect</button>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`${btnCls} ed:cursor-pointer ed:mb-1 ed:w-auto ed:px-2.5 ed:py-1`}
+      >
+        + Add effect
+      </button>
       {open &&
         catalog.map((e) => {
           const isBlocked = blockedTypes?.has(e.type) ?? false;
@@ -787,7 +824,7 @@ function AddEffectControl({
                 onAdd({ type: e.type, ...(e.defaults ?? {}) });
                 setOpen(false);
               }}
-              style={isBlocked ? { ...linkBtn, opacity: 0.4, cursor: 'not-allowed' } : { ...linkBtn }}
+              className={isBlocked ? `${linkBtnCls} ed:opacity-40 ed:cursor-not-allowed` : `${linkBtnCls} ed:cursor-pointer`}
             >
               {e.label ?? e.type}
             </button>
@@ -797,7 +834,7 @@ function AddEffectControl({
   );
 }
 
-export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, accentSlots, meta, sourceDurations }: LayeredInspectorProps) {
+export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, accentSlots, meta, sourceDurations, width = 0, height = 0 }: LayeredInspectorProps) {
   // The dedicated `accentSlots` prop is the ONE source for the palette —
   // EditorMeta deliberately does not carry a copy (see editor-meta.ts).
   const slots = accentSlots;
@@ -819,26 +856,64 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
   };
 
   if (!selectedId) {
+    // Every source the reel actually references — video items that carry one
+    // (clip/broll/photo; multi-clip/card/outro don't) plus every audio bed.
+    // Music is deliberately excluded here (it gets its own row below).
+    const sources = Array.from(new Set([
+      ...reel.tracks.video.map((v) => (v as { source?: string }).source).filter(Boolean) as string[],
+      ...reel.tracks.audio.map((a) => a.source),
+    ]));
+    const failed = failedSources(sources, durationsMs);
+
     return (
-      <div style={panel}>
-        <h3 style={heading}>Reel</h3>
+      <div className={panelCls}>
+        <h3 className={headingCls}>Reel</h3>
+
+        <div className={sectionCls}>Format</div>
+        <Row>
+          <div className={fieldCls}><label className={`${labelCls} ed:block ed:mb-1`}>Resolution</label><div className={readonlyValueCls}>{width} × {height}</div></div>
+          <div className={fieldCls}><label className={`${labelCls} ed:block ed:mb-1`}>Aspect</label><div className={readonlyValueCls}>{aspectLabel(width, height)}</div></div>
+        </Row>
+        <Row>
+          <div className={fieldCls}><label className={`${labelCls} ed:block ed:mb-1`}>Frame rate</label><div className={readonlyValueCls}>{fps} fps</div></div>
+          <div className={fieldCls}><label className={`${labelCls} ed:block ed:mb-1`}>Frames</label><div className={readonlyValueCls}>{framesForReel(reel, fps)}</div></div>
+        </Row>
+
+        <div className={sectionCls}>Content</div>
         {/* All read-only — plain text, not field-styled boxes (they aren't editable). */}
-        <div style={field}>
-          <label style={label}>Topic</label>
-          <div style={readonlyValue}>{reel.meta.topic}</div>
+        <div className={fieldCls}>
+          <label className={`${labelCls} ed:block ed:mb-1`}>Topic</label>
+          <div className={readonlyValueCls}>{reel.meta.topic}</div>
         </div>
-        <div style={field}>
-          <label style={label}>Total duration</label>
-          <div style={readonlyValue}>{(reel.meta.totalDurationMs / 1000).toFixed(2)}s</div>
+        <div className={fieldCls}>
+          <label className={`${labelCls} ed:block ed:mb-1`}>Duration</label>
+          <div className={readonlyValueCls}>{formatTimecode(reel.meta.totalDurationMs, fps)}</div>
         </div>
-        <div style={field}>
-          <label style={label}>Music</label>
-          <div style={readonlyValue}>{reel.tracks.music.source ?? '(none)'} · base {reel.tracks.music.baseVolumeDb}dB</div>
+        <div className={fieldCls}>
+          <label className={`${labelCls} ed:block ed:mb-1`}>Media sources</label>
+          <div className={readonlyValueCls}>{sources.length}</div>
         </div>
-        <div style={{ fontSize: 11, color: '#5f626a', marginTop: 8 }}>
+        <div className={fieldCls}>
+          <label className={`${labelCls} ed:block ed:mb-1`}>Music</label>
+          <div className={readonlyValueCls}>{reel.tracks.music.source ?? '(none)'} · base {reel.tracks.music.baseVolumeDb}dB</div>
+        </div>
+
+        {/* Omitted entirely when healthy — a project with nothing wrong shows
+            no diagnostic, matching the header diagnostics badge's behaviour. */}
+        {failed.length > 0 && (
+          <div className={fieldCls}>
+            <label className={`${labelCls} ed:block ed:mb-1`}>Failed to load</label>
+            <div className="ed:text-xs ed:text-warn ed:font-mono">{failed.join(', ')}</div>
+          </div>
+        )}
+
+        {/* A value the user reads, not a label about it — ink-2, per
+            field-classes.ts:20-21 (ink-3 at 12px is below WCAG AA). */}
+        <div className="ed:text-[11px] ed:text-ink-2 ed:mt-2">
           {reel.tracks.video.length} video · {reel.tracks.overlays.length} overlays · {reel.tracks.audio.length} audio · {reel.tracks.brand.length} brand
         </div>
-        <div style={{ fontSize: 11, color: '#5f626a', marginTop: 10 }}>Select a timeline item to edit it.</div>
+        {/* A hint, not a value — ink-3 is correct here. */}
+        <div className="ed:text-[11px] ed:text-ink-3 ed:mt-2.5">Select a timeline item to edit it.</div>
       </div>
     );
   }
@@ -873,8 +948,8 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     const maxFrames =
       edge === 'in' || isLast ? undefined : Math.max(1, maxTransitionFrames(roomOf(idx), roomOf(idx + 1), transitionAlignmentOf(t)));
     return (
-      <div style={panel}>
-        <h3 style={heading}>
+      <div className={panelCls}>
+        <h3 className={headingCls}>
           Transition {edge === 'in' ? 'in' : 'out'} · {transitionKindLabel(kind, meta?.transitionProps)}
         </h3>
         <TransitionFields t={t} accentSlots={slots} meta={meta} maxFrames={maxFrames} onChange={(next) => patchItem('video', id, { [edgeField]: next })} />
@@ -886,17 +961,17 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     const v = reel.tracks.video.find((x) => x.id === id);
     if (!v) return null;
     return (
-      <div style={panel}>
-        <h3 style={heading}>Clip · {v.kind}</h3>
-        <button type="button" style={seekBtn} onClick={() => onSeek(Math.round((v.startMs / 1000) * fps))}>
+      <div className={panelCls}>
+        <h3 className={headingCls}>Clip · {v.kind}</h3>
+        <button type="button" className={seekBtnCls} onClick={() => onSeek(Math.round((v.startMs / 1000) * fps))}>
           ⇥ seek to start
         </button>
         {(v.kind === 'clip' || v.kind === 'broll') && (
           <>
             <TextField lbl="Source" value={v.source} onCommit={(s) => s.trim() && patchItem('video', id, { source: s })} />
             <Row>
-              <NumberField lbl="Trim in (s)" step={0.05} value={v.sourceInMs / 1000} onCommit={(n) => patchItem('video', id, { sourceInMs: Math.round(n * 1000) })} />
-              <NumberField lbl="Trim out (s)" step={0.05} value={v.sourceOutMs / 1000} onCommit={(n) => patchItem('video', id, { sourceOutMs: Math.round(n * 1000) })} />
+              <TimecodeField lbl="Trim in" ms={v.sourceInMs} fps={fps} onCommit={(ms) => patchItem('video', id, { sourceInMs: ms })} />
+              <TimecodeField lbl="Trim out" ms={v.sourceOutMs} fps={fps} onCommit={(ms) => patchItem('video', id, { sourceOutMs: ms })} />
             </Row>
             {/* Framing — how this shot meets the frame. `Fit` comes FIRST
                 because it decides what the controls under it mean: under
@@ -909,7 +984,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
               const backdrop = v as { backdropBlur?: number; backdropDim?: number };
               return (
                 <>
-                  <SelectField
+                  <SegmentedField
                     lbl="Fit"
                     value={isBlurPad ? 'blur-pad' : 'cover'}
                     options={['cover', 'blur-pad']}
@@ -921,8 +996,9 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                     onChange={(s) => patchItem('video', id, { fit: s === 'blur-pad' ? 'blur-pad' : undefined })}
                   />
                   <Row>
-                    <NumberField
+                    <ScrubField
                       lbl="Zoom (1 = none)"
+                      min={1}
                       step={0.05}
                       // Round the display — width is stored as 1/zoom, so the round-trip
                       // otherwise shows e.g. 3.0003 instead of 3.
@@ -933,41 +1009,51 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                         })
                       }
                     />
-                    <NumberField
+                    <SliderField
                       lbl="Crop focus X"
+                      min={0}
+                      max={1}
                       step={0.01}
                       value={v.focalX}
+                      // Matches cropCoverStyle's own fallback (crop.ts) — an
+                      // unset focal point renders centred, not hard-left.
+                      fallback={0.5}
                       disabled={isBlurPad}
                       onCommit={(n) => patchItem('video', id, { focalX: n })}
                     />
-                    <NumberField
+                    <SliderField
                       lbl="Crop focus Y"
+                      min={0}
+                      max={1}
                       step={0.01}
                       value={v.focalY}
+                      fallback={0.5}
                       disabled={isBlurPad}
                       onCommit={(n) => patchItem('video', id, { focalY: n })}
                     />
                   </Row>
-                  {isBlurPad && <p style={note}>Nothing is cropped — the whole shot is visible.</p>}
+                  {isBlurPad && <p className={noteCls}>Nothing is cropped — the whole shot is visible.</p>}
                   <Row>
-                    <NumberField
+                    <SliderField
                       lbl="Backdrop blur"
-                      step={1}
                       min={0}
                       max={80}
+                      step={1}
                       // Shows the value the RENDERER will use, not an empty box
                       // — the defaults live in two places by necessity (schema
                       // and render), and a blank field would suggest "none".
                       value={backdrop.backdropBlur ?? 32}
+                      fallback={32}
                       disabled={!isBlurPad}
                       onCommit={(n) => patchItem('video', id, { backdropBlur: n })}
                     />
-                    <NumberField
+                    <SliderField
                       lbl="Backdrop dim"
-                      step={0.05}
                       min={0}
                       max={1}
+                      step={0.05}
                       value={backdrop.backdropDim ?? 0.45}
+                      fallback={0.45}
                       disabled={!isBlurPad}
                       onCommit={(n) => patchItem('video', id, { backdropDim: n })}
                     />
@@ -1008,7 +1094,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           };
           return (
             <>
-              <div style={section}>
+              <div className={sectionCls}>
                 Color{hasGradeEffect ? ' (disabled — this item has its own grade effect)' : ''}
               </div>
               <GradeFields g={g} onPatch={patchGrade} disabled={hasGradeEffect} />
@@ -1026,7 +1112,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           if (!declared?.length && !Object.keys(props).length) return null;
           return (
             <>
-              <div style={section}>{humanizeKey(v.kind)}</div>
+              <div className={sectionCls}>{humanizeKey(v.kind)}</div>
               <ParamFields
                 values={props}
                 fields={declared}
@@ -1038,7 +1124,10 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
             </>
           );
         })()}
-        <NumberField lbl="Music boost (dB)" value={v.musicBoostDb} onCommit={(n) => patchItem('video', id, { musicBoostDb: n })} />
+        {/* Renderer default: music-envelope.ts's `item?.musicBoostDb ?? 0` —
+            an unboosted segment plays the music bed at its plain base volume,
+            not silenced. */}
+        <SliderField lbl="Music boost (dB)" min={-60} max={12} step={0.5} value={v.musicBoostDb} fallback={0} onCommit={(n) => patchItem('video', id, { musicBoostDb: n })} />
         {/* Effects only apply to footage renderers (SegmentMedia + brand wrappers).
             outro/card render bespoke and ignore item.effects, so don't offer them. */}
         {(v.kind === 'clip' || v.kind === 'broll' || v.kind === 'photo' || v.kind === 'multi-clip') && (
@@ -1065,6 +1154,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                   eff={eff as Record<string, unknown>}
                   fields={effectDefinition(meta, type)?.params}
                   accentSlots={accentSlots}
+                  focalX={v.focalX}
                   onPatch={(patch) =>
                     patchItem('video', id, { effects: v.effects!.map((e, j) => (j === i ? { ...(e as Record<string, unknown>), ...patch } : e)) })
                   }
@@ -1104,7 +1194,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           const maxFrames = isLast ? undefined : Math.max(1, maxTransitionFrames(roomOf(idx), roomOf(idx + 1), transitionAlignmentOf(t)));
           return (
             <>
-              <div style={section}>Transition out</div>
+              <div className={sectionCls}>Transition out</div>
               <TransitionFields t={t} accentSlots={slots} meta={meta} maxFrames={maxFrames} onChange={(next) => patchItem('video', id, { transitionOut: next })} />
             </>
           );
@@ -1119,14 +1209,14 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     const content = o.content as { kind?: string; text?: string; lines?: string[]; reveal?: string; fontSize?: number };
     const patchContent = (patch: Record<string, unknown>) => patchItem('overlays', id, { content: { ...o.content, ...patch } });
     return (
-      <div style={panel}>
-        <h3 style={heading}>Overlay · {content.kind ?? 'overlay'}</h3>
-        <button type="button" style={seekBtn} onClick={() => onSeek(Math.round((o.startMs / 1000) * fps))}>
+      <div className={panelCls}>
+        <h3 className={headingCls}>Overlay · {content.kind ?? 'overlay'}</h3>
+        <button type="button" className={seekBtnCls} onClick={() => onSeek(Math.round((o.startMs / 1000) * fps))}>
           ⇥ seek to start
         </button>
         {content.text !== undefined && (
-          <div style={field}>
-            <label style={label}>Text</label>
+          <div className={fieldCls}>
+            <label className={`${labelCls} ed:block ed:mb-1`}>Text</label>
             {/* Multi-line WYSIWYG accent editor — an overlay's text can span
                 several lines (e.g. a stacked pull-quote look). */}
             <AccentEditor value={content.text ?? ''} onChange={(next) => patchContent({ text: next })} colors={slots} multiline />
@@ -1182,7 +1272,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                     </Row>
                   )}
                   {core.includes('fontSize') && (
-                    <NumberField lbl="Font size" step={4} value={content.fontSize} onCommit={(n) => patchContent({ fontSize: Math.round(n) })} />
+                    <ScrubField lbl="Font size" min={8} step={1} value={content.fontSize} onCommit={(n) => patchContent({ fontSize: Math.round(n) })} />
                   )}
                 </>
               )}
@@ -1198,8 +1288,8 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           <SelectField lbl="Position" value={o.position} options={OVERLAY_POSITIONS} onChange={(s) => patchItem('overlays', id, { position: s })} />
         )}
         <Row>
-          <NumberField lbl="Start (s)" step={0.05} value={o.startMs / 1000} onCommit={(n) => patchItem('overlays', id, { startMs: Math.round(n * 1000) })} />
-          <NumberField lbl="End (s)" step={0.05} value={o.endMs / 1000} onCommit={(n) => patchItem('overlays', id, { endMs: Math.round(n * 1000) })} />
+          <TimecodeField lbl="Start" ms={o.startMs} fps={fps} onCommit={(ms) => patchItem('overlays', id, { startMs: ms })} />
+          <TimecodeField lbl="End" ms={o.endMs} fps={fps} onCommit={(ms) => patchItem('overlays', id, { endMs: ms })} />
         </Row>
       </div>
     );
@@ -1209,33 +1299,37 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     const a = reel.tracks.audio.find((x) => x.id === id);
     if (!a) return null;
     return (
-      <div style={panel}>
-        <h3 style={heading}>Audio</h3>
+      <div className={panelCls}>
+        <h3 className={headingCls}>Audio</h3>
         <TextField lbl="Source" value={a.source} onCommit={(s) => s.trim() && patchItem('audio', id, { source: s })} />
         <Row>
-          <NumberField lbl="Trim in (s)" step={0.05} value={a.sourceInMs / 1000} disabled={!!a.followsVideoId} title={a.followsVideoId ? 'Linked to a clip — unlink to trim independently' : undefined} onCommit={(n) => patchItem('audio', id, { sourceInMs: Math.round(n * 1000) })} />
-          <NumberField
-            lbl="Trim out (s)"
-            step={0.05}
-            value={(a.sourceOutMs ?? a.sourceInMs + (a.endMs - a.startMs)) / 1000}
+          <TimecodeField lbl="Trim in" ms={a.sourceInMs} fps={fps} disabled={!!a.followsVideoId} title={a.followsVideoId ? 'Linked to a clip — unlink to trim independently' : undefined} onCommit={(ms) => patchItem('audio', id, { sourceInMs: ms })} />
+          <TimecodeField
+            lbl="Trim out"
+            ms={a.sourceOutMs ?? a.sourceInMs + (a.endMs - a.startMs)}
+            fps={fps}
             disabled={!!a.followsVideoId}
             title={a.followsVideoId ? 'Linked to a clip — unlink to trim independently' : undefined}
-            onCommit={(n) => patchItem('audio', id, { sourceOutMs: Math.round(n * 1000) })}
+            onCommit={(ms) => patchItem('audio', id, { sourceOutMs: ms })}
           />
         </Row>
         <Row>
-          <NumberField lbl="Volume (dB)" value={a.volumeDb} onCommit={(n) => patchItem('audio', id, { volumeDb: n })} />
+          {/* Renderer default: audio-gain.ts's `item.volumeDb ?? 0` — an
+              audio bed authored without explicit gain plays at unity, not
+              muted. This is THE regression this prop exists to fix: shown
+              as `min` (−60dB) before, a live bed looked fully silenced. */}
+          <SliderField lbl="Volume (dB)" min={-60} max={12} step={0.5} value={a.volumeDb} fallback={0} onCommit={(n) => patchItem('audio', id, { volumeDb: n })} />
         </Row>
         <Row>
-          <NumberField lbl="Fade in (s)" step={0.05} value={(a.fadeInMs ?? 0) / 1000} onCommit={(n) => patchItem('audio', id, { fadeInMs: n > 0 ? Math.round(n * 1000) : undefined })} />
-          <NumberField lbl="Fade out (s)" step={0.05} value={(a.fadeOutMs ?? 0) / 1000} onCommit={(n) => patchItem('audio', id, { fadeOutMs: n > 0 ? Math.round(n * 1000) : undefined })} />
+          <TimecodeField lbl="Fade in" ms={a.fadeInMs ?? 0} fps={fps} onCommit={(ms) => patchItem('audio', id, { fadeInMs: ms > 0 ? ms : undefined })} />
+          <TimecodeField lbl="Fade out" ms={a.fadeOutMs ?? 0} fps={fps} onCommit={(ms) => patchItem('audio', id, { fadeOutMs: ms > 0 ? ms : undefined })} />
         </Row>
         {/* Linked audio: bound beds follow their clip through every edit; unlink
             to edit this bed independently. Re-link binds it to the clip under it. */}
         {a.followsVideoId ? (
           <button
             type="button"
-            style={linkBtn}
+            className={`${linkBtnCls} ed:cursor-pointer`}
             title={`This bed moves and trims with clip ${a.followsVideoId}. Unlink to edit it on its own.`}
             onClick={() => patchItem('audio', id, { followsVideoId: undefined })}
           >
@@ -1244,7 +1338,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
         ) : (
           <button
             type="button"
-            style={linkBtn}
+            className={`${linkBtnCls} ed:cursor-pointer`}
             title="Bind this bed to its clip and snap it exactly onto the clip's span."
             onClick={() => {
               // Prefer the clip this bed was named after (seg-002-audio → seg-002),
@@ -1278,21 +1372,30 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     const patchMusic = (patch: Record<string, unknown>) =>
       onChange(withTotalDuration({ ...reel, tracks: { ...reel.tracks, music: { ...m, ...patch } } }));
     return (
-      <div style={panel}>
-        <h3 style={heading}>Music</h3>
+      <div className={panelCls}>
+        <h3 className={headingCls}>Music</h3>
         <TextField lbl="Source" value={m.source} onCommit={(s) => patchMusic({ source: s.trim() || undefined })} />
-        <NumberField lbl="Base volume (dB)" value={m.baseVolumeDb} onCommit={(n) => patchMusic({ baseVolumeDb: n })} />
-        <NumberField
-          lbl="End (s)"
-          step={0.05}
-          value={(m.endMs ?? reel.meta.totalDurationMs) / 1000}
-          onCommit={(n) => patchMusic({ endMs: n > 0 ? Math.round(n * 1000) : undefined })}
+        {/* `baseVolumeDb` carries a zod `.default(-8)` (layered-schema.ts), so
+            `value` is never actually undefined here — `fallback` is stated
+            anyway, matching that same schema default, per this component's
+            "state it explicitly" contract rather than leaning on the schema
+            to keep it unreachable. */}
+        <SliderField lbl="Base volume (dB)" min={-60} max={12} step={0.5} value={m.baseVolumeDb} fallback={-8} onCommit={(n) => patchMusic({ baseVolumeDb: n })} />
+        <TimecodeField
+          lbl="End"
+          ms={m.endMs ?? reel.meta.totalDurationMs}
+          fps={fps}
+          onCommit={(ms) => patchMusic({ endMs: ms > 0 ? ms : undefined })}
         />
         <Row>
-          <NumberField lbl="Fade in (s)" step={0.05} value={(m.fadeInMs ?? 0) / 1000} onCommit={(n) => patchMusic({ fadeInMs: n > 0 ? Math.round(n * 1000) : undefined })} />
-          <NumberField lbl="Fade out (s)" step={0.05} value={(m.fadeOutMs ?? 1000) / 1000} onCommit={(n) => patchMusic({ fadeOutMs: Math.round(n * 1000) })} />
+          <TimecodeField lbl="Fade in" ms={m.fadeInMs ?? 0} fps={fps} onCommit={(ms) => patchMusic({ fadeInMs: ms > 0 ? ms : undefined })} />
+          <TimecodeField lbl="Fade out" ms={m.fadeOutMs ?? 1000} fps={fps} onCommit={(ms) => patchMusic({ fadeOutMs: ms })} />
         </Row>
-        <div style={{ fontSize: 11, color: '#5f626a', marginTop: 8 }}>
+        {/* Same rationale as `noteCls`: the only explanation of how the Music
+            lane's drawn envelope relates to these fields, not a section
+            label — `ink-2`, not `ink-3`. Its own class (not `noteCls`) since
+            its margin (`mt-2`, not `noteCls`'s `-mt-1 mb-2`) differs. */}
+        <div className="ed:text-[11px] ed:text-ink-2 ed:mt-2">
           The effective envelope (base + each clip’s music boost + fades) is drawn on the Music lane. Set End to 0 to follow the
           content end again; Fade out 0 = hard cut. The reel is always as long as its furthest-reaching track.
         </div>
@@ -1304,11 +1407,11 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
   const b = reel.tracks.brand.find((x) => x.id === id);
   if (!b) return null;
   return (
-    <div style={panel}>
-      <h3 style={heading}>Brand · {b.kind}</h3>
+    <div className={panelCls}>
+      <h3 className={headingCls}>Brand · {b.kind}</h3>
       <Row>
-        <NumberField lbl="Start (s)" step={0.05} value={b.startMs / 1000} onCommit={(n) => patchItem('brand', id, { startMs: Math.round(n * 1000) })} />
-        <NumberField lbl="End (s)" step={0.05} value={b.endMs / 1000} onCommit={(n) => patchItem('brand', id, { endMs: Math.round(n * 1000) })} />
+        <TimecodeField lbl="Start" ms={b.startMs} fps={fps} onCommit={(ms) => patchItem('brand', id, { startMs: ms })} />
+        <TimecodeField lbl="End" ms={b.endMs} fps={fps} onCommit={(ms) => patchItem('brand', id, { endMs: ms })} />
       </Row>
     </div>
   );

@@ -695,22 +695,50 @@ export function deleteItem(reel: LayeredReel, selectedId: string, opts: { ripple
   return withTotalDuration({ ...reel, tracks });
 }
 
+// Derives an id from `base` that does not collide with any id in `used`.
+// `splitItem`/`duplicateItem` mint ids with a deterministic suffix (`-b`,
+// `-copy`) — fine for a single invocation, but a REPEAT split/duplicate of the
+// same source (e.g. pressing `S` or `⌘D` twice without moving the selection)
+// previously reused the first press's generated id verbatim, producing two
+// timeline items sharing one id. That reaches the render (`video-track.tsx`
+// keys by `item.id`) and corrupts `deleteItem` (which removes every item whose
+// id is in its target set — both copies at once). Tried in order:
+// `${base}-2`, `${base}-3`, … so a THIRD press also gets its own id rather
+// than bouncing between two.
+function uniqueId(base: string, used: readonly string[]): string {
+  const set = new Set(used);
+  if (!set.has(base)) return base;
+  let n = 2;
+  while (set.has(`${base}-${n}`)) n++;
+  return `${base}-${n}`;
+}
+
 // Split (razor) a clip/broll at the playhead into two butted pieces, each with
 // its own trim window. The bound audio item is split at the same point. The
 // right piece inherits the outgoing transition (the left gets a hard cut at the
 // split); the opening transitionIn stays on the left. No-op if the playhead
 // isn't inside the clip, or the item isn't a single-source clip/broll.
-export function splitItem(reel: LayeredReel, selectedId: string, atFrame: number, fps: number): LayeredReel {
+//
+// Returns the new `selectedId` alongside the reel — after a split the author
+// is working on the new (right-hand) piece, so the caller should move
+// selection there instead of leaving it on the original left-hand id (which
+// keeps its old id and shrinks under the still-selected playhead).
+export function splitItem(
+  reel: LayeredReel,
+  selectedId: string,
+  atFrame: number,
+  fps: number,
+): { reel: LayeredReel; selectedId: string } {
   const { lane, id } = parseActionId(selectedId);
-  if (lane !== 'video') return reel;
+  if (lane !== 'video') return { reel, selectedId };
   const idx = reel.tracks.video.findIndex((v) => v.id === id);
-  if (idx < 0) return reel;
+  if (idx < 0) return { reel, selectedId };
   const v = reel.tracks.video[idx];
-  if (v.kind !== 'clip' && v.kind !== 'broll') return reel;
+  if (v.kind !== 'clip' && v.kind !== 'broll') return { reel, selectedId };
   const atMs = Math.round((atFrame / fps) * 1000);
-  if (atMs <= v.startMs + 1 || atMs >= v.endMs - 1) return reel; // playhead not inside
+  if (atMs <= v.startMs + 1 || atMs >= v.endMs - 1) return { reel, selectedId }; // playhead not inside
   const leftDur = atMs - v.startMs;
-  const rightId = `${v.id}-b`;
+  const rightId = uniqueId(`${v.id}-b`, reel.tracks.video.map((x) => x.id));
   const cut = v.sourceInMs + leftDur;
 
   const left: VideoItem = { ...v, endMs: atMs, sourceOutMs: cut, transitionOut: { kind: CUT_KIND } };
@@ -720,23 +748,28 @@ export function splitItem(reel: LayeredReel, selectedId: string, atFrame: number
 
   const audio = reel.tracks.audio.flatMap((a) => {
     if (a.followsVideoId !== id || atMs <= a.startMs || atMs >= a.endMs) return [a];
+    const rightAudioId = uniqueId(`${a.id}-b`, reel.tracks.audio.map((x) => x.id));
     return [
       { ...a, endMs: atMs },
-      { ...a, id: `${a.id}-b`, startMs: atMs, sourceInMs: a.sourceInMs + (atMs - a.startMs), followsVideoId: rightId },
+      { ...a, id: rightAudioId, startMs: atMs, sourceInMs: a.sourceInMs + (atMs - a.startMs), followsVideoId: rightId },
     ];
   });
 
-  return { ...reel, tracks: { ...reel.tracks, video, audio } };
+  return { reel: { ...reel, tracks: { ...reel.tracks, video, audio } }, selectedId: `video:${rightId}` };
 }
 
 // Duplicate the selected video clip: insert a copy right after it (with its
 // bound audio), shifting everything after right by the clip's duration to make
 // room. No-op for non-video selections.
-export function duplicateItem(reel: LayeredReel, selectedId: string): LayeredReel {
+//
+// Returns the new `selectedId` alongside the reel, for the same reason as
+// `splitItem`: after a duplicate the author is working on the new copy, not
+// the original.
+export function duplicateItem(reel: LayeredReel, selectedId: string): { reel: LayeredReel; selectedId: string } {
   const { lane, id } = parseActionId(selectedId);
-  if (lane !== 'video') return reel;
+  if (lane !== 'video') return { reel, selectedId };
   const src = reel.tracks.video.find((v) => v.id === id);
-  if (!src) return reel;
+  if (!src) return { reel, selectedId };
   const dur = src.endMs - src.startMs;
   const at = src.endMs;
   const shift = <T extends { startMs: number; endMs: number }>(arr: T[]): T[] =>
@@ -744,13 +777,18 @@ export function duplicateItem(reel: LayeredReel, selectedId: string): LayeredRee
 
   const shiftedVideo = shift(reel.tracks.video);
   const srcIdx = shiftedVideo.findIndex((v) => v.id === id);
-  const copy: VideoItem = { ...src, id: `${id}-copy`, startMs: at, endMs: at + dur };
+  const copyId = uniqueId(`${id}-copy`, reel.tracks.video.map((v) => v.id));
+  const copy: VideoItem = { ...src, id: copyId, startMs: at, endMs: at + dur };
   const video = [...shiftedVideo.slice(0, srcIdx + 1), copy, ...shiftedVideo.slice(srcIdx + 1)];
 
   const boundAudio = reel.tracks.audio.find((a) => a.followsVideoId === id);
   const audio = shift(reel.tracks.audio);
   if (boundAudio) {
-    audio.push({ ...boundAudio, id: `${boundAudio.id}-copy`, startMs: at, endMs: at + (boundAudio.endMs - boundAudio.startMs), followsVideoId: `${id}-copy` });
+    const audioCopyId = uniqueId(`${boundAudio.id}-copy`, reel.tracks.audio.map((a) => a.id));
+    audio.push({ ...boundAudio, id: audioCopyId, startMs: at, endMs: at + (boundAudio.endMs - boundAudio.startMs), followsVideoId: copyId });
   }
-  return withTotalDuration({ ...reel, tracks: { ...reel.tracks, video, audio } });
+  return {
+    reel: withTotalDuration({ ...reel, tracks: { ...reel.tracks, video, audio } }),
+    selectedId: `video:${copyId}`,
+  };
 }

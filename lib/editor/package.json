@@ -5,12 +5,14 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "editor:css": "tailwindcss -i app/editor.in.css -o app/editor.css --minify"
   },
   "devDependencies": {
     "@remotion/media-utils": "4.0.498",
     "@remotion/player": "4.0.x",
     "@remotion/transitions": "4.0.498",
+    "@tailwindcss/cli": "^4.0.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^20",

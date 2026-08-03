@@ -18,23 +18,29 @@ import { render, fireEvent, screen } from '@testing-library/react';
 import { TransitionFields } from '../app/LayeredInspector';
 import type { DraftTransition } from '@video-toolkit/lib/reel-config-base/transition-schema';
 
+// zoom-through's `direction` is a 2-choice enum (`in`/`out`), so (Task 10) it
+// routes to SegmentedField, not SelectField — a `role="group"` of buttons,
+// not a `<select>` with a `.value`.
 describe('a baked `from` literal is shown honestly and migrated on edit', () => {
   it('shows the value the reel actually renders, not an empty control', () => {
     render(<TransitionFields t={{ kind: 'zoom-through', frames: 15, from: 'out' }} onChange={() => {}} />);
-    expect((screen.getByLabelText('Direction') as HTMLSelectElement).value).toBe('out');
+    expect(screen.getByRole('button', { name: 'Out' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'In' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('prefers the canonical field when a literal carries both', () => {
     render(
       <TransitionFields t={{ kind: 'zoom-through', frames: 15, direction: 'in', from: 'out' }} onChange={() => {}} />,
     );
-    expect((screen.getByLabelText('Direction') as HTMLSelectElement).value).toBe('in');
+    expect(screen.getByRole('button', { name: 'In' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Out' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('MIGRATES on the first edit: writes `direction`, drops `from`', () => {
     const onChange = vi.fn();
     render(<TransitionFields t={{ kind: 'zoom-through', frames: 15, from: 'out' }} onChange={onChange} />);
-    fireEvent.change(screen.getByLabelText('Direction'), { target: { value: 'in' } });
+    // A SegmentedField button, not a select — a click, not a change event.
+    fireEvent.click(screen.getByRole('button', { name: 'In' }));
     const next = onChange.mock.calls.at(-1)![0] as DraftTransition;
     expect(next).toEqual({ kind: 'zoom-through', frames: 15, direction: 'in' });
   });
@@ -52,12 +58,13 @@ describe('a baked `from` literal is shown honestly and migrated on edit', () => 
   });
 
   // The rule is general, not a zoom-through special case: a kind with no alias
-  // behaves exactly as it always did.
+  // behaves exactly as it always did. `slide`'s `direction` has 4 choices, so
+  // it too routes to SegmentedField (Task 10).
   it('changes nothing for a kind that has no deprecated alias', () => {
     const onChange = vi.fn();
     render(<TransitionFields t={{ kind: 'slide', frames: 12, direction: 'left' }} onChange={onChange} />);
-    expect((screen.getByLabelText('Direction') as HTMLSelectElement).value).toBe('left');
-    fireEvent.change(screen.getByLabelText('Direction'), { target: { value: 'right' } });
+    expect(screen.getByRole('button', { name: 'Left' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Right' }));
     expect(onChange.mock.calls.at(-1)![0]).toEqual({ kind: 'slide', frames: 12, direction: 'right' });
   });
 });

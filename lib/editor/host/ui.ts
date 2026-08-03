@@ -1,37 +1,16 @@
-import type { CSSProperties } from 'react';
+/** The editor chrome's "on" accent — core's editor UI colour, NOT a brand
+ *  colour. Mirrors `--ed-color-accent` in `app/editor.in.css`; kept as a JS
+ *  string for the few consumers that cannot use a class (an SVG stroke, a
+ *  spinner border). A brand's palette reaches the editor only through
+ *  `accentSlots`. */
+export const EDITOR_ACCENT = '#7c5cff';
 
-/** The editor chrome's "on" accent. This is core's editor UI colour — the same
- *  literal EditorShell.module.css already uses for its Save button — NOT a brand
- *  colour. A brand's palette reaches the editor only through `accentSlots`. */
-export const EDITOR_ACCENT = '#b6ff5a';
-
-/** One button metric across the whole timeline toolbar. */
-export const BTN_H = 28;
-export const BTN_FONT = 12;
-
-export const zoomBtn: CSSProperties = {
-  background: '#26282f',
-  color: '#e8e8ea',
-  border: '1px solid #34363e',
-  borderRadius: 4,
-  width: BTN_H,
-  height: BTN_H,
-  fontSize: BTN_FONT,
-  lineHeight: '1',
-  cursor: 'pointer',
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-};
+/** A square icon button (zoom, transport). */
+export const zoomBtnClass =
+  'ed:bg-control ed:text-ink ed:border ed:border-line ed:rounded ed:w-7 ed:h-7 ed:text-xs ed:leading-none ed:cursor-pointer ed:inline-flex ed:items-center ed:justify-center';
 
 /** A pill toggle (Ripple / Snap / Beats): accented when on, neutral when off. */
-export const toggleBtn = (on: boolean): CSSProperties => ({
-  background: on ? EDITOR_ACCENT : '#26282f',
-  color: on ? '#17181c' : '#e8e8ea',
-  border: '1px solid #34363e',
-  borderRadius: 4,
-  height: BTN_H,
-  padding: '0 12px',
-  fontSize: BTN_FONT,
-  cursor: 'pointer',
-});
+export const toggleBtnClass = (on: boolean): string =>
+  `ed:h-7 ed:px-3 ed:text-xs ed:rounded ed:border ed:border-line ed:cursor-pointer ${
+    on ? 'ed:bg-accent ed:text-accent-ink' : 'ed:bg-control ed:text-ink'
+  }`;

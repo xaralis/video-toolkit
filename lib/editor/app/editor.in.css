@@ -1,0 +1,44 @@
+@import "tailwindcss" prefix(ed);
+
+@source "./**/*.tsx";
+@source "../host/**/*.tsx";
+
+/* PERMANENT — keep `static` even after later tasks give every token a real
+ * utility consumer. Not every token is read through a scanned Tailwind
+ * utility: a later task keeps GRIP_CSS in LayeredTimeline.tsx as
+ * hand-written CSS styling `.timeline-editor-action`, a class the
+ * third-party timeline library owns that no `ed:` utility can reach, and
+ * has it read `var(--ed-color-line)` directly. Plain `@theme` only keeps a
+ * custom property when some scanned utility uses it, so a variable read
+ * exclusively from raw CSS — never via a class Tailwind can see — would be
+ * silently tree-shaken out the moment nothing else happens to reference it.
+ * `static` forces every declared theme key to emit unconditionally, so a raw
+ * `var(--ed-color-*)` consumer can never go dark from tree-shaking — but
+ * `static` PREVENTS the drop, it does not DIAGNOSE one: there is no build
+ * error in that failure mode at all, with or without this flag. The
+ * committed-`editor.css` freshness test (`src/editor-css.test.ts`) is what
+ * would actually fail if this flag were ever removed and a raw-CSS-only
+ * token got tree-shaken back out. (Verified directly: without `static`, all
+ * 16 `--color-*` custom properties are dropped, not merely the utilities.) */
+@theme static {
+  --color-stage: #0e0e12;
+  --color-shell: #131318;
+  --color-panel: #1a1a21;
+  --color-control: #22222b;
+  --color-line: #2a2a35;
+  --color-line-strong: #3a3a48;
+  --color-ink: #e6e6ea;
+  --color-ink-2: #a0a0ae;
+  --color-ink-3: #6a6a78;
+  --color-accent: #7c5cff;
+  --color-accent-ink: #12101f;
+  --color-accent-soft: #2e2547;
+  --color-warn: #ffb454;
+  --color-danger: #ff5c5c;
+  /* The transition-lane marker pill (LayeredTimeline.tsx) — a one-off amber,
+   * not part of the neutral/accent palette above, but still a real token
+   * rather than an arbitrary value so it has one named, greppable home. */
+  --color-transition-marker: #c9a227;
+  --color-transition-marker-ink: #1a1a1a;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}

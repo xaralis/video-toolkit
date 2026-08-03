@@ -40,33 +40,12 @@ export function MediaLoadingOverlay({
   const probing = total > 0 && loaded < total;
   if (!probing && !buffering) return null;
   return (
-    <div
-      style={{
-        position: 'absolute',
-        inset: 0,
-        zIndex: 3,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 10,
-        background: 'rgba(12,13,16,0.55)',
-        color: '#e8e8ea',
-        fontSize: 12,
-        pointerEvents: 'none',
-      }}
-    >
+    <div className="ed:absolute ed:inset-0 ed:z-[3] ed:flex ed:flex-col ed:items-center ed:justify-center ed:gap-2.5 ed:text-ink ed:text-xs ed:pointer-events-none ed:bg-[rgba(12,13,16,0.55)]">
       <style>{SPIN_CSS}</style>
       <div
         aria-hidden
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: '50%',
-          border: '2px solid rgba(255,255,255,0.18)',
-          borderTopColor: EDITOR_ACCENT,
-          animation: 'vt-spin 0.8s linear infinite',
-        }}
+        className="ed:w-[22px] ed:h-[22px] ed:rounded-full ed:border-2 ed:border-white/20"
+        style={{ borderTopColor: EDITOR_ACCENT, animation: 'vt-spin 0.8s linear infinite' }}
       />
       <div style={{ fontVariantNumeric: 'tabular-nums' }}>
         {label ?? (probing ? `Loading media… ${loaded}/${total}` : 'Buffering…')}

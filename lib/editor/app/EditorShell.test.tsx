@@ -65,7 +65,7 @@ describe('EditorShell', () => {
 // which letterboxed a 1920x1080 web-program-intro into a portrait box. The
 // stage must take its shape from the composition, whatever that shape is.
 describe('EditorShell — preview aspect ratio', () => {
-  const frame = (container: HTMLElement) => container.querySelector('[class*="stageFrame"]') as HTMLElement;
+  const frame = (container: HTMLElement) => container.querySelector('[data-testid="stage-frame"]') as HTMLElement;
 
   it('takes a landscape aspect ratio from the caller', () => {
     const { container } = render(<EditorShell preview={<div />} aspectRatio="1920 / 1080" />);

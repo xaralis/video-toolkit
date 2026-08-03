@@ -50,8 +50,10 @@ describe('FrameOverlay', () => {
     render(<FrameOverlay focalX={0.5} focalY={0.5} onFocalChange={vi.fn()} />);
     const root = screen.getByTestId('frame-overlay');
     const dot = screen.getByTestId('focus-dot');
-    expect(root.style.pointerEvents).toBe('none');
-    expect(dot.style.pointerEvents).toBe('auto');
+    // pointer-events now comes from the `ed:` utility classes (see FrameOverlay.tsx),
+    // not an inline style, so assert on the class rather than `.style`.
+    expect(root).toHaveClass('ed:pointer-events-none');
+    expect(dot).toHaveClass('ed:pointer-events-auto');
   });
 
   it('calls onFocalChange with the fraction under the pointer during a drag', () => {

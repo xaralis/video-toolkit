@@ -30,7 +30,7 @@ export function Timecode({ playerRef, durationInFrames, fps }: { playerRef: RefO
     };
   }, [playerRef]);
   return (
-    <span style={{ fontSize: 12, color: '#7a7d85', fontVariantNumeric: 'tabular-nums' }}>
+    <span className="ed:text-xs ed:text-ink-2 ed:font-mono ed:tabular-nums">
       {formatTimecode(frame, fps)} / {formatTimecode(durationInFrames, fps)}
     </span>
   );

@@ -21,7 +21,7 @@
 //      axes.
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, fireEvent, screen, within } from '@testing-library/react';
+import { render, fireEvent, screen } from '@testing-library/react';
 import { LayeredInspector, TransitionFields } from '../app/LayeredInspector';
 import { editorMetaFromTheme } from '../app/editor-meta';
 import { transitionParamsFor } from '../app/transitions';
@@ -151,16 +151,20 @@ describe('a brand transition kind is edited through its registration params', ()
 
   it('renders a control per declared param, typed as declared', () => {
     render(<TransitionFields t={{ kind: BRAND_KIND, frames: 18 }} onChange={() => {}} meta={meta} />);
-    expect((screen.getByLabelText('Grain') as HTMLInputElement).type).toBe('number');
-    const sweep = screen.getByLabelText('Sweep') as HTMLSelectElement;
-    expect(sweep.tagName).toBe('SELECT');
-    expect(within(sweep).getByRole('option', { name: 'right' })).toBeTruthy();
+    // `grain` declares `type: 'number'` with no min/max, so (Task 10) it's a
+    // ScrubField (`type="text"`, `inputMode="decimal"`), not a number input.
+    const grain = screen.getByLabelText('Grain') as HTMLInputElement;
+    expect(grain.type).toBe('text');
+    expect(grain.inputMode).toBe('decimal');
+    // `sweep` has 2 choices, so it routes to SegmentedField, not SelectField.
+    expect(screen.getByRole('group', { name: 'Sweep' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'right' })).toBeTruthy();
   });
 
   it('commits a declared edit onto the transition', () => {
     const onChange = vi.fn();
     render(<TransitionFields t={{ kind: BRAND_KIND, frames: 18 }} onChange={onChange} meta={meta} />);
-    fireEvent.change(screen.getByLabelText('Sweep'), { target: { value: 'right' } });
+    fireEvent.click(screen.getByRole('button', { name: 'right' }));
     const next = onChange.mock.calls.at(-1)![0] as DraftTransition;
     expect(next).toMatchObject({ kind: BRAND_KIND, frames: 18, sweep: 'right' });
   });
@@ -177,7 +181,8 @@ describe('a brand transition kind is edited through its registration params', ()
   // for a brand kind, so the two sources compose rather than compete.
   it('leaves a core kind’s structural controls exactly as they were', () => {
     render(<TransitionFields t={{ kind: 'slide', frames: 12, direction: 'left' }} onChange={() => {}} meta={meta} />);
-    expect((screen.getByLabelText('Direction') as HTMLSelectElement).value).toBe('left');
+    // `slide`'s `direction` has 4 choices, so it's a SegmentedField (Task 10).
+    expect(screen.getByRole('button', { name: 'Left' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByLabelText('Grain')).toBeNull();
   });
 });

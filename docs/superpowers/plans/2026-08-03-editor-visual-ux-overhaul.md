@@ -41,6 +41,54 @@
 
 ## Phase 1 — Tailwind pipeline and repaint
 
+> ### ⚠️ Cascade-layer hazard, binding on Tasks 3, 4 and 5
+>
+> Tailwind emits every utility into `@layer utilities`. **Unlayered CSS —
+> which is what every surviving `*.module.css` compiles to — outranks any
+> cascade layer regardless of specificity.** So the moment an element carries
+> both a module class setting `background` and `ed:bg-panel`, the module wins
+> and the utility appears to do nothing, with no build error and no failing
+> test.
+>
+> The rule while converting: **convert an element's module class and its
+> utilities in the same edit — never leave an element wearing both.** If a
+> conversion looks like it had no effect, this is the first thing to check,
+> not the token names.
+>
+> The window closes at the end of this phase: Task 5 deletes the last two
+> `*.module.css` files.
+>
+> **Corrected after Task 5's review — do not read the line above as "nothing
+> unlayered competes any more".** Deleting the modules closes the
+> *module-shaped* instance of the hazard, not the hazard itself. Two unlayered
+> stylesheets remain and genuinely compete: the vendor
+> `@xzdarcy/react-timeline-editor` CSS (which styles `.timeline-editor` on the
+> very node `LayeredTimeline` puts a `style` prop on), and `GRIP_CSS`, injected
+> through a `<style>` element on purpose because it targets a third-party class
+> no React element here renders. Where a vendor rule competes, the answer is an
+> **inline style holding a `var(--ed-color-*)`** — inline still wins, and stays
+> tokenised. A utility class there would lose silently.
+>
+> ### Token semantics: `ink-2` is for content, `ink-3` is for hints
+>
+> Discovered in Task 3's re-review, binding on every remaining task. Putting a
+> numeric **readout** in `--ed-color-ink-3` (`#6a6a78`) measures ~3.5:1 against
+> `--ed-color-shell` at 12px — **below WCAG AA for normal text**. `ink-3` is
+> sized for micro-labels, section headings and one-line hints, where its
+> quietness is the point and the text is not information anyone reads
+> character by character.
+>
+> The rule: **a value the user reads goes in `--ed-color-ink-2` (`#a0a0ae`);
+> `--ed-color-ink-3` is for labels about values, never the values themselves.**
+> This matters most in Task 4, where the inspector is largely readouts.
+>
+> Related, same commit that introduced it: Phase 1 is also the first time
+> Tailwind Preflight applies to the whole editor page. The unconverted surface
+> was spot-checked and is safe (the inspector's fields all carry inline
+> styles), with one cosmetic exception — the bare `<input type="checkbox">` at
+> `LayeredInspector.tsx:179` loses its default background. Task 4 owns that
+> file and should give the checkbox an explicit style while it is there.
+
 ### Task 1: Tailwind pipeline and design tokens
 
 **Files:**
@@ -202,10 +250,10 @@ The mapping, one line per former rule:
 | `.projectName` | `ed:text-sm ed:font-semibold ed:text-ink` |
 | `.saveGroup` | `ed:flex ed:items-center ed:gap-3` |
 | `.unsavedIndicator` | `ed:text-xs ed:font-medium ed:text-warn` |
-| `.saveButton` | `ed:bg-accent ed:text-accent-ink ed:border-0 ed:rounded-md ed:px-[18px] ed:py-2 ed:text-[13px] ed:font-semibold ed:cursor-pointer disabled:ed:bg-control disabled:ed:text-ink-3 disabled:ed:cursor-default` |
+| `.saveButton` | `ed:bg-accent ed:text-accent-ink ed:border-0 ed:rounded-md ed:px-[18px] ed:py-2 ed:text-[13px] ed:font-semibold ed:cursor-pointer ed:disabled:bg-control ed:disabled:text-ink-3 ed:disabled:cursor-default` |
 | `.saveButtonClean` | `ed:bg-control ed:text-ink-3 ed:cursor-default` |
-| `.discardButton` | `ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:px-[14px] ed:py-2 ed:text-[13px] ed:cursor-pointer hover:ed:border-ink-3 hover:ed:text-ink disabled:ed:opacity-45 disabled:ed:cursor-default` |
-| `.iconButton` | `ed:inline-flex ed:items-center ed:gap-1.5 ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:px-3 ed:py-[7px] ed:text-[13px] ed:cursor-pointer hover:not-disabled:ed:text-ink disabled:ed:opacity-40 disabled:ed:cursor-default` |
+| `.discardButton` | `ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:px-[14px] ed:py-2 ed:text-[13px] ed:cursor-pointer ed:hover:border-ink-3 ed:hover:text-ink ed:disabled:opacity-45 ed:disabled:cursor-default` |
+| `.iconButton` | `ed:inline-flex ed:items-center ed:gap-1.5 ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:px-3 ed:py-[7px] ed:text-[13px] ed:cursor-pointer ed:hover:not-disabled:text-ink ed:disabled:opacity-40 ed:disabled:cursor-default` |
 | `.divider` | `ed:w-px ed:h-[22px] ed:bg-line ed:mx-0.5` |
 | `.main` | `ed:flex ed:flex-1 ed:min-h-0` |
 | `.stage` | `ed:flex ed:items-center ed:justify-center ed:flex-1 ed:min-w-0 ed:bg-stage ed:p-6` |
@@ -1151,7 +1199,10 @@ In `GradeFields`, replace each `NumberField` per the spec's table:
   <SliderField lbl="Tint" min={-1} max={1} step={0.05} value={g.tint ?? 0} disabled={disabled} onCommit={(n) => onPatch({ tint: n })} />
   <SliderField lbl="Sepia" min={0} max={1} step={0.05} value={g.sepia ?? 0} disabled={disabled} onCommit={(n) => onPatch({ sepia: n })} />
 </Row>
-<SliderField lbl="Hue rotate (deg)" min={0} max={360} step={1} value={g.hueRotateDeg ?? 0} disabled={disabled} onCommit={(n) => onPatch({ hueRotateDeg: n })} />
+{/* -180..180, NOT 0..360: GradeSchema declares .min(-180).max(180), and a
+    0..360 slider would make the whole negative half unreachable and destroy
+    an authored negative shift on the first click. Corrected in Task 10 review. */}
+<SliderField lbl="Hue rotate (deg)" min={-180} max={180} step={1} value={g.hueRotateDeg ?? 0} disabled={disabled} onCommit={(n) => onPatch({ hueRotateDeg: n })} />
 ```
 
 - [ ] **Step 2: Convert the Ken Burns and crop fields**
@@ -1858,6 +1909,19 @@ return (
 ```
 
 Import `framesForReel` from `../host/host-duration` and `formatTimecode` from `./controls/timecode`.
+
+- [ ] **Step 6b: Convert the last orphaned inline colour while you are in this file**
+
+`LayeredInspector.tsx` still has one hardcoded note colour that no other task's
+scope reaches: the `"No editable params."` fallback, `color: '#7a7d85'` — 4.20:1
+on `bg-panel` at 11px, a marginal AA fail. It is the same content-class string
+as `noteCls`, so give it `ed:text-[11px] ed:text-ink-2`. (Find it with
+`grep -n "No editable params" lib/editor/app/LayeredInspector.tsx` — the line
+number has moved repeatedly.)
+
+The two other survivors, the reel-summary counts and
+`"Select a timeline item to edit it."`, are inside the `!selectedId` block Step 6
+rewrites wholesale, so they are already handled — do not convert them separately.
 
 - [ ] **Step 7: Pin the omitted-when-healthy behaviour**
 
