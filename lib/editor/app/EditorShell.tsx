@@ -39,6 +39,11 @@ export interface EditorShellProps {
   saving?: boolean;
   /** Whether there are unsaved edits. Shows an "unsaved" indicator and makes Save look actionable. */
   dirty?: boolean;
+  /** A `<DiagnosticsBadge>` (or any indicator) shown in the header beside the
+   *  project name. Omitted entirely (not a placeholder) when the caller has
+   *  nothing to show — a healthy project's header looks exactly as it did
+   *  before this existed. */
+  diagnostics?: ReactNode;
   /** Rendered in the right panel. Falls back to a placeholder when omitted. */
   inspector?: ReactNode;
   /** Rendered in the bottom strip. Falls back to a placeholder when omitted. */
@@ -75,6 +80,7 @@ export function EditorShell({
   onDiscard,
   saving,
   dirty,
+  diagnostics,
   inspector,
   timeline,
   renderControls,
@@ -104,7 +110,10 @@ export function EditorShell({
           margin, which showed as a white border around the UI. */}
       <style>{`html, body, #root { height: 100%; margin: 0; } body { background: #0a0a0a; }`}</style>
       <header className={styles.header}>
-        <span className={styles.projectName}>{projectName}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span className={styles.projectName}>{projectName}</span>
+          {diagnostics}
+        </div>
         <div className={styles.saveGroup}>
           {renderControls && (
             <>

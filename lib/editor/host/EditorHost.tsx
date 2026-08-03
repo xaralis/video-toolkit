@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType }
 import { Player } from '@remotion/player';
 import type { PlayerRef } from '@remotion/player';
 import { EditorShell } from '../app/EditorShell';
-import { LayeredTimeline } from '../app/LayeredTimeline';
+import { LayeredTimeline, type Diagnostic } from '../app/LayeredTimeline';
+import { DiagnosticsBadge } from '../app/Diagnostics';
 import { LayeredInspector } from '../app/LayeredInspector';
 import { RenderButton } from '../app/RenderButton';
 import { useHistory } from '../app/useHistory';
@@ -45,6 +46,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   const [savedReel, setSavedReel] = useState<LayeredReel | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null); // action id `${lane}:${itemId}`
+  const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
   const [playing, setPlaying] = useState(false);
   const [showFocus, setShowFocus] = useState(false);
   const [ripple, setRipple] = useState(false);
@@ -255,6 +257,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
       canRedo={canRedo}
       saving={saving}
       dirty={dirty}
+      diagnostics={<DiagnosticsBadge items={diagnostics} onSelect={handleSelect} />}
       preview={
         <div ref={previewRef} style={{ position: 'relative' }}>
           <Player
@@ -383,6 +386,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
               savedReel={savedReel}
               guidesMs={reel.meta.guidesMs}
               meta={meta}
+              onDiagnostics={setDiagnostics}
             />
           </div>
         </div>
