@@ -23,7 +23,11 @@ import { videoUrl } from './LayeredTimeline';
 import { handleRoomFrames, maxTransitionFrames, type HandleRoom } from '@video-toolkit/lib/reel-config-base/handle-room';
 import { transitionAlignmentOf } from '@video-toolkit/lib/reel-config-base/transition-schema';
 import { useLiveField } from './controls/use-live-field';
-import { fieldCls, labelCls, inputCls, rowCls, disabledCls, readonlyValueCls } from './controls/field-classes';
+import { fieldCls, labelCls, inputCls, rowCls, readonlyValueCls } from './controls/field-classes';
+import { ScrubField } from './controls/ScrubField';
+import { SliderField } from './controls/SliderField';
+import { TimecodeField } from './controls/TimecodeField';
+import { SegmentedField } from './controls/SegmentedField';
 
 // Routes the selected timeline item (by lane) to its editable properties,
 // reusing the existing content editors. Edits produce a new LayeredReel via
@@ -66,34 +70,6 @@ const noteCls = 'ed:text-[11px] ed:text-ink-2 ed:-mt-1 ed:mb-2';
 const btnCls = 'ed:box-border ed:bg-control ed:text-ink ed:border ed:border-line ed:rounded ed:text-xs';
 
 const Row = ({ children }: { children: ReactNode }) => <div className={rowCls}>{children}</div>;
-
-function NumberField({ lbl, value, step = 1, min, max, onCommit, disabled, title }: { lbl: string; value: number | undefined; step?: number; min?: number; max?: number; onCommit: (n: number) => void; disabled?: boolean; title?: string }) {
-  const f = useLiveField(value === undefined ? '' : String(value));
-  return (
-    <div className={fieldCls} title={title}>
-      <label className={`${labelCls} ed:block ed:mb-1`}>{lbl}</label>
-      <input
-        aria-label={lbl}
-        className={disabled ? `${inputCls} ${disabledCls}` : inputCls}
-        type="number"
-        step={step}
-        min={min}
-        max={max}
-        disabled={disabled}
-        value={f.text}
-        onFocus={f.onFocus}
-        onBlur={f.onBlur}
-        onChange={(e) => {
-          f.setText(e.target.value);
-          const raw = e.target.value.trim();
-          if (raw === '') return;
-          const n = Number(raw);
-          if (!Number.isNaN(n)) onCommit(n);
-        }}
-      />
-    </div>
-  );
-}
 
 function TextField({ lbl, value, onCommit }: { lbl: string; value: string | undefined; onCommit: (s: string) => void }) {
   const f = useLiveField(value ?? '');
@@ -385,13 +361,25 @@ function renderParamControl({
   // anything else anyway.
   if (field.options || field.type === 'enum') {
     const choices = paramChoices(field.options) ?? [];
-    return (
+    const optionLabel = (v: string) => choices.find((c) => c.value === v)?.label ?? v;
+    // A short enum reads better as a segmented control than a dropdown; past
+    // four choices a row of buttons stops scanning faster than a select does.
+    return choices.length > 0 && choices.length <= 4 ? (
+      <SegmentedField
+        key={field.prop}
+        lbl={lbl}
+        value={asString}
+        options={choices.map((c) => c.value)}
+        optionLabel={optionLabel}
+        onChange={onCommit}
+      />
+    ) : (
       <SelectField
         key={field.prop}
         lbl={lbl}
         value={asString}
         options={choices.map((c) => c.value)}
-        optionLabel={(v) => choices.find((c) => c.value === v)?.label ?? v}
+        optionLabel={optionLabel}
         onChange={onCommit}
       />
     );
@@ -429,16 +417,18 @@ function renderParamControl({
     // in whole degrees, and an explicit min/max/step on the field still wins.
     const preset: { min?: number; max?: number; step?: number } =
       t === 'percent' ? { min: 0, max: 100, step: 1 } : t === 'angle' ? { step: 1 } : {};
-    return (
-      <NumberField
-        key={field.prop}
-        lbl={lbl}
-        step={field.step ?? preset.step ?? numberStep}
-        min={field.min ?? preset.min}
-        max={field.max ?? preset.max}
-        value={typeof value === 'number' ? value : undefined}
-        onCommit={onCommit}
-      />
+    const min = field.min ?? preset.min;
+    const max = field.max ?? preset.max;
+    const step = field.step ?? preset.step ?? numberStep;
+    const v = typeof value === 'number' ? value : undefined;
+    // A declaration with BOTH bounds gets a slider; anything else gets a scrub,
+    // which needs no range. Zero core catalog fields declare min/max today, so
+    // the scrub path is the one that actually runs — that is why it is the
+    // foundation rather than an extra.
+    return min !== undefined && max !== undefined ? (
+      <SliderField key={field.prop} lbl={lbl} min={min} max={max} step={step} value={v} onCommit={onCommit} />
+    ) : (
+      <ScrubField key={field.prop} lbl={lbl} step={step} min={min} max={max} value={v} onCommit={onCommit} />
     );
   }
   if (t === 'boolean')
@@ -595,9 +585,11 @@ export function TransitionFields({
         // `maxFrames` means, so both read as the plain, unbounded label.
         const bounded = maxFrames !== undefined && Number.isFinite(maxFrames);
         return (
-          <NumberField
+          <ScrubField
             lbl={bounded ? `Length (frames, max ${maxFrames})` : 'Length (frames)'}
             value={t.frames}
+            min={1}
+            max={bounded ? maxFrames : undefined}
             onCommit={(n) => onChange({ ...t, frames: Math.min(bounded ? (maxFrames as number) : Infinity, Math.max(1, Math.round(n))) })}
           />
         );
@@ -642,18 +634,18 @@ function GradeFields({
   return (
     <>
       <Row>
-        <NumberField lbl="Brightness" step={0.05} value={g.brightness ?? 1} disabled={disabled} onCommit={(n) => onPatch({ brightness: n })} />
-        <NumberField lbl="Contrast" step={0.05} value={g.contrast ?? 1} disabled={disabled} onCommit={(n) => onPatch({ contrast: n })} />
+        <SliderField lbl="Brightness" min={0} max={2} step={0.05} value={g.brightness ?? 1} disabled={disabled} onCommit={(n) => onPatch({ brightness: n })} />
+        <SliderField lbl="Contrast" min={0} max={2} step={0.05} value={g.contrast ?? 1} disabled={disabled} onCommit={(n) => onPatch({ contrast: n })} />
       </Row>
       <Row>
-        <NumberField lbl="Saturation" step={0.05} value={g.saturation ?? 1} disabled={disabled} onCommit={(n) => onPatch({ saturation: n })} />
-        <NumberField lbl="Temperature" step={0.05} value={g.temperature ?? 0} disabled={disabled} onCommit={(n) => onPatch({ temperature: n })} />
+        <SliderField lbl="Saturation" min={0} max={2} step={0.05} value={g.saturation ?? 1} disabled={disabled} onCommit={(n) => onPatch({ saturation: n })} />
+        <SliderField lbl="Temperature" min={-1} max={1} step={0.05} value={g.temperature ?? 0} disabled={disabled} onCommit={(n) => onPatch({ temperature: n })} />
       </Row>
       <Row>
-        <NumberField lbl="Tint" step={0.05} value={g.tint ?? 0} disabled={disabled} onCommit={(n) => onPatch({ tint: n })} />
-        <NumberField lbl="Sepia" step={0.05} value={g.sepia ?? 0} disabled={disabled} onCommit={(n) => onPatch({ sepia: n })} />
+        <SliderField lbl="Tint" min={-1} max={1} step={0.05} value={g.tint ?? 0} disabled={disabled} onCommit={(n) => onPatch({ tint: n })} />
+        <SliderField lbl="Sepia" min={0} max={1} step={0.05} value={g.sepia ?? 0} disabled={disabled} onCommit={(n) => onPatch({ sepia: n })} />
       </Row>
-      <NumberField lbl="Hue rotate (deg)" step={1} value={g.hueRotateDeg ?? 0} disabled={disabled} onCommit={(n) => onPatch({ hueRotateDeg: n })} />
+      <SliderField lbl="Hue rotate (deg)" min={0} max={360} step={1} value={g.hueRotateDeg ?? 0} disabled={disabled} onCommit={(n) => onPatch({ hueRotateDeg: n })} />
     </>
   );
 }
@@ -686,7 +678,7 @@ function EffectEditor({
     const hasFromTo = ['fromX', 'toX', 'fromScale', 'toScale'].some((k) => typeof eff[k] === 'number');
     if (typeof eff.direction === 'string' || !hasFromTo) {
       return (
-        <SelectField
+        <SegmentedField
           lbl="Direction"
           value={(eff.direction as string | undefined) ?? 'in'}
           options={['in', 'left', 'up']}
@@ -697,12 +689,12 @@ function EffectEditor({
     return (
       <>
         <Row>
-          <NumberField lbl="From X" step={0.01} value={num('fromX')} onCommit={(n) => onPatch({ fromX: n })} />
-          <NumberField lbl="To X" step={0.01} value={num('toX')} onCommit={(n) => onPatch({ toX: n })} />
+          <SliderField lbl="From X" min={0} max={1} step={0.01} value={num('fromX')} onCommit={(n) => onPatch({ fromX: n })} />
+          <SliderField lbl="To X" min={0} max={1} step={0.01} value={num('toX')} onCommit={(n) => onPatch({ toX: n })} />
         </Row>
         <Row>
-          <NumberField lbl="From scale" step={0.05} value={num('fromScale')} onCommit={(n) => onPatch({ fromScale: n })} />
-          <NumberField lbl="To scale" step={0.05} value={num('toScale')} onCommit={(n) => onPatch({ toScale: n })} />
+          <ScrubField lbl="From scale" min={0.5} step={0.05} value={num('fromScale')} onCommit={(n) => onPatch({ fromScale: n })} />
+          <ScrubField lbl="To scale" min={0.5} step={0.05} value={num('toScale')} onCommit={(n) => onPatch({ toScale: n })} />
         </Row>
       </>
     );
@@ -719,8 +711,8 @@ function EffectEditor({
         <TextField lbl="To source" value={eff.to as string | undefined} onCommit={(s) => onPatch({ to: s || undefined })} />
         <SelectField lbl="Direction" value={eff.direction as string | undefined} options={BLEND_DIRECTIONS} onChange={(s) => onPatch({ direction: s })} />
         <Row>
-          <NumberField lbl="Start %" value={num('startPct')} onCommit={(n) => onPatch({ startPct: n })} />
-          <NumberField lbl="End %" value={num('endPct')} onCommit={(n) => onPatch({ endPct: n })} />
+          <SliderField lbl="Start %" min={0} max={100} step={1} value={num('startPct')} onCommit={(n) => onPatch({ startPct: n })} />
+          <SliderField lbl="End %" min={0} max={100} step={1} value={num('endPct')} onCommit={(n) => onPatch({ endPct: n })} />
         </Row>
       </>
     );
@@ -892,8 +884,8 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           <>
             <TextField lbl="Source" value={v.source} onCommit={(s) => s.trim() && patchItem('video', id, { source: s })} />
             <Row>
-              <NumberField lbl="Trim in (s)" step={0.05} value={v.sourceInMs / 1000} onCommit={(n) => patchItem('video', id, { sourceInMs: Math.round(n * 1000) })} />
-              <NumberField lbl="Trim out (s)" step={0.05} value={v.sourceOutMs / 1000} onCommit={(n) => patchItem('video', id, { sourceOutMs: Math.round(n * 1000) })} />
+              <TimecodeField lbl="Trim in" ms={v.sourceInMs} fps={fps} onCommit={(ms) => patchItem('video', id, { sourceInMs: ms })} />
+              <TimecodeField lbl="Trim out" ms={v.sourceOutMs} fps={fps} onCommit={(ms) => patchItem('video', id, { sourceOutMs: ms })} />
             </Row>
             {/* Framing — how this shot meets the frame. `Fit` comes FIRST
                 because it decides what the controls under it mean: under
@@ -906,7 +898,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
               const backdrop = v as { backdropBlur?: number; backdropDim?: number };
               return (
                 <>
-                  <SelectField
+                  <SegmentedField
                     lbl="Fit"
                     value={isBlurPad ? 'blur-pad' : 'cover'}
                     options={['cover', 'blur-pad']}
@@ -918,8 +910,9 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                     onChange={(s) => patchItem('video', id, { fit: s === 'blur-pad' ? 'blur-pad' : undefined })}
                   />
                   <Row>
-                    <NumberField
+                    <ScrubField
                       lbl="Zoom (1 = none)"
+                      min={1}
                       step={0.05}
                       // Round the display — width is stored as 1/zoom, so the round-trip
                       // otherwise shows e.g. 3.0003 instead of 3.
@@ -930,15 +923,19 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                         })
                       }
                     />
-                    <NumberField
+                    <SliderField
                       lbl="Crop focus X"
+                      min={0}
+                      max={1}
                       step={0.01}
                       value={v.focalX}
                       disabled={isBlurPad}
                       onCommit={(n) => patchItem('video', id, { focalX: n })}
                     />
-                    <NumberField
+                    <SliderField
                       lbl="Crop focus Y"
+                      min={0}
+                      max={1}
                       step={0.01}
                       value={v.focalY}
                       disabled={isBlurPad}
@@ -947,11 +944,11 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                   </Row>
                   {isBlurPad && <p className={noteCls}>Nothing is cropped — the whole shot is visible.</p>}
                   <Row>
-                    <NumberField
+                    <SliderField
                       lbl="Backdrop blur"
-                      step={1}
                       min={0}
                       max={80}
+                      step={1}
                       // Shows the value the RENDERER will use, not an empty box
                       // — the defaults live in two places by necessity (schema
                       // and render), and a blank field would suggest "none".
@@ -959,11 +956,11 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                       disabled={!isBlurPad}
                       onCommit={(n) => patchItem('video', id, { backdropBlur: n })}
                     />
-                    <NumberField
+                    <SliderField
                       lbl="Backdrop dim"
-                      step={0.05}
                       min={0}
                       max={1}
+                      step={0.05}
                       value={backdrop.backdropDim ?? 0.45}
                       disabled={!isBlurPad}
                       onCommit={(n) => patchItem('video', id, { backdropDim: n })}
@@ -1035,7 +1032,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
             </>
           );
         })()}
-        <NumberField lbl="Music boost (dB)" value={v.musicBoostDb} onCommit={(n) => patchItem('video', id, { musicBoostDb: n })} />
+        <SliderField lbl="Music boost (dB)" min={-60} max={12} step={0.5} value={v.musicBoostDb} onCommit={(n) => patchItem('video', id, { musicBoostDb: n })} />
         {/* Effects only apply to footage renderers (SegmentMedia + brand wrappers).
             outro/card render bespoke and ignore item.effects, so don't offer them. */}
         {(v.kind === 'clip' || v.kind === 'broll' || v.kind === 'photo' || v.kind === 'multi-clip') && (
@@ -1179,7 +1176,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                     </Row>
                   )}
                   {core.includes('fontSize') && (
-                    <NumberField lbl="Font size" step={4} value={content.fontSize} onCommit={(n) => patchContent({ fontSize: Math.round(n) })} />
+                    <ScrubField lbl="Font size" min={8} step={1} value={content.fontSize} onCommit={(n) => patchContent({ fontSize: Math.round(n) })} />
                   )}
                 </>
               )}
@@ -1195,8 +1192,8 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           <SelectField lbl="Position" value={o.position} options={OVERLAY_POSITIONS} onChange={(s) => patchItem('overlays', id, { position: s })} />
         )}
         <Row>
-          <NumberField lbl="Start (s)" step={0.05} value={o.startMs / 1000} onCommit={(n) => patchItem('overlays', id, { startMs: Math.round(n * 1000) })} />
-          <NumberField lbl="End (s)" step={0.05} value={o.endMs / 1000} onCommit={(n) => patchItem('overlays', id, { endMs: Math.round(n * 1000) })} />
+          <TimecodeField lbl="Start" ms={o.startMs} fps={fps} onCommit={(ms) => patchItem('overlays', id, { startMs: ms })} />
+          <TimecodeField lbl="End" ms={o.endMs} fps={fps} onCommit={(ms) => patchItem('overlays', id, { endMs: ms })} />
         </Row>
       </div>
     );
@@ -1210,22 +1207,22 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
         <h3 className={headingCls}>Audio</h3>
         <TextField lbl="Source" value={a.source} onCommit={(s) => s.trim() && patchItem('audio', id, { source: s })} />
         <Row>
-          <NumberField lbl="Trim in (s)" step={0.05} value={a.sourceInMs / 1000} disabled={!!a.followsVideoId} title={a.followsVideoId ? 'Linked to a clip — unlink to trim independently' : undefined} onCommit={(n) => patchItem('audio', id, { sourceInMs: Math.round(n * 1000) })} />
-          <NumberField
-            lbl="Trim out (s)"
-            step={0.05}
-            value={(a.sourceOutMs ?? a.sourceInMs + (a.endMs - a.startMs)) / 1000}
+          <TimecodeField lbl="Trim in" ms={a.sourceInMs} fps={fps} disabled={!!a.followsVideoId} title={a.followsVideoId ? 'Linked to a clip — unlink to trim independently' : undefined} onCommit={(ms) => patchItem('audio', id, { sourceInMs: ms })} />
+          <TimecodeField
+            lbl="Trim out"
+            ms={a.sourceOutMs ?? a.sourceInMs + (a.endMs - a.startMs)}
+            fps={fps}
             disabled={!!a.followsVideoId}
             title={a.followsVideoId ? 'Linked to a clip — unlink to trim independently' : undefined}
-            onCommit={(n) => patchItem('audio', id, { sourceOutMs: Math.round(n * 1000) })}
+            onCommit={(ms) => patchItem('audio', id, { sourceOutMs: ms })}
           />
         </Row>
         <Row>
-          <NumberField lbl="Volume (dB)" value={a.volumeDb} onCommit={(n) => patchItem('audio', id, { volumeDb: n })} />
+          <SliderField lbl="Volume (dB)" min={-60} max={12} step={0.5} value={a.volumeDb} onCommit={(n) => patchItem('audio', id, { volumeDb: n })} />
         </Row>
         <Row>
-          <NumberField lbl="Fade in (s)" step={0.05} value={(a.fadeInMs ?? 0) / 1000} onCommit={(n) => patchItem('audio', id, { fadeInMs: n > 0 ? Math.round(n * 1000) : undefined })} />
-          <NumberField lbl="Fade out (s)" step={0.05} value={(a.fadeOutMs ?? 0) / 1000} onCommit={(n) => patchItem('audio', id, { fadeOutMs: n > 0 ? Math.round(n * 1000) : undefined })} />
+          <TimecodeField lbl="Fade in" ms={a.fadeInMs ?? 0} fps={fps} onCommit={(ms) => patchItem('audio', id, { fadeInMs: ms > 0 ? ms : undefined })} />
+          <TimecodeField lbl="Fade out" ms={a.fadeOutMs ?? 0} fps={fps} onCommit={(ms) => patchItem('audio', id, { fadeOutMs: ms > 0 ? ms : undefined })} />
         </Row>
         {/* Linked audio: bound beds follow their clip through every edit; unlink
             to edit this bed independently. Re-link binds it to the clip under it. */}
@@ -1278,16 +1275,16 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
       <div className={panelCls}>
         <h3 className={headingCls}>Music</h3>
         <TextField lbl="Source" value={m.source} onCommit={(s) => patchMusic({ source: s.trim() || undefined })} />
-        <NumberField lbl="Base volume (dB)" value={m.baseVolumeDb} onCommit={(n) => patchMusic({ baseVolumeDb: n })} />
-        <NumberField
-          lbl="End (s)"
-          step={0.05}
-          value={(m.endMs ?? reel.meta.totalDurationMs) / 1000}
-          onCommit={(n) => patchMusic({ endMs: n > 0 ? Math.round(n * 1000) : undefined })}
+        <SliderField lbl="Base volume (dB)" min={-60} max={12} step={0.5} value={m.baseVolumeDb} onCommit={(n) => patchMusic({ baseVolumeDb: n })} />
+        <TimecodeField
+          lbl="End"
+          ms={m.endMs ?? reel.meta.totalDurationMs}
+          fps={fps}
+          onCommit={(ms) => patchMusic({ endMs: ms > 0 ? ms : undefined })}
         />
         <Row>
-          <NumberField lbl="Fade in (s)" step={0.05} value={(m.fadeInMs ?? 0) / 1000} onCommit={(n) => patchMusic({ fadeInMs: n > 0 ? Math.round(n * 1000) : undefined })} />
-          <NumberField lbl="Fade out (s)" step={0.05} value={(m.fadeOutMs ?? 1000) / 1000} onCommit={(n) => patchMusic({ fadeOutMs: Math.round(n * 1000) })} />
+          <TimecodeField lbl="Fade in" ms={m.fadeInMs ?? 0} fps={fps} onCommit={(ms) => patchMusic({ fadeInMs: ms > 0 ? ms : undefined })} />
+          <TimecodeField lbl="Fade out" ms={m.fadeOutMs ?? 1000} fps={fps} onCommit={(ms) => patchMusic({ fadeOutMs: ms })} />
         </Row>
         {/* Same rationale as `noteCls`: the only explanation of how the Music
             lane's drawn envelope relates to these fields, not a section
@@ -1308,8 +1305,8 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     <div className={panelCls}>
       <h3 className={headingCls}>Brand · {b.kind}</h3>
       <Row>
-        <NumberField lbl="Start (s)" step={0.05} value={b.startMs / 1000} onCommit={(n) => patchItem('brand', id, { startMs: Math.round(n * 1000) })} />
-        <NumberField lbl="End (s)" step={0.05} value={b.endMs / 1000} onCommit={(n) => patchItem('brand', id, { endMs: Math.round(n * 1000) })} />
+        <TimecodeField lbl="Start" ms={b.startMs} fps={fps} onCommit={(ms) => patchItem('brand', id, { startMs: ms })} />
+        <TimecodeField lbl="End" ms={b.endMs} fps={fps} onCommit={(ms) => patchItem('brand', id, { endMs: ms })} />
       </Row>
     </div>
   );
