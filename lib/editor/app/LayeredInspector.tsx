@@ -51,13 +51,14 @@ const panelCls = 'ed:p-3 ed:w-full ed:h-full ed:overflow-y-auto ed:box-border';
 const headingCls = 'ed:text-xs ed:text-ink ed:mb-2.5 ed:font-semibold';
 const sectionCls = 'ed:text-[10px] ed:text-ink-3 ed:uppercase ed:tracking-wider ed:mt-2.5 ed:mb-1.5';
 const fieldCls = 'ed:mb-2 ed:flex-1 ed:min-w-0';
-// Deliberately carries no `mb-*` of its own — a checkbox's label needs
-// margin-bottom 0 and every other label needs margin-bottom 1, and stacking
-// two utilities for the same property on one element depends on stylesheet
-// emission order rather than class-attribute order. Each consumer states its
-// own margin explicitly instead (see the non-checkbox `${labelCls} ed:mb-1`
-// call sites below and `CheckboxField`, which adds none).
-const labelCls = 'ed:block ed:text-[11px] ed:text-ink-2';
+// Deliberately carries no `display` or `mb-*` of its own — a checkbox's label
+// needs `flex`/margin-bottom 0 and every other label needs `block`/margin-bottom
+// 1, and stacking two utilities for the SAME property (two `display`s, two
+// `margin-bottom`s) on one element depends on stylesheet emission order rather
+// than class-attribute order. Each consumer states both explicitly instead
+// (see the non-checkbox `${labelCls} ed:block ed:mb-1` call sites below and
+// `CheckboxField`, which adds `ed:flex` and no margin).
+const labelCls = 'ed:text-[11px] ed:text-ink-2';
 const inputCls =
   'ed:w-full ed:box-border ed:bg-control ed:text-ink ed:border ed:border-line ed:rounded ed:px-2 ed:py-1 ed:text-xs';
 // A value the user reads (not a label about it) — must stay in `ink`/`ink-2`,
@@ -65,8 +66,10 @@ const inputCls =
 const readonlyValueCls = 'ed:text-xs ed:text-ink ed:font-mono';
 // A one-line reason printed under a control that has gone inert, so a disabled
 // field explains itself instead of reading as a bug. Deliberately quiet — it is
-// an answer to "why can't I type here", not a warning.
-const noteCls = 'ed:text-[11px] ed:text-ink-3 ed:-mt-1 ed:mb-2';
+// an answer to "why can't I type here", not a warning — but it is the ONLY
+// explanation of why the control is inert, so it's a value the user reads,
+// not a label about one: `ink-2`, never `ink-3` (same rule as `readonlyValueCls`).
+const noteCls = 'ed:text-[11px] ed:text-ink-2 ed:-mt-1 ed:mb-2';
 const rowCls = 'ed:flex ed:gap-2';
 const disabledCls = 'ed:opacity-45 ed:cursor-not-allowed';
 // Shared "input chrome" for the plain buttons below (seek/link/add-effect),
@@ -104,7 +107,7 @@ function NumberField({ lbl, value, step = 1, min, max, onCommit, disabled, title
   const f = useLiveField(value === undefined ? '' : String(value));
   return (
     <div className={fieldCls} title={title}>
-      <label className={`${labelCls} ed:mb-1`}>{lbl}</label>
+      <label className={`${labelCls} ed:block ed:mb-1`}>{lbl}</label>
       <input
         aria-label={lbl}
         className={disabled ? `${inputCls} ${disabledCls}` : inputCls}
@@ -132,7 +135,7 @@ function TextField({ lbl, value, onCommit }: { lbl: string; value: string | unde
   const f = useLiveField(value ?? '');
   return (
     <div className={fieldCls}>
-      <label className={`${labelCls} ed:mb-1`}>{lbl}</label>
+      <label className={`${labelCls} ed:block ed:mb-1`}>{lbl}</label>
       <input
         aria-label={lbl}
         className={inputCls}
@@ -165,7 +168,7 @@ function SelectField({
   const opts = value && !options.includes(value) ? [value, ...options] : options;
   return (
     <div className={fieldCls}>
-      <label className={`${labelCls} ed:mb-1`}>{lbl}</label>
+      <label className={`${labelCls} ed:block ed:mb-1`}>{lbl}</label>
       <select aria-label={lbl} className={inputCls} value={value ?? ''} onChange={(e) => onChange(e.target.value)}>
         {value === undefined && <option value="">—</option>}
         {opts.map((o) => (
@@ -184,8 +187,9 @@ function CheckboxField({ lbl, value, onChange }: { lbl: string; value: boolean |
   return (
     <div className={fieldCls}>
       <label className={`${labelCls} ed:flex ed:items-center ed:gap-1.5 ed:cursor-pointer`}>
-        {/* Preflight strips a bare checkbox's default background — an
-            explicit accent colour keeps it visible and on-brand. */}
+        {/* `accent-color` recolours the CHECKED fill/tick to the brand accent
+            instead of the UA default blue — it has no effect on the
+            unchecked state's background. */}
         <input
           type="checkbox"
           className="ed:accent-accent"
@@ -208,7 +212,7 @@ function ColorField({ lbl, value, onCommit }: { lbl: string; value: string | und
   const swatch = /^#[0-9a-fA-F]{6}$/.test(f.text) ? f.text : '#000000';
   return (
     <div className={fieldCls}>
-      <label className={`${labelCls} ed:mb-1`}>{lbl}</label>
+      <label className={`${labelCls} ed:block ed:mb-1`}>{lbl}</label>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         <input
           aria-label={`${lbl} swatch`}
@@ -218,7 +222,12 @@ function ColorField({ lbl, value, onCommit }: { lbl: string; value: string | und
             f.setText(e.target.value);
             onCommit(e.target.value);
           }}
-          style={{ width: 28, height: 26, padding: 0, border: '1px solid #34363e', borderRadius: 4, background: '#1c1e22', flex: '0 0 auto' }}
+          // Border colour and background come from the same tokens the text
+          // input beside it uses (`ed:border-line ed:bg-control`) so the pair
+          // matches; the inline style below sets border WIDTH/STYLE only —
+          // never colour — so it can't out-rank those two utilities.
+          className="ed:border-line ed:bg-control"
+          style={{ width: 28, height: 26, padding: 0, borderWidth: 1, borderStyle: 'solid', borderRadius: 4, flex: '0 0 auto' }}
         />
         <input
           aria-label={lbl}
@@ -848,15 +857,15 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
         <h3 className={headingCls}>Reel</h3>
         {/* All read-only — plain text, not field-styled boxes (they aren't editable). */}
         <div className={fieldCls}>
-          <label className={`${labelCls} ed:mb-1`}>Topic</label>
+          <label className={`${labelCls} ed:block ed:mb-1`}>Topic</label>
           <div className={readonlyValueCls}>{reel.meta.topic}</div>
         </div>
         <div className={fieldCls}>
-          <label className={`${labelCls} ed:mb-1`}>Total duration</label>
+          <label className={`${labelCls} ed:block ed:mb-1`}>Total duration</label>
           <div className={readonlyValueCls}>{(reel.meta.totalDurationMs / 1000).toFixed(2)}s</div>
         </div>
         <div className={fieldCls}>
-          <label className={`${labelCls} ed:mb-1`}>Music</label>
+          <label className={`${labelCls} ed:block ed:mb-1`}>Music</label>
           <div className={readonlyValueCls}>{reel.tracks.music.source ?? '(none)'} · base {reel.tracks.music.baseVolumeDb}dB</div>
         </div>
         <div style={{ fontSize: 11, color: '#5f626a', marginTop: 8 }}>
@@ -1150,7 +1159,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
         </button>
         {content.text !== undefined && (
           <div className={fieldCls}>
-            <label className={`${labelCls} ed:mb-1`}>Text</label>
+            <label className={`${labelCls} ed:block ed:mb-1`}>Text</label>
             {/* Multi-line WYSIWYG accent editor — an overlay's text can span
                 several lines (e.g. a stacked pull-quote look). */}
             <AccentEditor value={content.text ?? ''} onChange={(next) => patchContent({ text: next })} colors={slots} multiline />
@@ -1316,7 +1325,11 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           <NumberField lbl="Fade in (s)" step={0.05} value={(m.fadeInMs ?? 0) / 1000} onCommit={(n) => patchMusic({ fadeInMs: n > 0 ? Math.round(n * 1000) : undefined })} />
           <NumberField lbl="Fade out (s)" step={0.05} value={(m.fadeOutMs ?? 1000) / 1000} onCommit={(n) => patchMusic({ fadeOutMs: Math.round(n * 1000) })} />
         </Row>
-        <div style={{ fontSize: 11, color: '#5f626a', marginTop: 8 }}>
+        {/* Same rationale as `noteCls`: the only explanation of how the Music
+            lane's drawn envelope relates to these fields, not a section
+            label — `ink-2`, not `ink-3`. Its own class (not `noteCls`) since
+            its margin (`mt-2`, not `noteCls`'s `-mt-1 mb-2`) differs. */}
+        <div className="ed:text-[11px] ed:text-ink-2 ed:mt-2">
           The effective envelope (base + each clip’s music boost + fades) is drawn on the Music lane. Set End to 0 to follow the
           content end again; Fade out 0 = hard cut. The reel is always as long as its furthest-reaching track.
         </div>
