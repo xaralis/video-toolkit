@@ -288,6 +288,24 @@ function LayeredTimelineImpl({
   // into one undo step (useHistory.ts:5-8).
   const slipRef = useRef<{ id: string; x0: number; base: LayeredReel } | null>(null);
 
+  // Alt held → slippable clips show they can be slipped. Window-level because
+  // the key may be pressed before the pointer enters a block. `blur` clears it:
+  // a tab switch swallows the keyup and would otherwise leave it stuck on.
+  const [altHeld, setAltHeld] = useState(false);
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => { if (e.altKey) setAltHeld(true); };
+    const up = (e: KeyboardEvent) => { if (!e.altKey) setAltHeld(false); };
+    const clear = () => setAltHeld(false);
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', clear);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', clear);
+    };
+  }, []);
+
   // ⌘/Ctrl + wheel (and trackpad pinch, which macOS delivers as ctrl+wheel) zooms
   // the timeline. Attached non-passive so preventDefault stops the browser's own
   // page zoom. Reads onZoom via a ref so the listener attaches once.
@@ -613,6 +631,7 @@ function LayeredTimelineImpl({
                   fontSize: 11,
                   overflow: 'hidden',
                   boxShadow: action.selected ? 'inset 0 0 0 2px #e8e8ea' : undefined,
+                  cursor: parseActionId(action.id).lane === 'video' && altHeld ? 'ew-resize' : undefined,
                 }}
                 title={action.id}
                 onPointerDownCapture={(e) => beginSlip(e, action.id)}
@@ -774,6 +793,9 @@ function LayeredTimelineImpl({
         <span>
           <span style={{ color: ripple ? '#b6ff5a' : '#9a9a95' }}>Ripple {ripple ? 'on' : 'off'}</span>
           {ripple ? ' — resize shifts the rest; drag carries everything behind it' : ' — only what you grab moves'}
+        </span>
+        <span>
+          <span style={{ color: '#9a9a95' }}>⌥/Alt + drag a clip</span> — slip the shot inside its window
         </span>
         <span>
           <span style={{ color: '#9a9a95' }}>Drag the volume line</span> — set level (double-click to reset)
