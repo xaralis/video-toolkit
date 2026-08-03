@@ -12,6 +12,7 @@
 // import and stays testable with no mock. The spread is type-checked against a real
 // <Composition> by the `examples/layered-minimal` gate.
 import type { LayeredReel } from '../reel-config-base/layered-schema';
+import { handleRoomFrames, boundaryState, starvationMessage } from '../reel-config-base/handle-room';
 
 /** Remotion cannot mount a composition of zero frames, and a reel is routinely
  *  opened in Studio before its timing is authored. Two seconds is enough to be
@@ -27,6 +28,35 @@ export const MIN_FRAMES = 60;
  *  floor than the render's authored-total floor. */
 export function layeredDurationInFrames(reel: LayeredReel, fps: number): number {
   return Math.max(MIN_FRAMES, Math.round((reel.meta.totalDurationMs / 1000) * fps));
+}
+
+/** Every starved boundary in `reel`, one human-readable message each.
+ *
+ *  Validation only — this NEVER changes the reel. The editor decides a
+ *  transition's length and writes it into the model; if the renderer also
+ *  decided, Studio and the final render could disagree, which is the exact
+ *  class of defect Phase 5 removed. A missing duration yields silence, not a
+ *  guess: see `handleRoomFrames`. */
+export function checkBoundaries(
+  reel: LayeredReel,
+  durationsMs: Record<string, number>,
+  fps: number,
+): string[] {
+  const items = reel.tracks.video;
+  const roomOf = (i: number) => {
+    const it = items[i];
+    if (!it) return undefined;
+    const src = (it as { source?: string }).source;
+    return handleRoomFrames(it, src ? durationsMs[src] : undefined, fps);
+  };
+  const out: string[] = [];
+  for (let i = 0; i < items.length - 1; i++) {
+    const t = items[i].transitionOut;
+    if (boundaryState(t, roomOf(i), roomOf(i + 1)) === 'ok') continue;
+    const msg = starvationMessage(t, roomOf(i), roomOf(i + 1));
+    if (msg) out.push(`${items[i].id} → ${items[i + 1].id}: ${msg}`);
+  }
+  return out;
 }
 
 /** The props a layered reel's <Composition> takes, minus `defaultProps` (the
