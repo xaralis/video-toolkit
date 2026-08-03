@@ -110,22 +110,47 @@ export function layeredCompositionProps<C>({
     // the <Composition> prop type all the same.
     durationInFrames: MIN_FRAMES,
     calculateMetadata: async ({ props }) => {
-      // Dynamic import, deliberately not a static one at this file's top — see
-      // measure-sources.ts's header comment (CRITICAL 2 of the 2026-08-03 review). A static
-      // import there would make `MIN_FRAMES` drag `remotion` + `@remotion/media-utils` into
-      // every consumer of this module, including `lib/editor/host/host-duration.ts`, which
-      // wants only a plain constant and must not pull a media package into the editor's
-      // Vite bundle (a brand project's own `node_modules` does not have it until that repo
-      // applies `docs/superpowers/handle-starvation-migrations.md`).
-      const { measureSourceDurationsMs } = await import('./measure-sources');
-      const durationsMs = await measureSourceDurationsMs(props.reel.tracks.video);
-      for (const msg of checkBoundaries(props.reel, durationsMs, fps)) {
+      // Computed up front, independent of whether measurement below succeeds —
+      // unchanged from before this task, byte-for-byte the same expression.
+      const durationInFrames = layeredDurationInFrames(props.reel, fps);
+      try {
+        // Dynamic import, deliberately not a static one at this file's top — see
+        // measure-sources.ts's header comment (CRITICAL 2 of the 2026-08-03 review). A static
+        // import there would make `MIN_FRAMES` drag `remotion` + `@remotion/media-utils` into
+        // every consumer of this module, including `lib/editor/host/host-duration.ts`, which
+        // wants only a plain constant and must not pull a media package into the editor's
+        // Vite bundle (a brand project's own `node_modules` does not have it until that repo
+        // applies `docs/superpowers/handle-starvation-migrations.md`).
+        //
+        // Both calls are inside this try. A re-review of this branch (2026-08-03, guard
+        // follow-up) found that neither was guarded: the dynamic import rejects with
+        // MODULE_NOT_FOUND when a brand repo bumps its `toolkit/` pin before adding
+        // `@remotion/media-utils` — precisely the scenario the migrations doc describes as an
+        // acceptable "loud" failure, except an unguarded rejection here does not fail loudly at
+        // `npm install` time, it fails composition resolution itself: Studio never opens the
+        // composition and a CLI render dies before a single frame, which is the exact class of
+        // defect this whole feature exists to prevent, just moved to the render/dependency axis
+        // instead of the picture axis. Validation must never gate the render it validates.
+        const { measureSourceDurationsMs } = await import('./measure-sources');
+        const durationsMs = await measureSourceDurationsMs(props.reel.tracks.video);
+        for (const msg of checkBoundaries(props.reel, durationsMs, fps)) {
+          // eslint-disable-next-line no-console
+          console.warn('[transition] handle starvation —', msg);
+        }
+      } catch (err) {
+        // No durations, no diagnostics this run — NOT the composition's duration, which is
+        // computed above and returned regardless. A brand author needs to be able to tell "the
+        // package is missing" apart from a transient failure, so the message names it and
+        // points at the doc that says what to add, rather than a bare "measurement failed".
         // eslint-disable-next-line no-console
-        console.warn('[transition] handle starvation —', msg);
+        console.warn(
+          '[transition] could not measure source durations — handle-starvation diagnostics are unavailable this run. ' +
+            'If this is a module-not-found error for "@remotion/media-utils", your project is missing it — see ' +
+            'docs/superpowers/handle-starvation-migrations.md for what to add.',
+          err,
+        );
       }
-      // Unchanged from before this task — measurement and warnings are
-      // additive, and change nothing about the composition's length.
-      return { durationInFrames: layeredDurationInFrames(props.reel, fps) };
+      return { durationInFrames };
     },
   };
 }

@@ -91,4 +91,24 @@ describe('measureSourceDurationsMs', () => {
     expect(out).toEqual({});
     expect(mocks.getVideoMetadata).not.toHaveBeenCalled();
   });
+
+  // Guard follow-up (2026-08-03 re-review): resolveForMeasurement (and its staticFile call)
+  // used to run in the synchronous loop that builds the work list, OUTSIDE any per-item
+  // try/catch — so one item's resolution failure threw synchronously and aborted the whole
+  // function, taking every OTHER source's measurement down with it. Both the resolution and
+  // the fetch now live inside the same per-item try. staticFile throwing on its first call
+  // (the first item, array order — Promise.all's mapped callbacks each start synchronously up
+  // to their first `await`, so this is deterministic) must not stop the second item's real,
+  // succeeding measurement.
+  it('a resolution failure for one item does not abort measurement of the others', async () => {
+    mocks.staticFile.mockImplementationOnce(() => {
+      throw new Error('boom: this path could not be resolved');
+    });
+    mocks.getVideoMetadata.mockResolvedValue({ durationInSeconds: 3 });
+    const out = await measureSourceDurationsMs([
+      { kind: 'clip', source: 'bad.mp4' },
+      { kind: 'clip', source: 'good.mp4' },
+    ]);
+    expect(out).toEqual({ 'recordings/good.mp4': 3000 });
+  });
 });

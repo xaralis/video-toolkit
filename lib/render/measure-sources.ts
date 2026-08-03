@@ -84,29 +84,48 @@ function resolveForMeasurement(source: string, role: MediaRole): { key: string; 
  *  — so items of any other kind (in particular `photo`, whose `.jpg`/`.png` extension
  *  `getVideoMetadata` can never resolve as a video anyway) are never even queued.
  *
- *  A source that fails to measure — network hiccup, unsupported format, or a timeout — is
- *  left ABSENT from the map rather than defaulted to 0: `handleRoomFrames` reads an absent
- *  entry as UNBOUNDED, so a measurement failure never masquerades as starvation. Nothing
- *  here throws. */
+ *  A source that fails to measure — network hiccup, unsupported format, a bad resolved path,
+ *  or a timeout — is left ABSENT from the map rather than defaulted to 0: `handleRoomFrames`
+ *  reads an absent entry as UNBOUNDED, so a measurement failure never masquerades as
+ *  starvation.
+ *
+ *  Resolution (`resolveForMeasurement`, which calls `staticFile`) runs INSIDE each item's own
+ *  try below, not in the synchronous loop that builds the work list. An earlier version ran
+ *  it in that loop, so one item's resolution failure (e.g. a value `staticFile` rejects)
+ *  threw synchronously and aborted `measureSourceDurationsMs` for every OTHER source too, not
+ *  just its own (found in the same re-review that added `layered-composition-props.ts`'s
+ *  own try/catch, below). De-duplication is therefore by the RAW `(kind, source)` pair rather
+ *  than the resolved key — a source cannot be de-duplicated by a key that resolving it might
+ *  itself fail to produce — so two different raw entries that happen to resolve to the same
+ *  file are measured twice instead of once; a small efficiency cost for the correctness gain
+ *  of one bad source never taking the rest down with it.
+ *
+ *  This function does not throw FOR A PER-ITEM FAILURE — every one is caught below. It is
+ *  still a normal `async function` and can in principle reject for a caller error outside that
+ *  scope (e.g. `items` not being iterable), which is why `layered-composition-props.ts` wraps
+ *  its own call to this function in a try too, rather than relying on this doc comment alone. */
 export async function measureSourceDurationsMs(
   items: ReadonlyArray<{ kind: string; source?: string }>,
 ): Promise<Record<string, number>> {
-  const toMeasure = new Map<string, string>(); // resolved key -> fetchable url, de-duplicated by key
+  const toMeasure = new Map<string, { source: string; role: MediaRole }>(); // raw "kind:source" -> input, de-duplicated by the RAW pair
   for (const it of items) {
     if (it.kind !== 'clip' && it.kind !== 'broll') continue;
     if (!it.source) continue;
-    const { key, url } = resolveForMeasurement(it.source, it.kind);
-    if (!toMeasure.has(key)) toMeasure.set(key, url);
+    const rawKey = `${it.kind}:${it.source}`;
+    if (!toMeasure.has(rawKey)) toMeasure.set(rawKey, { source: it.source, role: it.kind });
   }
 
   const durationsMs: Record<string, number> = {};
   await Promise.all(
-    [...toMeasure.entries()].map(async ([key, url]) => {
+    [...toMeasure.values()].map(async ({ source, role }) => {
       try {
+        const { key, url } = resolveForMeasurement(source, role);
         const meta = await withTimeout(getVideoMetadata(url), MEASURE_TIMEOUT_MS);
         durationsMs[key] = meta.durationInSeconds * 1000;
       } catch {
-        // Left absent deliberately — see the doc comment above.
+        // Left absent deliberately — see the doc comment above. Resolution and the fetch are
+        // both inside this one try, so a resolution failure for THIS item cannot touch any
+        // other item's measurement.
       }
     }),
   );
