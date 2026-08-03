@@ -125,6 +125,21 @@ export function transitionHandles(
   return { before: Math.floor(frames / 2), after: Math.ceil(frames / 2) };
 }
 
+/** ms → frame, `Math.round`. THE conversion every frame-math consumer of
+ *  authored milliseconds uses — `video-track-layout.ts`'s `computeVideoLayout`,
+ *  `SegmentMedia.tsx`'s trim points, `overlay-anchor.ts` — each currently
+ *  re-declares this exact one-liner locally rather than importing it, which is
+ *  how `lib/reel-config-base/handle-room.ts` ended up with a SECOND, disagreeing
+ *  rule (`Math.floor`, fixed to this after the 2026-08-03 whole-branch review):
+ *  a `sourceInMs` that isn't frame-aligned rounded to a different frame count in
+ *  the predicate than in the layout it was validating, a false alarm on roughly
+ *  half of all non-frame-aligned in-points. Exported from here — rather than
+ *  handle-room.ts inventing its own — so the next new consumer has one place to
+ *  find the rule instead of a fourth copy. */
+export function msToFrames(ms: number, fps: number): number {
+  return Math.round((ms / 1000) * fps);
+}
+
 /** The kind that means "no transition at all". THE literal — every site that
  *  asks "is this a cut?" goes through {@link isCut}, and every site that BUILDS
  *  one uses this constant, so the string exists once.

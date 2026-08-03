@@ -167,7 +167,9 @@ editorial decision, not a technical one. The editor must not make it.
 
 **In the transitions lane.** The lane already exists and is display-only
 (`lib/editor/app/LayeredTimeline.tsx:595`, `LOCKED_LANES`). A transition block carries
-one of four states: ok, realigned, clamped, impossible.
+one of three states: ok, clamped, impossible. (`realigned` is an OUTCOME of Plan B's
+automatic realignment, not a property of the data — once a boundary is realigned it is
+simply `ok`.)
 
 **The visual vocabulary already exists.** `.vt-grip-muted`
 (`lib/editor/app/LayeredTimeline.tsx:154`) is a 45° `repeating-linear-gradient` and

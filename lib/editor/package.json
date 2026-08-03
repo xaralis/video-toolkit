@@ -8,6 +8,7 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@remotion/media-utils": "4.0.498",
     "@remotion/player": "4.0.x",
     "@remotion/transitions": "4.0.498",
     "@testing-library/jest-dom": "^6.9.1",

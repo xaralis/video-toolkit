@@ -1,9 +1,29 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+
+// `layeredCompositionProps`'s `calculateMetadata` reaches the real measuring code through a
+// DYNAMIC `import('./measure-sources')` (see that file, and CRITICAL 2 of the 2026-08-03
+// review), which resolves to the exact same file this alias points at. Mocking it here is what
+// lets the "guard follow-up" tests below inject a rejection at that exact seam — the one the
+// review found unguarded — without a real network call or a real missing-dependency
+// environment. Defaults to resolving `{}` (the real function's own answer for an empty/no-op
+// input) so every OTHER test in this file, which never populates a video track needing
+// measurement, is unaffected by the mock's mere presence.
+const measureMock = vi.hoisted(() => vi.fn(async (_items: unknown): Promise<Record<string, number>> => ({})));
+vi.mock('@video-toolkit/lib/render/measure-sources', () => ({
+  measureSourceDurationsMs: (items: unknown) => measureMock(items),
+}));
+
 import {
+  checkBoundaries,
   layeredCompositionProps,
   layeredDurationInFrames,
 } from '@video-toolkit/lib/render/layered-composition-props';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
+
+beforeEach(() => {
+  measureMock.mockReset();
+  measureMock.mockResolvedValue({});
+});
 
 const reel = (totalDurationMs: number): LayeredReel =>
   ({
@@ -13,6 +33,113 @@ const reel = (totalDurationMs: number): LayeredReel =>
   }) as unknown as LayeredReel;
 
 const Stub = () => null;
+
+// Two clips butted at 3000ms, boundary carried by a gradient-wipe (center
+// alignment, frames 20 → 10 before/10 after — see transitionHandles). `a.mp4`
+// is [0,aSourceOutMs) of a file whose measured length feeds its TAIL;
+// `b.mp4` starts at bSourceInMs, which feeds its own HEAD directly from the
+// authored value (handleRoomFrames never consults fileMs for head — only
+// tail is bounded by a measurement). Kept as a factory so each test dials in
+// exactly which side of the boundary is short.
+const twoClipReel = ({ aSourceOutMs, bSourceInMs }: { aSourceOutMs: number; bSourceInMs: number }): LayeredReel =>
+  ({
+    version: 'layered-1',
+    meta: { topic: 'T', totalDurationMs: 6000 },
+    tracks: {
+      video: [
+        {
+          id: 'a',
+          kind: 'clip',
+          startMs: 0,
+          endMs: 3000,
+          source: 'a.mp4',
+          sourceInMs: 0,
+          sourceOutMs: aSourceOutMs,
+          transitionOut: { kind: 'gradient-wipe', frames: 20 },
+        },
+        {
+          id: 'b',
+          kind: 'clip',
+          startMs: 3000,
+          endMs: 6000,
+          source: 'b.mp4',
+          sourceInMs: bSourceInMs,
+          sourceOutMs: bSourceInMs + 3000,
+        },
+      ],
+      audio: [],
+      music: { baseVolumeDb: 0 },
+      overlays: [],
+      brand: [],
+    },
+  }) as unknown as LayeredReel;
+
+// checkBoundaries looks durationsMs up by the RESOLVED source string
+// (`resolveMediaSource(source, kind)`), not the raw `source` — 'a.mp4'/'b.mp4'
+// are bare clip filenames, which the shared media-path rule (media-source.ts)
+// prefixes to 'recordings/a.mp4'/'recordings/b.mp4'. Keying the fixture by the
+// raw name would silently miss every measurement (CRITICAL 1 of the
+// 2026-08-03 review) and every test below would go green for the wrong
+// reason — a measurement that's never found reads as "unbounded", same as a
+// measurement that's genuinely absent.
+const durationsOf = (aMs: number, bMs: number) => ({ 'recordings/a.mp4': aMs, 'recordings/b.mp4': bMs });
+
+describe('checkBoundaries', () => {
+  it('reports one message per starved boundary, naming the shortfall', () => {
+    // b starts at the very head of its file (sourceInMs 0) — it can lend
+    // nothing backwards, so the 10 frames the wipe needs before the cut come
+    // up 10 short.
+    const reel = twoClipReel({ aSourceOutMs: 3000, bSourceInMs: 0 });
+    const msgs = checkBoundaries(reel, durationsOf(10000, 10000), 30);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]).toContain('Needs 10 frames before the cut, this clip has 0');
+  });
+
+  it('is silent when every boundary has room', () => {
+    // b now starts 2000ms into its file — 60 frames of head, plenty for the
+    // 10 the wipe asks.
+    const reel = twoClipReel({ aSourceOutMs: 3000, bSourceInMs: 2000 });
+    expect(checkBoundaries(reel, durationsOf(10000, 10000), 30)).toEqual([]);
+  });
+
+  it('is silent when a duration is missing, rather than guessing', () => {
+    // a's sourceOutMs (9990) leaves only 10ms — 0 frames — of tail against a
+    // measured 10s file, which DOES starve the boundary (proven by the first
+    // assertion, using the same durations Task 2's own suite measures
+    // against). With no measurement at all, handleRoomFrames leaves that
+    // tail unbounded rather than assuming it's short, so the same reel goes
+    // silent — the behaviour this test exists to pin.
+    const reel = twoClipReel({ aSourceOutMs: 9990, bSourceInMs: 5000 });
+    expect(checkBoundaries(reel, durationsOf(10000, 10000), 30)).toEqual([
+      'a → b: Needs 10 frames after the cut, this clip has 0',
+    ]);
+    expect(checkBoundaries(reel, {}, 30)).toEqual([]);
+  });
+
+  it('keys the lookup by the RESOLVED source, not the raw bare filename', () => {
+    // A source that already contains a slash (a full path convention, e.g.
+    // the other real brand's data) is its own key, untouched by the folder
+    // prefix — resolveMediaSource's idempotence. Proves the lookup goes
+    // through the resolver rather than assuming one convention.
+    const reel: LayeredReel = {
+      version: 'layered-1',
+      meta: { topic: 'T', totalDurationMs: 6000 },
+      tracks: {
+        video: [
+          {
+            id: 'a', kind: 'clip', startMs: 0, endMs: 3000, source: 'media/a.mp4',
+            sourceInMs: 0, sourceOutMs: 3000, transitionOut: { kind: 'gradient-wipe', frames: 20 },
+          },
+          { id: 'b', kind: 'clip', startMs: 3000, endMs: 6000, source: 'media/b.mp4', sourceInMs: 0, sourceOutMs: 3000 },
+        ],
+        audio: [], music: { baseVolumeDb: 0 }, overlays: [], brand: [],
+      },
+    } as unknown as LayeredReel;
+    expect(checkBoundaries(reel, { 'media/a.mp4': 10000, 'media/b.mp4': 10000 }, 30)).toEqual([
+      'a → b: Needs 10 frames before the cut, this clip has 0',
+    ]);
+  });
+});
 
 describe('layeredDurationInFrames', () => {
   it('converts ms to frames at the given fps', () => {
@@ -55,15 +182,78 @@ describe('layeredCompositionProps', () => {
     expect(props.durationInFrames).toBeGreaterThan(0);
   });
 
-  it('derives the real duration through calculateMetadata at the composition fps', () => {
+  it('derives the real duration through calculateMetadata at the composition fps', async () => {
+    // calculateMetadata is async (it measures sources); this reel's video
+    // track is empty, so there is nothing to measure and it resolves
+    // immediately with the same duration expression as before.
     const props = layeredCompositionProps({ id: 'X', component: Stub, fps: 25, width: 2, height: 3 });
-    expect(props.calculateMetadata({ props: { reel: reel(8_000) } })).toEqual({
+    await expect(props.calculateMetadata({ props: { reel: reel(8_000) } })).resolves.toEqual({
       durationInFrames: 200,
     });
   });
 
-  it('applies the floor through calculateMetadata too', () => {
+  it('applies the floor through calculateMetadata too', async () => {
     const props = layeredCompositionProps({ id: 'X', component: Stub, fps: 30, width: 2, height: 3 });
-    expect(props.calculateMetadata({ props: { reel: reel(100) } })).toEqual({ durationInFrames: 60 });
+    await expect(props.calculateMetadata({ props: { reel: reel(100) } })).resolves.toEqual({ durationInFrames: 60 });
+  });
+});
+
+// Guard follow-up (2026-08-03 re-review): a re-review of the fix wave above found that
+// `calculateMetadata`'s dynamic import and its call to `measureSourceDurationsMs` were
+// unguarded — a rejection at either point (most likely a brand repo bumping its `toolkit/`
+// pin before adding `@remotion/media-utils`, so the import is MODULE_NOT_FOUND) failed
+// composition resolution outright: Studio never opens the composition, a CLI render dies
+// before a frame. That is the exact class of defect this whole feature exists to prevent
+// (a validation step gating the render it validates), just moved from the picture axis to
+// the dependency axis. These tests pin the fix: `calculateMetadata` must resolve with the
+// SAME `durationInFrames` and print no boundary diagnostics when measurement fails.
+describe('calculateMetadata — a measurement failure never gates composition resolution', () => {
+  it('resolves with the unaffected durationInFrames when measureSourceDurationsMs rejects', async () => {
+    measureMock.mockRejectedValue(new Error('Cannot find module \'@remotion/media-utils\' (simulated)'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const props = layeredCompositionProps({ id: 'X', component: Stub, fps: 30, width: 2, height: 3 });
+      // 8000ms @ 30fps = 240 frames — layeredDurationInFrames's ordinary, unaffected answer —
+      // proving the rejection changes NOTHING about the returned duration.
+      await expect(props.calculateMetadata({ props: { reel: reel(8_000) } })).resolves.toEqual({
+        durationInFrames: 240,
+      });
+      // No boundary diagnostic was ever printed — checkBoundaries never ran, because there
+      // were no durations to check boundaries against.
+      expect(warn.mock.calls.some(([msg]) => typeof msg === 'string' && msg.includes('handle starvation'))).toBe(false);
+      // Exactly one warning DID fire, for the measurement failure itself, and it names the
+      // package a brand author would need to add plus the doc that says so — not a bare
+      // "something went wrong".
+      expect(warn).toHaveBeenCalledTimes(1);
+      const [message] = warn.mock.calls[0];
+      expect(message).toContain('@remotion/media-utils');
+      expect(message).toContain('handle-starvation-migrations.md');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('resolves with the unaffected durationInFrames when the dynamic import itself rejects', async () => {
+    // The specific failure mode named in the review: MODULE_NOT_FOUND at the import(), not
+    // inside the function it would have returned. Rejecting from the mocked module factory
+    // itself is not expressible with vi.mock (the factory runs once at module init, not per
+    // call), so this simulates the same observable effect — an exception thrown before any
+    // durations are produced — by having the mocked function itself throw synchronously
+    // rather than return a rejected promise. calculateMetadata's try/catch wraps the `await
+    // import(...)` line and the call together, so it cannot tell these two failure shapes
+    // apart, and neither should assume differently.
+    measureMock.mockImplementation(() => {
+      throw new Error('MODULE_NOT_FOUND: @remotion/media-utils (simulated)');
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const props = layeredCompositionProps({ id: 'X', component: Stub, fps: 25, width: 2, height: 3 });
+      await expect(props.calculateMetadata({ props: { reel: reel(8_000) } })).resolves.toEqual({
+        durationInFrames: 200,
+      });
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

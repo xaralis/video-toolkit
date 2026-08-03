@@ -22,6 +22,10 @@
       // are not redundant with ambient resolution. (Same class of problem that
       // resolve.modules solves for webpack and the transitions re-resolver for Vite.)
       "remotion": ["./node_modules/remotion"],
+      // Reached only by the dynamic import() in lib/render/measure-sources.ts, but
+      // tsc resolves that specifier exactly like a static one — so it needs the
+      // same mapping as its neighbours here.
+      "@remotion/media-utils": ["./node_modules/@remotion/media-utils"],
       "@remotion/transitions": ["./node_modules/@remotion/transitions"],
       // Subpath declarations live in dist/presentations/*.d.ts — NOT dist/esm, which
       // holds only .mjs runtime code. See the package's own "exports" map.

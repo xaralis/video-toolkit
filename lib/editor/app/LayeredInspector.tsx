@@ -19,6 +19,9 @@ import type { AccentSlot } from '../../theming/palette';
 import { PLACEMENTS } from '../../theming/placement';
 import { effectCatalog, effectDefinition, humanizeKey, paramChoices, type EditorMeta, type ParamField } from './editor-meta';
 import { warnOnce } from '../../render/warn-once';
+import { videoUrl } from './LayeredTimeline';
+import { handleRoomFrames, maxTransitionFrames, type HandleRoom } from '@video-toolkit/lib/reel-config-base/handle-room';
+import { transitionAlignmentOf } from '@video-toolkit/lib/reel-config-base/transition-schema';
 
 // Routes the selected timeline item (by lane) to its editable properties,
 // reusing the existing content editors. Edits produce a new LayeredReel via
@@ -35,6 +38,13 @@ export interface LayeredInspectorProps {
   /** Brand-supplied editor vocabulary (effect catalog, per-kind `props` fields,
    *  lane labels/colours). Optional — core defaults are brand-neutral. */
   meta?: EditorMeta;
+  /** Decoded intrinsic duration (ms) per video URL — the SAME map
+   *  `LayeredTimeline`'s `useSourceDurations` produces, threaded in here the
+   *  same way `reel`/`fps` are so the transition length field can bound itself
+   *  against the SAME handle-room math the timeline hatches with. Optional and
+   *  defaults to `{}` (unknown durations, i.e. no bound) — every existing
+   *  caller that doesn't know about this keeps its old, unbounded behaviour. */
+  sourceDurations?: Record<string, number>;
 }
 
 const label: React.CSSProperties = { fontSize: 11, color: '#7a7d85', display: 'block', marginBottom: 2 };
@@ -529,6 +539,7 @@ export function TransitionFields({
   onChange,
   accentSlots,
   meta,
+  maxFrames,
 }: {
   t: DraftTransition;
   onChange: (next: DraftTransition) => void;
@@ -536,6 +547,19 @@ export function TransitionFields({
   /** The brand's editor vocabulary. Only `transitionProps` is read here: it is
    *  what makes a brand-registered kind selectable and gives it controls. */
   meta?: EditorMeta;
+  /** Ceiling on `frames`, in frames — the most this boundary's neighbours can
+   *  actually lend at `t`'s alignment (`maxTransitionFrames`/`handleRoomFrames`
+   *  in `handle-room.ts`). Undefined when the caller has no boundary context
+   *  (mounted directly, as this component's own tests do, or `transitionIn`'s
+   *  opening fade, which has no left neighbour to starve) — the field is then
+   *  unbounded, exactly as it always was.
+   *
+   *  BOUNDS NEW INPUT ONLY. A boundary starved retroactively (its neighbour
+   *  trimmed after this length was authored) keeps its authored value here —
+   *  the timeline's hatching and `boundaryDiagnostics` report it instead. This
+   *  component must never clamp on mount; only `onCommit` below clamps, and
+   *  only what the user just typed. */
+  maxFrames?: number;
 }) {
   const kind = t.kind ?? CUT_KIND;
   // Catalog ∪ the brand's registered kinds — see `transitionKindChoices`. The
@@ -577,13 +601,19 @@ export function TransitionFields({
           kind,
         }),
       )}
-      {kindNeedsFrames(kind) && (
-        <NumberField
-          lbl="Length (frames)"
-          value={t.frames}
-          onCommit={(n) => onChange({ ...t, frames: Math.max(1, Math.round(n)) })}
-        />
-      )}
+      {kindNeedsFrames(kind) && (() => {
+        // Infinity is "no neighbour bound at all" (an edge boundary, or every
+        // duration involved is still unknown) — the same thing an absent
+        // `maxFrames` means, so both read as the plain, unbounded label.
+        const bounded = maxFrames !== undefined && Number.isFinite(maxFrames);
+        return (
+          <NumberField
+            lbl={bounded ? `Length (frames, max ${maxFrames})` : 'Length (frames)'}
+            value={t.frames}
+            onCommit={(n) => onChange({ ...t, frames: Math.min(bounded ? (maxFrames as number) : Infinity, Math.max(1, Math.round(n))) })}
+          />
+        );
+      })()}
     </>
   );
 }
@@ -767,10 +797,20 @@ function AddEffectControl({
   );
 }
 
-export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, accentSlots, meta }: LayeredInspectorProps) {
+export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, accentSlots, meta, sourceDurations }: LayeredInspectorProps) {
   // The dedicated `accentSlots` prop is the ONE source for the palette —
   // EditorMeta deliberately does not carry a copy (see editor-meta.ts).
   const slots = accentSlots;
+  const durationsMs = sourceDurations ?? {};
+  // The room a video item at index `i` can lend — the SAME per-item reading
+  // `boundaryDiagnostics` (LayeredTimeline.tsx) uses, so the length field's
+  // ceiling and the timeline's hatching can never disagree about a boundary.
+  const roomOf = (i: number): HandleRoom | undefined => {
+    const it = reel.tracks.video[i];
+    if (!it) return undefined;
+    const url = videoUrl(it);
+    return handleRoomFrames(it, url ? durationsMs[url] : undefined, fps);
+  };
   const patchItem = (lane: LaneId, id: string, patch: Record<string, unknown>) => {
     const key = lane as keyof LayeredReel['tracks'];
     const arr = reel.tracks[key] as Array<{ id: string }>;
@@ -817,12 +857,27 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     const edgeField = edge === 'in' ? 'transitionIn' : 'transitionOut';
     const t = (v[edgeField] ?? { kind: CUT_KIND }) as DraftTransition;
     const kind = t.kind ?? CUT_KIND;
+    // Only `transitionOut` is a boundary the handle-room model reasons about
+    // (the cut between this item and the next); `transitionIn`'s opening fade
+    // has no left neighbour to starve, so it stays unbounded. The LAST item's
+    // `transitionOut` is exempted the same way: it is the reel's closing fade,
+    // not a boundary — `video-track-layout.ts` zeroes its outHalf regardless
+    // of this item's own tail room (there is no neighbour to extend into), so
+    // `roomOf(idx + 1)` (the reel edge, `undefined`) is the wrong thing to
+    // bound against and `roomOf(idx)`'s OWN tail (the item's leftover after
+    // its trim) is irrelevant here too. Without this, a final clip trimmed to
+    // its file end (tail === 0) clamped a legitimate authored length down to
+    // 1 (Important 5 of the 2026-08-03 review).
+    const idx = reel.tracks.video.findIndex((x) => x.id === id);
+    const isLast = idx === reel.tracks.video.length - 1;
+    const maxFrames =
+      edge === 'in' || isLast ? undefined : Math.max(1, maxTransitionFrames(roomOf(idx), roomOf(idx + 1), transitionAlignmentOf(t)));
     return (
       <div style={panel}>
         <h3 style={heading}>
           Transition {edge === 'in' ? 'in' : 'out'} · {transitionKindLabel(kind, meta?.transitionProps)}
         </h3>
-        <TransitionFields t={t} accentSlots={slots} meta={meta} onChange={(next) => patchItem('video', id, { [edgeField]: next })} />
+        <TransitionFields t={t} accentSlots={slots} meta={meta} maxFrames={maxFrames} onChange={(next) => patchItem('video', id, { [edgeField]: next })} />
       </div>
     );
   }
@@ -1040,10 +1095,17 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           // it untouched. Only a genuinely absent or kind-less value is a cut.
           const raw = v.transitionOut as { kind?: string } | undefined;
           const t: DraftTransition = raw?.kind ? (raw as DraftTransition) : { kind: CUT_KIND };
+          const idx = reel.tracks.video.findIndex((x) => x.id === id);
+          // Same exemption as the `transitions`-lane view above: the LAST
+          // item's transitionOut is the reel's closing fade, not a boundary —
+          // see the comment there for why bounding it against
+          // roomOf(idx + 1)/roomOf(idx) is wrong (Important 5).
+          const isLast = idx === reel.tracks.video.length - 1;
+          const maxFrames = isLast ? undefined : Math.max(1, maxTransitionFrames(roomOf(idx), roomOf(idx + 1), transitionAlignmentOf(t)));
           return (
             <>
               <div style={section}>Transition out</div>
-              <TransitionFields t={t} accentSlots={slots} meta={meta} onChange={(next) => patchItem('video', id, { transitionOut: next })} />
+              <TransitionFields t={t} accentSlots={slots} meta={meta} maxFrames={maxFrames} onChange={(next) => patchItem('video', id, { transitionOut: next })} />
             </>
           );
         })()}

@@ -23,6 +23,7 @@ import { MusicEnvelope } from './MusicEnvelope';
 import { computeMusicEnvelope } from '@video-toolkit/lib/reel-config-base/music-envelope';
 import { resolveMediaSource, type MediaRole } from '@video-toolkit/lib/theming/media-source';
 import { humanizeKey, stableColor, type EditorMeta } from './editor-meta';
+import { handleRoomFrames, boundaryState, starvationMessage, type HandleRoom } from '@video-toolkit/lib/reel-config-base/handle-room';
 
 // Media paths go through core's ONE rule (lib/theming/media-source.ts) — the
 // same one SegmentMedia and the audio track use — rather than a third private
@@ -44,6 +45,35 @@ export const videoUrl = (item: { kind: string; source?: string }): string | null
   if (!item.source) return null;
   return publicUrl(item.source, item.kind);
 };
+
+export interface Diagnostic {
+  severity: 'error' | 'warning';
+  message: string;
+  /** Action id of the thing to select when the user clicks this entry. */
+  targetId?: string;
+}
+
+/** Starved boundaries, as diagnostics the editor can list and navigate to.
+ *  Reads the SAME predicate the renderer's check reads (`boundaryState`), so
+ *  the editor and the render can never disagree about a boundary. */
+export function boundaryDiagnostics(reel: LayeredReel, durationsMs: Record<string, number>, fps: number): Diagnostic[] {
+  const items = reel.tracks.video;
+  const roomOf = (i: number): HandleRoom | undefined => {
+    const it = items[i];
+    if (!it) return undefined;
+    const url = videoUrl(it);
+    return handleRoomFrames(it, url ? durationsMs[url] : undefined, fps);
+  };
+  const out: Diagnostic[] = [];
+  for (let i = 0; i < items.length - 1; i++) {
+    const t = items[i].transitionOut;
+    const state = boundaryState(t, roomOf(i), roomOf(i + 1));
+    if (state === 'ok') continue;
+    const msg = starvationMessage(t, roomOf(i), roomOf(i + 1));
+    if (msg) out.push({ severity: 'error', message: msg, targetId: `transition:${items[i].id}` });
+  }
+  return out;
+}
 
 // Fixed, typed lanes (D4) — the structure comes from the reel, not free-form
 // adding. Order matches the adapter's row order.
@@ -261,6 +291,8 @@ export interface LayeredTimelineProps {
    *  re-rendered on every playhead frame; an inline `meta={{ … }}` literal is a
    *  fresh object each render and defeats the memo entirely. */
   meta?: EditorMeta;
+  /** Reported upward so the shell can badge them. Pass a STABLE callback. */
+  onDiagnostics?: (d: Diagnostic[]) => void;
 }
 
 function LayeredTimelineImpl({
@@ -278,6 +310,7 @@ function LayeredTimelineImpl({
   guidesMs,
   snapToBeats = false,
   meta,
+  onDiagnostics,
 }: LayeredTimelineProps) {
   const stateRef = useRef<TimelineState>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -341,6 +374,16 @@ function LayeredTimelineImpl({
     [reel],
   );
   const sourceDurations = useSourceDurations(videoUrls);
+
+  // Starved boundaries — same predicate the render's own check reads (see
+  // handle-room.ts), so the hatched block and the diagnostics list can never
+  // disagree with what the composition will actually do.
+  const diagnostics = useMemo(
+    () => boundaryDiagnostics(reel, sourceDurations, fps),
+    [reel, sourceDurations, fps],
+  );
+  const starvedTargets = useMemo(() => new Set(diagnostics.map((d) => d.targetId)), [diagnostics]);
+  useEffect(() => { onDiagnostics?.(diagnostics); }, [diagnostics, onDiagnostics]);
   // Right-edge trim cap (ms) per video id — the clip's "total length": the LARGER
   // of the real decoded file duration and the AUTHORED out-point (from the saved
   // reel). A clip whose cut holds its last frame past the file end (an authored
@@ -595,6 +638,7 @@ function LayeredTimelineImpl({
             if (parseActionId(action.id).lane === 'transitions') {
               // A derived marker at the cut, not a clip — small centered pill
               // rather than the full-block styling used below.
+              const starved = starvedTargets.has(action.id);
               return (
                 <div
                   style={{
@@ -612,9 +656,18 @@ function LayeredTimelineImpl({
                     overflow: 'hidden',
                     boxShadow: action.selected ? 'inset 0 0 0 2px #e8e8ea' : undefined,
                   }}
-                  title={action.id}
+                  title={starved ? diagnostics.find((d) => d.targetId === action.id)!.message : action.id}
                 >
-                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {/* Same hatch vocabulary as a muted trim grip ("nothing more to
+                      take this way") — an overlay, not a className on this div: the
+                      pill's own background is opaque, so a class carrying only
+                      `background`/`box-shadow` would be invisible if it competed
+                      with this div's inline background instead of sitting on top
+                      of it. */}
+                  {starved && (
+                    <div className="vt-grip-muted" style={{ position: 'absolute', inset: 0, borderRadius: 999 }} />
+                  )}
+                  <span style={{ position: 'relative', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {timelineLabel(action, reel, fps, meta)}
                   </span>
                 </div>

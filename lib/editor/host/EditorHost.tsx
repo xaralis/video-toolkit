@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType }
 import { Player } from '@remotion/player';
 import type { PlayerRef } from '@remotion/player';
 import { EditorShell } from '../app/EditorShell';
-import { LayeredTimeline } from '../app/LayeredTimeline';
+import { LayeredTimeline, videoUrl, type Diagnostic } from '../app/LayeredTimeline';
+import { DiagnosticsBadge } from '../app/Diagnostics';
 import { LayeredInspector } from '../app/LayeredInspector';
 import { RenderButton } from '../app/RenderButton';
 import { useHistory } from '../app/useHistory';
+import { useSourceDurations } from '../app/useSourceDurations';
 import { deleteItem } from '../src/timeline/layered-adapter';
 import type { EditorMeta } from '../app/editor-meta';
 import type { AccentSlot } from '../../theming/palette';
@@ -45,6 +47,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   const [savedReel, setSavedReel] = useState<LayeredReel | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null); // action id `${lane}:${itemId}`
+  const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
   const [playing, setPlaying] = useState(false);
   const [showFocus, setShowFocus] = useState(false);
   const [ripple, setRipple] = useState(false);
@@ -56,6 +59,19 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
 
   // Stable across playback re-renders so the Player + memoized timeline don't churn.
   const inputProps = useMemo(() => ({ reel }), [reel]);
+  // Decoded clip/broll durations, threaded to the inspector the same way `reel`
+  // and `fps` already are — it needs them (alongside `reel`) to bound a
+  // transition's length field at what its neighbours can actually lend (see
+  // `handleRoomFrames`/`maxTransitionFrames`, Task 7). `LayeredTimeline` decodes
+  // its own copy for the same URLs (capMsById, grip muting, diagnostics); this
+  // is a second, independent decode rather than a shared cache — an accepted
+  // duplication, not a correctness issue (a URL decodes to the same duration
+  // either way).
+  const videoUrls = useMemo(
+    () => (reel ? reel.tracks.video.map(videoUrl).filter((u): u is string => !!u) : []),
+    [reel],
+  );
+  const sourceDurations = useSourceDurations(videoUrls);
   const handleSelect = useCallback((id: string | null) => setSelectedId((cur) => (cur === id ? null : id)), []);
   // Focus/Zoom is per-clip — switching selection turns it back off.
   useEffect(() => setShowFocus(false), [selectedId]);
@@ -255,6 +271,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
       canRedo={canRedo}
       saving={saving}
       dirty={dirty}
+      diagnostics={<DiagnosticsBadge items={diagnostics} onSelect={handleSelect} />}
       preview={
         <div ref={previewRef} style={{ position: 'relative' }}>
           <Player
@@ -383,6 +400,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
               savedReel={savedReel}
               guidesMs={reel.meta.guidesMs}
               meta={meta}
+              onDiagnostics={setDiagnostics}
             />
           </div>
         </div>
@@ -396,6 +414,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
           fps={fps}
           accentSlots={accentSlots}
           meta={meta}
+          sourceDurations={sourceDurations}
         />
       }
     />
