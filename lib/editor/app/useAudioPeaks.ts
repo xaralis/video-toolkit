@@ -25,6 +25,7 @@ async function computePeaks(url: string): Promise<Float32Array> {
   const total = Math.max(1, Math.round(audio.duration * PEAKS_PER_SEC));
   const bucket = Math.max(1, Math.floor(ch.length / total));
   const peaks = new Float32Array(total);
+  let loudest = 0;
   for (let i = 0; i < total; i++) {
     let max = 0;
     const start = i * bucket;
@@ -33,6 +34,17 @@ async function computePeaks(url: string): Promise<Float32Array> {
       if (v > max) max = v;
     }
     peaks[i] = max;
+    if (max > loudest) loudest = max;
+  }
+  // Normalise each source against its OWN loudest peak. These peaks are a
+  // legibility aid, not a meter: drawn raw, a mastered music bed (peaks near
+  // 1.0) fills its block while a speech bed (peaks ~0.2-0.3) renders as a
+  // hairline, and no amount of opacity fixes bars that are barely there.
+  // The trade-off, deliberate: the waveform no longer says how LOUD a bed is
+  // relative to another — that's what VolumeLine and the dB fields are for,
+  // and they read the authored gain rather than the file.
+  if (loudest > 0) {
+    for (let i = 0; i < total; i++) peaks[i] /= loudest;
   }
   return peaks;
 }
