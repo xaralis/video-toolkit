@@ -859,10 +859,19 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     const kind = t.kind ?? CUT_KIND;
     // Only `transitionOut` is a boundary the handle-room model reasons about
     // (the cut between this item and the next); `transitionIn`'s opening fade
-    // has no left neighbour to starve, so it stays unbounded.
+    // has no left neighbour to starve, so it stays unbounded. The LAST item's
+    // `transitionOut` is exempted the same way: it is the reel's closing fade,
+    // not a boundary — `video-track-layout.ts` zeroes its outHalf regardless
+    // of this item's own tail room (there is no neighbour to extend into), so
+    // `roomOf(idx + 1)` (the reel edge, `undefined`) is the wrong thing to
+    // bound against and `roomOf(idx)`'s OWN tail (the item's leftover after
+    // its trim) is irrelevant here too. Without this, a final clip trimmed to
+    // its file end (tail === 0) clamped a legitimate authored length down to
+    // 1 (Important 5 of the 2026-08-03 review).
     const idx = reel.tracks.video.findIndex((x) => x.id === id);
+    const isLast = idx === reel.tracks.video.length - 1;
     const maxFrames =
-      edge === 'in' ? undefined : Math.max(1, maxTransitionFrames(roomOf(idx), roomOf(idx + 1), transitionAlignmentOf(t)));
+      edge === 'in' || isLast ? undefined : Math.max(1, maxTransitionFrames(roomOf(idx), roomOf(idx + 1), transitionAlignmentOf(t)));
     return (
       <div style={panel}>
         <h3 style={heading}>
@@ -1087,7 +1096,12 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           const raw = v.transitionOut as { kind?: string } | undefined;
           const t: DraftTransition = raw?.kind ? (raw as DraftTransition) : { kind: CUT_KIND };
           const idx = reel.tracks.video.findIndex((x) => x.id === id);
-          const maxFrames = Math.max(1, maxTransitionFrames(roomOf(idx), roomOf(idx + 1), transitionAlignmentOf(t)));
+          // Same exemption as the `transitions`-lane view above: the LAST
+          // item's transitionOut is the reel's closing fade, not a boundary —
+          // see the comment there for why bounding it against
+          // roomOf(idx + 1)/roomOf(idx) is wrong (Important 5).
+          const isLast = idx === reel.tracks.video.length - 1;
+          const maxFrames = isLast ? undefined : Math.max(1, maxTransitionFrames(roomOf(idx), roomOf(idx + 1), transitionAlignmentOf(t)));
           return (
             <>
               <div style={section}>Transition out</div>

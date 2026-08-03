@@ -16,7 +16,7 @@ export function DiagnosticsBadge({ items, onSelect }: { items: Diagnostic[]; onS
     <div style={{ position: 'relative', fontSize: 11 }}>
       <button
         onClick={() => setOpen((v) => !v)}
-        style={{ background: '#3a2f2f', color: '#e8d5d5', border: '1px solid #5a4444', borderRadius: 3, padding: '2px 8px', cursor: 'pointer', font: 'inherit' }}
+        style={{ background: '#3a3a3d', color: '#e8e8ea', border: '1px solid #5a5a5e', borderRadius: 3, padding: '2px 8px', cursor: 'pointer', font: 'inherit' }}
       >
         {items.length} {items.length === 1 ? 'issue' : 'issues'}
       </button>

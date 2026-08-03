@@ -9,20 +9,17 @@
 // The spread is type-checked against a real <Composition> by the
 // `examples/layered-minimal` gate.
 //
-// `calculateMetadata` DOES import `remotion` (`staticFile`) and
-// `@remotion/media-utils` (`getVideoMetadata`) now, to measure each source's
-// real duration and warn on a starved transition boundary (see
-// `checkBoundaries` below) — a change from this file's earlier
-// no-framework-import stance. Both resolve at bundle time via
-// `lib/project/remotion-config.ts`'s webpack `modules` override (the
-// generic fix for out-of-tree `lib/**` files, already relied on by
-// `lib/render/at-cut-transitions.tsx` for `@remotion/transitions`); under
-// `lib/editor`'s own vitest/tsc, `@remotion/media-utils` is a pinned
-// devDependency there (see its `package.json`), the same pattern `remotion`
-// itself already uses for that toolchain.
-import { staticFile } from 'remotion';
-import { getVideoMetadata } from '@remotion/media-utils';
+// This file itself deliberately has NO static `remotion` or `@remotion/media-utils`
+// import — `calculateMetadata` reaches the real measuring code in `./measure-sources.ts`
+// through a DYNAMIC `import()` instead (see that file's header for why: a static import
+// here would drag `@remotion/media-utils` into every consumer of `MIN_FRAMES`, in
+// particular `lib/editor/host/host-duration.ts`, which wants only a plain constant and
+// must never pull a media package into the editor's Vite bundle — CRITICAL 2 of the
+// 2026-08-03 whole-branch review). `resolveMediaSource` below is safe to import
+// statically: it is dependency-free by design (see its own header), so it adds nothing
+// to that bundle.
 import type { LayeredReel } from '../reel-config-base/layered-schema';
+import { resolveMediaSource } from '../theming/media-source';
 import { handleRoomFrames, boundaryState, starvationMessage } from '../reel-config-base/handle-room';
 
 /** Remotion cannot mount a composition of zero frames, and a reel is routinely
@@ -47,7 +44,14 @@ export function layeredDurationInFrames(reel: LayeredReel, fps: number): number 
  *  transition's length and writes it into the model; if the renderer also
  *  decided, Studio and the final render could disagree, which is the exact
  *  class of defect Phase 5 removed. A missing duration yields silence, not a
- *  guess: see `handleRoomFrames`. */
+ *  guess: see `handleRoomFrames`.
+ *
+ *  `durationsMs` is keyed by the RESOLVED source string (`resolveMediaSource(source, kind)`
+ *  — see `./measure-sources.ts`'s `measureSourceDurationsMs`, which builds it), not the raw
+ *  `source`. A brand's bare-filename convention (`lib/theming/media-source.ts:7-9`) resolves
+ *  to a different string than what's authored (`seg-002.mp4` → `recordings/seg-002.mp4`), so
+ *  looking the raw source up directly missed every measurement for that convention — the
+ *  bug CRITICAL 1 of the 2026-08-03 review named. */
 export function checkBoundaries(
   reel: LayeredReel,
   durationsMs: Record<string, number>,
@@ -57,8 +61,12 @@ export function checkBoundaries(
   const roomOf = (i: number) => {
     const it = items[i];
     if (!it) return undefined;
-    const src = (it as { source?: string }).source;
-    return handleRoomFrames(it, src ? durationsMs[src] : undefined, fps);
+    // Only clip/broll carry a measurable source window at all — the same gate
+    // `handleRoomFrames` applies internally, matched here so the durations lookup key is
+    // only ever computed for a kind resolveMediaSource actually understands.
+    if (it.kind !== 'clip' && it.kind !== 'broll') return handleRoomFrames(it, undefined, fps);
+    const key = resolveMediaSource(it.source, it.kind);
+    return handleRoomFrames(it, durationsMs[key], fps);
   };
   const out: string[] = [];
   for (let i = 0; i < items.length - 1; i++) {
@@ -102,31 +110,15 @@ export function layeredCompositionProps<C>({
     // the <Composition> prop type all the same.
     durationInFrames: MIN_FRAMES,
     calculateMetadata: async ({ props }) => {
-      // Measure every DISTINCT source once, so a boundary starved of real
-      // footage warns instead of silently dropping frames. A source that
-      // fails to measure (network hiccup, unsupported format) is left
-      // ABSENT from `durationsMs` rather than defaulted to 0 —
-      // `handleRoomFrames` reads an absent entry as unbounded, so a
-      // measurement failure never masquerades as starvation. Nothing here
-      // throws: a starved boundary only ever warns.
-      const sources = [
-        ...new Set(
-          props.reel.tracks.video
-            .map((v) => (v as { source?: string }).source)
-            .filter((s): s is string => !!s),
-        ),
-      ];
-      const durationsMs: Record<string, number> = {};
-      await Promise.all(
-        sources.map(async (s) => {
-          try {
-            const meta = await getVideoMetadata(staticFile(s));
-            durationsMs[s] = meta.durationInSeconds * 1000;
-          } catch {
-            // Left absent deliberately — see the comment above.
-          }
-        }),
-      );
+      // Dynamic import, deliberately not a static one at this file's top — see
+      // measure-sources.ts's header comment (CRITICAL 2 of the 2026-08-03 review). A static
+      // import there would make `MIN_FRAMES` drag `remotion` + `@remotion/media-utils` into
+      // every consumer of this module, including `lib/editor/host/host-duration.ts`, which
+      // wants only a plain constant and must not pull a media package into the editor's
+      // Vite bundle (a brand project's own `node_modules` does not have it until that repo
+      // applies `docs/superpowers/handle-starvation-migrations.md`).
+      const { measureSourceDurationsMs } = await import('./measure-sources');
+      const durationsMs = await measureSourceDurationsMs(props.reel.tracks.video);
       for (const msg of checkBoundaries(props.reel, durationsMs, fps)) {
         // eslint-disable-next-line no-console
         console.warn('[transition] handle starvation —', msg);

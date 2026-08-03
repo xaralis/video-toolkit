@@ -55,13 +55,23 @@ const twoClipReel = ({ aSourceOutMs, bSourceInMs }: { aSourceOutMs: number; bSou
     },
   }) as unknown as LayeredReel;
 
+// checkBoundaries looks durationsMs up by the RESOLVED source string
+// (`resolveMediaSource(source, kind)`), not the raw `source` — 'a.mp4'/'b.mp4'
+// are bare clip filenames, which the shared media-path rule (media-source.ts)
+// prefixes to 'recordings/a.mp4'/'recordings/b.mp4'. Keying the fixture by the
+// raw name would silently miss every measurement (CRITICAL 1 of the
+// 2026-08-03 review) and every test below would go green for the wrong
+// reason — a measurement that's never found reads as "unbounded", same as a
+// measurement that's genuinely absent.
+const durationsOf = (aMs: number, bMs: number) => ({ 'recordings/a.mp4': aMs, 'recordings/b.mp4': bMs });
+
 describe('checkBoundaries', () => {
   it('reports one message per starved boundary, naming the shortfall', () => {
     // b starts at the very head of its file (sourceInMs 0) — it can lend
     // nothing backwards, so the 10 frames the wipe needs before the cut come
     // up 10 short.
     const reel = twoClipReel({ aSourceOutMs: 3000, bSourceInMs: 0 });
-    const msgs = checkBoundaries(reel, { 'a.mp4': 10000, 'b.mp4': 10000 }, 30);
+    const msgs = checkBoundaries(reel, durationsOf(10000, 10000), 30);
     expect(msgs).toHaveLength(1);
     expect(msgs[0]).toContain('Needs 10 frames before the cut, this clip has 0');
   });
@@ -70,7 +80,7 @@ describe('checkBoundaries', () => {
     // b now starts 2000ms into its file — 60 frames of head, plenty for the
     // 10 the wipe asks.
     const reel = twoClipReel({ aSourceOutMs: 3000, bSourceInMs: 2000 });
-    expect(checkBoundaries(reel, { 'a.mp4': 10000, 'b.mp4': 10000 }, 30)).toEqual([]);
+    expect(checkBoundaries(reel, durationsOf(10000, 10000), 30)).toEqual([]);
   });
 
   it('is silent when a duration is missing, rather than guessing', () => {
@@ -81,10 +91,34 @@ describe('checkBoundaries', () => {
     // tail unbounded rather than assuming it's short, so the same reel goes
     // silent — the behaviour this test exists to pin.
     const reel = twoClipReel({ aSourceOutMs: 9990, bSourceInMs: 5000 });
-    expect(checkBoundaries(reel, { 'a.mp4': 10000, 'b.mp4': 10000 }, 30)).toEqual([
+    expect(checkBoundaries(reel, durationsOf(10000, 10000), 30)).toEqual([
       'a → b: Needs 10 frames after the cut, this clip has 0',
     ]);
     expect(checkBoundaries(reel, {}, 30)).toEqual([]);
+  });
+
+  it('keys the lookup by the RESOLVED source, not the raw bare filename', () => {
+    // A source that already contains a slash (a full path convention, e.g.
+    // the other real brand's data) is its own key, untouched by the folder
+    // prefix — resolveMediaSource's idempotence. Proves the lookup goes
+    // through the resolver rather than assuming one convention.
+    const reel: LayeredReel = {
+      version: 'layered-1',
+      meta: { topic: 'T', totalDurationMs: 6000 },
+      tracks: {
+        video: [
+          {
+            id: 'a', kind: 'clip', startMs: 0, endMs: 3000, source: 'media/a.mp4',
+            sourceInMs: 0, sourceOutMs: 3000, transitionOut: { kind: 'gradient-wipe', frames: 20 },
+          },
+          { id: 'b', kind: 'clip', startMs: 3000, endMs: 6000, source: 'media/b.mp4', sourceInMs: 0, sourceOutMs: 3000 },
+        ],
+        audio: [], music: { baseVolumeDb: 0 }, overlays: [], brand: [],
+      },
+    } as unknown as LayeredReel;
+    expect(checkBoundaries(reel, { 'media/a.mp4': 10000, 'media/b.mp4': 10000 }, 30)).toEqual([
+      'a → b: Needs 10 frames before the cut, this clip has 0',
+    ]);
   });
 });
 
