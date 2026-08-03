@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import { withTotalDuration } from '@video-toolkit/lib/reel-config-base/total-duration';
 import { AccentEditor } from './AccentEditor';
@@ -22,6 +22,8 @@ import { warnOnce } from '../../render/warn-once';
 import { videoUrl } from './LayeredTimeline';
 import { handleRoomFrames, maxTransitionFrames, type HandleRoom } from '@video-toolkit/lib/reel-config-base/handle-room';
 import { transitionAlignmentOf } from '@video-toolkit/lib/reel-config-base/transition-schema';
+import { useLiveField } from './controls/use-live-field';
+import { fieldCls, labelCls, inputCls, rowCls, disabledCls, readonlyValueCls } from './controls/field-classes';
 
 // Routes the selected timeline item (by lane) to its editable properties,
 // reusing the existing content editors. Edits produce a new LayeredReel via
@@ -50,28 +52,12 @@ export interface LayeredInspectorProps {
 const panelCls = 'ed:p-3 ed:w-full ed:h-full ed:overflow-y-auto ed:box-border';
 const headingCls = 'ed:text-xs ed:text-ink ed:mb-2.5 ed:font-semibold';
 const sectionCls = 'ed:text-[10px] ed:text-ink-3 ed:uppercase ed:tracking-wider ed:mt-2.5 ed:mb-1.5';
-const fieldCls = 'ed:mb-2 ed:flex-1 ed:min-w-0';
-// Deliberately carries no `display` or `mb-*` of its own — a checkbox's label
-// needs `flex`/margin-bottom 0 and every other label needs `block`/margin-bottom
-// 1, and stacking two utilities for the SAME property (two `display`s, two
-// `margin-bottom`s) on one element depends on stylesheet emission order rather
-// than class-attribute order. Each consumer states both explicitly instead
-// (see the non-checkbox `${labelCls} ed:block ed:mb-1` call sites below and
-// `CheckboxField`, which adds `ed:flex` and no margin).
-const labelCls = 'ed:text-[11px] ed:text-ink-2';
-const inputCls =
-  'ed:w-full ed:box-border ed:bg-control ed:text-ink ed:border ed:border-line ed:rounded ed:px-2 ed:py-1 ed:text-xs';
-// A value the user reads (not a label about it) — must stay in `ink`/`ink-2`,
-// never `ink-3`: `ink-3` at 12px is below WCAG AA against the shell.
-const readonlyValueCls = 'ed:text-xs ed:text-ink ed:font-mono';
 // A one-line reason printed under a control that has gone inert, so a disabled
 // field explains itself instead of reading as a bug. Deliberately quiet — it is
 // an answer to "why can't I type here", not a warning — but it is the ONLY
 // explanation of why the control is inert, so it's a value the user reads,
 // not a label about one: `ink-2`, never `ink-3` (same rule as `readonlyValueCls`).
 const noteCls = 'ed:text-[11px] ed:text-ink-2 ed:-mt-1 ed:mb-2';
-const rowCls = 'ed:flex ed:gap-2';
-const disabledCls = 'ed:opacity-45 ed:cursor-not-allowed';
 // Shared "input chrome" for the plain buttons below (seek/link/add-effect),
 // deliberately without `cursor`, `width`, `padding` or margin utilities — each
 // call site's enabled/disabled state needs its own `cursor-*`, and its own
@@ -80,28 +66,6 @@ const disabledCls = 'ed:opacity-45 ed:cursor-not-allowed';
 const btnCls = 'ed:box-border ed:bg-control ed:text-ink ed:border ed:border-line ed:rounded ed:text-xs';
 
 const Row = ({ children }: { children: ReactNode }) => <div className={rowCls}>{children}</div>;
-
-// Live-commit field state: controlled local text that commits on every valid
-// keystroke (preview updates immediately, not on blur), and resyncs from the
-// external `value` only while UNFOCUSED (external edit / undo / item switch) so
-// typing never fights the caret and a no-op commit reverts cleanly on blur.
-function useLiveField(external: string) {
-  const [text, setText] = useState<string>(external);
-  const focused = useRef(false);
-  useEffect(() => {
-    if (!focused.current) setText(external);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [external]);
-  return {
-    text,
-    setText,
-    onFocus: () => (focused.current = true),
-    onBlur: () => {
-      focused.current = false;
-      setText(external);
-    },
-  };
-}
 
 function NumberField({ lbl, value, step = 1, min, max, onCommit, disabled, title }: { lbl: string; value: number | undefined; step?: number; min?: number; max?: number; onCommit: (n: number) => void; disabled?: boolean; title?: string }) {
   const f = useLiveField(value === undefined ? '' : String(value));
