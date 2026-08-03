@@ -19,6 +19,42 @@ describe('ScrubField', () => {
     fireEvent.change(screen.getByLabelText('Zoom'), { target: { value: 'abc' } });
     expect(onCommit).not.toHaveBeenCalled();
   });
+
+  // Exercises the drag gesture itself (pointerdown/move/up on the label) —
+  // the whole reason `scrubValue` exists. jsdom has no `setPointerCapture`,
+  // which is why the component optional-calls it rather than relying on it.
+  it('commits scrubbed values as the label is dragged', () => {
+    const onCommit = vi.fn();
+    render(<ScrubField lbl="Zoom" value={1} step={0.05} onCommit={onCommit} />);
+    const label = screen.getByText('Zoom');
+    fireEvent.pointerDown(label, { clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(label, { clientX: 108, pointerId: 1 });
+    expect(onCommit).toHaveBeenCalledWith(1.1);
+    fireEvent.pointerUp(label, { clientX: 108, pointerId: 1 });
+  });
+
+  it('a press-and-release with zero travel commits nothing', () => {
+    const onCommit = vi.fn();
+    render(<ScrubField lbl="Zoom" value={1} step={0.05} onCommit={onCommit} />);
+    const label = screen.getByText('Zoom');
+    fireEvent.pointerDown(label, { clientX: 100, pointerId: 1 });
+    fireEvent.pointerUp(label, { clientX: 100, pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('does not strand the field in drag mode after pointer-up', () => {
+    const onCommit = vi.fn();
+    render(<ScrubField lbl="Zoom" value={1} step={0.05} onCommit={onCommit} />);
+    const label = screen.getByText('Zoom');
+    fireEvent.pointerDown(label, { clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(label, { clientX: 108, pointerId: 1 });
+    fireEvent.pointerUp(label, { clientX: 108, pointerId: 1 });
+    onCommit.mockClear();
+    // A stray pointermove after release (no button held) must not commit —
+    // this is exactly the "stranded in drag mode" regression fix 2 guards.
+    fireEvent.pointerMove(label, { clientX: 200, pointerId: 1 });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
 });
 
 describe('SliderField', () => {
