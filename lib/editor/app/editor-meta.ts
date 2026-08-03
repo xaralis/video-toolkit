@@ -17,6 +17,7 @@ import type { CompositionTheme } from '../../theming/types';
 import { overlayRegistry } from '../../theming/brand-theme';
 import { isReservedEffectType, CORE_STYLE_EFFECT_TYPES, resolveStyleEffectRenderer } from '../../theming/effects';
 import { registrationParams, type ParamField } from '../../theming/registry';
+import { ACCENT_HUE, HUE_GUARD, ARC } from './lane-colors';
 
 /** One declared, editable parameter inside an opaque bag (`props`, effect
  *  params) — and, since Phase 4 Task 1.1, the SAME descriptor the transition
@@ -252,19 +253,37 @@ export function humanizeKey(key: string): string {
 
 /** A deterministic, muted block colour for a lane item core has no colour for.
  *  Same seed → same colour, so an unknown brand kind is at least consistently
- *  distinguishable instead of all-grey.
+ *  distinguishable instead of all-grey — and, since the accent repaint, one
+ *  that still holds the palette: the hue is confined to the same arc as
+ *  `CORE_LANE_COLOR` (`lane-colors.ts`), so an unlisted brand kind never lands
+ *  on the accent hue or outside the family of blues the accent belongs to.
  *
  *  Hue alone is not enough. The old version was `hue = hash % 360` at a fixed
  *  S/L, and with the ~dozen lane kinds a real brand actually has, two of them
- *  landing within a few degrees is likely rather than unlucky — `overlay-chevron`
- *  and `overlay-lottie` came out 6° apart and read as one colour. So: the hash
- *  is avalanched first (the plain `*31` accumulator has almost no low-bit
- *  mixing, which is what made neighbouring seeds land near each other), and
- *  saturation and lightness are two further axes, driven by independent bits of
- *  the mixed hash. Near-identical hues then still separate by weight.
- *  `stableColor.test` asserts a minimum separation over the real kind set. */
-const SATURATIONS = [34, 42, 50];
-const LIGHTNESSES = [28, 36, 44, 52];
+ *  landing within a few degrees was likely rather than unlucky — `overlay-chevron`
+ *  and `overlay-lottie` came out 6° apart and read as one colour. Confining hue
+ *  to the arc makes that WORSE by construction (43° of usable hue, not 360° —
+ *  see `hueInArc` below), so saturation and lightness now carry most of the
+ *  separation, not just a tie-break: each is looked up from an independent
+ *  `mix32` round (a distinct XOR salt per axis, not three bit-windows of one
+ *  round) so that two seeds which happen to collide in one axis don't also
+ *  collide in the other two. `stableColor.test` asserts a minimum RGB-space
+ *  separation over the real kind set. */
+const SATURATIONS = [28, 40, 52, 64, 76];
+const LIGHTNESSES = [22, 32, 42, 52, 62, 72];
+
+// The usable hue span is the arc minus the guard band around the accent.
+// Mapping into it (rather than modulo 360) is what keeps a brand's unknown
+// lane kind inside the palette instead of clashing with it.
+const GUARD_LO = ACCENT_HUE - HUE_GUARD;
+const GUARD_HI = ACCENT_HUE + HUE_GUARD;
+const USABLE = ARC[1] - ARC[0] - (Math.min(GUARD_HI, ARC[1]) - Math.max(GUARD_LO, ARC[0]));
+
+function hueInArc(mixed: number): number {
+  const t = (mixed >>> 8) % Math.round(USABLE);
+  const h = ARC[0] + t;
+  return h >= GUARD_LO ? h + (GUARD_HI - GUARD_LO) : h;
+}
 
 /** murmur3 fmix32 — avalanche, so one changed input char moves every output bit. */
 function mix32(x: number): number {
@@ -277,12 +296,20 @@ function mix32(x: number): number {
   return h >>> 0;
 }
 
+// Independent salts (not shared with mix32's own internal constants) so the
+// hue/saturation/lightness draws are three separate avalanched values rather
+// than three bit-windows of one — windows of a single round can and did
+// coincide across all three axes for real seed pairs (found empirically while
+// widening the arrays below).
+const HUE_SALT = 0x9e3779b9;
+const SAT_SALT = 0x27d4eb2f;
+const LIGHT_SALT = 0xcafebabe;
+
 export function stableColor(seed: string): string {
   let h = 0;
   for (let i = 0; i < seed.length; i += 1) h = (Math.imul(h, 31) + seed.charCodeAt(i)) >>> 0;
-  const m = mix32(h);
-  const hue = m % 360;
-  const sat = SATURATIONS[(m >>> 20) % SATURATIONS.length];
-  const light = LIGHTNESSES[(m >>> 12) % LIGHTNESSES.length];
+  const hue = hueInArc(mix32(h ^ HUE_SALT));
+  const sat = SATURATIONS[mix32(h ^ SAT_SALT) % SATURATIONS.length];
+  const light = LIGHTNESSES[mix32(h ^ LIGHT_SALT) % LIGHTNESSES.length];
   return `hsl(${hue}, ${sat}%, ${light}%)`;
 }

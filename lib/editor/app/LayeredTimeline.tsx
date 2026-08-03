@@ -24,6 +24,7 @@ import { computeMusicEnvelope } from '@video-toolkit/lib/reel-config-base/music-
 import { resolveMediaSource, type MediaRole } from '@video-toolkit/lib/theming/media-source';
 import { humanizeKey, stableColor, type EditorMeta } from './editor-meta';
 import { handleRoomFrames, boundaryState, starvationMessage, type HandleRoom } from '@video-toolkit/lib/reel-config-base/handle-room';
+import { EDITOR_ACCENT } from '../host/ui';
 
 // Media paths go through core's ONE rule (lib/theming/media-source.ts) — the
 // same one SegmentMedia and the audio track use — rather than a third private
@@ -95,15 +96,33 @@ const LANE_LABELS: Record<LaneId, string> = {
 // core never enumerates them — an overlay (or any unlisted kind) gets a
 // deterministic colour derived from its effectId, and a host that wants a
 // specific one declares it in `meta.laneColors`.
-const CORE_LANE_COLOR: Record<string, string> = {
-  'video-clip': '#3b6ea5',
-  'video-broll': '#2f7d4f',
-  'video-photo': '#3f6a7d',
-  'video-multi-clip': '#6a4fa5',
-  'video-card': '#8a6d1f',
+//
+// Every hue here is drawn from the arc declared in `lane-colors.ts` (190-280,
+// at least 25deg from the accent hue 258) — see `lane-colors.test.ts`, which
+// asserts both rules over this exact map. `music` and `video-multi-clip` used
+// to sit almost exactly on the accent hue (a lane permanently "selected");
+// `video-broll` and `video-card` used to be an unrelated green/gold that
+// clashed with the rest.
+//
+// The accent-guard band eats most of the arc (258±25 covers 233-283, and the
+// arc tops out at 280), so the actually-usable hue span is ~43deg (190-233) —
+// not enough room to separate seven lanes on hue alone. Saturation and
+// lightness are varied deliberately per entry for that reason (chosen by
+// maximising the minimum pairwise "redmean" RGB distance — the same measure
+// `stableColor.test` uses — over muted, panel-appropriate S/L ranges); the
+// worst pair here (`video-card` vs `audio`) is ~66 apart, comfortably a "two
+// different colours" gap rather than the ~25 the old rainbow's worst pair
+// (`video-multi-clip` vs `audio`) had. Exported so the rules test (and
+// nothing else) can read it directly.
+export const CORE_LANE_COLOR: Record<string, string> = {
+  'video-clip': '#2c6777',
+  'video-broll': '#4d5c93',
+  'video-photo': '#4271b8',
+  'video-multi-clip': '#52828e',
+  'video-card': '#2d3f8f',
   'video-outro': '#4a4c54',
-  audio: '#2a8f8f',
-  music: '#7a5cae',
+  audio: '#304769',
+  music: '#4698b9',
   'brand-watermark': '#4a4c54',
   'brand-disclaimer': '#4a4c54',
 };
@@ -260,8 +279,10 @@ const GRIP_CSS = `
 
 // Video/audio block base look (position/height/layout/typography — every
 // constant part of the block's style). `background` (per-item colour),
-// `boxShadow` (selection ring) and `cursor` (slip affordance) stay inline —
-// see the getActionRender block below — because they vary per action.
+// `outline` (selection ring — the accent, never swapped into `background`,
+// which now carries lane identity) and `cursor` (slip affordance) stay
+// inline — see the getActionRender block below — because they vary per
+// action.
 const BLOCK_BASE_CLS =
   'ed:relative ed:h-full ed:flex ed:items-center ed:px-1.5 ed:rounded-[3px] ed:text-ink ed:font-sans ed:text-[11px] ed:overflow-hidden';
 
@@ -750,7 +771,10 @@ function LayeredTimelineImpl({
               return (
                 <div
                   className="ed:relative ed:h-full ed:flex ed:items-center ed:justify-center ed:px-1.5 ed:rounded-full ed:bg-transition-marker ed:text-transition-marker-ink ed:font-sans ed:text-[10px] ed:overflow-hidden"
-                  style={{ boxShadow: action.selected ? 'inset 0 0 0 2px var(--ed-color-ink)' : undefined }}
+                  style={{
+                    outline: action.selected ? `2px solid ${EDITOR_ACCENT}` : undefined,
+                    outlineOffset: -2,
+                  }}
                   title={starved ? diagnostics.find((d) => d.targetId === action.id)!.message : action.id}
                 >
                   {/* Same hatch vocabulary as a muted trim grip ("nothing more to
@@ -783,7 +807,8 @@ function LayeredTimelineImpl({
                 className={`${BLOCK_BASE_CLS} ${action.id === activeActionId ? 'vt-block vt-block-active' : 'vt-block'}`}
                 style={{
                   background: blockColor(action, reel, meta),
-                  boxShadow: action.selected ? 'inset 0 0 0 2px var(--ed-color-ink)' : undefined,
+                  outline: action.selected ? `2px solid ${EDITOR_ACCENT}` : undefined,
+                  outlineOffset: -2,
                   cursor: slippable ? 'ew-resize' : undefined,
                 }}
                 title={action.id}

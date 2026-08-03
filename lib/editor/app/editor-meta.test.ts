@@ -68,6 +68,17 @@ describe('stableColor', () => {
 
   // `a !== b` passes vacuously on a 6° hue gap — two blocks that a user reads as
   // the same colour. Assert a real perceptual gap over the kinds a brand has.
+  //
+  // This used to measure hue distance only (plus a weighted add-on for S/L).
+  // That metric no longer fits: harmonising the lane palette with the accent
+  // (`lane-colors.ts`) confines `stableColor`'s hue to a ~43°-wide arc instead
+  // of the full 360°, by construction (see `hueInArc` in editor-meta.ts) — a
+  // hue-only measure would either fail for the right reason (the arc really is
+  // that narrow) or get lowered until it asserted nothing. So this compares
+  // actual rendered colour instead: convert each `hsl(...)` to RGB and take a
+  // perceptually-weighted Euclidean distance ("redmean", a well-known cheap
+  // stand-in for CIEDE2000 — weights R/B by how saturated red the pair is,
+  // since human eyes are more sensitive there, and always weights G highest).
   it('separates every pair of real lane kinds by a visible margin', () => {
     const kinds = [
       'overlay-chevron', 'overlay-lottie', 'overlay-update-badge', 'overlay-text',
@@ -75,21 +86,37 @@ describe('stableColor', () => {
       'overlay-party-logos', 'overlay-caption', 'overlay-legal', 'video-photo',
       'brand-watermark', 'overlay-ticker', 'overlay-cta', 'overlay-lower-third',
     ];
-    const parse = (seed: string) => {
+    const parseHsl = (seed: string) => {
       const m = /^hsl\((\d+), (\d+)%, (\d+)%\)$/.exec(stableColor(seed));
       expect(m, `stableColor(${seed}) shape`).not.toBeNull();
-      return { h: Number(m![1]), s: Number(m![2]), l: Number(m![3]) };
+      return { h: Number(m![1]), s: Number(m![2]) / 100, l: Number(m![3]) / 100 };
     };
-    const cols = kinds.map(parse);
-    // Weighted: 1° of hue is the cheapest unit of difference; a lightness step
-    // reads far stronger than a hue step, saturation in between.
-    const dist = (a: typeof cols[0], b: typeof cols[0]) => {
-      const dh = Math.min(Math.abs(a.h - b.h), 360 - Math.abs(a.h - b.h));
-      return dh + 4 * Math.abs(a.l - b.l) + 2 * Math.abs(a.s - b.s);
+    const hslToRgb = ({ h, s, l }: { h: number; s: number; l: number }) => {
+      const c = (1 - Math.abs(2 * l - 1)) * s;
+      const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+      const m = l - c / 2;
+      const [r, g, b] =
+        h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+      return { r: (r + m) * 255, g: (g + m) * 255, b: (b + m) * 255 };
     };
-    for (let i = 0; i < cols.length; i += 1) {
-      for (let j = i + 1; j < cols.length; j += 1) {
-        expect(dist(cols[i], cols[j]), `${kinds[i]} vs ${kinds[j]}`).toBeGreaterThanOrEqual(24);
+    const redmean = (a: ReturnType<typeof hslToRgb>, b: ReturnType<typeof hslToRgb>) => {
+      const rMean = (a.r + b.r) / 2;
+      const dr = a.r - b.r;
+      const dg = a.g - b.g;
+      const db = a.b - b.b;
+      return Math.sqrt((2 + rMean / 256) * dr * dr + 4 * dg * dg + (2 + (255 - rMean) / 256) * db * db);
+    };
+    const rgbs = kinds.map((k) => hslToRgb(parseHsl(k)));
+    // Empirically: the minimum pairwise redmean distance over exactly this 16-
+    // kind set, with the arrays/salts above, is ~41.7 (`overlay-text` vs
+    // `brand-watermark`). 30 keeps a real margin under that measured floor
+    // without asserting a number so tight that an unrelated array tweak flakes
+    // it — re-derive both the array/salts and this floor together if either
+    // changes, never lower this in isolation to make a regression pass.
+    const MIN_RGB_SEPARATION = 30;
+    for (let i = 0; i < rgbs.length; i += 1) {
+      for (let j = i + 1; j < rgbs.length; j += 1) {
+        expect(redmean(rgbs[i], rgbs[j]), `${kinds[i]} vs ${kinds[j]}`).toBeGreaterThanOrEqual(MIN_RGB_SEPARATION);
       }
     }
   });

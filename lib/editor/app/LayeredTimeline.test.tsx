@@ -67,8 +67,8 @@ describe('LayeredTimeline overlay labels', () => {
 
 describe('LayeredTimeline lane colours', () => {
   it('keeps a fixed colour for the kinds core\'s own schema defines', () => {
-    expect(colorFor('video-clip')).toBe('#3b6ea5');
-    expect(colorFor('audio')).toBe('#2a8f8f');
+    expect(colorFor('video-clip')).toBe('#2c6777');
+    expect(colorFor('audio')).toBe('#304769');
     expect(colorFor('brand-watermark')).toBe('#4a4c54');
   });
 
