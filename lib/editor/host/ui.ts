@@ -5,10 +5,6 @@
  *  `accentSlots`. */
 export const EDITOR_ACCENT = '#7c5cff';
 
-/** One button metric across the whole timeline toolbar. */
-export const BTN_H = 28;
-export const BTN_FONT = 12;
-
 /** A square icon button (zoom, transport). */
 export const zoomBtnClass =
   'ed:bg-control ed:text-ink ed:border ed:border-line ed:rounded ed:w-7 ed:h-7 ed:text-xs ed:leading-none ed:cursor-pointer ed:inline-flex ed:items-center ed:justify-center';

@@ -14,7 +14,7 @@ import type { AccentSlot } from '../../theming/palette';
 import type { LayeredReel } from '../../reel-config-base/layered-schema';
 import { framesForReel } from './host-duration';
 import { attachCropGestures, MAX_ZOOM, type CropGestureTarget } from './crop-gestures';
-import { BTN_FONT, EDITOR_ACCENT, toggleBtnClass, zoomBtnClass } from './ui';
+import { EDITOR_ACCENT, toggleBtnClass, zoomBtnClass } from './ui';
 import { MagnifierIcon, Timecode } from './toolbar';
 import { MediaLoadingOverlay, pendingSources } from './MediaLoading';
 
@@ -422,7 +422,8 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
                 type="button"
                 onClick={() => setScaleWidth(80)}
                 title="Reset zoom to 100%"
-                style={{ background: 'none', border: 'none', fontSize: BTN_FONT, color: '#9a9da5', minWidth: 44, textAlign: 'center', fontVariantNumeric: 'tabular-nums', cursor: 'pointer', padding: 0 }}
+                className="ed:text-xs ed:text-ink-3 ed:font-mono ed:tabular-nums"
+                style={{ background: 'none', border: 'none', minWidth: 44, textAlign: 'center', cursor: 'pointer', padding: 0 }}
               >
                 {Math.round((scaleWidth / 80) * 100)}%
               </button>
