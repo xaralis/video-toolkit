@@ -34,6 +34,15 @@ export function Waveform({ peaks, sourceInMs = 0, spanMs, color = 'rgba(255,255,
   const H = 100;
   const mid = H / 2;
   const step = W / count;
+  // Bar width follows the SPACING, so a short block and a long one read with the
+  // same weight. The viewBox is a fixed 1000 units wide however many peaks go
+  // into it, so a hard-coded strokeWidth makes density a function of block
+  // length: a 3s bed (step 8.3) drew hairlines covering ~12% of the width while
+  // a 54s music bed (step 0.46) drew overlapping strokes that merged into a
+  // solid mass. That difference reads as "the music is more visible" and no
+  // amount of opacity fixes it. 0.7 leaves a hairline gap between bars so the
+  // shape stays legible instead of becoming a filled block.
+  const barWidth = Math.max(0.6, step * 0.7);
   let d = '';
   for (let i = 0; i < count; i++) {
     const p = peaks[startIdx + i] ?? 0;
@@ -50,7 +59,7 @@ export function Waveform({ peaks, sourceInMs = 0, spanMs, color = 'rgba(255,255,
       preserveAspectRatio="none"
       style={{ position: 'absolute', height: '100%', pointerEvents: 'none', ...layout }}
     >
-      <path d={d} stroke={color} strokeWidth={1} fill="none" />
+      <path d={d} stroke={color} strokeWidth={barWidth} fill="none" />
     </svg>
   );
 }
