@@ -16,6 +16,7 @@ import { framesForReel } from './host-duration';
 import { attachCropGestures, MAX_ZOOM, type CropGestureTarget } from './crop-gestures';
 import { BTN_FONT, EDITOR_ACCENT, toggleBtn, zoomBtn } from './ui';
 import { MagnifierIcon, Timecode } from './toolbar';
+import { MediaLoadingOverlay, pendingSources } from './MediaLoading';
 
 export interface EditorHostOptions {
   /** The brand's composition, rendered in the preview Player. */
@@ -72,6 +73,12 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
     [reel],
   );
   const sourceDurations = useSourceDurations(videoUrls);
+  // Media readiness, for the preview's loading indicator. The probe count is the
+  // startup case (the editor opens before any video element has data, so the
+  // preview would otherwise just be black); `buffering` is the Player's own
+  // waiting/resume pair, for a seek into media the browser has not fetched.
+  const pendingMedia = pendingSources(videoUrls, sourceDurations).length;
+  const [buffering, setBuffering] = useState(false);
   const handleSelect = useCallback((id: string | null) => setSelectedId((cur) => (cur === id ? null : id)), []);
   // Focus/Zoom is per-clip — switching selection turns it back off.
   useEffect(() => setShowFocus(false), [selectedId]);
@@ -237,6 +244,20 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   // null (loading screen) so previewRef isn't mounted yet — a bare [] effect
   // would attach nothing and never retry. Keyed on mount so it attaches then.
   const previewMounted = reel !== null;
+  // Same mount key as the crop gestures below, and for the same reason: on the
+  // first render `reel` is null, so there is no Player to subscribe to yet.
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player) return;
+    const wait = () => setBuffering(true);
+    const resume = () => setBuffering(false);
+    player.addEventListener('waiting', wait);
+    player.addEventListener('resume', resume);
+    return () => {
+      player.removeEventListener('waiting', wait);
+      player.removeEventListener('resume', resume);
+    };
+  }, [previewMounted]);
   useEffect(() => {
     const el = previewRef.current;
     if (!el) return;
@@ -257,7 +278,16 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
     });
   }, [previewMounted]);
 
-  if (!reel) return <div style={{ padding: 24, color: '#9a9a95' }}>loading…</div>;
+  // Before /props answers there is no reel and so no shell at all. Same
+  // vocabulary as the preview's own indicator, so the two stages of startup read
+  // as one thing rather than two unrelated screens.
+  if (!reel) {
+    return (
+      <div style={{ position: 'relative', width: '100vw', height: '100vh', background: '#161719' }}>
+        <MediaLoadingOverlay loaded={0} total={0} buffering label="Loading project…" />
+      </div>
+    );
+  }
 
   const durationInFrames = framesForReel(reel, fps);
   const hasGuides = Boolean(reel.meta.guidesMs?.length);
@@ -287,6 +317,11 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
             compositionHeight={height}
             fps={fps}
             style={{ width: '100%' }}
+          />
+          <MediaLoadingOverlay
+            loaded={videoUrls.length - pendingMedia}
+            total={videoUrls.length}
+            buffering={buffering}
           />
           {(selVideo?.kind === 'clip' || selVideo?.kind === 'broll') && (
             <>
