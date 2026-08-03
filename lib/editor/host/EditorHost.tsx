@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType }
 import { Player } from '@remotion/player';
 import type { PlayerRef } from '@remotion/player';
 import { EditorShell } from '../app/EditorShell';
-import { LayeredTimeline, videoUrl, type Diagnostic } from '../app/LayeredTimeline';
+import { LayeredTimeline, videoUrl, type Diagnostic, type LayeredTimelineHandle } from '../app/LayeredTimeline';
 import { DiagnosticsBadge } from '../app/Diagnostics';
 import { LayeredInspector } from '../app/LayeredInspector';
 import { RenderButton } from '../app/RenderButton';
@@ -60,6 +60,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   const [helpOpen, setHelpOpen] = useState(false);
   const playerRef = useRef<PlayerRef>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+  const timelineRef = useRef<LayeredTimelineHandle>(null);
 
   // Stable across playback re-renders so the Player + memoized timeline don't churn.
   const inputProps = useMemo(() => ({ reel }), [reel]);
@@ -299,8 +300,11 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
     toEnd: () => playerRef.current?.seekTo(Math.max(0, durationInFrames - 1)),
     split: handleSplit,
     duplicate: handleDuplicate,
-    zoomIn: () => zoomBy(1.25),
-    zoomOut: () => zoomBy(1 / 1.25),
+    // No cursor to anchor a keyboard zoom on, so the viewport centre stands
+    // in for it — captured synchronously, before scaleWidth changes, via the
+    // timeline's own imperative hook (see LayeredTimelineHandle).
+    zoomIn: () => { timelineRef.current?.zoomAtCenter(1.25); zoomBy(1.25); },
+    zoomOut: () => { timelineRef.current?.zoomAtCenter(1 / 1.25); zoomBy(1 / 1.25); },
     save: () => !saving && handleSave(),
     help: () => setHelpOpen((v) => !v),
   };
@@ -469,6 +473,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
             </div>
             <div style={{ flex: '1 1 auto', minHeight: 0 }}>
               <LayeredTimeline
+                ref={timelineRef}
                 reel={reel}
                 onChange={setReel}
                 selectedId={selectedId}

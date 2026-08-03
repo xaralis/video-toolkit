@@ -1,5 +1,5 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import type { RefObject, CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
+import { forwardRef, memo, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { ForwardedRef, RefObject, CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import { Timeline, type TimelineState } from '@xzdarcy/react-timeline-editor';
 import type { TimelineRow, TimelineAction, TimelineEffect } from '@xzdarcy/timeline-engine';
 import '@xzdarcy/react-timeline-editor/dist/react-timeline-editor.css';
@@ -227,7 +227,7 @@ export function zoomFactorFor(deltaY: number, deltaMode = 0): number {
 }
 
 // xzdarcy's `startLeft`: the px gap between the timeline's left edge and time 0.
-const TIMELINE_START_LEFT = 12;
+export const TIMELINE_START_LEFT = 12;
 
 // How far the playhead may sit from a viewport edge before the timeline scrolls
 // to follow it (px). Small enough that a seek just outside the view scrolls, big
@@ -260,6 +260,25 @@ export function followScrollLeft(
   const max = Math.max(0, scrollWidth - clientWidth);
   const next = Math.min(max, Math.max(0, Math.round(cursorX - rest)));
   return next === scrollLeft ? null : next;
+}
+
+/** Where to scroll so a zoom keeps the content under `anchorX` in place.
+ *
+ *  Without this the timeline grows around its LEFT EDGE, so the playhead
+ *  slides out of view on every zoom step and has to be chased with a scroll.
+ *
+ *  Pure so the invariant is testable — jsdom runs no layout, so the effect
+ *  that APPLIES this (see the layout effect keyed on `scaleWidth`) is a
+ *  hand-verification item, not something a unit test can pin. */
+export function zoomAnchorScrollLeft(
+  anchorX: number,
+  view: { scrollLeft: number; scrollWidth: number; clientWidth: number },
+  factor: number,
+): number {
+  const offset = anchorX - TIMELINE_START_LEFT;
+  const content = view.scrollLeft + offset;
+  const max = Math.max(0, view.scrollWidth * factor - view.clientWidth);
+  return Math.min(max, Math.max(0, content * factor - offset));
 }
 
 // The trim handles are xzdarcy's own invisible stretch zones; these grips are a
@@ -404,6 +423,17 @@ export interface LayeredTimelineProps {
   onDiagnostics?: (d: Diagnostic[]) => void;
 }
 
+/** Imperative escape hatch for a zoom that has no pointer to anchor on — the
+ *  toolbar buttons and keyboard shortcuts, which change `scaleWidth` from
+ *  OUTSIDE this component. `zoomAtCenter` captures the CURRENT (pre-zoom)
+ *  geometry synchronously, before the caller applies the scale change, and
+ *  feeds it into the exact same `pendingZoom` → layout-effect path the wheel
+ *  handler uses below — no second code path for applying an anchor, only a
+ *  second way of capturing one. */
+export interface LayeredTimelineHandle {
+  zoomAtCenter: (factor: number) => void;
+}
+
 function LayeredTimelineImpl({
   reel,
   onChange,
@@ -420,7 +450,7 @@ function LayeredTimelineImpl({
   snapToBeats = false,
   meta,
   onDiagnostics,
-}: LayeredTimelineProps) {
+}: LayeredTimelineProps, ref: ForwardedRef<LayeredTimelineHandle>) {
   const stateRef = useRef<TimelineState>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const guidesRef = useRef<HTMLDivElement>(null);
@@ -430,6 +460,19 @@ function LayeredTimelineImpl({
   // clamp stays honest at the edges. History coalesces the stream of commits
   // into one undo step (useHistory.ts:5-8).
   const slipRef = useRef<{ id: string; x0: number; base: LayeredReel } | null>(null);
+
+  // The anchor a pending zoom must preserve, captured in the wheel handler
+  // below and consumed by the layout effect keyed on `scaleWidth` further
+  // down. NOT applied in the handler itself: `scaleWidth` lives in the host,
+  // so a scroll write in that same tick would be clamped against the OLD
+  // scrollWidth (the DOM hasn't re-laid-out yet) — which looks exactly like
+  // the drift this is fixing. `view` is the PRE-zoom geometry — the effect
+  // must use it as captured, not re-measure, or the zoom gets applied twice.
+  const pendingZoom = useRef<{
+    anchorX: number;
+    factor: number;
+    view: { scrollLeft: number; scrollWidth: number; clientWidth: number };
+  } | null>(null);
 
   // Alt held → slippable clips show they can be slipped. Window-level because
   // the key may be pressed before the pointer enters a block. `blur` clears it:
@@ -461,7 +504,23 @@ function LayeredTimelineImpl({
       if (!(e.metaKey || e.ctrlKey)) return;
       e.preventDefault();
       const f = zoomFactorFor(e.deltaY, e.deltaMode);
-      if (f !== 1) onZoomRef.current?.(f);
+      if (f === 1) return;
+      // Capture the PRE-zoom geometry now, synchronously, before onZoom (below)
+      // changes `scaleWidth` and the browser re-lays the timeline out at the
+      // new scale. The layout effect that consumes this (keyed on
+      // `scaleWidth`, further down) runs AFTER that re-layout, so it must use
+      // this captured view rather than re-measuring — re-measuring there would
+      // read the NEW scrollWidth and apply the zoom a second time.
+      const scrollTarget = scrollEl();
+      if (scrollTarget) {
+        const rect = scrollTarget.getBoundingClientRect();
+        pendingZoom.current = {
+          anchorX: e.clientX - rect.left,
+          factor: f,
+          view: { scrollLeft: scrollTarget.scrollLeft, scrollWidth: scrollTarget.scrollWidth, clientWidth: scrollTarget.clientWidth },
+        };
+      }
+      onZoomRef.current?.(f);
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
@@ -604,6 +663,36 @@ function LayeredTimelineImpl({
     scrollElRef.current = root?.querySelector<HTMLElement>('.timeline-editor-edit-area .ReactVirtualized__Grid') ?? null;
     return scrollElRef.current;
   };
+
+  // The zoom-buttons/keyboard-shortcut escape hatch (see LayeredTimelineHandle
+  // above the props interface). No cursor to anchor on, so the centre of the
+  // viewport stands in for it — captured here, synchronously, the same way
+  // the wheel handler captures a pointer position, and fed into the SAME
+  // pendingZoom + layout-effect path below.
+  useImperativeHandle(ref, () => ({
+    zoomAtCenter: (factor: number) => {
+      const el = scrollEl();
+      if (!el) return;
+      pendingZoom.current = {
+        anchorX: el.clientWidth / 2,
+        factor,
+        view: { scrollLeft: el.scrollLeft, scrollWidth: el.scrollWidth, clientWidth: el.clientWidth },
+      };
+    },
+  }), []);
+
+  // Applies a pending zoom's anchor once the DOM has re-laid-out at the new
+  // scale — keyed on `scaleWidth` because that is the value whose change
+  // means the layout has actually moved. `pendingZoom` was captured BEFORE
+  // that layout happened (wheel handler above, or `zoomAtCenter`), so this
+  // reads the captured view rather than re-measuring `scrollEl()` here, which
+  // by now reflects the NEW scale and would double-apply the zoom.
+  useLayoutEffect(() => {
+    const p = pendingZoom.current;
+    pendingZoom.current = null;
+    if (!p) return;
+    stateRef.current?.setScrollLeft(zoomAnchorScrollLeft(p.anchorX, p.view, p.factor));
+  }, [scaleWidth]);
 
   // Keep the playhead in view. Without this a seek (⏮/⏭, a jump, or playback
   // running off the right edge) moves the cursor while the timeline stays where
@@ -989,4 +1078,4 @@ function LayeredTimelineImpl({
 // Memoized: during playback the parent re-renders every frame (timecode), but
 // the timeline's props are stable (reel changes only on edit), so it skips
 // those re-renders and updates its cursor imperatively instead.
-export const LayeredTimeline = memo(LayeredTimelineImpl);
+export const LayeredTimeline = memo(forwardRef(LayeredTimelineImpl));

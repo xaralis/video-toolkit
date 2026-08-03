@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
-import { LayeredTimeline, colorFor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics, zoomFactorFor, followScrollLeft } from './LayeredTimeline';
+import { LayeredTimeline, colorFor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics, zoomFactorFor, followScrollLeft, zoomAnchorScrollLeft, TIMELINE_START_LEFT } from './LayeredTimeline';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
 const reel: LayeredReel = {
@@ -237,6 +237,47 @@ describe('followScrollLeft — keeping the playhead in view', () => {
 
   it('does nothing when the viewport has not been laid out yet', () => {
     expect(followScrollLeft(500, { scrollLeft: 0, clientWidth: 0, scrollWidth: 0 })).toBeNull();
+  });
+});
+
+describe('zoomAnchorScrollLeft', () => {
+  const view = { scrollLeft: 400, scrollWidth: 4000, clientWidth: 800 };
+
+  // The whole contract: what was under the pointer stays under the pointer.
+  it('keeps the content under the anchor fixed', () => {
+    for (const factor of [1.25, 2, 0.8, 0.5]) {
+      for (const anchorX of [100, 400, 700]) {
+        // (factor 0.5, anchor 700) asks for scrollLeft -144 to hold the anchor
+        // exactly — impossible, since the reel start can't scroll further
+        // left. That clamp is real and intentional (pinned on its own by
+        // "never returns a negative scroll position" below); it is not a
+        // bug in the formula, so this one combination is excluded from the
+        // "no clamp fires" invariant rather than weakened for every case.
+        if (factor === 0.5 && anchorX === 700) continue;
+        const next = zoomAnchorScrollLeft(anchorX, view, factor);
+        const before = view.scrollLeft + anchorX - TIMELINE_START_LEFT;
+        const after = next + anchorX - TIMELINE_START_LEFT;
+        expect(after / before, `factor ${factor} anchor ${anchorX}`).toBeCloseTo(factor, 4);
+      }
+    }
+  });
+
+  it('never returns a negative scroll position', () => {
+    expect(zoomAnchorScrollLeft(700, { scrollLeft: 0, scrollWidth: 4000, clientWidth: 800 }, 0.25)).toBeGreaterThanOrEqual(0);
+  });
+
+  it('never scrolls past the new maximum', () => {
+    const factor = 2;
+    const next = zoomAnchorScrollLeft(700, view, factor);
+    expect(next).toBeLessThanOrEqual(view.scrollWidth * factor - view.clientWidth);
+  });
+
+  it('is a no-op at factor 1', () => {
+    expect(zoomAnchorScrollLeft(400, view, 1)).toBe(view.scrollLeft);
+  });
+
+  it('does not divide by zero on an unmeasured viewport', () => {
+    expect(Number.isFinite(zoomAnchorScrollLeft(0, { scrollLeft: 0, scrollWidth: 0, clientWidth: 0 }, 2))).toBe(true);
   });
 });
 
