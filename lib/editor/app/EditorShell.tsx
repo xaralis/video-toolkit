@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
-import styles from './EditorShell.module.css';
+import './editor.css';
 
 // Clean curved undo/redo glyphs (Lucide undo-2 / redo-2) — the bare ↶/↷ unicode
 // arrows render inconsistently across platforms.
@@ -103,47 +103,71 @@ export function EditorShell({
   }, [onSave, saving]);
 
   return (
-    <div className={styles.shell}>
+    <div className="ed:flex ed:flex-col ed:h-screen ed:bg-shell ed:text-ink ed:font-sans">
       {/* Global reset so the editor fills the viewport with no white page frame.
           Templates that ship their own global.css already do this; templates
           without one relied on the browser default body
           margin, which showed as a white border around the UI. */}
-      <style>{`html, body, #root { height: 100%; margin: 0; } body { background: #0a0a0a; }`}</style>
-      <header className={styles.header}>
+      <style>{`html, body, #root { height: 100%; margin: 0; } body { background: var(--ed-color-stage); }`}</style>
+      <header className="ed:flex ed:items-center ed:justify-between ed:px-5 ed:py-3 ed:bg-panel ed:border-b ed:border-line ed:shrink-0">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span className={styles.projectName}>{projectName}</span>
+          <span className="ed:text-sm ed:font-semibold ed:text-ink">{projectName}</span>
           {diagnostics}
         </div>
-        <div className={styles.saveGroup}>
+        <div className="ed:flex ed:items-center ed:gap-3">
           {renderControls && (
             <>
               {renderControls}
-              <span className={styles.divider} />
+              <span className="ed:w-px ed:h-[22px] ed:bg-line ed:mx-0.5" />
             </>
           )}
           {(onUndo || onRedo) && (
             <>
-              <button type="button" className={styles.iconButton} onClick={onUndo} disabled={!canUndo} title="Undo (⌘Z)">
+              <button
+                type="button"
+                className="ed:inline-flex ed:items-center ed:gap-1.5 ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:px-3 ed:py-[7px] ed:text-[13px] ed:cursor-pointer ed:hover:not-disabled:text-ink ed:disabled:opacity-40 ed:disabled:cursor-default"
+                onClick={onUndo}
+                disabled={!canUndo}
+                title="Undo (⌘Z)"
+              >
                 <UndoIcon /> Undo
               </button>
-              <button type="button" className={styles.iconButton} onClick={onRedo} disabled={!canRedo} title="Redo (⌘⇧Z)">
+              <button
+                type="button"
+                className="ed:inline-flex ed:items-center ed:gap-1.5 ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:px-3 ed:py-[7px] ed:text-[13px] ed:cursor-pointer ed:hover:not-disabled:text-ink ed:disabled:opacity-40 ed:disabled:cursor-default"
+                onClick={onRedo}
+                disabled={!canRedo}
+                title="Redo (⌘⇧Z)"
+              >
                 <RedoIcon /> Redo
               </button>
-              <span className={styles.divider} />
+              <span className="ed:w-px ed:h-[22px] ed:bg-line ed:mx-0.5" />
             </>
           )}
           {/* Always occupies its space (visibility, not conditional render) so
               toggling dirty never shifts the Save/Discard buttons. */}
-          <span className={styles.unsavedIndicator} style={{ visibility: dirty ? 'visible' : 'hidden' }}>
+          <span
+            className="ed:text-xs ed:font-medium ed:text-warn"
+            style={{ visibility: dirty ? 'visible' : 'hidden' }}
+          >
             ● Unsaved
           </span>
           {/* Save + Discard are always present; both disable when there's nothing to save. */}
-          <button type="button" className={styles.discardButton} onClick={onDiscard} disabled={!dirty || saving}>
+          <button
+            type="button"
+            className="ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:px-[14px] ed:py-2 ed:text-[13px] ed:cursor-pointer ed:hover:border-ink-3 ed:hover:text-ink ed:disabled:opacity-45 ed:disabled:cursor-default"
+            onClick={onDiscard}
+            disabled={!dirty || saving}
+          >
             Discard
           </button>
           <button
             type="button"
-            className={dirty ? styles.saveButton : `${styles.saveButton} ${styles.saveButtonClean}`}
+            className={
+              dirty
+                ? 'ed:bg-accent ed:text-accent-ink ed:border-0 ed:rounded-md ed:px-[18px] ed:py-2 ed:text-[13px] ed:font-semibold ed:cursor-pointer ed:disabled:bg-control ed:disabled:text-ink-3 ed:disabled:cursor-default'
+                : 'ed:bg-accent ed:text-accent-ink ed:border-0 ed:rounded-md ed:px-[18px] ed:py-2 ed:text-[13px] ed:font-semibold ed:cursor-pointer ed:disabled:bg-control ed:disabled:text-ink-3 ed:disabled:cursor-default ed:bg-control ed:text-ink-3 ed:cursor-default'
+            }
             onClick={onSave}
             disabled={!dirty || saving}
           >
@@ -152,14 +176,24 @@ export function EditorShell({
         </div>
       </header>
 
-      <div className={styles.main}>
-        <div className={styles.stage}>
-          <div className={styles.stageFrame} style={{ aspectRatio }}>{preview}</div>
+      <div className="ed:flex ed:flex-1 ed:min-h-0">
+        <div className="ed:flex ed:items-center ed:justify-center ed:flex-1 ed:min-w-0 ed:bg-stage ed:p-6">
+          <div
+            data-testid="stage-frame"
+            className="ed:h-full ed:max-w-full ed:bg-black ed:overflow-hidden ed:rounded ed:shadow-[0_0_0_1px_var(--ed-color-line)]"
+            style={{ aspectRatio }}
+          >
+            {preview}
+          </div>
         </div>
-        <div className={styles.inspector}>{inspector ?? 'Inspector (coming soon)'}</div>
+        <div className="ed:w-80 ed:shrink-0 ed:bg-panel ed:border-l ed:border-line ed:overflow-hidden ed:text-ink-3 ed:text-[13px]">
+          {inspector ?? 'Inspector (coming soon)'}
+        </div>
       </div>
 
-      <div className={styles.timeline}>{timeline ?? 'Timeline (coming soon)'}</div>
+      <div className="ed:h-[300px] ed:shrink-0 ed:bg-panel ed:border-t ed:border-line ed:flex ed:items-center ed:justify-center ed:text-ink-3 ed:text-[13px]">
+        {timeline ?? 'Timeline (coming soon)'}
+      </div>
     </div>
   );
 }

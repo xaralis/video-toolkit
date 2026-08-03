@@ -3,17 +3,6 @@
 @source "./**/*.tsx";
 @source "../host/**/*.tsx";
 
-/* TEMPORARY scaffolding, unlike `static` below. No template consumes an
- * `ed:` class yet (later tasks convert the shell/inspector/timeline to
- * utilities), and with zero real consumers Tailwind emits zero `ed:`
- * utility classes at all — a pipeline that looks wired up but produces
- * nothing to apply. Safelist the two utilities the interface names
- * explicitly (the accent color, the mono font) so the pipeline is provably
- * live today; delete these two lines once a real consumer references
- * `ed:` classes directly. */
-@source inline("ed:bg-accent");
-@source inline("ed:font-mono");
-
 /* PERMANENT — keep `static` even after later tasks give every token a real
  * utility consumer. Not every token is read through a scanned Tailwind
  * utility: a later task keeps GRIP_CSS in LayeredTimeline.tsx as
