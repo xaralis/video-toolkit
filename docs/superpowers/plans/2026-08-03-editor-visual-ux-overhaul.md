@@ -56,7 +56,18 @@
 > not the token names.
 >
 > The window closes at the end of this phase: Task 5 deletes the last two
-> `*.module.css` files, after which nothing unlayered competes.
+> `*.module.css` files.
+>
+> **Corrected after Task 5's review — do not read the line above as "nothing
+> unlayered competes any more".** Deleting the modules closes the
+> *module-shaped* instance of the hazard, not the hazard itself. Two unlayered
+> stylesheets remain and genuinely compete: the vendor
+> `@xzdarcy/react-timeline-editor` CSS (which styles `.timeline-editor` on the
+> very node `LayeredTimeline` puts a `style` prop on), and `GRIP_CSS`, injected
+> through a `<style>` element on purpose because it targets a third-party class
+> no React element here renders. Where a vendor rule competes, the answer is an
+> **inline style holding a `var(--ed-color-*)`** — inline still wins, and stays
+> tokenised. A utility class there would lose silently.
 >
 > ### Token semantics: `ink-2` is for content, `ink-3` is for hints
 >
