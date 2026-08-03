@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import type { RefObject, CSSProperties } from 'react';
+import type { RefObject, CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import { Timeline, type TimelineState } from '@xzdarcy/react-timeline-editor';
 import type { TimelineRow, TimelineAction, TimelineEffect } from '@xzdarcy/timeline-engine';
 import '@xzdarcy/react-timeline-editor/dist/react-timeline-editor.css';
@@ -11,6 +11,7 @@ import {
   parseActionId,
   resizeBoundsMs,
   laneOfRow,
+  slipVideoItem,
   type LaneId,
 } from '../src/timeline/layered-adapter';
 import { stripAccents } from './accent';
@@ -129,6 +130,15 @@ function gripState(
     left: item.sourceInMs <= 0,
     right: footageCapMs !== undefined && item.sourceOutMs >= footageCapMs - 1,
   };
+}
+
+// px dragged → ms of source shift. NEGATED: dragging right pulls the media right
+// inside a fixed window, so what precedes it slides into view (sourceInMs falls).
+// Matches Premiere/Resolve. `scaleWidth` is px per second.
+// `|| 0` normalizes the `-0` that `-(0 / scaleWidth) * 1000` produces for
+// dxPx===0 back to `+0` — Object.is (and so `toBe(0)`) treats them as unequal.
+export function slipDeltaMs(dxPx: number, scaleWidth: number): number {
+  return -(dxPx / scaleWidth) * 1000 || 0;
 }
 
 // The trim handles are xzdarcy's own invisible stretch zones; these grips are a
@@ -272,6 +282,11 @@ function LayeredTimelineImpl({
   const listRef = useRef<HTMLDivElement>(null);
   const guidesRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  // An in-flight slip. `base` is the reel as it was when the gesture STARTED, so
+  // every move re-derives from it rather than accumulating — no drift, and the
+  // clamp stays honest at the edges. History coalesces the stream of commits
+  // into one undo step (useHistory.ts:5-8).
+  const slipRef = useRef<{ id: string; x0: number; base: LayeredReel } | null>(null);
 
   // ⌘/Ctrl + wheel (and trackpad pinch, which macOS delivers as ctrl+wheel) zooms
   // the timeline. Attached non-passive so preventDefault stops the browser's own
@@ -413,6 +428,37 @@ function LayeredTimelineImpl({
       player.removeEventListener('seeked', onFrame);
     };
   }, [playerRef, fps]);
+
+  const beginSlip = (e: ReactPointerEvent<HTMLDivElement>, actionId: string) => {
+    if (!e.altKey) return;
+    const { lane, id } = parseActionId(actionId);
+    if (lane !== 'video') return;
+    const item = reel.tracks.video.find((v) => v.id === id);
+    if (!item || (item.kind !== 'clip' && item.kind !== 'broll')) return;
+    // Keep xzdarcy out: without this it starts its own move on the same press.
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    slipRef.current = { id, x0: e.clientX, base: reel };
+    // Feedback needs a live frame FROM THIS CLIP. If the playhead is already
+    // inside it, leave it — the user chose that reference frame.
+    const nowMs = ((playerRef.current?.getCurrentFrame() ?? 0) / fps) * 1000;
+    if (nowMs < item.startMs || nowMs >= item.endMs) {
+      playerRef.current?.seekTo(Math.round((item.startMs / 1000) * fps));
+    }
+  };
+
+  const moveSlip = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const s = slipRef.current;
+    if (!s) return;
+    onChange(slipVideoItem(s.base, s.id, slipDeltaMs(e.clientX - s.x0, scaleWidth), capMsById));
+  };
+
+  const endSlip = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!slipRef.current) return;
+    slipRef.current = null;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+  };
 
   return (
     <div
@@ -569,6 +615,10 @@ function LayeredTimelineImpl({
                   boxShadow: action.selected ? 'inset 0 0 0 2px #e8e8ea' : undefined,
                 }}
                 title={action.id}
+                onPointerDownCapture={(e) => beginSlip(e, action.id)}
+                onPointerMove={moveSlip}
+                onPointerUp={endSlip}
+                onPointerCancel={endSlip}
               >
                 {(() => {
                   // Trim grips on every resizable block (overlays, video, audio —

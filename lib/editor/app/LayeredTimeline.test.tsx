@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
-import { LayeredTimeline, colorFor, timelineLabel, audioUrl, videoUrl } from './LayeredTimeline';
+import { LayeredTimeline, colorFor, timelineLabel, audioUrl, videoUrl, slipDeltaMs } from './LayeredTimeline';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
 const reel: LayeredReel = {
@@ -119,5 +119,26 @@ describe('LayeredTimeline media URLs', () => {
     expect(videoUrl({ kind: 'photo', source: 'a.jpg' })).toBeNull();
     expect(videoUrl({ kind: 'card' })).toBeNull();
     expect(videoUrl({ kind: 'clip' })).toBeNull();
+  });
+});
+
+// The sign is the whole point: dragging RIGHT pulls the film right inside its
+// window, so EARLIER footage slides into view and sourceInMs DECREASES. Premiere
+// and Resolve both work this way, and the inverted sign is the natural mistake.
+describe('slipDeltaMs', () => {
+  it('turns a rightward drag into a negative delta (reveals earlier footage)', () => {
+    expect(slipDeltaMs(80, 80)).toBe(-1000);
+  });
+
+  it('turns a leftward drag into a positive delta (reveals later footage)', () => {
+    expect(slipDeltaMs(-40, 80)).toBe(500);
+  });
+
+  it('scales with the zoom — the same pixels mean less time when zoomed in', () => {
+    expect(slipDeltaMs(80, 160)).toBe(-500);
+  });
+
+  it('is zero for no movement', () => {
+    expect(slipDeltaMs(0, 80)).toBe(0);
   });
 });
