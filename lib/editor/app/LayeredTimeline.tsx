@@ -403,8 +403,15 @@ export interface LayeredTimelineProps {
   snapping?: boolean;
   /** ⌘/Ctrl + wheel (or pinch) over the timeline. Receives a MULTIPLICATIVE
    *  factor for the current zoom (>1 in, <1 out), already scaled to how far the
-   *  wheel actually moved — not a direction. See ZOOM_PER_PX. */
-  onZoom?: (factor: number) => void;
+   *  wheel actually moved — not a direction. See ZOOM_PER_PX.
+   *
+   *  Returns the ACHIEVED ratio — not necessarily the requested `factor`,
+   *  because the host clamps `scaleWidth` to `[ZOOM_MIN, ZOOM_MAX]`. At the
+   *  clamp boundary a requested ×1.25 might only ever land ×1.14, and the
+   *  anchor math below needs the number that actually happened or it
+   *  overshoots (some 200px of drift on a 2000px content offset was measured
+   *  from exactly this gap). `1` means "no-op — scaleWidth did not change". */
+  onZoom?: (factor: number) => number;
   /** The last-saved reel — supplies each clip's AUTHORED length so a trim can be
    * restored to it (even when the file is a touch shorter, i.e. it holds a frame). */
   savedReel?: LayeredReel | null;
@@ -429,7 +436,12 @@ export interface LayeredTimelineProps {
  *  geometry synchronously, before the caller applies the scale change, and
  *  feeds it into the exact same `pendingZoom` → layout-effect path the wheel
  *  handler uses below — no second code path for applying an anchor, only a
- *  second way of capturing one. */
+ *  second way of capturing one.
+ *
+ *  `factor` must be the ACHIEVED ratio (what `scaleWidth` will actually move
+ *  by, after the host's own clamp), not the requested one — every caller gets
+ *  this from `zoomBy`'s return value. Passing `1` clears any pending anchor
+ *  instead of scheduling one, for the no-op case (already at min/max zoom). */
 export interface LayeredTimelineHandle {
   zoomAtCenter: (factor: number) => void;
 }
@@ -505,22 +517,32 @@ function LayeredTimelineImpl({
       e.preventDefault();
       const f = zoomFactorFor(e.deltaY, e.deltaMode);
       if (f === 1) return;
-      // Capture the PRE-zoom geometry now, synchronously, before onZoom (below)
-      // changes `scaleWidth` and the browser re-lays the timeline out at the
-      // new scale. The layout effect that consumes this (keyed on
-      // `scaleWidth`, further down) runs AFTER that re-layout, so it must use
-      // this captured view rather than re-measuring — re-measuring there would
-      // read the NEW scrollWidth and apply the zoom a second time.
-      const scrollTarget = scrollEl();
-      if (scrollTarget) {
-        const rect = scrollTarget.getBoundingClientRect();
-        pendingZoom.current = {
-          anchorX: e.clientX - rect.left,
-          factor: f,
-          view: { scrollLeft: scrollTarget.scrollLeft, scrollWidth: scrollTarget.scrollWidth, clientWidth: scrollTarget.clientWidth },
-        };
+      // Ask the host to apply the requested factor FIRST and read back what it
+      // actually achieved (it clamps scaleWidth to [ZOOM_MIN, ZOOM_MAX]) — the
+      // anchor below must use THAT number, not the request, or a clamp-boundary
+      // zoom overshoots (see `onZoom`'s own doc comment). Calling this before
+      // measuring the DOM is safe: `setScaleWidth` only SCHEDULES a re-render,
+      // it does not re-lay-out synchronously, so the geometry read just below
+      // is still the PRE-zoom geometry either way.
+      const achieved = onZoomRef.current?.(f);
+      // No-op at the clamp boundary (already at ZOOM_MIN/ZOOM_MAX): actively
+      // clear any earlier pending anchor rather than leaving it stale.
+      // `scaleWidth` won't change, so the layout effect that would normally
+      // consume and clear `pendingZoom` never runs — an unrelated LATER zoom
+      // (e.g. a toolbar click) would otherwise apply this stale anchor with
+      // the wrong factor against content that has since resized.
+      if (!achieved || Math.abs(achieved - 1) < 1e-9) {
+        pendingZoom.current = null;
+        return;
       }
-      onZoomRef.current?.(f);
+      const scrollTarget = scrollEl();
+      if (!scrollTarget) return;
+      const rect = scrollTarget.getBoundingClientRect();
+      pendingZoom.current = {
+        anchorX: e.clientX - rect.left,
+        factor: achieved,
+        view: { scrollLeft: scrollTarget.scrollLeft, scrollWidth: scrollTarget.scrollWidth, clientWidth: scrollTarget.clientWidth },
+      };
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
@@ -669,8 +691,19 @@ function LayeredTimelineImpl({
   // viewport stands in for it — captured here, synchronously, the same way
   // the wheel handler captures a pointer position, and fed into the SAME
   // pendingZoom + layout-effect path below.
+  //
+  // The caller passes the ACHIEVED factor (post-clamp), never the requested
+  // one — see `onZoom`'s doc comment for why the distinction matters. A `1`
+  // means the zoom was a no-op (already at ZOOM_MIN/ZOOM_MAX): actively clear
+  // any earlier pending anchor rather than leaving it stale for a later,
+  // unrelated `scaleWidth` change to pick up (the same hazard the wheel
+  // handler's own no-op branch guards against).
   useImperativeHandle(ref, () => ({
     zoomAtCenter: (factor: number) => {
+      if (Math.abs(factor - 1) < 1e-9) {
+        pendingZoom.current = null;
+        return;
+      }
       const el = scrollEl();
       if (!el) return;
       pendingZoom.current = {

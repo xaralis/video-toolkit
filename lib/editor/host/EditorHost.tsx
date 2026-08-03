@@ -16,6 +16,7 @@ import type { AccentSlot } from '../../theming/palette';
 import type { LayeredReel } from '../../reel-config-base/layered-schema';
 import { framesForReel } from './host-duration';
 import { attachCropGestures, MAX_ZOOM, type CropGestureTarget } from './crop-gestures';
+import { zoomByClamped } from './zoom-by';
 import { EDITOR_ACCENT, toggleBtnClass, zoomBtnClass } from './ui';
 import { MagnifierIcon, Timecode } from './toolbar';
 import { MediaLoadingOverlay, pendingSources } from './MediaLoading';
@@ -118,9 +119,24 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   // (see zoomFactorFor), and rounding each one would quantise a 0.5% step back
   // to zero at low zoom levels — the gesture would simply stop working there.
   // The readout rounds for display instead.
+  //
+  // Returns the ACHIEVED ratio (next / current), not the requested `factor` —
+  // every caller that anchors a zoom (`LayeredTimelineHandle.zoomAtCenter`)
+  // needs the number that actually happened, because at the clamp boundary
+  // the two differ (a requested ×1.25 at scaleWidth 350 only ever reaches
+  // 400, i.e. ×1.143) and anchoring on the request overshoots. Reads
+  // `scaleWidth` from the render closure rather than through `setScaleWidth`'s
+  // functional-updater form: the updater runs asynchronously (during React's
+  // commit), so a value derived inside it isn't available to return here —
+  // reading the closure value is safe because this is only ever called from a
+  // synchronous event handler, never twice in the same tick.
   const zoomBy = useCallback(
-    (factor: number) => setScaleWidth((w) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, w * factor))),
-    [],
+    (factor: number): number => {
+      const { next, ratio } = zoomByClamped(scaleWidth, factor, ZOOM_MIN, ZOOM_MAX);
+      if (next !== scaleWidth) setScaleWidth(next);
+      return ratio;
+    },
+    [scaleWidth],
   );
 
   useEffect(() => {
@@ -302,9 +318,12 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
     duplicate: handleDuplicate,
     // No cursor to anchor a keyboard zoom on, so the viewport centre stands
     // in for it — captured synchronously, before scaleWidth changes, via the
-    // timeline's own imperative hook (see LayeredTimelineHandle).
-    zoomIn: () => { timelineRef.current?.zoomAtCenter(1.25); zoomBy(1.25); },
-    zoomOut: () => { timelineRef.current?.zoomAtCenter(1 / 1.25); zoomBy(1 / 1.25); },
+    // timeline's own imperative hook (see LayeredTimelineHandle). `zoomBy`
+    // runs FIRST so `zoomAtCenter` gets the ACHIEVED ratio, not the request —
+    // calling it first only schedules the state update, it doesn't re-layout,
+    // so the anchor is still captured against the pre-zoom DOM either way.
+    zoomIn: () => timelineRef.current?.zoomAtCenter(zoomBy(1.25)),
+    zoomOut: () => timelineRef.current?.zoomAtCenter(zoomBy(1 / 1.25)),
     save: () => !saving && handleSave(),
     help: () => setHelpOpen((v) => !v),
   };
@@ -454,19 +473,34 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
                 ♪ Beats snap {snapping && snapToBeats ? 'on' : 'off'}
               </button>
               <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                <button type="button" onClick={() => zoomBy(1 / 1.4)} className={zoomBtnClass} title="Zoom timeline out (⌘/Ctrl + scroll)">
+                {/* All three route through `zoomAtCenter` with the ACHIEVED
+                    ratio, same as the keyboard shortcuts — this is the most
+                    discoverable zoom control, so it's the one place the
+                    left-edge-drift regression these controls exist to fix
+                    would be most visible if it were skipped here. */}
+                <button
+                  type="button"
+                  onClick={() => timelineRef.current?.zoomAtCenter(zoomBy(1 / 1.4))}
+                  className={zoomBtnClass}
+                  title="Zoom timeline out (⌘/Ctrl + scroll)"
+                >
                   <MagnifierIcon sign="minus" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => setScaleWidth(80)}
+                  onClick={() => timelineRef.current?.zoomAtCenter(zoomBy(80 / scaleWidth))}
                   title="Reset zoom to 100%"
                   className="ed:text-xs ed:text-ink-2 ed:font-mono ed:tabular-nums"
                   style={{ background: 'none', border: 'none', minWidth: 44, textAlign: 'center', cursor: 'pointer', padding: 0 }}
                 >
                   {Math.round((scaleWidth / 80) * 100)}%
                 </button>
-                <button type="button" onClick={() => zoomBy(1.4)} className={zoomBtnClass} title="Zoom timeline in (⌘/Ctrl + scroll)">
+                <button
+                  type="button"
+                  onClick={() => timelineRef.current?.zoomAtCenter(zoomBy(1.4))}
+                  className={zoomBtnClass}
+                  title="Zoom timeline in (⌘/Ctrl + scroll)"
+                >
                   <MagnifierIcon sign="plus" />
                 </button>
               </div>
