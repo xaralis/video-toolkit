@@ -48,15 +48,25 @@ and use that exact version string for `@remotion/media-utils`, then `npm install
 
 ## What breaks if you don't
 
-**Loud, at render/Studio time — not silent, and not a hang.** `calculateMetadata`'s dynamic
-`import('./measure-sources')` resolves inside your project's own webpack bundle
-(`lib/project/remotion-config.ts`'s `resolve.modules` override, the same mechanism that already
-lets out-of-tree `lib/**` files resolve `remotion`/`@remotion/transitions` from your project
-root). Without the package installed, that import rejects with a module-not-found error the
-first time any composition opens — in Studio, that composition fails to load; from `remotion
-render`, the render fails at the composition-resolution step, before a single frame is drawn.
-This is NOT the "renders wrong pictures silently" failure mode the feature itself exists to fix
-— it is a normal, loud dependency error, and `npm install` is the entire fix.
+**Nothing breaks. You lose the feature, and you are told so once.**
+
+> Corrected 2026-08-03. An earlier version of this section said the composition would fail to
+> load and a CLI render would die at composition resolution. That was true when it was written
+> and is no longer: `layered-composition-props.ts` now wraps the dynamic import and the
+> measurement in a try/catch, because validation gating the render it validates is precisely
+> the defect class this feature exists to remove. The paragraph is corrected rather than
+> deleted — if you read the old wording somewhere else, this is why it disagrees.
+
+`calculateMetadata`'s dynamic `import('./measure-sources')` resolves inside your project's own
+webpack bundle (`lib/project/remotion-config.ts`'s `resolve.modules` override — the same
+mechanism that already lets out-of-tree `lib/**` files resolve `remotion` /
+`@remotion/transitions` from your project root). Without the package installed, that import
+rejects, the guard catches it, one `console.warn` names the missing package and points here, and
+**the composition resolves and renders exactly as it did before this feature existed**.
+
+So a pin bump without the `npm install` is safe: you simply get no starvation warnings, which is
+the state you were already in. Add the dependency when convenient; `npm install` is the entire
+fix, and nothing is broken while you wait.
 
 **The editor is unaffected either way.** `lib/editor/host/host-duration.ts` imports only
 `MIN_FRAMES` (a plain number) from `layered-composition-props.ts`, which itself has no static
