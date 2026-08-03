@@ -36,19 +36,20 @@ const mount = (reel: LayeredReel, onChange = () => {}) =>
   render(<LayeredInspector reel={reel} selectedId="video:v1" onChange={onChange} onSeek={() => {}} fps={30} />);
 
 describe('inspector — framing', () => {
+  // `Fit` has 2 choices, so (Task 10) it routes to SegmentedField — a
+  // `role="group"` of buttons, not a `<select>` of `<option>`s.
   it('offers the two fit modes in plain language, not as API values', () => {
     mount(reelWith({}));
-    const fit = screen.getByLabelText('Fit') as HTMLSelectElement;
-    const labels = Array.from(fit.options).map((o) => o.textContent);
-    expect(labels).toContain('Fill frame');
-    expect(labels).toContain('Whole shot + blurred backdrop');
-    expect(labels).not.toContain('cover');
+    expect(screen.getByRole('group', { name: 'Fit' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Fill frame' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Whole shot + blurred backdrop' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'cover' })).toBeNull();
   });
 
   it('commits a fit change onto the item', () => {
     const onChange = vi.fn();
     mount(reelWith({}), onChange);
-    fireEvent.change(screen.getByLabelText('Fit'), { target: { value: 'blur-pad' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Whole shot + blurred backdrop' }));
     expect(onChange).toHaveBeenCalled();
     const next = onChange.mock.calls[0][0] as LayeredReel;
     expect(next.tracks.video[0]).toMatchObject({ fit: 'blur-pad' });

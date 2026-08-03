@@ -39,15 +39,16 @@ describe('overlay params, declared by the theme', () => {
   };
   const meta = editorMetaFromTheme(theme);
 
-  it('renders a declared option field as a dropdown over the brand values', () => {
+  // `weight` has 2 choices, so (Task 10) it routes to SegmentedField, not
+  // SelectField — a `role="group"` of buttons, not a `<select>`.
+  it('renders a declared option field (≤4 choices) as a segmented control over the brand values', () => {
     render(
       <LayeredInspector
         reel={overlayReel({ kind: 'chevron', weight: 'light' })}
         selectedId="overlays:ov1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
-    const w = screen.getByLabelText('Weight') as HTMLSelectElement;
-    expect(w.tagName).toBe('SELECT');
-    expect(w.value).toBe('light');
-    expect(screen.getByRole('option', { name: 'heavy' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Weight' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'light' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'heavy' })).toBeTruthy();
   });
 
   it('commits a declared edit back onto the overlay content', () => {
@@ -56,7 +57,7 @@ describe('overlay params, declared by the theme', () => {
       <LayeredInspector
         reel={overlayReel({ kind: 'chevron', weight: 'light' })}
         selectedId="overlays:ov1" onChange={onChange} onSeek={() => {}} fps={30} meta={meta} />);
-    fireEvent.change(screen.getByLabelText('Weight'), { target: { value: 'heavy' } });
+    fireEvent.click(screen.getByRole('button', { name: 'heavy' }));
     const next = onChange.mock.calls.at(-1)![0] as LayeredReel;
     expect((next.tracks.overlays[0].content as Record<string, unknown>).weight).toBe('heavy');
     expect((next.tracks.overlays[0].content as Record<string, unknown>).kind).toBe('chevron');
@@ -67,13 +68,17 @@ describe('overlay params, declared by the theme', () => {
   // back to a text input, and writes a STRING into a bag the renderer reads as
   // a number. `z.record(z.unknown())` accepts it, so nothing rejects the
   // type-dirty config. A declared `type` is what closes it.
-  it('a declared-number field the item does not carry renders as a number input', () => {
+  it('a declared-number field the item does not carry renders as a numeric ScrubField', () => {
     render(
       <LayeredInspector
         reel={overlayReel({ kind: 'chevron' })}
         selectedId="overlays:ov1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
     const d = screen.getByLabelText('Delay (s)') as HTMLInputElement;
-    expect(d.type).toBe('number');
+    // No declared min/max, so (Task 10) this is a ScrubField (`type="text"`,
+    // `inputMode="decimal"` — the latter is what tells it apart from a plain
+    // TextField), not `NumberField`'s old `type="number"`.
+    expect(d.type).toBe('text');
+    expect(d.inputMode).toBe('decimal');
     expect(d.value).toBe('');
   });
 
@@ -94,7 +99,10 @@ describe('overlay params, declared by the theme', () => {
       <LayeredInspector
         reel={overlayReel({ kind: 'chevron', weight: 'light', strokeWidth: 4 })}
         selectedId="overlays:ov1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
-    expect((screen.getByLabelText('Stroke width') as HTMLInputElement).type).toBe('number');
+    // Undeclared, so (Task 10) it's a ScrubField (`type="text"`, `inputMode="decimal"`), not a number input.
+    const strokeWidth = screen.getByLabelText('Stroke width') as HTMLInputElement;
+    expect(strokeWidth.type).toBe('text');
+    expect(strokeWidth.inputMode).toBe('decimal');
   });
 
   // `text` has the dedicated accent-aware editor above the params; a plain
@@ -137,16 +145,28 @@ describe('overlay params, mixed with the content fields core knows', () => {
     expect([...reveal.options].map((o) => o.value)).toEqual(['line', 'all', 'none']);
   });
 
-  it('keeps font size on core’s step of 4, not the generic bag editor’s 0.1', () => {
-    render(<LayeredInspector reel={mixed} selectedId="overlays:ov1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
+  // ScrubField (Task 10) sets no `step` DOM attribute at all — a typed
+  // `fireEvent.change` bypasses stepping entirely regardless of the field's
+  // source, so the DOM attribute can no longer distinguish core's typed
+  // control from the generic bag editor's. The distinguishing BEHAVIOUR
+  // survives, though: core's own Font size control rounds
+  // (`Math.round`, LayeredInspector.tsx), while the generic bag editor's
+  // passthrough for an undeclared numeric key does not — so committing a
+  // fractional value proves which one rendered.
+  it('keeps font size on core’s typed control (which rounds), not the generic bag editor’s raw passthrough', () => {
+    const onChange = vi.fn();
+    render(<LayeredInspector reel={mixed} selectedId="overlays:ov1" onChange={onChange} onSeek={() => {}} fps={30} meta={meta} />);
     const f = screen.getByLabelText('Font size') as HTMLInputElement;
-    expect(f.step).toBe('4');
     expect(f.value).toBe('72');
+    fireEvent.change(f, { target: { value: '72.6' } });
+    const content = (onChange.mock.calls.at(-1)![0] as LayeredReel).tracks.overlays[0].content as Record<string, unknown>;
+    expect(content.fontSize).toBe(73);
   });
 
+  // `weight` has 2 choices, so (Task 10) it routes to SegmentedField.
   it('renders the brand’s declared param alongside them', () => {
     render(<LayeredInspector reel={mixed} selectedId="overlays:ov1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
-    expect((screen.getByLabelText('Weight') as HTMLSelectElement).value).toBe('light');
+    expect(screen.getByRole('button', { name: 'light' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('shows each core field exactly once — no second, value-typed control', () => {
@@ -172,14 +192,20 @@ describe('overlay params, mixed with the content fields core knows', () => {
       ...bareTheme,
       overlays: { chevron: { params: [{ prop: 'reveal', label: 'Reveal', options: ['line', 'stagger'] }] } },
     };
+    const onChange = vi.fn();
     render(
-      <LayeredInspector reel={mixed} selectedId="overlays:ov1" onChange={() => {}} onSeek={() => {}} fps={30}
+      <LayeredInspector reel={mixed} selectedId="overlays:ov1" onChange={onChange} onSeek={() => {}} fps={30}
         meta={editorMetaFromTheme(ownTheme)} />);
     expect(screen.getAllByLabelText('Reveal')).toHaveLength(1);
-    expect(screen.getByRole('option', { name: 'stagger' })).toBeTruthy();
-    expect(screen.queryByRole('option', { name: 'all' })).toBeNull(); // core's list gone
+    // 2 choices, so (Task 10) `reveal` here is a SegmentedField, not a SELECT.
+    expect(screen.getByRole('button', { name: 'stagger' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'all' })).toBeNull(); // core's list gone
     expect((screen.getByLabelText('Hide') as HTMLSelectElement).tagName).toBe('SELECT'); // core still owns it
-    expect((screen.getByLabelText('Font size') as HTMLInputElement).step).toBe('4');
+    // Font size stays core-typed (rounds) — see the comment on the equivalent
+    // assertion above; a ScrubField sets no `step` DOM attribute to read.
+    fireEvent.change(screen.getByLabelText('Font size'), { target: { value: '72.6' } });
+    const content = (onChange.mock.calls.at(-1)![0] as LayeredReel).tracks.overlays[0].content as Record<string, unknown>;
+    expect(content.fontSize).toBe(73);
   });
 });
 
@@ -189,10 +215,11 @@ describe('overlay fallback: a theme that declares no overlay params', () => {
   const meta = editorMetaFromTheme(bareTheme);
 
   it('still shows the value-presence reveal / hide / font size editor', () => {
+    const onChange = vi.fn();
     render(
       <LayeredInspector
         reel={overlayReel({ kind: 'quote-pull', text: 'Hi', reveal: 'line', hide: 'fade', fontSize: 72 })}
-        selectedId="overlays:ov1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
+        selectedId="overlays:ov1" onChange={onChange} onSeek={() => {}} fps={30} meta={meta} />);
     const reveal = screen.getByLabelText('Reveal') as HTMLSelectElement;
     const hide = screen.getByLabelText('Hide') as HTMLSelectElement;
     // SELECTs, not the text inputs the generic bag editor would produce for
@@ -202,8 +229,13 @@ describe('overlay fallback: a theme that declares no overlay params', () => {
     expect(reveal.value).toBe('line');
     expect(hide.tagName).toBe('SELECT');
     expect(hide.value).toBe('fade');
-    expect((screen.getByLabelText('Font size') as HTMLInputElement).step).toBe('4');
-    expect((screen.getByLabelText('Font size') as HTMLInputElement).value).toBe('72');
+    const fontSize = screen.getByLabelText('Font size') as HTMLInputElement;
+    expect(fontSize.value).toBe('72');
+    // Font size is core's own typed control (rounds); a ScrubField (Task 10)
+    // sets no `step` DOM attribute to read, so the round-trip proves it.
+    fireEvent.change(fontSize, { target: { value: '72.6' } });
+    const content = (onChange.mock.calls.at(-1)![0] as LayeredReel).tracks.overlays[0].content as Record<string, unknown>;
+    expect(content.fontSize).toBe(73);
   });
 
   it('is identical with NO meta at all — the derived-empty meta changes nothing', () => {
@@ -243,7 +275,9 @@ describe('video params and effects, declared by the theme', () => {
     render(
       <LayeredInspector reel={videoReel} selectedId="video:o1" onChange={() => {}} onSeek={() => {}} fps={30}
         meta={editorMetaFromTheme(theme)} />);
-    expect((screen.getByLabelText('Style') as HTMLSelectElement).tagName).toBe('SELECT');
+    // 2 choices, so (Task 10) this routes to SegmentedField, not SelectField.
+    expect(screen.getByRole('group', { name: 'Style' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'organic' })).toBeTruthy();
   });
 
   it('an effect registration makes the effect addable in "+ Add effect"', () => {

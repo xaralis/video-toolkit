@@ -395,8 +395,11 @@ describe('LayeredInspector item props (no brand metadata)', () => {
     const delay = screen.getByLabelText('Logo delay sec') as HTMLInputElement;
     // A number field with no declared min/max renders as a ScrubField now
     // (Task 10) — a text input (`type="number"`'s spinner/locale-decimal
-    // behaviour is exactly what it removes), not a number input.
+    // behaviour is exactly what it removes), not a number input. `inputMode`
+    // (only ScrubField sets it) tells it apart from a plain TextField, which
+    // `type="text"` alone would not.
     expect(delay.type).toBe('text');
+    expect(delay.inputMode).toBe('decimal');
     expect(delay.value).toBe('0.6');
   });
 
@@ -440,7 +443,9 @@ describe('LayeredInspector item props (brand metadata)', () => {
   it('still renders undeclared props generically alongside the declared ones', () => {
     render(<LayeredInspector reel={outroReel} selectedId="video:o1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
     // ScrubField (Task 10) — see the comment on the equivalent assertion above.
-    expect((screen.getByLabelText('Logo delay sec') as HTMLInputElement).type).toBe('text');
+    const delay = screen.getByLabelText('Logo delay sec') as HTMLInputElement;
+    expect(delay.type).toBe('text');
+    expect(delay.inputMode).toBe('decimal');
   });
 
   it('renders a declared field even when the item does not carry that prop yet', () => {
@@ -471,6 +476,7 @@ describe('LayeredInspector declared param type (absent key)', () => {
     const f = screen.getByLabelText('Logo delay (s)') as HTMLInputElement;
     // ScrubField (Task 10) — see the comment on the equivalent assertion above.
     expect(f.type).toBe('text');
+    expect(f.inputMode).toBe('decimal');
     expect(f.value).toBe('');
   });
 
