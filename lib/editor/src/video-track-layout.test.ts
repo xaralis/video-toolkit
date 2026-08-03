@@ -81,4 +81,26 @@ describe('computeVideoLayout', () => {
     expect(layout[1].inHalf).toBe(0);
     expect(layout[1].inRecord).toBeUndefined();
   });
+
+  // The `impossible` remedy (disable the transition) is only a remedy because a
+  // disabled node lends NOTHING — transition-record.ts:62-67 states it, and
+  // boundaryState returns 'ok' for a disabled node on the strength of it. If a
+  // disabled transition ever started borrowing again, the editor would call a
+  // starved boundary healthy.
+  it('a disabled transition lends no handle frames to either neighbour', () => {
+    const enabledItems = [
+      { startMs: 0, endMs: 1000, transitionOut: { kind: 'gradient-wipe', frames: 20 } },
+      { startMs: 1000, endMs: 2000 },
+    ];
+    const disabledItems = [
+      { startMs: 0, endMs: 1000, transitionOut: { kind: 'gradient-wipe', frames: 20, enabled: false } },
+      { startMs: 1000, endMs: 2000 },
+    ];
+    const enabled = computeVideoLayout(enabledItems, fps);
+    const disabled = computeVideoLayout(disabledItems, fps);
+
+    expect(enabled[1].inHalf).toBeGreaterThan(0);
+    expect(disabled[1].inHalf).toBe(0);
+    expect(disabled[0].outHalf).toBe(0);
+  });
 });
