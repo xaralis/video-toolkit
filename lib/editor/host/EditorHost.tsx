@@ -422,7 +422,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
                 type="button"
                 onClick={() => setScaleWidth(80)}
                 title="Reset zoom to 100%"
-                className="ed:text-xs ed:text-ink-3 ed:font-mono ed:tabular-nums"
+                className="ed:text-xs ed:text-ink-2 ed:font-mono ed:tabular-nums"
                 style={{ background: 'none', border: 'none', minWidth: 44, textAlign: 'center', cursor: 'pointer', padding: 0 }}
               >
                 {Math.round((scaleWidth / 80) * 100)}%
