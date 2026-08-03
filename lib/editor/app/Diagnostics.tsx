@@ -7,8 +7,12 @@ import type { Diagnostic } from './LayeredTimeline';
  *  boundary — on a reel with thirty cuts a hatched block outside the viewport
  *  is invisible, so this list is the index into them.
  *
- *  Neutral greys only: core is brand-neutral, and signalling through an accent
- *  colour would pull brand vocabulary into lib/. */
+ *  WARNING colours, not an accent and not grey. "Brand-neutral" forbids reaching
+ *  for a brand's accent slot; it does not require an error to be invisible, and
+ *  amber-on-dark is universal UI semantics rather than anybody's brand
+ *  vocabulary. An earlier revision was neutral grey and, in a real editor, read
+ *  as a disabled chip — the badge is the ONLY unmissable surface this feature
+ *  has, so it has to look like something is wrong. */
 export function DiagnosticsBadge({ items, onSelect }: { items: Diagnostic[]; onSelect: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   if (items.length === 0) return null;
@@ -16,17 +20,27 @@ export function DiagnosticsBadge({ items, onSelect }: { items: Diagnostic[]; onS
     <div style={{ position: 'relative', fontSize: 11 }}>
       <button
         onClick={() => setOpen((v) => !v)}
-        style={{ background: '#3a3a3d', color: '#e8e8ea', border: '1px solid #5a5a5e', borderRadius: 3, padding: '2px 8px', cursor: 'pointer', font: 'inherit' }}
+        title={items.map((d) => d.message).join('\n')}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 5,
+          background: '#7a2e24', color: '#ffe9e2', border: '1px solid #b4503f',
+          borderRadius: 3, padding: '3px 9px', cursor: 'pointer', font: 'inherit', fontWeight: 600,
+          boxShadow: '0 0 0 1px rgba(0,0,0,0.35)',
+        }}
       >
+        <span aria-hidden style={{ fontSize: 12, lineHeight: 1 }}>⚠</span>
         {items.length} {items.length === 1 ? 'issue' : 'issues'}
       </button>
       {open && (
-        <ul style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 20, listStyle: 'none', padding: 4, minWidth: 280, background: '#232428', border: '1px solid #3a3c42', borderRadius: 4 }}>
+        // Anchored LEFT: the badge sits beside the project name at the far left
+        // of the header, so a right-anchored panel runs off the pane and clips
+        // the start of every message — which is where the numbers are.
+        <ul style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 20, listStyle: 'none', padding: 4, minWidth: 320, maxWidth: '70vw', background: '#232428', border: '1px solid #b4503f', borderRadius: 4, boxShadow: '0 6px 18px rgba(0,0,0,0.5)' }}>
           {items.map((d, i) => (
             <li key={i}>
               <button
                 onClick={() => d.targetId && onSelect(d.targetId)}
-                style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', color: '#d8d8da', padding: '4px 6px', cursor: d.targetId ? 'pointer' : 'default', font: 'inherit' }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', color: '#f0d8d2', padding: '5px 7px', cursor: d.targetId ? 'pointer' : 'default', font: 'inherit', whiteSpace: 'normal' }}
               >
                 {d.message}
               </button>

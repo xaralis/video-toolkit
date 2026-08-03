@@ -14,14 +14,17 @@ describe('DiagnosticsBadge', () => {
 
   it('counts the issues and hides the list until it is opened', () => {
     const { getByRole, queryByText } = render(<DiagnosticsBadge items={items} onSelect={() => {}} />);
-    expect(getByRole('button').textContent).toBe('1 issue');
+    // `toContain`, not `toBe`: the badge also carries a warning glyph, and
+    // pinning the exact string would fail every time its decoration changes
+    // while proving nothing extra about the count.
+    expect(getByRole('button').textContent).toContain('1 issue');
     expect(queryByText(items[0].message)).toBeNull();
   });
 
   it('pluralises', () => {
     const two = [items[0], { ...items[0], targetId: 'transition:v2' }];
     const { getByRole } = render(<DiagnosticsBadge items={two} onSelect={() => {}} />);
-    expect(getByRole('button').textContent).toBe('2 issues');
+    expect(getByRole('button').textContent).toContain('2 issues');
   });
 
   it('selects the offending boundary when an entry is clicked', () => {
