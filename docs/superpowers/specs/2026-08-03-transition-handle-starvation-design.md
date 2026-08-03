@@ -120,10 +120,28 @@ being discovered in the finished MP4.
 
 ### When no material exists at all
 
-The kind is always selectable. What must never happen is *authoring* a borrow of frames
-that do not exist, so the control's maximum — per Layer 1, a bound on new input — is
-**zero** when both sides are exhausted. The user can pick the kind and gets a transition
-of length zero: marked, and behaving as a hard cut.
+**Corrected after verification — `frames: 0` cannot express this.** An earlier draft of
+this section said the length clamps to zero and the boundary behaves as a hard cut. That
+is impossible: `TransitionFrames` is `z.number().min(1).max(60)`
+(`lib/reel-config-base/transition-schema.ts:52`), so zero is schema-invalid. Since the
+minimum borrow is one frame, a boundary with no room on either side cannot carry a
+transition at all.
+
+**The mechanism that does express it already exists: `enabled`.** `getTransitionRecord`
+returns `undefined` for a disabled node, and `lib/render/transition-record.ts:62-67`
+states the consequence exactly — the boundary behaves *"exactly as if it were a hard
+cut: `computeVideoLayout` also stops lending handle frames for it and the clips sit at
+their authored positions. Authored params are untouched — flipping the switch back
+restores the look."*
+
+That is better than the zero it replaces: no handles are borrowed, nothing moves, the
+authored kind and length survive, and the state is reversible with one toggle.
+
+So the zero-room case is: the kind stays selectable, the transition stays authored, and
+the boundary is **marked `impossible`**. Disabling it is offered as a remedy — the one
+that yields a clean hard cut without discarding what the user chose — but the editor
+does not apply it automatically, because a hard cut instead of an authored transition is
+not a free change.
 
 That is a large improvement on today, where the same case renders and produces a
 composition missing the end of a clip. After this change the worst outcome is **an
@@ -155,9 +173,10 @@ one of four states: ok, realigned, clamped, impossible.
 (`lib/editor/app/LayeredTimeline.tsx:154`) is a 45° `repeating-linear-gradient` and
 today means "nothing more to take this way" — semantically the same fact. A hatched
 transition block therefore reads consistently with the grips the user already knows, and
-it is also the diagonal hatch Premiere uses for insufficient media. An impossible
-boundary (`frames: 0`) collapses to a thin mark at the cut, since a zero-length
-transition occupies nothing.
+it is also the diagonal hatch Premiere uses for insufficient media. An `impossible`
+boundary keeps its authored length in the lane — it is still authored — but is hatched
+solid rather than partially, so "cannot be honoured at all" reads differently from
+"longer than the material allows".
 
 Colours stay **neutral** — grey and hatching, no accent. Core is brand-neutral and
 signalling errors through an accent colour would pull brand vocabulary into `lib/`.
@@ -233,14 +252,18 @@ the console stops being the only line of defence. The honest cost: a warning in 
 log is easy to miss — which is what happens today — and only the editor's badge makes it
 unmissable.
 
-### Unverified — prove it with a command, do not assume
+### Measured, and what is still open
 
-`@remotion/media-utils` is **not currently a dependency**, and it must be confirmed that
-measurement works in the CLI render and not only in a browser: `getVideoMetadata` builds
-on a `<video>` element, while `@remotion/media-parser` also runs in Node. Which one fits
-Remotion 4.0.425 in both contexts is to be established by running it, and the async cost
-measured, not estimated. This repo has twice paid for capability claims written down
-without the command that demonstrates them.
+`npm view` confirms **both** candidates publish an exact `4.0.425` — the pinned Remotion
+version — so either can be added without breaking the version lock this repo is strict
+about. `@remotion/media-utils` is the primary choice for that reason; `@remotion/media-parser`
+is a real fallback, not a hypothetical one.
+
+**Still open, and it is the first task of the plan:** whether `getVideoMetadata` resolves
+during `remotion render`, not only in Studio. It builds on a `<video>` element, and
+`calculateMetadata` is evaluated in headless Chrome during a CLI render, so it should —
+but "should" is the word this repo has twice paid for. It gets proven by an actual render
+with a pass/fail criterion before anything is built on it.
 
 **Async `calculateMetadata` is not free:** the composition opens only after measurement.
 On a reel with twenty sources that is a perceptible delay in Studio. Caching by URL
@@ -264,10 +287,11 @@ tested through the DOM: jsdom mounts no xzdarcy action block
 | `center` allows twice `start`/`end` | the alignment table in §1 |
 | Realignment preserves `frames` or is not applied | Layer 2's whole condition |
 
-**Verify, do not assume, that `frames: 0` is a hard cut end to end** — schema,
-`resolveTransition`, render. This is the single assumption the whole construction rests
-on that has not been confirmed against code. If some layer reads zero as "default
-length", it fails in the quietest possible place.
+**That assumption was checked and came back false**, which is why §2 now routes the
+zero-room case through `enabled` instead of `frames: 0`. The replacement needs its own
+pin: a disabled transition must lend **no** handle frames, so `computeVideoLayout` gives
+its neighbours `inHalf === 0` / `outHalf === 0`. `transition-record.ts` states this;
+the test asserts it, so the guarantee cannot quietly regress.
 
 ## Gates
 
