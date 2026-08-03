@@ -8,7 +8,8 @@ import { LayeredInspector } from '../app/LayeredInspector';
 import { RenderButton } from '../app/RenderButton';
 import { useHistory } from '../app/useHistory';
 import { useSourceDurations } from '../app/useSourceDurations';
-import { deleteItem } from '../src/timeline/layered-adapter';
+import { deleteItem, splitItem, duplicateItem } from '../src/timeline/layered-adapter';
+import { useShortcuts } from '../app/useShortcuts';
 import type { EditorMeta } from '../app/editor-meta';
 import type { AccentSlot } from '../../theming/palette';
 import type { LayeredReel } from '../../reel-config-base/layered-schema';
@@ -124,29 +125,6 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      const typing = t?.tagName === 'INPUT' || t?.tagName === 'TEXTAREA' || t?.isContentEditable;
-      if (typing) return;
-      if (e.key === 'Escape') {
-        setSelectedId(null);
-      } else if (e.key === ' ' || e.code === 'Space') {
-        e.preventDefault(); // don't scroll the page
-        playerRef.current?.toggle();
-      } else if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {
-        e.preventDefault();
-        if (e.shiftKey) redo();
-        else undo();
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
-        e.preventDefault();
-        handleDelete();
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [undo, redo, selectedId, handleDelete]);
 
   // Only play/pause re-renders the app (for the ▶/⏸ button); the per-frame tick
   // is handled by the isolated <Timecode> and the timeline's own cursor sync, so
@@ -278,6 +256,32 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
     });
   }, [previewMounted]);
 
+  // Guarded so the hook (below) can be called unconditionally — `reel` is
+  // still null on the very first render, before /props answers.
+  const durationInFrames = reel ? framesForReel(reel, fps) : 0;
+
+  // One listener for every editor shortcut (see `shortcuts.ts`). Called
+  // unconditionally, before the early return below, so hook order never
+  // varies between the loading render and every one after it.
+  useShortcuts({
+    deselect: () => setSelectedId(null),
+    play: () => playerRef.current?.toggle(),
+    undo,
+    redo,
+    delete: () => selectedId && handleDelete(),
+    stepBack: () => playerRef.current?.seekTo(Math.max(0, (playerRef.current?.getCurrentFrame() ?? 0) - 1)),
+    stepFwd: () => playerRef.current?.seekTo(Math.min(durationInFrames - 1, (playerRef.current?.getCurrentFrame() ?? 0) + 1)),
+    jumpBack: () => playerRef.current?.seekTo(Math.max(0, (playerRef.current?.getCurrentFrame() ?? 0) - 10)),
+    jumpFwd: () => playerRef.current?.seekTo(Math.min(durationInFrames - 1, (playerRef.current?.getCurrentFrame() ?? 0) + 10)),
+    toStart: () => playerRef.current?.seekTo(0),
+    toEnd: () => playerRef.current?.seekTo(Math.max(0, durationInFrames - 1)),
+    split: () => reel && selectedId && setReel(splitItem(reel, selectedId, playerRef.current?.getCurrentFrame() ?? 0, fps)),
+    duplicate: () => reel && selectedId && setReel(duplicateItem(reel, selectedId)),
+    zoomIn: () => zoomBy(1.25),
+    zoomOut: () => zoomBy(1 / 1.25),
+    save: () => !saving && handleSave(),
+  });
+
   // Before /props answers there is no reel and so no shell at all. Same
   // vocabulary as the preview's own indicator, so the two stages of startup read
   // as one thing rather than two unrelated screens.
@@ -289,7 +293,6 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
     );
   }
 
-  const durationInFrames = framesForReel(reel, fps);
   const hasGuides = Boolean(reel.meta.guidesMs?.length);
 
   return (

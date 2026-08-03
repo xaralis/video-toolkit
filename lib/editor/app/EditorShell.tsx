@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import './editor.css';
 
 // Clean curved undo/redo glyphs (Lucide undo-2 / redo-2) — the bare ↶/↷ unicode
@@ -89,19 +89,9 @@ export function EditorShell({
   canUndo,
   canRedo,
 }: EditorShellProps) {
-  // ⌘S / Ctrl+S saves (and always suppresses the browser's own save dialog),
-  // even while typing in a field. Shared here so every brand's editor gets it.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
-        e.preventDefault();
-        if (onSave && !saving) onSave();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onSave, saving]);
-
+  // ⌘S / Ctrl+S is wired by the host through `useShortcuts` (see
+  // `app/shortcuts.ts` / `app/useShortcuts.ts`) — the shell itself no longer
+  // owns a keydown listener.
   return (
     <div className="ed:flex ed:flex-col ed:h-screen ed:bg-shell ed:text-ink ed:font-sans">
       {/* Global reset so the editor fills the viewport with no white page frame.
