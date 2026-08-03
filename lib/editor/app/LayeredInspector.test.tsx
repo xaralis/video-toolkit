@@ -913,3 +913,41 @@ describe('LayeredInspector transition length — bounded by the boundary’s act
     expect(screen.queryByLabelText(/Length \(frames, max/)).toBeNull();
   });
 });
+
+describe('LayeredInspector project overview (no selection)', () => {
+  const reelWithTwoClips: LayeredReel = {
+    version: 'layered-1', meta: { topic: 't', totalDurationMs: 10000 },
+    tracks: {
+      video: [
+        { id: 'v1', kind: 'clip', startMs: 0, endMs: 5000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 5000 },
+        { id: 'v2', kind: 'clip', startMs: 5000, endMs: 10000, source: 'b.mp4', sourceInMs: 0, sourceOutMs: 5000 },
+      ],
+      audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [],
+    },
+  };
+
+  it('shows no diagnostic row when every source loaded', () => {
+    render(
+      <LayeredInspector reel={reelWithTwoClips} selectedId={null} onChange={() => {}} onSeek={() => {}} fps={30}
+        width={1080} height={1920} sourceDurations={{ 'a.mp4': 3000, 'b.mp4': 4000 }} />,
+    );
+    expect(screen.queryByText('Failed to load')).toBeNull();
+  });
+
+  it('names the sources that failed to load', () => {
+    render(
+      <LayeredInspector reel={reelWithTwoClips} selectedId={null} onChange={() => {}} onSeek={() => {}} fps={30}
+        width={1080} height={1920} sourceDurations={{ 'a.mp4': 0, 'b.mp4': 4000 }} />,
+    );
+    expect(screen.getByText('a.mp4')).toBeInTheDocument();
+  });
+
+  it('shows resolution, aspect ratio and frame count', () => {
+    render(
+      <LayeredInspector reel={reelWithTwoClips} selectedId={null} onChange={() => {}} onSeek={() => {}} fps={30}
+        width={1080} height={1920} sourceDurations={{ 'a.mp4': 3000, 'b.mp4': 4000 }} />,
+    );
+    expect(screen.getByText('1080 × 1920')).toBeInTheDocument();
+    expect(screen.getByText('9:16')).toBeInTheDocument();
+  });
+});

@@ -500,6 +500,8 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
             onChange={setReel}
             onSeek={(f) => playerRef.current?.seekTo(f)}
             fps={fps}
+            width={width}
+            height={height}
             accentSlots={accentSlots}
             meta={meta}
             sourceDurations={sourceDurations}

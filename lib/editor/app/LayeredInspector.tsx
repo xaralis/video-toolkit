@@ -20,6 +20,9 @@ import { PLACEMENTS } from '../../theming/placement';
 import { effectCatalog, effectDefinition, humanizeKey, paramChoices, type EditorMeta, type ParamField } from './editor-meta';
 import { warnOnce } from '../../render/warn-once';
 import { videoUrl } from './LayeredTimeline';
+import { framesForReel } from '../host/host-duration';
+import { formatTimecode } from './controls/timecode';
+import { aspectLabel, failedSources } from './project-summary';
 import { handleRoomFrames, maxTransitionFrames, type HandleRoom } from '@video-toolkit/lib/reel-config-base/handle-room';
 import { transitionAlignmentOf } from '@video-toolkit/lib/reel-config-base/transition-schema';
 import { useLiveField } from './controls/use-live-field';
@@ -49,8 +52,16 @@ export interface LayeredInspectorProps {
    *  same way `reel`/`fps` are so the transition length field can bound itself
    *  against the SAME handle-room math the timeline hatches with. Optional and
    *  defaults to `{}` (unknown durations, i.e. no bound) — every existing
-   *  caller that doesn't know about this keeps its old, unbounded behaviour. */
+   *  caller that doesn't know about this keeps its old, unbounded behaviour.
+   *  Doubles as the failed-source diagnostic on the no-selection screen (a
+   *  source resolving to `0` — see `project-summary.ts`'s `failedSources`). */
   sourceDurations?: Record<string, number>;
+  /** The composition's pixel dimensions, shown on the no-selection ("project
+   *  overview") screen. Optional (defaults to 0×0, which reads as `—` via
+   *  `aspectLabel`) so every existing caller that doesn't know about this
+   *  keeps working. */
+  width?: number;
+  height?: number;
 }
 
 const panelCls = 'ed:p-3 ed:w-full ed:h-full ed:overflow-y-auto ed:box-border';
@@ -489,7 +500,7 @@ function ParamFields({
     ...declared.map((f) => renderOne(f, true)),
     ...rest.map((p) => renderOne({ prop: p }, false)),
   ].filter(Boolean);
-  if (!nodes.length) return <div style={{ fontSize: 11, color: '#7a7d85', padding: '3px 0' }}>No editable params.</div>;
+  if (!nodes.length) return <div className="ed:text-[11px] ed:text-ink-2" style={{ padding: '3px 0' }}>No editable params.</div>;
   return <>{nodes}</>;
 }
 
@@ -786,7 +797,7 @@ function AddEffectControl({
   );
 }
 
-export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, accentSlots, meta, sourceDurations }: LayeredInspectorProps) {
+export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, accentSlots, meta, sourceDurations, width = 0, height = 0 }: LayeredInspectorProps) {
   // The dedicated `accentSlots` prop is the ONE source for the palette —
   // EditorMeta deliberately does not carry a copy (see editor-meta.ts).
   const slots = accentSlots;
@@ -808,26 +819,61 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
   };
 
   if (!selectedId) {
+    // Every source the reel actually references — video items that carry one
+    // (clip/broll/photo; multi-clip/card/outro don't) plus every audio bed.
+    // Music is deliberately excluded here (it gets its own row below).
+    const sources = Array.from(new Set([
+      ...reel.tracks.video.map((v) => (v as { source?: string }).source).filter(Boolean) as string[],
+      ...reel.tracks.audio.map((a) => a.source),
+    ]));
+    const failed = failedSources(sources, durationsMs);
+
     return (
       <div className={panelCls}>
         <h3 className={headingCls}>Reel</h3>
+
+        <div className={sectionCls}>Format</div>
+        <Row>
+          <div className={fieldCls}><label className={labelCls}>Resolution</label><div className={readonlyValueCls}>{width} × {height}</div></div>
+          <div className={fieldCls}><label className={labelCls}>Aspect</label><div className={readonlyValueCls}>{aspectLabel(width, height)}</div></div>
+        </Row>
+        <Row>
+          <div className={fieldCls}><label className={labelCls}>Frame rate</label><div className={readonlyValueCls}>{fps} fps</div></div>
+          <div className={fieldCls}><label className={labelCls}>Frames</label><div className={readonlyValueCls}>{framesForReel(reel, fps)}</div></div>
+        </Row>
+
+        <div className={sectionCls}>Content</div>
         {/* All read-only — plain text, not field-styled boxes (they aren't editable). */}
         <div className={fieldCls}>
           <label className={`${labelCls} ed:block ed:mb-1`}>Topic</label>
           <div className={readonlyValueCls}>{reel.meta.topic}</div>
         </div>
         <div className={fieldCls}>
-          <label className={`${labelCls} ed:block ed:mb-1`}>Total duration</label>
-          <div className={readonlyValueCls}>{(reel.meta.totalDurationMs / 1000).toFixed(2)}s</div>
+          <label className={`${labelCls} ed:block ed:mb-1`}>Duration</label>
+          <div className={readonlyValueCls}>{formatTimecode(reel.meta.totalDurationMs, fps)}</div>
+        </div>
+        <div className={fieldCls}>
+          <label className={`${labelCls} ed:block ed:mb-1`}>Media sources</label>
+          <div className={readonlyValueCls}>{sources.length}</div>
         </div>
         <div className={fieldCls}>
           <label className={`${labelCls} ed:block ed:mb-1`}>Music</label>
           <div className={readonlyValueCls}>{reel.tracks.music.source ?? '(none)'} · base {reel.tracks.music.baseVolumeDb}dB</div>
         </div>
-        <div style={{ fontSize: 11, color: '#5f626a', marginTop: 8 }}>
+
+        {/* Omitted entirely when healthy — a project with nothing wrong shows
+            no diagnostic, matching the header diagnostics badge's behaviour. */}
+        {failed.length > 0 && (
+          <div className={fieldCls}>
+            <label className={`${labelCls} ed:block ed:mb-1`}>Failed to load</label>
+            <div className="ed:text-xs ed:text-warn ed:font-mono">{failed.join(', ')}</div>
+          </div>
+        )}
+
+        <div className="ed:text-[11px] ed:text-ink-3 ed:mt-2">
           {reel.tracks.video.length} video · {reel.tracks.overlays.length} overlays · {reel.tracks.audio.length} audio · {reel.tracks.brand.length} brand
         </div>
-        <div style={{ fontSize: 11, color: '#5f626a', marginTop: 10 }}>Select a timeline item to edit it.</div>
+        <div className="ed:text-[11px] ed:text-ink-3 ed:mt-2.5">Select a timeline item to edit it.</div>
       </div>
     );
   }
