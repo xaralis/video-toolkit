@@ -58,6 +58,19 @@
 > The window closes at the end of this phase: Task 5 deletes the last two
 > `*.module.css` files, after which nothing unlayered competes.
 >
+> ### Token semantics: `ink-2` is for content, `ink-3` is for hints
+>
+> Discovered in Task 3's re-review, binding on every remaining task. Putting a
+> numeric **readout** in `--ed-color-ink-3` (`#6a6a78`) measures ~3.5:1 against
+> `--ed-color-shell` at 12px — **below WCAG AA for normal text**. `ink-3` is
+> sized for micro-labels, section headings and one-line hints, where its
+> quietness is the point and the text is not information anyone reads
+> character by character.
+>
+> The rule: **a value the user reads goes in `--ed-color-ink-2` (`#a0a0ae`);
+> `--ed-color-ink-3` is for labels about values, never the values themselves.**
+> This matters most in Task 4, where the inspector is largely readouts.
+>
 > Related, same commit that introduced it: Phase 1 is also the first time
 > Tailwind Preflight applies to the whole editor page. The unconverted surface
 > was spot-checked and is safe (the inspector's fields all carry inline
