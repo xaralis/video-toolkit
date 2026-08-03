@@ -87,8 +87,25 @@ very thing they are slipping against. Otherwise seek to the clip's start. The Pl
 then shows a live source frame throughout.
 
 **Cursor.** `ew-resize` while Alt is held over a slippable clip, `grabbing` during the
-drag. Without it the gesture is undiscoverable — nothing else in the UI hints it
-exists.
+drag.
+
+**Status-line hint.** The cursor only rewards someone who already pressed Alt, so the
+gesture also gets an entry in the legend at the foot of the timeline
+(`LayeredTimeline.tsx:723-737`), in the established shape — highlighted key, em dash,
+description — and using the same modifier notation as the existing `⌘/Ctrl + scroll`
+row:
+
+```
+⌥/Alt + drag a clip — slip the shot inside its window
+```
+
+English, per the editor's UI-language rule.
+
+**It goes second, right after Ripple, and the position is a decision.** The legend is
+`whiteSpace: nowrap` with `overflow: hidden` (`:720-721`), so a fifth entry clips from
+the right on a narrow window. Placing slip beside Ripple groups the two clip-drag
+semantics and guarantees it survives; what gets clipped first is then
+`⌫ delete · ⌘Z undo`, shortcuts a user already knows from everywhere else.
 
 **Live clamping.** The delta is clamped on every `pointermove` (the intersection from
 §1), so the media stops at the edge of its material instead of overshooting and
