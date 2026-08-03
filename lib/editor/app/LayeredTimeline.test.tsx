@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
-import { LayeredTimeline, colorFor, timelineLabel, audioUrl, videoUrl, slipDeltaMs } from './LayeredTimeline';
+import { LayeredTimeline, colorFor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics } from './LayeredTimeline';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
 const reel: LayeredReel = {
@@ -140,5 +140,48 @@ describe('slipDeltaMs', () => {
 
   it('is zero for no movement', () => {
     expect(slipDeltaMs(0, 80)).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 5: boundaryDiagnostics reads the SAME predicate the renderer's check
+// reads (handle-room.ts's boundaryState/starvationMessage), so the editor and
+// the render can never disagree about a starved boundary. Pinned on the pure
+// producer — jsdom mounts no xzdarcy action block (this file's own beat-guide
+// tests are the only DOM-rendered cases; a virtualized row never appears).
+// ---------------------------------------------------------------------------
+
+const starvedReel = (secondSourceInMs: number): LayeredReel => ({
+  version: 'layered-1',
+  meta: { topic: 't', totalDurationMs: 10000 },
+  tracks: {
+    video: [
+      {
+        id: 'v1', kind: 'clip', startMs: 0, endMs: 5000, source: 'a.mp4',
+        sourceInMs: 0, sourceOutMs: 5000,
+        transitionOut: { kind: 'gradient-wipe', frames: 20 },
+      },
+      {
+        id: 'v2', kind: 'clip', startMs: 5000, endMs: 10000, source: 'b.mp4',
+        sourceInMs: secondSourceInMs, sourceOutMs: secondSourceInMs + 5000,
+      },
+    ],
+    audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [],
+  },
+});
+
+describe('boundaryDiagnostics', () => {
+  it('produces one entry per starved boundary, targeting its transition block', () => {
+    const reel = starvedReel(0);
+    const d = boundaryDiagnostics(reel, { 'b.mp4': 10000, 'a.mp4': 10000 }, 30);
+    expect(d).toHaveLength(1);
+    expect(d[0].targetId).toBe('transition:v1');
+    expect(d[0].severity).toBe('error');
+    expect(d[0].message).toContain('Needs 10 frames before the cut');
+  });
+
+  it('is empty when every boundary has room', () => {
+    const reel = starvedReel(2000);
+    expect(boundaryDiagnostics(reel, { 'a.mp4': 10000, 'b.mp4': 10000 }, 30)).toEqual([]);
   });
 });
