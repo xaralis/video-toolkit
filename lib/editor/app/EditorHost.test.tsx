@@ -191,6 +191,46 @@ describe('EditorHost (child modules mocked at the boundary)', () => {
     expect(read()).toBeUndefined();
   });
 
+  it('Escape closes the shortcut overlay instead of clearing the selection underneath it', async () => {
+    const { EditorHost: MockedEditorHost } = await import('../host/EditorHost');
+    render(<MockedEditorHost {...opts} />);
+    await screen.findByText('test-reels');
+    await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+
+    act(() => seenTimelineProps[seenTimelineProps.length - 1].onSelect('video:seg-001'));
+    await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].selectedId).toBe('video:seg-001'));
+
+    fireEvent.keyDown(window, { key: '?' });
+    expect(screen.getByTestId('shortcut-backdrop')).toBeInTheDocument();
+
+    // A ternary flip here (`!helpOpen ? setHelpOpen(false) : setSelectedId(null)`)
+    // would leave the overlay open AND wipe the selection — the opposite of
+    // both assertions below.
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('shortcut-backdrop')).not.toBeInTheDocument();
+    expect(seenInspectorProps[seenInspectorProps.length - 1].selectedId).toBe('video:seg-001');
+  });
+
+  it('suppresses other shortcuts while the overlay is open (⌫ does not delete the selection behind it)', async () => {
+    const { EditorHost: MockedEditorHost } = await import('../host/EditorHost');
+    render(<MockedEditorHost {...opts} />);
+    await screen.findByText('test-reels');
+    await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+
+    act(() => seenTimelineProps[seenTimelineProps.length - 1].onSelect('video:seg-001'));
+    await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].selectedId).toBe('video:seg-001'));
+
+    fireEvent.keyDown(window, { key: '?' });
+    expect(screen.getByTestId('shortcut-backdrop')).toBeInTheDocument();
+
+    // ⌫ would normally delete the selected clip and clear the selection
+    // (handleDelete sets selectedId to null). With the overlay open, only
+    // `help`/`deselect` are wired, so this must be a no-op.
+    fireEvent.keyDown(window, { key: 'Backspace' });
+    expect(screen.getByTestId('shortcut-backdrop')).toBeInTheDocument();
+    expect(seenInspectorProps[seenInspectorProps.length - 1].selectedId).toBe('video:seg-001');
+  });
+
   it('proves dirty tracking (button disabled → enabled) and POSTs the edited reel on a real Save click', async () => {
     const { EditorHost: MockedEditorHost } = await import('../host/EditorHost');
     render(<MockedEditorHost {...opts} />);

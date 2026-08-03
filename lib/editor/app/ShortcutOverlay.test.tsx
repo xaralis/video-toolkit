@@ -31,4 +31,14 @@ describe('ShortcutOverlay', () => {
     fireEvent.click(screen.getByTestId('shortcut-backdrop'));
     expect(onClose).toHaveBeenCalled();
   });
+
+  // A refactor that dropped the panel's stopPropagation would pass every
+  // other test here while making the overlay unusable (any click inside it —
+  // scrolling the list, selecting text — would dismiss it).
+  it('does not close when clicking inside the panel', () => {
+    const onClose = vi.fn();
+    render(<ShortcutOverlay open onClose={onClose} />);
+    fireEvent.click(screen.getByRole('dialog', { name: 'Keyboard shortcuts' }));
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });

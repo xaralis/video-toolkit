@@ -20,6 +20,8 @@ export function ShortcutOverlay({ open, onClose }: { open: boolean; onClose: () 
       className="ed:fixed ed:inset-0 ed:z-50 ed:flex ed:items-center ed:justify-center ed:bg-black/60"
     >
       <div
+        role="dialog"
+        aria-label="Keyboard shortcuts"
         onClick={(e) => e.stopPropagation()}
         className="ed:bg-panel ed:border ed:border-line ed:rounded-xl ed:p-6 ed:max-h-[80vh] ed:overflow-y-auto ed:min-w-[420px]"
       >

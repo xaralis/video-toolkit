@@ -285,7 +285,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   // One listener for every editor shortcut (see `shortcuts.ts`). Called
   // unconditionally, before the early return below, so hook order never
   // varies between the loading render and every one after it.
-  useShortcuts({
+  const shortcutHandlers = {
     deselect: () => (helpOpen ? setHelpOpen(false) : setSelectedId(null)),
     play: () => playerRef.current?.toggle(),
     undo,
@@ -303,7 +303,15 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
     zoomOut: () => zoomBy(1 / 1.25),
     save: () => !saving && handleSave(),
     help: () => setHelpOpen((v) => !v),
-  });
+  };
+  // While the shortcut overlay is open, only `help` (to close it) and
+  // `deselect` (Esc) may fire — every other binding would act invisibly
+  // behind the modal backdrop (e.g. ⌫ deleting the very clip whose row the
+  // user is reading in the overlay at that moment). `useShortcuts` stays a
+  // dumb dispatcher; the overlay-awareness lives here.
+  useShortcuts(
+    helpOpen ? { deselect: shortcutHandlers.deselect, help: shortcutHandlers.help } : shortcutHandlers,
+  );
 
   // Before /props answers there is no reel and so no shell at all. Same
   // vocabulary as the preview's own indicator, so the two stages of startup read

@@ -974,7 +974,7 @@ function LayeredTimelineImpl({
       </div>
       </div>
       {/* Derived from the shortcut registry, so it cannot drift from the bindings. */}
-      <div className="ed:flex ed:gap-4 ed:text-[11px] ed:text-ink-3 ed:px-3 ed:py-1">
+      <div className="ed:flex-none ed:h-5 ed:flex ed:items-center ed:gap-4 ed:px-3 ed:py-1 ed:border-t ed:border-line ed:text-[11px] ed:text-ink-3 ed:whitespace-nowrap ed:overflow-hidden">
         {[...SHORTCUTS.filter((s) => s.group === 'Timeline'), ...GESTURES].map((s) => (
           <span key={s.keys}>
             <span className="ed:font-mono ed:text-ink-2">{s.keys}</span> — {s.label}
