@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { LayeredReel, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
-import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem, duplicateItem, clipFootageCapMs, resizeBoundsMs, laneOfRow } from './layered-adapter';
+import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem, duplicateItem, clipFootageCapMs, resizeBoundsMs, laneOfRow, slipVideoItem, isSlippable } from './layered-adapter';
 
 // Small schema-valid LayeredReel fixture: one item per track.
 const REEL: LayeredReel = {
@@ -919,5 +919,149 @@ describe('parseActionId', () => {
 
   it('recognizes an opening transition-in: action id, edge in', () => {
     expect(parseActionId('transition-in:A')).toEqual({ lane: 'transitions', id: 'A', edge: 'in' });
+  });
+});
+
+// A clip with 1s of unused head and 1s of unused tail inside a 10s file:
+// window [1000,4000] on the timeline span [0,3000].
+const SLIP_REEL: LayeredReel = {
+  version: 'layered-1',
+  meta: { topic: 'Slip', totalDurationMs: 3000 },
+  tracks: {
+    video: [{ id: 'v1', kind: 'clip', startMs: 0, endMs: 3000, source: 'a.mp4', sourceInMs: 1000, sourceOutMs: 4000 }],
+    audio: [],
+    music: { baseVolumeDb: -8 },
+    overlays: [],
+    brand: [],
+  },
+};
+const CAPS = { v1: 10000 }; // decoded footage length
+
+const vid = (reel: LayeredReel) => reel.tracks.video[0] as Extract<VideoItem, { kind: 'clip' }>;
+
+describe('slipVideoItem', () => {
+  it('shifts the source window by the delta and leaves the timeline span untouched', () => {
+    const out = vid(slipVideoItem(SLIP_REEL, 'v1', 500, CAPS));
+    expect(out.sourceInMs).toBe(1500);
+    expect(out.sourceOutMs).toBe(4500);
+    expect(out.startMs).toBe(0);
+    expect(out.endMs).toBe(3000);
+  });
+
+  it('preserves span == sourceOut - sourceIn', () => {
+    const out = vid(slipVideoItem(SLIP_REEL, 'v1', -300, CAPS));
+    expect(out.sourceOutMs - out.sourceInMs).toBe(out.endMs - out.startMs);
+  });
+
+  it('clamps left at -sourceInMs — nothing exists before the file start', () => {
+    const out = vid(slipVideoItem(SLIP_REEL, 'v1', -5000, CAPS));
+    expect(out.sourceInMs).toBe(0);
+    expect(out.sourceOutMs).toBe(3000);
+  });
+
+  it('clamps right at the footage end when the length is known', () => {
+    const out = vid(slipVideoItem(SLIP_REEL, 'v1', 9000, CAPS));
+    expect(out.sourceOutMs).toBe(10000);
+    expect(out.sourceInMs).toBe(7000);
+  });
+
+  it('applies no right bound when the footage length is unknown', () => {
+    const out = vid(slipVideoItem(SLIP_REEL, 'v1', 9000, {}));
+    expect(out.sourceOutMs).toBe(13000);
+    expect(out.sourceInMs).toBe(10000);
+  });
+
+  it('gives a linked bed the same delta, on both source fields', () => {
+    const reel: LayeredReel = {
+      ...SLIP_REEL,
+      tracks: {
+        ...SLIP_REEL.tracks,
+        audio: [{ id: 'a1', startMs: 0, endMs: 3000, source: 'a.mp3', sourceInMs: 2000, sourceOutMs: 5000, followsVideoId: 'v1' }],
+      },
+    };
+    const out = slipVideoItem(reel, 'v1', 500, CAPS);
+    expect(out.tracks.audio[0].sourceInMs).toBe(2500);
+    expect(out.tracks.audio[0].sourceOutMs).toBe(5500);
+  });
+
+  // THE SYNC RULE. A bed with less headroom than the clip must limit the WHOLE
+  // gesture: clamping each side separately would move picture and sound by
+  // different amounts and desync them silently.
+  it('limits the delta to the linked bed headroom so picture and sound never diverge', () => {
+    const reel: LayeredReel = {
+      ...SLIP_REEL,
+      tracks: {
+        ...SLIP_REEL.tracks,
+        audio: [{ id: 'a1', startMs: 0, endMs: 3000, source: 'a.mp3', sourceInMs: 200, followsVideoId: 'v1' }],
+      },
+    };
+    // The clip could go -1000; the bed only -200. Both must move -200.
+    const out = slipVideoItem(reel, 'v1', -1000, CAPS);
+    expect(vid(out).sourceInMs).toBe(800);
+    expect(out.tracks.audio[0].sourceInMs).toBe(0);
+  });
+
+  it('leaves an unlinked bed alone', () => {
+    const reel: LayeredReel = {
+      ...SLIP_REEL,
+      tracks: {
+        ...SLIP_REEL.tracks,
+        audio: [{ id: 'a1', startMs: 0, endMs: 3000, source: 'a.mp3', sourceInMs: 2000 }],
+      },
+    };
+    const out = slipVideoItem(reel, 'v1', 500, CAPS);
+    expect(out.tracks.audio[0].sourceInMs).toBe(2000);
+  });
+
+  it('is a no-op for kinds with no single source window', () => {
+    const reel: LayeredReel = {
+      ...SLIP_REEL,
+      tracks: { ...SLIP_REEL.tracks, video: [{ id: 'p1', kind: 'photo', startMs: 0, endMs: 3000, source: 'a.jpg' }] },
+    };
+    expect(slipVideoItem(reel, 'p1', 500, {})).toBe(reel);
+  });
+
+  it('is a no-op for an unknown id', () => {
+    expect(slipVideoItem(SLIP_REEL, 'nope', 500, CAPS)).toBe(SLIP_REEL);
+  });
+
+  // An authored sourceOutMs can overshoot the real file (drift). The right bound
+  // is then BELOW the left one; slipping must refuse rather than move backwards.
+  it('refuses to move when the bounds cross (authored out beyond the file)', () => {
+    const reel: LayeredReel = {
+      ...SLIP_REEL,
+      tracks: { ...SLIP_REEL.tracks, video: [{ id: 'v1', kind: 'clip', startMs: 0, endMs: 3000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 3000 }] },
+    };
+    expect(slipVideoItem(reel, 'v1', 500, { v1: 2000 })).toBe(reel);
+  });
+});
+
+// The single decision "can this item be slipped?" — shared by beginSlip and the
+// cursor hint in LayeredTimeline.tsx (whole-branch review: the two used to
+// disagree, since the cursor only checked the lane, not the kind). Every video
+// kind is covered so a seventh kind added later can't silently opt in/out on
+// only one side.
+describe('isSlippable', () => {
+  const base = { startMs: 0, endMs: 3000 };
+  it('is true for clip', () => {
+    expect(isSlippable({ ...base, id: 'v1', kind: 'clip', source: 'a.mp4', sourceInMs: 0, sourceOutMs: 3000 })).toBe(true);
+  });
+  it('is true for broll', () => {
+    expect(isSlippable({ ...base, id: 'v1', kind: 'broll', source: 'a.mp4', sourceInMs: 0, sourceOutMs: 3000 })).toBe(true);
+  });
+  it('is false for multi-clip', () => {
+    expect(isSlippable({ ...base, id: 'v1', kind: 'multi-clip', layout: 'split-h', sources: [] })).toBe(false);
+  });
+  it('is false for card', () => {
+    expect(isSlippable({ ...base, id: 'v1', kind: 'card', cardKind: 'stat' })).toBe(false);
+  });
+  it('is false for photo', () => {
+    expect(isSlippable({ ...base, id: 'v1', kind: 'photo', source: 'a.jpg' })).toBe(false);
+  });
+  it('is false for outro', () => {
+    expect(isSlippable({ ...base, id: 'v1', kind: 'outro' })).toBe(false);
+  });
+  it('is false for undefined (item not found)', () => {
+    expect(isSlippable(undefined)).toBe(false);
   });
 });

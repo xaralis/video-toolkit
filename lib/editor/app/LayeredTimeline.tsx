@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import type { RefObject, CSSProperties } from 'react';
+import type { RefObject, CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import { Timeline, type TimelineState } from '@xzdarcy/react-timeline-editor';
 import type { TimelineRow, TimelineAction, TimelineEffect } from '@xzdarcy/timeline-engine';
 import '@xzdarcy/react-timeline-editor/dist/react-timeline-editor.css';
@@ -11,6 +11,8 @@ import {
   parseActionId,
   resizeBoundsMs,
   laneOfRow,
+  slipVideoItem,
+  isSlippable,
   type LaneId,
 } from '../src/timeline/layered-adapter';
 import { stripAccents } from './accent';
@@ -129,6 +131,15 @@ function gripState(
     left: item.sourceInMs <= 0,
     right: footageCapMs !== undefined && item.sourceOutMs >= footageCapMs - 1,
   };
+}
+
+// px dragged → ms of source shift. NEGATED: dragging right pulls the media right
+// inside a fixed window, so what precedes it slides into view (sourceInMs falls).
+// Matches Premiere/Resolve. `scaleWidth` is px per second.
+// `|| 0` normalizes the `-0` that `-(0 / scaleWidth) * 1000` produces for
+// dxPx===0 back to `+0` — Object.is (and so `toBe(0)`) treats them as unequal.
+export function slipDeltaMs(dxPx: number, scaleWidth: number): number {
+  return -(dxPx / scaleWidth) * 1000 || 0;
 }
 
 // The trim handles are xzdarcy's own invisible stretch zones; these grips are a
@@ -272,6 +283,29 @@ function LayeredTimelineImpl({
   const listRef = useRef<HTMLDivElement>(null);
   const guidesRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  // An in-flight slip. `base` is the reel as it was when the gesture STARTED, so
+  // every move re-derives from it rather than accumulating — no drift, and the
+  // clamp stays honest at the edges. History coalesces the stream of commits
+  // into one undo step (useHistory.ts:5-8).
+  const slipRef = useRef<{ id: string; x0: number; base: LayeredReel } | null>(null);
+
+  // Alt held → slippable clips show they can be slipped. Window-level because
+  // the key may be pressed before the pointer enters a block. `blur` clears it:
+  // a tab switch swallows the keyup and would otherwise leave it stuck on.
+  const [altHeld, setAltHeld] = useState(false);
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => { if (e.altKey) setAltHeld(true); };
+    const up = (e: KeyboardEvent) => { if (!e.altKey) setAltHeld(false); };
+    const clear = () => setAltHeld(false);
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', clear);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', clear);
+    };
+  }, []);
 
   // ⌘/Ctrl + wheel (and trackpad pinch, which macOS delivers as ctrl+wheel) zooms
   // the timeline. Attached non-passive so preventDefault stops the browser's own
@@ -414,6 +448,41 @@ function LayeredTimelineImpl({
     };
   }, [playerRef, fps]);
 
+  const beginSlip = (e: ReactPointerEvent<HTMLDivElement>, actionId: string) => {
+    // button !== 0 excludes alt+right-click: that opens the native context
+    // menu, which can swallow the pointerup and leave slipRef stuck set (the
+    // next pointer to cross ANY block would then slip the wrong clip from a
+    // stale x0/base — see the whole-branch review finding this guards against).
+    if (e.button !== 0 || !e.altKey) return;
+    const { lane, id } = parseActionId(actionId);
+    if (lane !== 'video') return;
+    const item = reel.tracks.video.find((v) => v.id === id);
+    if (!isSlippable(item)) return;
+    // Keep xzdarcy out: without this it starts its own move on the same press.
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    slipRef.current = { id, x0: e.clientX, base: reel };
+    // Feedback needs a live frame FROM THIS CLIP. If the playhead is already
+    // inside it, leave it — the user chose that reference frame.
+    const nowMs = ((playerRef.current?.getCurrentFrame() ?? 0) / fps) * 1000;
+    if (nowMs < item.startMs || nowMs >= item.endMs) {
+      playerRef.current?.seekTo(Math.round((item.startMs / 1000) * fps));
+    }
+  };
+
+  const moveSlip = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const s = slipRef.current;
+    if (!s) return;
+    onChange(slipVideoItem(s.base, s.id, slipDeltaMs(e.clientX - s.x0, scaleWidth), capMsById));
+  };
+
+  const endSlip = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!slipRef.current) return;
+    slipRef.current = null;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+  };
+
   return (
     <div
       ref={rootRef}
@@ -552,6 +621,11 @@ function LayeredTimelineImpl({
               );
             }
             const wf = waveformFor(action, reel, peaks);
+            // Same test the gesture uses (isSlippable) — not just "is this the
+            // video lane" — so the cursor never promises a slip on a kind
+            // beginSlip would refuse (multi-clip/card/photo/outro).
+            const { lane: blockLane, id: blockId } = parseActionId(action.id);
+            const slippable = altHeld && blockLane === 'video' && isSlippable(reel.tracks.video.find((v) => v.id === blockId));
             return (
               <div
                 style={{
@@ -567,8 +641,13 @@ function LayeredTimelineImpl({
                   fontSize: 11,
                   overflow: 'hidden',
                   boxShadow: action.selected ? 'inset 0 0 0 2px #e8e8ea' : undefined,
+                  cursor: slippable ? 'ew-resize' : undefined,
                 }}
                 title={action.id}
+                onPointerDownCapture={(e) => beginSlip(e, action.id)}
+                onPointerMove={moveSlip}
+                onPointerUp={endSlip}
+                onPointerCancel={endSlip}
               >
                 {(() => {
                   // Trim grips on every resizable block (overlays, video, audio —
@@ -724,6 +803,9 @@ function LayeredTimelineImpl({
         <span>
           <span style={{ color: ripple ? '#b6ff5a' : '#9a9a95' }}>Ripple {ripple ? 'on' : 'off'}</span>
           {ripple ? ' — resize shifts the rest; drag carries everything behind it' : ' — only what you grab moves'}
+        </span>
+        <span>
+          <span style={{ color: '#9a9a95' }}>⌥/Alt + drag a clip</span> — slip the shot inside its window
         </span>
         <span>
           <span style={{ color: '#9a9a95' }}>Drag the volume line</span> — set level (double-click to reset)

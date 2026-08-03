@@ -199,6 +199,73 @@ function resizeVideoItem(item: VideoItem, np: { startMs: number; endMs: number }
   return { ...item, endMs: item.startMs + (sourceOutMs - item.sourceInMs), sourceOutMs };
 }
 
+// Whether an item has a single trim source that slip can shift — the ONE
+// decision "can this be slipped?" needs, shared by the gesture (beginSlip) and
+// the cursor hint in LayeredTimeline.tsx so the two can't drift apart (a real
+// whole-branch-review finding: the cursor advertised slip on kinds the gesture
+// refused). A type guard, not a plain boolean, so callers keep the clip/broll
+// narrowing afterwards — see slipVideoItem below.
+export function isSlippable(item: VideoItem | undefined): item is Extract<VideoItem, { kind: 'clip' | 'broll' }> {
+  return !!item && (item.kind === 'clip' || item.kind === 'broll');
+}
+
+// SLIP: move the media INSIDE a clip's window while its position and length on
+// the timeline stay put — the fourth operation in this algebra, beside move and
+// the two trims. Both source fields shift by the same delta, so the adapter's
+// `span == sourceOutMs - sourceInMs` invariant survives untouched.
+//
+// The delta is clamped ONCE, over the intersection of the clip's headroom and
+// every LINKED bed's, and the result is applied to all of them. Clamping each
+// party against its own file would shift picture and sound by different amounts
+// and silently break the sync the link exists to guarantee. Left headroom is
+// always known (`sourceInMs`); on the right an unknown footage length means NO
+// bound, matching resizeBoundsMs above.
+//
+// KNOWN GAP: a linked bed contributes no RIGHT bound — the editor does not
+// decode bed durations today, so slipping right can run a short bed past its
+// own end (silence, not desync). Pass audio caps here when they exist.
+export function slipVideoItem(
+  reel: LayeredReel,
+  id: string,
+  deltaMs: number,
+  footageMsById: Record<string, number> = {},
+): LayeredReel {
+  const item = reel.tracks.video.find((v) => v.id === id);
+  if (!isSlippable(item)) return reel;
+
+  const beds = reel.tracks.audio.filter((a) => a.followsVideoId === id);
+  // Most-negative delta anyone can take (each party's own head), then the
+  // least-generous of them.
+  const minDelta = Math.max(-item.sourceInMs, ...beds.map((b) => -b.sourceInMs));
+  const cap = footageMsById[id];
+  const maxDelta = cap && cap > 0 ? cap - item.sourceOutMs : Infinity;
+  if (maxDelta < minDelta) return reel; // bounds crossed (authored out past the file)
+
+  const d = Math.min(Math.max(deltaMs, minDelta), maxDelta);
+  if (d === 0) return reel;
+
+  return {
+    ...reel,
+    tracks: {
+      ...reel.tracks,
+      video: reel.tracks.video.map((v) =>
+        v.id === id && (v.kind === 'clip' || v.kind === 'broll')
+          ? { ...v, sourceInMs: v.sourceInMs + d, sourceOutMs: v.sourceOutMs + d }
+          : v,
+      ),
+      audio: reel.tracks.audio.map((a) =>
+        a.followsVideoId === id
+          ? {
+              ...a,
+              sourceInMs: a.sourceInMs + d,
+              ...(a.sourceOutMs !== undefined ? { sourceOutMs: a.sourceOutMs + d } : {}),
+            }
+          : a,
+      ),
+    },
+  };
+}
+
 // An audio edge resize is trim-linked exactly like a clip: the left edge moves
 // the in-point (clamped >= 0, so you can't reveal audio before the source
 // start), the right edge moves the out-point. `sourceOutMs` is optional in the
