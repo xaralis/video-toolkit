@@ -29,6 +29,10 @@
       // declarations and mapping there silently `any`s the whole surface.
       "@remotion/transitions": ["./node_modules/@remotion/transitions"],
       "@remotion/transitions/*": ["./node_modules/@remotion/transitions/dist/presentations/*"],
+      // Same problem, same fix, for lib/render/layered-composition-props.ts's
+      // `getVideoMetadata` import — a plain `main`/`types` package (no subpath
+      // exports map), so unlike `@remotion/transitions` above one entry covers it.
+      "@remotion/media-utils": ["./node_modules/@remotion/media-utils"],
       "react": ["./node_modules/@types/react"],
       "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"]
     }

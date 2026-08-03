@@ -129,15 +129,18 @@ describe('layeredCompositionProps', () => {
     expect(props.durationInFrames).toBeGreaterThan(0);
   });
 
-  it('derives the real duration through calculateMetadata at the composition fps', () => {
+  it('derives the real duration through calculateMetadata at the composition fps', async () => {
+    // calculateMetadata is async (it measures sources); this reel's video
+    // track is empty, so there is nothing to measure and it resolves
+    // immediately with the same duration expression as before.
     const props = layeredCompositionProps({ id: 'X', component: Stub, fps: 25, width: 2, height: 3 });
-    expect(props.calculateMetadata({ props: { reel: reel(8_000) } })).toEqual({
+    await expect(props.calculateMetadata({ props: { reel: reel(8_000) } })).resolves.toEqual({
       durationInFrames: 200,
     });
   });
 
-  it('applies the floor through calculateMetadata too', () => {
+  it('applies the floor through calculateMetadata too', async () => {
     const props = layeredCompositionProps({ id: 'X', component: Stub, fps: 30, width: 2, height: 3 });
-    expect(props.calculateMetadata({ props: { reel: reel(100) } })).toEqual({ durationInFrames: 60 });
+    await expect(props.calculateMetadata({ props: { reel: reel(100) } })).resolves.toEqual({ durationInFrames: 60 });
   });
 });

@@ -6,11 +6,22 @@
 // how a composition and its render drift apart, so core owns it.
 //
 // NOT a component: it returns a plain object the brand spreads onto <Composition>.
-// It deliberately does not import `remotion` — not because core lacks it (core has
-// `remotion` 4.0.498 in lib/editor/node_modules, and `examples/layered-minimal` is a
-// real Remotion project), but because a plain-object factory needs no framework
-// import and stays testable with no mock. The spread is type-checked against a real
-// <Composition> by the `examples/layered-minimal` gate.
+// The spread is type-checked against a real <Composition> by the
+// `examples/layered-minimal` gate.
+//
+// `calculateMetadata` DOES import `remotion` (`staticFile`) and
+// `@remotion/media-utils` (`getVideoMetadata`) now, to measure each source's
+// real duration and warn on a starved transition boundary (see
+// `checkBoundaries` below) — a change from this file's earlier
+// no-framework-import stance. Both resolve at bundle time via
+// `lib/project/remotion-config.ts`'s webpack `modules` override (the
+// generic fix for out-of-tree `lib/**` files, already relied on by
+// `lib/render/at-cut-transitions.tsx` for `@remotion/transitions`); under
+// `lib/editor`'s own vitest/tsc, `@remotion/media-utils` is a pinned
+// devDependency there (see its `package.json`), the same pattern `remotion`
+// itself already uses for that toolchain.
+import { staticFile } from 'remotion';
+import { getVideoMetadata } from '@remotion/media-utils';
 import type { LayeredReel } from '../reel-config-base/layered-schema';
 import { handleRoomFrames, boundaryState, starvationMessage } from '../reel-config-base/handle-room';
 
@@ -71,7 +82,7 @@ export interface LayeredCompositionOptions<C> {
 
 export interface LayeredCompositionProps<C> extends LayeredCompositionOptions<C> {
   durationInFrames: number;
-  calculateMetadata: (arg: { props: { reel: LayeredReel } }) => { durationInFrames: number };
+  calculateMetadata: (arg: { props: { reel: LayeredReel } }) => Promise<{ durationInFrames: number }>;
 }
 
 export function layeredCompositionProps<C>({
@@ -90,8 +101,39 @@ export function layeredCompositionProps<C>({
     // Placeholder: calculateMetadata replaces it on every mount. Required by
     // the <Composition> prop type all the same.
     durationInFrames: MIN_FRAMES,
-    calculateMetadata: ({ props }) => ({
-      durationInFrames: layeredDurationInFrames(props.reel, fps),
-    }),
+    calculateMetadata: async ({ props }) => {
+      // Measure every DISTINCT source once, so a boundary starved of real
+      // footage warns instead of silently dropping frames. A source that
+      // fails to measure (network hiccup, unsupported format) is left
+      // ABSENT from `durationsMs` rather than defaulted to 0 —
+      // `handleRoomFrames` reads an absent entry as unbounded, so a
+      // measurement failure never masquerades as starvation. Nothing here
+      // throws: a starved boundary only ever warns.
+      const sources = [
+        ...new Set(
+          props.reel.tracks.video
+            .map((v) => (v as { source?: string }).source)
+            .filter((s): s is string => !!s),
+        ),
+      ];
+      const durationsMs: Record<string, number> = {};
+      await Promise.all(
+        sources.map(async (s) => {
+          try {
+            const meta = await getVideoMetadata(staticFile(s));
+            durationsMs[s] = meta.durationInSeconds * 1000;
+          } catch {
+            // Left absent deliberately — see the comment above.
+          }
+        }),
+      );
+      for (const msg of checkBoundaries(props.reel, durationsMs, fps)) {
+        // eslint-disable-next-line no-console
+        console.warn('[transition] handle starvation —', msg);
+      }
+      // Unchanged from before this task — measurement and warnings are
+      // additive, and change nothing about the composition's length.
+      return { durationInFrames: layeredDurationInFrames(props.reel, fps) };
+    },
   };
 }

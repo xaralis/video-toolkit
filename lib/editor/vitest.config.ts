@@ -51,6 +51,14 @@ export default defineConfig({
       // specifier even when the module is mocked via vi.mock('remotion', ...) —
       // mocking substitutes the module's contents, not the resolution step.
       'remotion': fileURLToPath(new URL('./node_modules/remotion', import.meta.url)),
+      // Same problem, same fix, for lib/render/layered-composition-props.ts's
+      // `getVideoMetadata` import: `@remotion/media-utils` is a declared
+      // lib/editor devDependency (installed for this reason, not for its own
+      // sake — lib/editor has no composition of its own), but the importing
+      // file lives outside lib/editor's node_modules ancestry. No exports map
+      // to worry about here (plain `main`/`types`, unlike `@remotion/transitions`
+      // above), so the simple directory alias `remotion` itself uses is enough.
+      '@remotion/media-utils': fileURLToPath(new URL('./node_modules/@remotion/media-utils', import.meta.url)),
     },
   },
   // Vite only serves files under the project root by default; the sibling lib
