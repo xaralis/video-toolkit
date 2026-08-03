@@ -634,8 +634,8 @@ function GradeFields({
   return (
     <>
       <Row>
-        <SliderField lbl="Brightness" min={0} max={2} step={0.05} value={g.brightness ?? 1} disabled={disabled} onCommit={(n) => onPatch({ brightness: n })} />
-        <SliderField lbl="Contrast" min={0} max={2} step={0.05} value={g.contrast ?? 1} disabled={disabled} onCommit={(n) => onPatch({ contrast: n })} />
+        <SliderField lbl="Brightness" min={0.2} max={2} step={0.05} value={g.brightness ?? 1} disabled={disabled} onCommit={(n) => onPatch({ brightness: n })} />
+        <SliderField lbl="Contrast" min={0.2} max={2} step={0.05} value={g.contrast ?? 1} disabled={disabled} onCommit={(n) => onPatch({ contrast: n })} />
       </Row>
       <Row>
         <SliderField lbl="Saturation" min={0} max={2} step={0.05} value={g.saturation ?? 1} disabled={disabled} onCommit={(n) => onPatch({ saturation: n })} />
