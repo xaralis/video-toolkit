@@ -25,10 +25,41 @@ written twice.
 
 ## 1 — Tokens and palette
 
-CSS custom properties on the shell root (`lib/editor/app/tokens.css`, imported
-by `EditorShell`). Both CSS modules and inline `CSSProperties` can read
-`var(--ed-*)`, so all three mechanisms converge without rewriting the 1315-line
-inspector.
+### Styling mechanism: Tailwind, compiled at core
+
+Utility classes replace the three ad-hoc mechanisms and cut the line count the
+brief asks for. But Tailwind **cannot be a runtime dependency of the editor**:
+
+- `vite-config.mts:15-17` states it outright — `@tailwindcss/vite` is a
+  brand-side choice, "some brands use Tailwind, some don't", passed in via
+  `opts.plugins`.
+- Verified: **PP has Tailwind, ROOST does not** (`plugins: [react()]`, no
+  `tailwind` in any of its package.json files).
+
+If core's editor emitted Tailwind classes expecting the brand to compile them,
+ROOST's editor would render **completely unstyled — and silently**, because
+unstyled markup throws no error.
+
+So: **core compiles its own Tailwind to a static stylesheet and commits it.**
+
+- `@tailwindcss/cli` is a core devDependency. An npm script scans
+  `lib/editor/**/*.tsx` (Tailwind v4 `@source`) and emits
+  `lib/editor/app/editor.css`, committed to the repo.
+- `EditorShell` imports that CSS. A brand needs **nothing** — no plugin, no
+  config, no content path. ROOST keeps working unchanged.
+- **Utilities are prefixed `ed:`** (`ed:flex`, `ed:bg-panel`). PP runs its own
+  Tailwind in the same page; a prefix makes a collision between core's
+  generated utilities and the brand's structurally impossible, rather than
+  relying on both resolving to identical rules.
+- **Gate:** the build script is deterministic, so CI-free verification is
+  `npm run editor:css && git diff --exit-code lib/editor/app/editor.css`.
+  Without it, someone adds a class, forgets to rebuild, and the style silently
+  does not apply — the same failure class this whole choice avoids.
+
+Design tokens stay CSS custom properties (`lib/editor/app/tokens.css`) and are
+wired into Tailwind's theme, so `ed:bg-panel` resolves to `var(--ed-bg-2)`.
+That keeps the token table below as the single source of colour, and lets any
+inline style that survives the migration read the same variables.
 
 | Token | Value | Use |
 |---|---|---|
@@ -198,7 +229,9 @@ and knows nothing about editor chrome.
 
 ## Gates
 
-Editor tests, editor `tsc --noEmit` (identity against the 3 known errors, exit
+`npm run editor:css && git diff --exit-code lib/editor/app/editor.css` (the
+generated stylesheet is not stale), editor tests, editor `tsc --noEmit`
+(identity against the 3 known errors, exit
 code read separately), brand-leak grep (exactly 2 — `#7c5cff` is a hex and does
 not move it). Pixel harness, example typecheck and Python are untouched — this
 reaches neither `lib/render`, `lib/transitions` nor `video_toolkit` — skip with
@@ -206,7 +239,9 @@ that reason stated.
 
 ## Phasing
 
-1. **Tokens and repaint** — no behaviour change. Must land first.
+1. **Tailwind pipeline + tokens and repaint** — the `ed:`-prefixed build script,
+   the committed `editor.css` and its staleness gate, then converting the three
+   styling mechanisms. No behaviour change.
 2. **Lane colours** — separate because it changes a *rule* and carries the
    `stableColor` tension.
 3. **Controls** — pure helpers first, then the four controls, then 38 call sites.
