@@ -6,7 +6,7 @@ import {
   effectDefinition,
   humanizeKey,
   stableColor,
-  STABLE_COLOR_PALETTE,
+  getStableColorPalette,
   type EditorMeta,
 } from './editor-meta';
 import { CORE_LANE_COLOR } from './LayeredTimeline';
@@ -82,11 +82,14 @@ describe('stableColor', () => {
   // rate for kinds outside it. `STABLE_COLOR_PALETTE` (editor-meta.ts) is now
   // built by farthest-point sampling, a real geometric construction, so this
   // checks EVERY pair of the whole palette — not a sample, not a fixture —
-  // which is the guarantee the old test only claimed to have.
+  // which is the guarantee the old test only claimed to have. The palette is
+  // built LAZILY (see `getStableColorPalette` in editor-meta.ts, so import
+  // doesn't pay its ~77ms construction cost) — calling the accessor here
+  // forces that build for this test.
   it('STABLE_COLOR_PALETTE separates every one of its own entries from every other', () => {
-    const rgbs = STABLE_COLOR_PALETTE.map((c) => hslToRgb(c.h, c.s, c.l));
+    const rgbs = getStableColorPalette().map((c) => hslToRgb(c.h, c.s, c.l));
     // Measured minimum over all C(2048,2) = 2,096,128 pairs of this exact
-    // palette (PALETTE_SIZE=2048, built once at module load — see
+    // palette (PALETTE_SIZE=2048, built once, lazily, on first use — see
     // buildPalette in editor-meta.ts, over the widened sat 20-90% / light
     // 15-80% box) is ~11.65 (palette[1126] vs palette[2047]). 10 keeps a real
     // margin under that without being so tight that an unrelated, still-
@@ -100,13 +103,17 @@ describe('stableColor', () => {
     // A single assertion at the end, not one per pair: 2,096,128 `expect()`
     // calls (with an eagerly-built label string each) made this test take
     // >10s: plain-JS min-tracking, then one assert, is the same guarantee at
-    // negligible cost.
+    // negligible cost. `!(d >= min)`, not `d < min`: the latter is FALSE for
+    // a NaN `d` (any comparison with NaN is false), so a NaN redmean distance
+    // — e.g. from a NaN saturation or lightness slipping into the palette —
+    // would silently never update `min` and never fail this test. `!(d >=
+    // min)` is true for NaN (since `NaN >= min` is false), so it's caught.
     let min = Infinity;
     let worstPair: [number, number] = [0, 0];
     for (let i = 0; i < rgbs.length; i += 1) {
       for (let j = i + 1; j < rgbs.length; j += 1) {
         const d = redmean(rgbs[i], rgbs[j]);
-        if (d < min) {
+        if (!(d >= min)) {
           min = d;
           worstPair = [i, j];
         }
@@ -132,7 +139,7 @@ describe('stableColor', () => {
   it('never generates a colour outside the arc, or inside the accent guard band', () => {
     const guardLo = ACCENT_HUE - HUE_GUARD;
     const guardHi = ACCENT_HUE + HUE_GUARD;
-    for (const { h } of STABLE_COLOR_PALETTE) {
+    for (const { h } of getStableColorPalette()) {
       expect(h, `palette hue ${h}`).toBeGreaterThanOrEqual(ARC[0]);
       expect(h, `palette hue ${h}`).toBeLessThanOrEqual(ARC[1]);
       expect(h < guardLo || h > guardHi, `palette hue ${h} inside guard band [${guardLo}, ${guardHi}]`).toBe(true);
@@ -209,7 +216,7 @@ describe('stableColor', () => {
   // hidden one. It does not mean the new generator is worse: the real,
   // structural claim — the one `STABLE_COLOR_PALETTE`'s exhaustive test above
   // proves — is that separation between two DIFFERENT palette entries is
-  // ALWAYS at least ~26.6 (measured exhaustively over all 2096128 pairs), a
+  // ALWAYS at least ~11.65 (measured exhaustively over all 2096128 pairs), a
   // guarantee the old generator's three uncoordinated hash draws never had at
   // any list size. What this test actually checks, honestly: the new
   // generator does not degenerate to an exact duplicate on this realistic,

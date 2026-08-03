@@ -304,14 +304,21 @@ export function humanizeKey(key: string): string {
  *  (re-measured exhaustively, not assumed, in `editor-meta.test.ts` — it
  *  moves if the box or size changes) and a collision probability for a
  *  realistic dozen-kind brand list of **~3.2%** (birthday bound on 2048
- *  slots: 1 - e^(-12·11/(2·2048))) — in the same ballpark as the
- *  pre-harmonisation generator's own duplicate rate (measured at 2.1-2.7% for
- *  the same list size), not the ~51-97% an earlier, much smaller palette (96
- *  slots) produced for the same list sizes. That smaller palette's
- *  identical-colour rate was strictly worse than the pre-existing problem
- *  this task set out to fix, which is why it was replaced rather than kept:
- *  distinguishable is the goal, and identical is the one outcome that can
- *  never be distinguishable. */
+ *  slots: 1 - e^(-12·11/(2·2048))). Honestly stated, that is NOT "the same
+ *  ballpark" as the pre-harmonisation generator — at 12 kinds it measures at
+ *  ~1.6% (2.1-2.7% was this generator's own measured rate at 14 kinds, not
+ *  12; comparing across different list sizes would have understated the
+ *  cost). So the real trade is roughly double the old generator's collision
+ *  rate — a real, disclosed cost, not a wash — bought for a guaranteed
+ *  arc/guard-compliant palette AND (per the reviewer's independent 5000-trial
+ *  comparison) a lower near-duplicate rate under 20 redmean (21.4% of
+ *  12-kind draws vs the old generator's 33.9%) and a higher mean minimum
+ *  separation (30.4 vs the old generator's). Not the ~51-97% an earlier,
+ *  much smaller palette (96 slots) produced for the same list sizes — that
+ *  smaller palette's identical-colour rate was strictly worse than the
+ *  pre-existing problem this task set out to fix, which is why it was
+ *  replaced rather than kept: distinguishable is the goal, and identical is
+ *  the one outcome that can never be distinguishable. */
 const SAT_MIN = 20;
 const SAT_MAX = 90;
 const LIGHT_MIN = 15;
@@ -354,10 +361,10 @@ const USABLE = WIDTH_BELOW_GUARD + WIDTH_ABOVE_GUARD;
 /** Maps a fraction in [0, 1) into the usable hue span — the arc minus the
  *  guard band minus `ROUNDING_MARGIN` on both sides of it, distributed across
  *  whichever of the two segments above are actually non-empty. Used only
- *  while building `STABLE_COLOR_PALETTE` below (once, at module load) — every
- *  generated candidate is constrained by this before farthest-point selection
- *  ever runs, so the guarantee holds by construction rather than by checking
- *  afterwards. */
+ *  while building the palette below (once, lazily, on first use — see
+ *  `getStableColorPalette`) — every generated candidate is constrained by
+ *  this before farthest-point selection ever runs, so the guarantee holds by
+ *  construction rather than by checking afterwards. */
 function hueInArc(frac: number): number {
   const t = frac * USABLE;
   return t < WIDTH_BELOW_GUARD ? ARC[0] + t : GUARD_HI + ROUNDING_MARGIN + (t - WIDTH_BELOW_GUARD);
@@ -449,21 +456,36 @@ function buildPalette(size: number): Hsl[] {
   return chosen.map((i) => candidates[i]);
 }
 
-/** Exported for `editor-meta.test.ts` ONLY. Verifying an exhaustive property
+// Built LAZILY, on first use, not at module load. `buildPalette` runs ~24M
+// `redmean` calls (2048 slots x 12000 candidates, twice over) — ~77ms in
+// plain node, and it measured at ~470ms to import `editor-meta` under
+// vitest. `editor-meta.ts` sits on the editor's startup path (`LayeredTimeline`
+// imports it), so paying that cost at import time is main-thread blocking on
+// every editor open for a palette most sessions barely touch. A memo behind
+// an accessor pays it once, on the first actual `stableColor` call (or the
+// first test that asks for it), never at import.
+let cachedPalette: readonly Hsl[] | undefined;
+
+/** Exported for `editor-meta.test.ts` ONLY — call this, not a bare property,
+ *  so the test can force the (lazy) build. Verifying an exhaustive property
  *  (every pair of entries separated, every entry's hue in-bounds) over the
  *  whole palette is a fundamentally stronger guarantee than sampling
  *  `stableColor`'s output over a list of kind names — it is the direct fix
  *  for "the separation was tuned for one fixture instead of being a property
  *  of the generator." Nothing outside the test should import this. */
-export const STABLE_COLOR_PALETTE: readonly Hsl[] = buildPalette(PALETTE_SIZE);
+export function getStableColorPalette(): readonly Hsl[] {
+  if (!cachedPalette) cachedPalette = buildPalette(PALETTE_SIZE);
+  return cachedPalette;
+}
 
 export function stableColor(seed: string): string {
   let h = 0;
   for (let i = 0; i < seed.length; i += 1) h = (Math.imul(h, 31) + seed.charCodeAt(i)) >>> 0;
+  const palette = getStableColorPalette();
   // Palette entries are already whole-number h/s/l (rounded before selection,
   // not after — see `buildPalette`), so no rounding happens here: this emits
   // exactly the values the palette's own separation guarantee was computed
   // against, not a display-only approximation of them.
-  const { h: hue, s, l } = STABLE_COLOR_PALETTE[mix32(h) % STABLE_COLOR_PALETTE.length];
+  const { h: hue, s, l } = palette[mix32(h) % palette.length];
   return `hsl(${hue}, ${s}%, ${l}%)`;
 }
