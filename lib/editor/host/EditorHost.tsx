@@ -14,7 +14,7 @@ import type { AccentSlot } from '../../theming/palette';
 import type { LayeredReel } from '../../reel-config-base/layered-schema';
 import { framesForReel } from './host-duration';
 import { attachCropGestures, MAX_ZOOM, type CropGestureTarget } from './crop-gestures';
-import { BTN_FONT, EDITOR_ACCENT, toggleBtn, zoomBtn } from './ui';
+import { BTN_FONT, EDITOR_ACCENT, toggleBtnClass, zoomBtnClass } from './ui';
 import { MagnifierIcon, Timecode } from './toolbar';
 import { MediaLoadingOverlay, pendingSources } from './MediaLoading';
 
@@ -374,25 +374,32 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
         <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', flex: 'none' }}>
             {/* LEFT: jump-to-start, playback, jump-to-end, ripple, delete, timecode */}
-            <button type="button" onClick={() => playerRef.current?.seekTo(0)} style={zoomBtn} title="Jump to start">
+            <button type="button" onClick={() => playerRef.current?.seekTo(0)} className={zoomBtnClass} title="Jump to start">
               ⏮
             </button>
-            <button type="button" onClick={() => playerRef.current?.toggle()} style={zoomBtn} title={playing ? 'Pause' : 'Play'}>
+            <button type="button" onClick={() => playerRef.current?.toggle()} className={zoomBtnClass} title={playing ? 'Pause' : 'Play'}>
               {playing ? '⏸' : '▶'}
             </button>
-            <button type="button" onClick={() => playerRef.current?.seekTo(Math.max(0, durationInFrames - 1))} style={zoomBtn} title="Jump to end">
+            <button type="button" onClick={() => playerRef.current?.seekTo(Math.max(0, durationInFrames - 1))} className={zoomBtnClass} title="Jump to end">
               ⏭
             </button>
-            <button type="button" onClick={() => setRipple((r) => !r)} style={toggleBtn(ripple)} title="Ripple: resizing a clip shifts everything after it (and before it) to keep the timeline butted">
+            <button type="button" onClick={() => setRipple((r) => !r)} className={toggleBtnClass(ripple)} title="Ripple: resizing a clip shifts everything after it (and before it) to keep the timeline butted">
               ⇹ Ripple {ripple ? 'on' : 'off'}
             </button>
-            <button type="button" onClick={handleDelete} disabled={!selectedId} style={{ ...zoomBtn, width: 'auto', padding: '0 8px', opacity: selectedId ? 1 : 0.4 }} title="Delete the selected clip (⌫)">
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={!selectedId}
+              className={`${zoomBtnClass} ed:w-auto ed:px-2`}
+              style={{ opacity: selectedId ? 1 : 0.4 }}
+              title="Delete the selected clip (⌫)"
+            >
               ⌫ Delete
             </button>
             <Timecode playerRef={playerRef} durationInFrames={durationInFrames} fps={fps} />
 
             {/* RIGHT: snapping, snap-to-beats, then zoom */}
-            <button type="button" onClick={() => setSnapping((s) => !s)} style={{ ...toggleBtn(snapping), marginLeft: 'auto' }} title="Snap edges and moves to the grid">
+            <button type="button" onClick={() => setSnapping((s) => !s)} className={`${toggleBtnClass(snapping)} ed:ml-auto`} title="Snap edges and moves to the grid">
               ⊹ Snap {snapping ? 'on' : 'off'}
             </button>
             {/* Shipped for every brand — a reel without beat guides disables it
@@ -401,13 +408,14 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
               type="button"
               onClick={() => setSnapToBeats((s) => !s)}
               disabled={!snapping || !hasGuides}
-              style={{ ...toggleBtn(snapping && snapToBeats), opacity: snapping && hasGuides ? 1 : 0.4 }}
+              className={toggleBtnClass(snapping && snapToBeats)}
+              style={{ opacity: snapping && hasGuides ? 1 : 0.4 }}
               title={snapping ? 'Snap edges and moves to the nearest beat (on release)' : 'Enable Snap first'}
             >
               ♪ Beats snap {snapping && snapToBeats ? 'on' : 'off'}
             </button>
             <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-              <button type="button" onClick={() => zoomBy(1 / 1.4)} style={zoomBtn} title="Zoom timeline out (⌘/Ctrl + scroll)">
+              <button type="button" onClick={() => zoomBy(1 / 1.4)} className={zoomBtnClass} title="Zoom timeline out (⌘/Ctrl + scroll)">
                 <MagnifierIcon sign="minus" />
               </button>
               <button
@@ -418,7 +426,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
               >
                 {Math.round((scaleWidth / 80) * 100)}%
               </button>
-              <button type="button" onClick={() => zoomBy(1.4)} style={zoomBtn} title="Zoom timeline in (⌘/Ctrl + scroll)">
+              <button type="button" onClick={() => zoomBy(1.4)} className={zoomBtnClass} title="Zoom timeline in (⌘/Ctrl + scroll)">
                 <MagnifierIcon sign="plus" />
               </button>
             </div>

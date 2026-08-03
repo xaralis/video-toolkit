@@ -46,6 +46,6 @@ describe('MediaLoadingOverlay', () => {
 
   it('never eats pointer events — it is a status, not a modal', () => {
     const { container } = render(<MediaLoadingOverlay loaded={0} total={2} buffering={false} />);
-    expect((container.firstElementChild as HTMLElement).style.pointerEvents).toBe('none');
+    expect((container.firstElementChild as HTMLElement).className).toContain('ed:pointer-events-none');
   });
 });
