@@ -101,12 +101,19 @@ describe('EditorHost (child modules mocked at the boundary)', () => {
     seenInspectorProps = [];
     attached = [];
 
-    vi.doMock('../app/LayeredTimeline', () => ({
-      LayeredTimeline: (p: any) => {
-        seenTimelineProps.push(p);
-        return null;
-      },
-    }));
+    // importOriginal so EditorHost's other named imports from this module
+    // (`videoUrl`, used to decode which URLs to feed `useSourceDurations`)
+    // keep resolving — only the component itself is swapped for the probe.
+    vi.doMock('../app/LayeredTimeline', async (importOriginal) => {
+      const actual = (await importOriginal()) as any;
+      return {
+        ...actual,
+        LayeredTimeline: (p: any) => {
+          seenTimelineProps.push(p);
+          return null;
+        },
+      };
+    });
     vi.doMock('../app/LayeredInspector', () => ({
       LayeredInspector: (p: any) => {
         seenInspectorProps.push(p);

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, screen } from '@testing-library/react';
-import { LayeredInspector } from './LayeredInspector';
+import { LayeredInspector, TransitionFields } from './LayeredInspector';
 import { editorMetaFromTheme, type EditorMeta } from './editor-meta';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import type { CompositionTheme } from '../../theming/types';
@@ -752,5 +752,104 @@ describe('LayeredInspector grade unification guards (Phase 4 Task 3.4)', () => {
     // And it is genuinely editable again, not just visually re-enabled.
     fireEvent.change(brightness, { target: { value: '1.5' } });
     expect(screen.getByLabelText('Brightness')).toHaveValue(1.5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 7: the length field bounds NEW input against what the boundary can
+// actually lend (handle-room.ts), and NEVER rewrites an already-authored
+// value on mount — a retroactively-starved boundary is reported by the
+// timeline's hatching/diagnostics (Tasks 5/6) instead of silently truncated.
+// ---------------------------------------------------------------------------
+describe('TransitionFields length field — bounded commit, never a mount-time clamp', () => {
+  it('clamps a typed value to maxFrames', () => {
+    const onChange = vi.fn();
+    render(<TransitionFields t={{ kind: 'dissolve', frames: 10 }} onChange={onChange} maxFrames={12} />);
+    fireEvent.change(screen.getByLabelText('Length (frames, max 12)'), { target: { value: '40' } });
+    expect(onChange).toHaveBeenCalledWith({ kind: 'dissolve', frames: 12 });
+  });
+
+  it('does not clamp on mount — an authored value already past maxFrames is shown untouched', () => {
+    const onChange = vi.fn();
+    render(<TransitionFields t={{ kind: 'dissolve', frames: 40 }} onChange={onChange} maxFrames={12} />);
+    expect((screen.getByLabelText('Length (frames, max 12)') as HTMLInputElement).value).toBe('40');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('is unbounded (plain label, no clamp) when maxFrames is absent', () => {
+    const onChange = vi.fn();
+    render(<TransitionFields t={{ kind: 'dissolve', frames: 10 }} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText('Length (frames)'), { target: { value: '999' } });
+    expect(onChange).toHaveBeenCalledWith({ kind: 'dissolve', frames: 999 });
+  });
+
+  it('also treats an Infinity maxFrames (an edge boundary, or every duration unknown) as unbounded', () => {
+    const onChange = vi.fn();
+    render(<TransitionFields t={{ kind: 'dissolve', frames: 10 }} onChange={onChange} maxFrames={Infinity} />);
+    expect(screen.getByLabelText('Length (frames)')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Length (frames)'), { target: { value: '999' } });
+    expect(onChange).toHaveBeenCalledWith({ kind: 'dissolve', frames: 999 });
+  });
+});
+
+describe('LayeredInspector transition length — bounded by the boundary’s actual handle room', () => {
+  // b.mp4's sourceInMs is 200ms = 6 frames @ 30fps; a.mp4 has 150 tail frames
+  // to spare. Center alignment splits across both sides, so the boundary is
+  // capped at TWICE the scarcer side: min(150, 6) * 2 = 12 — below the
+  // authored 15, i.e. this boundary is already starved (Task 5/6's case),
+  // which is exactly the scenario this field must NOT silently fix.
+  const starvedReel: LayeredReel = {
+    version: 'layered-1', meta: { topic: 't', totalDurationMs: 10000 },
+    tracks: {
+      video: [
+        { id: 'v1', kind: 'clip', startMs: 0, endMs: 5000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 5000,
+          transitionOut: { kind: 'dissolve', frames: 15 } },
+        { id: 'v2', kind: 'clip', startMs: 5000, endMs: 10000, source: 'b.mp4', sourceInMs: 200, sourceOutMs: 5200 },
+      ],
+      audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [],
+    },
+  };
+  const durations = { 'a.mp4': 10000, 'b.mp4': 10000 };
+
+  it('shows the ceiling the boundary’s neighbours can actually lend', () => {
+    render(
+      <LayeredInspector reel={starvedReel} selectedId="transition:v1" onChange={() => {}} onSeek={() => {}} fps={30}
+        sourceDurations={durations} />,
+    );
+    expect(screen.getByLabelText('Length (frames, max 12)')).toBeInTheDocument();
+  });
+
+  it('leaves an already-starved authored length untouched on mount', () => {
+    const onChange = vi.fn();
+    render(
+      <LayeredInspector reel={starvedReel} selectedId="transition:v1" onChange={onChange} onSeek={() => {}} fps={30}
+        sourceDurations={durations} />,
+    );
+    expect((screen.getByLabelText('Length (frames, max 12)') as HTMLInputElement).value).toBe('15');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  // The reel edge (no neighbour to run out of) AND an undecoded source (tail
+  // treated as unbounded, `handleRoomFrames`'s own rule — reporting starvation
+  // from a not-yet-decoded source would fire on every reel the moment it
+  // opened) both mean "no ceiling at all", so together they must fall back to
+  // the plain, unbounded label — a single video item, closing fade, no
+  // `sourceDurations` passed at all.
+  const edgeReel: LayeredReel = {
+    version: 'layered-1', meta: { topic: 't', totalDurationMs: 5000 },
+    tracks: {
+      video: [
+        { id: 'v1', kind: 'clip', startMs: 0, endMs: 5000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 5000,
+          transitionOut: { kind: 'dissolve', frames: 15 } },
+      ],
+      audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [],
+    },
+  };
+
+  it('is unbounded at the reel edge with an undecoded source', () => {
+    render(
+      <LayeredInspector reel={edgeReel} selectedId="transition:v1" onChange={() => {}} onSeek={() => {}} fps={30} />,
+    );
+    expect(screen.getByLabelText('Length (frames)')).toBeInTheDocument();
   });
 });
