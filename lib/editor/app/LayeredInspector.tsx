@@ -26,7 +26,7 @@ import { aspectLabel, failedSources } from './project-summary';
 import { handleRoomFrames, maxTransitionFrames, type HandleRoom } from '@video-toolkit/lib/reel-config-base/handle-room';
 import { transitionAlignmentOf } from '@video-toolkit/lib/reel-config-base/transition-schema';
 import { useLiveField } from './controls/use-live-field';
-import { fieldCls, labelCls, inputCls, rowCls, readonlyValueCls } from './controls/field-classes';
+import { fieldCls, labelCls, inputCls, rowCls, readonlyValueCls, sectionCls } from './controls/field-classes';
 import { ScrubField } from './controls/ScrubField';
 import { SliderField } from './controls/SliderField';
 import { TimecodeField } from './controls/TimecodeField';
@@ -66,7 +66,6 @@ export interface LayeredInspectorProps {
 
 const panelCls = 'ed:p-3 ed:w-full ed:h-full ed:overflow-y-auto ed:box-border';
 const headingCls = 'ed:text-xs ed:text-ink ed:mb-2.5 ed:font-semibold';
-const sectionCls = 'ed:text-[10px] ed:text-ink-3 ed:uppercase ed:tracking-wider ed:mt-2.5 ed:mb-1.5';
 // A one-line reason printed under a control that has gone inert, so a disabled
 // field explains itself instead of reading as a bug. Deliberately quiet — it is
 // an answer to "why can't I type here", not a warning — but it is the ONLY
@@ -872,12 +871,12 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
 
         <div className={sectionCls}>Format</div>
         <Row>
-          <div className={fieldCls}><label className={labelCls}>Resolution</label><div className={readonlyValueCls}>{width} × {height}</div></div>
-          <div className={fieldCls}><label className={labelCls}>Aspect</label><div className={readonlyValueCls}>{aspectLabel(width, height)}</div></div>
+          <div className={fieldCls}><label className={`${labelCls} ed:block ed:mb-1`}>Resolution</label><div className={readonlyValueCls}>{width} × {height}</div></div>
+          <div className={fieldCls}><label className={`${labelCls} ed:block ed:mb-1`}>Aspect</label><div className={readonlyValueCls}>{aspectLabel(width, height)}</div></div>
         </Row>
         <Row>
-          <div className={fieldCls}><label className={labelCls}>Frame rate</label><div className={readonlyValueCls}>{fps} fps</div></div>
-          <div className={fieldCls}><label className={labelCls}>Frames</label><div className={readonlyValueCls}>{framesForReel(reel, fps)}</div></div>
+          <div className={fieldCls}><label className={`${labelCls} ed:block ed:mb-1`}>Frame rate</label><div className={readonlyValueCls}>{fps} fps</div></div>
+          <div className={fieldCls}><label className={`${labelCls} ed:block ed:mb-1`}>Frames</label><div className={readonlyValueCls}>{framesForReel(reel, fps)}</div></div>
         </Row>
 
         <div className={sectionCls}>Content</div>
@@ -908,9 +907,12 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           </div>
         )}
 
-        <div className="ed:text-[11px] ed:text-ink-3 ed:mt-2">
+        {/* A value the user reads, not a label about it — ink-2, per
+            field-classes.ts:20-21 (ink-3 at 12px is below WCAG AA). */}
+        <div className="ed:text-[11px] ed:text-ink-2 ed:mt-2">
           {reel.tracks.video.length} video · {reel.tracks.overlays.length} overlays · {reel.tracks.audio.length} audio · {reel.tracks.brand.length} brand
         </div>
+        {/* A hint, not a value — ink-3 is correct here. */}
         <div className="ed:text-[11px] ed:text-ink-3 ed:mt-2.5">Select a timeline item to edit it.</div>
       </div>
     );

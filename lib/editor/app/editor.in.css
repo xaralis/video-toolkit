@@ -12,10 +12,14 @@
  * custom property when some scanned utility uses it, so a variable read
  * exclusively from raw CSS — never via a class Tailwind can see — would be
  * silently tree-shaken out the moment nothing else happens to reference it.
- * `static` forces every declared theme key to emit unconditionally, so a
- * raw `var(--ed-color-*)` consumer can never go dark without a build error.
- * (Verified directly: without `static`, all 13 `--color-*` custom
- * properties are dropped, not merely the utilities.) */
+ * `static` forces every declared theme key to emit unconditionally, so a raw
+ * `var(--ed-color-*)` consumer can never go dark from tree-shaking — but
+ * `static` PREVENTS the drop, it does not DIAGNOSE one: there is no build
+ * error in that failure mode at all, with or without this flag. The
+ * committed-`editor.css` freshness test (`src/editor-css.test.ts`) is what
+ * would actually fail if this flag were ever removed and a raw-CSS-only
+ * token got tree-shaken back out. (Verified directly: without `static`, all
+ * 16 `--color-*` custom properties are dropped, not merely the utilities.) */
 @theme static {
   --color-stage: #0e0e12;
   --color-shell: #131318;

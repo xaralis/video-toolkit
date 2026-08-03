@@ -24,3 +24,12 @@ export const readonlyValueCls = 'ed:text-xs ed:text-ink ed:font-mono';
 export const rowCls = 'ed:flex ed:gap-2';
 
 export const disabledCls = 'ed:opacity-45 ed:cursor-not-allowed';
+
+// A section/group heading within a panel — smaller and quieter than a field
+// label, never a value the user reads (hence `ink-3` is correct here, unlike
+// `readonlyValueCls` above). Shared between `LayeredInspector.tsx` (its
+// "Format"/"Content" section headers) and `ShortcutOverlay.tsx` (its group
+// headers, e.g. "Playback"/"Editing") — previously the exact same literal
+// duplicated in both files, which is exactly the drift-after-a-later-edit
+// hazard this module exists to avoid (see the file-level comment above).
+export const sectionCls = 'ed:text-[10px] ed:text-ink-3 ed:uppercase ed:tracking-wider ed:mt-2.5 ed:mb-1.5';

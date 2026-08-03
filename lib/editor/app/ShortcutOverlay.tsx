@@ -1,4 +1,5 @@
 import { SHORTCUTS, type ShortcutGroup } from './shortcuts';
+import { sectionCls } from './controls/field-classes';
 
 /** Pointer gestures. Not in SHORTCUTS because they are not keydown events —
  *  but they belong in the same list, because "what can I do here" does not
@@ -31,7 +32,7 @@ export function ShortcutOverlay({ open, onClose }: { open: boolean; onClose: () 
           if (!rows.length) return null;
           return (
             <div key={g} className="ed:mb-4">
-              <div className="ed:text-[10px] ed:text-ink-3 ed:uppercase ed:tracking-wider ed:mb-1.5">{g}</div>
+              <div className={sectionCls}>{g}</div>
               {rows.map((s) => (
                 <div key={s.id} className="ed:flex ed:justify-between ed:gap-6 ed:py-0.5">
                   <span className="ed:text-xs ed:text-ink-2">{s.label}</span>
@@ -42,7 +43,7 @@ export function ShortcutOverlay({ open, onClose }: { open: boolean; onClose: () 
           );
         })}
         <div>
-          <div className="ed:text-[10px] ed:text-ink-3 ed:uppercase ed:tracking-wider ed:mb-1.5">Gestures</div>
+          <div className={sectionCls}>Gestures</div>
           {GESTURES.map((g) => (
             <div key={g.keys} className="ed:flex ed:justify-between ed:gap-6 ed:py-0.5">
               <span className="ed:text-xs ed:text-ink-2">{g.label}</span>
