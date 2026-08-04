@@ -186,6 +186,81 @@ describe('RenderButton — renderControls, one control through its whole lifecyc
     expect(fetchMock.mock.calls.some((c) => c[0] === '/render' && (c[1] as RequestInit)?.body?.toString().includes('reveal'))).toBe(false);
   });
 
+  it('rendering: offers a Cancel affordance with an accessible name, next to the progress button', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url) === '/render' && init?.method === 'POST') return jsonResponse({});
+      return jsonResponse({ running: true, done: false, percent: 42, mode: 'full' });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: /^Render$/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Full' }));
+
+    const cancelBtn = await screen.findByRole('button', { name: 'Cancel render' });
+    expect(cancelBtn).toBeEnabled();
+    // The progress button keeps its own accessible name — Cancel is a second
+    // control in the same box, not a replacement for the percentage.
+    expect(screen.getByRole('button', { name: /42%/ })).toBeInTheDocument();
+  });
+
+  it('idle, done and error offer no Cancel — only a running render can be cancelled', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url) === '/render' && init?.method === 'POST') return jsonResponse({});
+      return jsonResponse({ running: false, done: true, percent: 100, mode: 'full', outPath: '/out/reel.mp4' });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<Harness />);
+    expect(screen.queryByRole('button', { name: 'Cancel render' })).not.toBeInTheDocument(); // idle
+
+    fireEvent.click(screen.getByRole('button', { name: /^Render$/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Full' }));
+    await screen.findByRole('button', { name: /Render complete\. Open/ });
+    expect(screen.queryByRole('button', { name: 'Cancel render' })).not.toBeInTheDocument(); // done
+  });
+
+  it('clicking Cancel posts the cancel action and reports the render as cancelling', async () => {
+    let cancelled = false;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url) === '/render' && init?.method === 'POST') {
+        if (init.body?.toString().includes('cancel')) cancelled = true;
+        return jsonResponse({});
+      }
+      return jsonResponse({ running: true, cancelling: cancelled, cancelled: false, done: false, percent: 42, mode: 'full' });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: /^Render$/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Full' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel render' }));
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find((c) => c[0] === '/render' && (c[1] as RequestInit)?.body?.toString().includes('cancel'));
+      expect(call).toBeDefined();
+    });
+    expect(await screen.findByRole('button', { name: /Cancelling/ })).toBeInTheDocument();
+    // The stop is already requested — no second Cancel to click.
+    expect(screen.queryByRole('button', { name: 'Cancel render' })).not.toBeInTheDocument();
+  });
+
+  it('cancelled: reads as cancelled rather than failed, and dismisses to idle', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url) === '/render' && init?.method === 'POST') return jsonResponse({});
+      return jsonResponse({ running: false, cancelling: false, cancelled: true, done: false, percent: 37, mode: 'full' });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: /^Render$/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Full' }));
+
+    const btn = await screen.findByRole('button', { name: /Render cancelled/ });
+    expect(screen.queryByRole('button', { name: /Render failed/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Render complete/ })).not.toBeInTheDocument();
+
+    fireEvent.click(btn);
+    expect(await screen.findByRole('button', { name: /^Render$/ })).toBeInTheDocument();
+  });
+
   it('error: the failure message is reachable via title/aria-label, and clicking returns to idle so the user can retry', async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (String(url) === '/render' && init?.method === 'POST') return jsonResponse({});

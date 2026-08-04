@@ -8,8 +8,9 @@ import { CheckIcon, ChevronDownIcon, TriangleAlertIcon, XIcon } from './icons';
  * Talks to the dev-server's `/render` endpoint (`createRenderHandler`, see
  * `lib/editor/src/render-endpoint.ts`): POSTs `{ mode }` to kick off a real
  * Remotion render, then polls GET `/render` once a second for progress.
- * Every stage of that lifecycle — choosing a mode, watching progress, seeing
- * the result, seeing an error — renders INSIDE one button-shaped control
+ * Every stage of that lifecycle — choosing a mode, watching progress,
+ * cancelling, seeing the result, seeing an error — renders INSIDE one
+ * button-shaped control
  * (`renderControls`), not spread across a segmented control plus a separate
  * toast. That is deliberate: it is one context (this render), so it gets one
  * home, and a second, independent surface for the same information was
@@ -37,6 +38,10 @@ interface RenderJobResponse {
   mode?: RenderMode;
   percent: number;
   done: boolean;
+  /** Stop requested, process not gone yet. */
+  cancelling?: boolean;
+  /** The render was stopped by the user — neither a success nor a failure. */
+  cancelled?: boolean;
   outPath?: string;
   error?: string;
 }
@@ -50,7 +55,7 @@ interface ProjectStateResponse {
 
 const POLL_INTERVAL_MS = 1000;
 
-type Phase = 'idle' | 'starting' | 'rendering' | 'done' | 'error';
+type Phase = 'idle' | 'starting' | 'rendering' | 'cancelling' | 'done' | 'cancelled' | 'error';
 
 interface RenderButtonParts {
   /** The project-phase chip, or `null` when `/project-state` isn't wired. */
@@ -216,9 +221,17 @@ export function RenderButton({ children }: { children: (parts: RenderButtonParts
           return;
         }
         if (data.running) {
-          setPhase('rendering');
+          setPhase(data.cancelling ? 'cancelling' : 'rendering');
           setMode(data.mode);
           setPercent(data.percent);
+          return;
+        }
+        // Checked BEFORE `done`: a cancelled job never sets done, but it does
+        // leave a partial file behind, and it must not read as either outcome.
+        if (data.cancelled) {
+          stopPolling();
+          setPhase('cancelled');
+          setMode(data.mode);
           return;
         }
         if (data.done) {
@@ -294,6 +307,28 @@ export function RenderButton({ children }: { children: (parts: RenderButtonParts
       });
   };
 
+  // Ask the dev server to stop the render. The job stays `running` until the
+  // process is actually gone, so polling continues — it lands on 'cancelled'
+  // by itself. A full render is no longer the "project complete" moment once
+  // it's been cancelled, so drop that pending confirmation too.
+  const cancel = () => {
+    markCompleteRef.current = false;
+    setPhase('cancelling');
+    fetch('/render', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'cancel' }),
+    })
+      .then((res) => {
+        if (!mountedRef.current || res.ok) return;
+        // 404: nothing was running after all — the next poll would say the
+        // same, so just fall back to idle rather than showing a failure.
+        stopPolling();
+        setPhase('idle');
+      })
+      .catch(() => {});
+  };
+
   const reveal = () => {
     fetch('/render', {
       method: 'POST',
@@ -331,14 +366,50 @@ export function RenderButton({ children }: { children: (parts: RenderButtonParts
   ) : null;
 
   let renderControls: ReactNode;
-  if (phase === 'starting' || phase === 'rendering') {
+  if (phase === 'starting' || phase === 'rendering' || phase === 'cancelling') {
+    const stopping = phase === 'cancelling';
     const modeLabel = mode ? ` ${mode}` : '';
-    const label = `Rendering${modeLabel}… ${percent}%`;
+    const label = stopping ? `Cancelling${modeLabel} render… ${percent}%` : `Rendering${modeLabel}… ${percent}%`;
     renderControls = (
       <div className={RENDER_WRAP_CLASS}>
         <button type="button" className={RENDER_BTN_CLASS} disabled aria-label={label} title={label}>
           <ProgressRing percent={percent} />
-          Rendering …
+          {stopping ? 'Cancelling …' : 'Rendering …'}
+        </button>
+        {/* Only while the process is actually alive: once the stop is
+            requested there is nothing left to ask for, and a second click
+            would just re-signal a process already on its way out. */}
+        {!stopping && (
+          <>
+            <span className="ed:w-px ed:bg-line-strong ed:self-stretch" />
+            <button
+              type="button"
+              className={RENDER_BTN_CLASS}
+              onClick={cancel}
+              title="Cancel this render"
+              aria-label="Cancel render"
+            >
+              <XIcon size={13} />
+            </button>
+          </>
+        )}
+      </div>
+    );
+  } else if (phase === 'cancelled') {
+    // Deliberately NOT the error styling: the user asked for this. No "Open"
+    // either — the out/*.mp4 on disk is a truncated render, and the endpoint
+    // refuses to reveal it for the same reason.
+    renderControls = (
+      <div className={RENDER_WRAP_CLASS}>
+        <button
+          type="button"
+          className={RENDER_BTN_CLASS}
+          onClick={dismiss}
+          title="The render was cancelled; its output is incomplete"
+          aria-label="Render cancelled. Click to dismiss and start again."
+        >
+          <XIcon size={14} />
+          Render cancelled
         </button>
       </div>
     );
