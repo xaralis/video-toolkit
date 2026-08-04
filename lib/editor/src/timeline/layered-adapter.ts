@@ -522,6 +522,17 @@ export function setItemSpeed(
       video: reel.tracks.video.map((v) => (v.id === id ? { ...v, endMs: newEndMs } : shift(v))),
       overlays: reel.tracks.overlays.map(shift),
       audio: reel.tracks.audio.map(shift),
+      // Shifted here as the rest of this file's own contract: given exactly
+      // this reel, this is what a brand item's span becomes. But in the
+      // running editor, every reel returned by this adapter next passes
+      // through `EditorHost`'s `setReel` wrapper, which re-derives the brand
+      // span from the content end (`withDerivedBrandSpan`, in
+      // `reel-config-base/content-end.ts`) and overwrites whatever value
+      // lands here. So this shift is real and correctly tested in isolation
+      // (see this file's unit tests), but it is never the value the editor
+      // actually ends up showing — the host normaliser downstream is what
+      // decides that. Same applies at the other brand-shifting sites below
+      // in this file.
       brand: reel.tracks.brand.map(shift),
     },
   });

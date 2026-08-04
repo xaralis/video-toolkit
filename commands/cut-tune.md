@@ -92,10 +92,15 @@ Speed) — each starts collapsed unless it carries a non-default value.
 The Ripple toggle decides whether an edit shifts everything after it. Snap and
 Beats snap are next to it.
 
-Save (⌘S) writes src/Root.tsx; Discard reverts to the last save. The status
-chip left of them is green when saved, orange when there are unsaved changes,
-and red when the reel has a diagnostic worth reading — click it to jump to the
-item it is about.
+Save (⌘S) writes src/Root.tsx; Discard reverts to the last save — the exact
+reel on disk, brand span included. The status chip left of them is green when
+saved, orange when there are unsaved changes, and red when the reel has a
+diagnostic worth reading — click it to jump to the item it is about. If a
+project's `Root.tsx` still carries a watermark/disclaimer span from before
+brand spans were derived automatically, the editor opens already showing
+"unsaved changes" — that's the correction waiting to be written back, not a
+bug — and one Save persists it. Discard in that state puts the old on-disk
+values back rather than keeping the correction.
 
 Render straight from the header's Render dropdown (Preview is half-scale).
 

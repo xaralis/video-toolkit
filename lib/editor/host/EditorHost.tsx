@@ -214,6 +214,16 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
         setSavedReel(raw);
       })
       .catch((err) => console.error('Failed to load /props', err));
+    // `fps` is a mount-time prop, handed down once by the brand's own
+    // `.editor/main.tsx` (see EditorHostOptions) and never expected to change
+    // for the lifetime of this component. That's what makes it safe to depend
+    // on here: this effect wipes the undo stack and any unsaved edits
+    // (`resetHistory`) with no confirmation prompt, so if `fps` ever became
+    // dynamic, a refetch mid-session would silently discard work. Making it
+    // dynamic would need this effect reworked first — a ref to read the
+    // latest `fps` without re-running the fetch, or an explicit guard that
+    // only refetches on the initial mount — not just adding it to the deps
+    // as-is.
   }, [fps]);
 
   const dirty = useMemo(() => {
@@ -470,7 +480,25 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
             phaseControl={phaseControl}
             renderControls={renderControls}
             onSave={handleSave}
-            onDiscard={() => savedReel && setReel(savedReel)}
+            // Discard means "go back to disk exactly" — deliberately the RAW
+            // setter (`setReelRaw`), not `setReel`. `savedReel` is the raw
+            // reel as loaded (see the `/props` effect above); running it
+            // through `setReel` would re-normalise it, producing a new object
+            // whose brand span is the DERIVED one, not what's on disk. Two
+            // consequences that made this a real bug, not a style nit:
+            // `dirty` compares `JSON.stringify(reel)` against
+            // `JSON.stringify(savedReel)` — if `reel` ends up normalised and
+            // `savedReel` stays raw, those strings never match again, so
+            // Discard could never clear `dirty`. And `useHistory.set` only
+            // short-circuits on reference equality, so a fresh normalised
+            // object (even with identical content to the current state)
+            // mints a spurious undo entry on every Discard. Using the raw
+            // setter restores `reel === savedReel` by reference, so `dirty`
+            // goes false and no undo entry is pushed. The brand-span
+            // correction isn't lost — it simply re-appears, exactly as it did
+            // on load, the moment the user makes their next edit through
+            // `setReel`. Do not "fix" this back to `setReel`.
+            onDiscard={() => savedReel && setReelRaw(savedReel)}
             onUndo={undo}
             onRedo={redo}
             canUndo={canUndo}

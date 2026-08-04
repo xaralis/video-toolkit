@@ -40,6 +40,17 @@ export function contentEndMs(video: readonly VideoItem[], fps: number): number |
  *  `useHistory.set` short-circuits on reference equality and a fresh object on
  *  every no-op write would mint an undo entry per keystroke. */
 export function withDerivedBrandSpan(reel: LayeredReel, fps: number): LayeredReel {
+  // Degenerate-case fallback: no non-outro item means "the whole reel" is the
+  // best available answer, so this falls back to `computeTotalDurationMs`.
+  // `derive-layered.ts`'s cut-time caller reaches the same "whole reel"
+  // answer for the same degenerate case via its own cursor-derived `totalMs`
+  // instead — a second computation, not a shared call, per this file's own
+  // "two copies would drift" reasoning at the cut-time call site. They agree
+  // in every non-degenerate reel because `totalMs` there is built to equal
+  // the last timeline item's `endMs` by construction (see the comment at
+  // that call site); only this fully-degenerate corner (an empty/outro-only
+  // video track) is where the two paths could ever diverge, and neither
+  // authors a brand span in that case that anything downstream renders.
   const endMs = contentEndMs(reel.tracks.video, fps) ?? computeTotalDurationMs(reel);
   let changed = false;
   const brand = reel.tracks.brand.map((b) => {
