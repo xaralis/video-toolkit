@@ -29,6 +29,14 @@
 // gave both halves a speed nobody set. Any code that needs to turn one domain
 // into the other belongs in `clip-time.ts` — do not open-code `* speed` or
 // `/ speed` at a call site, and do not add a second helper that does it.
+//
+// Two places legitimately multiply by a speed and are NOT violations of that:
+// `setItemSpeed` (layered-adapter.ts), which applies the speed being SET rather
+// than the one the item currently has, so `clip-time` cannot express it; and
+// `slipDeltaMs` (LayeredTimeline.tsx), which takes the speed as a parameter so
+// it can stay a pure px→ms function with no item in scope. If you find a THIRD,
+// it is probably a real one — and if you are adding one, prefer converting at
+// the call site through `clip-time` instead.
 export const SPEED_DEFAULTS = { speed: 1 } as const;
 
 // Sane clamp on the derived/authored ratio. 10x (checkerboard-fast, still
