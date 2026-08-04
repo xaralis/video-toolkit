@@ -15,6 +15,26 @@ const REEL: LayeredReel = {
   },
 } as unknown as LayeredReel;
 
+// The reported bug, as data: the watermark's authored end (34000) outlives
+// the content, which ends at 12000 — the outro runs 12000→15000 and brand
+// marks must not draw over it. Shared by the load-path and edit-path tests
+// below (`describe('EditorHost (child modules mocked at the boundary)')`).
+const STALE_BRAND: LayeredReel = {
+  ...REEL,
+  meta: { ...REEL.meta, totalDurationMs: 15000 },
+  tracks: {
+    ...REEL.tracks,
+    video: [
+      { id: 'seg-001', kind: 'clip', startMs: 0, endMs: 12000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 12000 },
+      { id: 'outro', kind: 'outro', startMs: 12000, endMs: 15000 },
+    ],
+    brand: [
+      { id: 'brand-watermark', kind: 'watermark', startMs: 0, endMs: 34000 },
+      { id: 'brand-disclaimer', kind: 'disclaimer', startMs: 0, endMs: 41667 },
+    ],
+  },
+} as unknown as LayeredReel;
+
 const Stub: React.FC<{ reel: LayeredReel }> = () => <div data-testid="stub-composition" />;
 
 const opts = {
@@ -216,6 +236,128 @@ describe('EditorHost (child modules mocked at the boundary)', () => {
 
     await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
     expect(seenTimelineProps[seenTimelineProps.length - 1].guidesMs).toEqual([0, 800]);
+  });
+
+  it('re-derives a stale brand span from the content end on load', async () => {
+    (globalThis.fetch as any).mockImplementation(async (url: string) =>
+      String(url).startsWith('/props') ? { ok: true, json: async () => ({ reel: STALE_BRAND }) } : { ok: true, json: async () => ({}) },
+    );
+    const { EditorHost: Host } = await import('../host/EditorHost');
+    render(<Host {...opts} />);
+
+    await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+    expect(seenTimelineProps.at(-1).reel.tracks.brand.map((b: { endMs: number }) => b.endMs)).toEqual([12000, 12000]);
+  });
+
+  it('re-derives the brand span on an EDIT too, not only on load (the wrapper is the choke point, not just the load path)', async () => {
+    // REEL's own fixture has `brand: []`, so an edit through it can never
+    // exercise `withDerivedBrandSpan` (identity on an empty array every time).
+    // Load STALE_BRAND instead — it has real brand items — then push an edit
+    // through the timeline's `onChange` (which IS `setReel`, per the other
+    // onChange-based tests in this file) and prove the brand span follows the
+    // NEW content end, not the one computed at load.
+    (globalThis.fetch as any).mockImplementation(async (url: string) =>
+      String(url).startsWith('/props') ? { ok: true, json: async () => ({ reel: STALE_BRAND }) } : { ok: true, json: async () => ({}) },
+    );
+    const { EditorHost: Host } = await import('../host/EditorHost');
+    render(<Host {...opts} />);
+    await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+    // Sanity: brand already re-derived to the content end (12000) from load.
+    expect(seenTimelineProps.at(-1).reel.tracks.brand.map((b: { endMs: number }) => b.endMs)).toEqual([12000, 12000]);
+
+    const current = seenTimelineProps.at(-1).reel as LayeredReel;
+    const trimmed = {
+      ...current,
+      tracks: {
+        ...current.tracks,
+        video: [
+          { ...current.tracks.video[0], endMs: 8000, sourceOutMs: 8000 },
+          { ...current.tracks.video[1], startMs: 8000 },
+        ],
+      },
+    } as LayeredReel;
+    const onChange = seenTimelineProps.at(-1).onChange;
+    act(() => onChange(trimmed));
+
+    await waitFor(() =>
+      expect(seenTimelineProps.at(-1).reel.tracks.brand.map((b: { endMs: number }) => b.endMs)).toEqual([8000, 8000]),
+    );
+  });
+
+  it('opens dirty when the loaded reel needed a brand-span correction — the fix is a pending change, savable in one click', async () => {
+    (globalThis.fetch as any).mockImplementation(async (url: string) =>
+      String(url).startsWith('/props') ? { ok: true, json: async () => ({ reel: STALE_BRAND }) } : { ok: true, json: async () => ({}) },
+    );
+    const { EditorHost: Host } = await import('../host/EditorHost');
+    render(<Host {...opts} />);
+    await screen.findByText('test-reels');
+
+    // Established idiom for dirty in this file (see the Save-click test
+    // below): the Save button's disabled state mirrors `dirty`.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled());
+  });
+
+  // Discard means "go back to disk exactly" — it must use the RAW setter
+  // (`setReelRaw`), not `setReel` (which would re-normalise `savedReel` and
+  // mint a fresh, non-identical object even when nothing actually changed).
+  // These two tests pin that: both go RED against `onDiscard={() =>
+  // savedReel && setReel(savedReel)}`, because normalising a raw, stale
+  // `savedReel` produces an object whose JSON differs from the already-
+  // normalised current state (dirty never clears) while also throwing away
+  // the raw brand span Discard is supposed to restore.
+  it('Discard clears dirty after an edit on a project that opened with a stale brand span', async () => {
+    (globalThis.fetch as any).mockImplementation(async (url: string) =>
+      String(url).startsWith('/props') ? { ok: true, json: async () => ({ reel: STALE_BRAND }) } : { ok: true, json: async () => ({}) },
+    );
+    const { EditorHost: Host } = await import('../host/EditorHost');
+    render(<Host {...opts} />);
+    await screen.findByText('test-reels');
+    // Opens dirty already (the brand-span correction is a pending change).
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled());
+
+    // Push a further edit through the timeline's onChange (== setReel).
+    const current = seenTimelineProps.at(-1).reel as LayeredReel;
+    const edited = {
+      ...current,
+      tracks: { ...current.tracks, video: [{ ...current.tracks.video[0], endMs: 5000, sourceOutMs: 5000 }, current.tracks.video[1]] },
+    } as LayeredReel;
+    const onChange = seenTimelineProps.at(-1).onChange;
+    act(() => onChange(edited));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled());
+
+    fireEvent.click(screen.getByRole('button', { name: /Discard/i }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled());
+  });
+
+  it('Discard restores the on-disk (raw) brand span, not the derived one', async () => {
+    (globalThis.fetch as any).mockImplementation(async (url: string) =>
+      String(url).startsWith('/props') ? { ok: true, json: async () => ({ reel: STALE_BRAND }) } : { ok: true, json: async () => ({}) },
+    );
+    const { EditorHost: Host } = await import('../host/EditorHost');
+    render(<Host {...opts} />);
+    await screen.findByText('test-reels');
+    await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+    // Sanity: on load, the visible reel is the DERIVED one.
+    expect(seenTimelineProps.at(-1).reel.tracks.brand.map((b: { endMs: number }) => b.endMs)).toEqual([12000, 12000]);
+
+    const current = seenTimelineProps.at(-1).reel as LayeredReel;
+    const edited = {
+      ...current,
+      tracks: { ...current.tracks, video: [{ ...current.tracks.video[0], endMs: 5000, sourceOutMs: 5000 }, current.tracks.video[1]] },
+    } as LayeredReel;
+    const onChange = seenTimelineProps.at(-1).onChange;
+    act(() => onChange(edited));
+    await waitFor(() =>
+      expect(seenTimelineProps.at(-1).reel.tracks.brand.map((b: { endMs: number }) => b.endMs)).toEqual([5000, 5000]),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Discard/i }));
+
+    // Back to exactly what was on disk — STALE_BRAND's own authored, un-derived span.
+    await waitFor(() =>
+      expect(seenTimelineProps.at(-1).reel.tracks.brand.map((b: { endMs: number }) => b.endMs)).toEqual([34000, 41667]),
+    );
   });
 
   it('attaches the crop-gesture listener to a real element once the preview mounts, gated off by default', async () => {

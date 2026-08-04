@@ -13,6 +13,7 @@
 // derivation is sequential-only ("close parity", not frame-exact) — good
 // enough to seed the layered editor, not a source of playback truth.
 import { segmentDurationFrames } from './duration';
+import { contentEndMs as computeContentEndMs } from './content-end';
 import type { Transition } from './transition-schema';
 import type { LayeredReel, VideoItem, AudioItem, OverlayItem, Effect } from './layered-schema';
 
@@ -400,23 +401,11 @@ export function deriveLayered(config: CutConfig, opts: DeriveLayeredOpts): Layer
 
   // Brand items (watermark/disclaimer) span CONTENT only — matching the old
   // composition, which wraps them in a Sequence of contentFrames (Σ non-outro
-  // durations − the last content segment's transitionOut overlap), hiding
-  // them during the outro stinger and its fade overlap. Find the last
-  // non-outro video item and subtract its transitionOut overlap (if any); if
-  // every item is an outro (no content), fall back to the full reel span.
-  let lastNonOutroItem: VideoItem | undefined;
-  for (let i = videoItems.length - 1; i >= 0; i--) {
-    if (videoItems[i].kind !== 'outro') {
-      lastNonOutroItem = videoItems[i];
-      break;
-    }
-  }
-  let contentEndMs = totalMs;
-  if (lastNonOutroItem) {
-    const overlapFrames = Number((lastNonOutroItem.transitionOut as { frames?: unknown } | undefined)?.frames) || 0;
-    const overlapMs = overlapFrames ? Math.round((overlapFrames / fps) * 1000) : 0;
-    contentEndMs = lastNonOutroItem.endMs - overlapMs;
-  }
+  // durations − the last content segment's transitionOut overlap), hiding them
+  // during the outro stinger and its fade overlap. The rule itself lives in
+  // content-end.ts because the EDITOR re-derives it on every change
+  // (withDerivedBrandSpan) — two copies would drift.
+  const contentEnd = computeContentEndMs(videoItems, fps) ?? totalMs;
 
   if (config.chevron) {
     overlayItems.push({
@@ -439,8 +428,8 @@ export function deriveLayered(config: CutConfig, opts: DeriveLayeredOpts): Layer
       },
       overlays: overlayItems,
       brand: [
-        { id: 'brand-watermark', kind: 'watermark', startMs: 0, endMs: contentEndMs },
-        { id: 'brand-disclaimer', kind: 'disclaimer', startMs: 0, endMs: contentEndMs },
+        { id: 'brand-watermark', kind: 'watermark', startMs: 0, endMs: contentEnd },
+        { id: 'brand-disclaimer', kind: 'disclaimer', startMs: 0, endMs: contentEnd },
       ],
     },
   };

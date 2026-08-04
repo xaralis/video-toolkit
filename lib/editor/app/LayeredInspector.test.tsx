@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent, screen } from '@testing-library/react';
 import { LayeredInspector, TransitionFields } from './LayeredInspector';
 import { editorMetaFromTheme, type EditorMeta } from './editor-meta';
+import { formatTimecode } from './controls/timecode';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import type { CompositionTheme } from '../../theming/types';
 import type { StyleEffectRenderer } from '../../theming/effects';
@@ -1410,5 +1411,27 @@ describe('LayeredInspector — audio slip-lock control ("Slips with the clip" / 
     render(<LayeredInspector reel={reel} selectedId="audio:a1" onChange={() => {}} onSeek={() => {}} fps={30} />);
     expect(screen.queryByRole('checkbox', { name: 'Slips with the clip' })).toBeNull();
     expect(screen.queryByRole('checkbox', { name: 'Keeps its own timing' })).toBeNull();
+  });
+});
+
+describe('LayeredInspector brand panel', () => {
+  const brandReel: LayeredReel = {
+    ...base,
+    tracks: { ...base.tracks, brand: [{ id: 'brand-watermark', kind: 'watermark', startMs: 0, endMs: 2000 }] },
+  };
+
+  it('shows the derived span read-only and offers no timing inputs', () => {
+    const { container } = render(
+      <LayeredInspector reel={brandReel} selectedId="brand:brand-watermark" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    // The panel's whole point: nothing on it is editable — any form control, not just <input>.
+    expect(container.querySelectorAll('input, select, textarea')).toHaveLength(0);
+    expect(container.textContent).toContain('Derived');
+    // The values are still shown, just not as fields. Assert the VALUES, not only the
+    // labels: dropping the two readonly value divs while keeping both <label>s would
+    // otherwise stay green.
+    expect(container.textContent).toContain('Start');
+    expect(container.textContent).toContain('End');
+    expect(container.textContent).toContain(formatTimecode(0, 30));
+    expect(container.textContent).toContain(formatTimecode(2000, 30));
   });
 });
