@@ -5,6 +5,7 @@ import { AccentEditor } from './AccentEditor';
 import { Collapsible } from './Collapsible';
 import {
   CUT_KIND,
+  isCut,
   defaultTransition,
   kindNeedsFrames,
   transitionKindChoices,
@@ -793,14 +794,28 @@ function EffectEditor({
   return <ParamFields values={params} fields={fields} onPatch={onPatch} accentSlots={accentSlots} axis="effect" kind={type} />;
 }
 
-// `btnCls` plus this call site's own sizing and margin. Neither `seekBtnCls`
-// nor `linkBtnCls` has a disabled variant anywhere it's used any more
-// (`AddEffectControl`'s used to be one — the grade/`blockedTypes` guard it
-// existed for is gone, see that component's own comment) — same hazard
-// `btnCls` itself is written to avoid, `linkBtnCls` carries no `cursor-*` of
-// its own; every consumer adds its own.
-const seekBtnCls = `${btnCls} ed:inline-flex ed:items-center ed:gap-1.5 ed:cursor-pointer ed:mb-2.5 ed:w-auto ed:px-2.5 ed:py-1`;
+// `btnCls` plus this call site's own sizing and margin. `linkBtnCls` has no
+// disabled variant anywhere it's used any more (`AddEffectControl`'s used to
+// be one — the grade/`blockedTypes` guard it existed for is gone, see that
+// component's own comment) — same hazard `btnCls` itself is written to
+// avoid; `linkBtnCls` carries no `cursor-*` of its own, every consumer adds
+// its own.
 const linkBtnCls = `${btnCls} ed:inline-flex ed:items-center ed:gap-1.5 ed:mt-1 ed:w-full ed:px-2.5 ed:py-1.5 ed:text-left`;
+
+// The Clip/Overlay panels put their "seek to start" action INLINE on the
+// heading row, right-aligned against the title, rather than on its own row —
+// vertical space in the inspector is the scarce resource, and a secondary
+// action doesn't earn a whole row. `headingRowTitleCls` is `headingCls`
+// minus its own `ed:mb-2.5`: the ROW below carries that margin now, so the
+// title inside it doesn't double it.
+const headingRowCls = 'ed:flex ed:items-center ed:justify-between ed:mb-2.5';
+const headingRowTitleCls = 'ed:text-xs ed:text-ink ed:font-semibold';
+// A quiet, icon-only affordance for a header row's secondary action — same
+// visual language as `resetBtnCls` (no border, hover highlight) but scoped
+// here since it isn't a reset. Replaces the old full-width bordered
+// seek button.
+const seekIconBtnCls =
+  'ed:inline-flex ed:items-center ed:justify-center ed:w-[22px] ed:h-[22px] ed:rounded ed:text-ink-3 ed:cursor-pointer ed:hover:text-ink ed:hover:bg-control ed:shrink-0';
 
 // The addable effects: core's own catalog plus whatever the brand declared.
 // Core ships only what core RENDERS (ken-burns via SegmentMedia) — every
@@ -978,10 +993,18 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     if (!v) return null;
     return (
       <div className={panelCls}>
-        <h3 className={headingCls}>Clip · {v.kind}</h3>
-        <button type="button" className={seekBtnCls} onClick={() => onSeek(Math.round((v.startMs / 1000) * fps))}>
-          <SkipBackIcon size={13} /> seek to start
-        </button>
+        <div className={headingRowCls}>
+          <h3 className={headingRowTitleCls}>Clip · {v.kind}</h3>
+          <button
+            type="button"
+            aria-label="seek to start"
+            title="seek to start"
+            className={seekIconBtnCls}
+            onClick={() => onSeek(Math.round((v.startMs / 1000) * fps))}
+          >
+            <SkipBackIcon size={13} />
+          </button>
+        </div>
         {(v.kind === 'clip' || v.kind === 'broll') && (
           <>
             <TextField lbl="Source" value={v.source} onCommit={(s) => s.trim() && patchItem('video', id, { source: s })} />
@@ -1143,6 +1166,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           return (
             <Collapsible
               key={`color-${id}`}
+              id={`color-${id}`}
               defaultOpen={touched}
               title={
                 <span className="ed:inline-flex ed:items-center ed:gap-1.5">
@@ -1194,10 +1218,48 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
             </>
           );
         })()}
-        {/* Renderer default: music-envelope.ts's `item?.musicBoostDb ?? 0` —
-            an unboosted segment plays the music bed at its plain base volume,
-            not silenced. */}
-        <SliderField lbl="Music boost (dB)" min={-60} max={12} step={0.5} value={v.musicBoostDb} fallback={0} onCommit={(n) => patchItem('video', id, { musicBoostDb: n })} />
+        {/* Music boost — how much louder/quieter the music bed plays under
+            THIS clip, relative to its base volume (renderer default:
+            music-envelope.ts's `item?.musicBoostDb ?? 0` — an unboosted
+            segment plays music at its plain base volume, not silenced). Same
+            mechanism as the Color/Effects sections above, not a third one: a
+            `Collapsible` keyed on the item's own id, starting collapsed when
+            the value sits at its default (0dB — nothing to show) and
+            expanded the moment it doesn't, with the same touched-but-
+            collapsed dot affordance those sections use. The slider's OWN
+            reset-to-default affordance (`SliderField`'s `fallback`, shown
+            once `value` drifts from it) already covers "return this to 0dB"
+            for this single field, so this section carries no separate
+            header-level reset the way Color's seven-field aggregate does —
+            that would be a second way to do the same one-field job. */}
+        {(() => {
+          const musicTouched = (v.musicBoostDb ?? 0) !== 0;
+          return (
+            <Collapsible
+              key={`music-boost-${id}`}
+              id={`music-boost-${id}`}
+              defaultOpen={musicTouched}
+              title={
+                <span className="ed:inline-flex ed:items-center ed:gap-1.5">
+                  Music boost
+                  {musicTouched && (
+                    <span aria-hidden="true" data-testid="music-boost-dirty-dot" className={dirtyDotCls} />
+                  )}
+                </span>
+              }
+            >
+              <SliderField
+                lbl="Music boost (dB)"
+                min={-60}
+                max={12}
+                step={0.5}
+                value={v.musicBoostDb}
+                fallback={0}
+                onCommit={(n) => patchItem('video', id, { musicBoostDb: n })}
+              />
+            </Collapsible>
+          );
+        })()}
         {/* Effects only apply to footage renderers (SegmentMedia + brand wrappers).
             outro/card render bespoke and ignore item.effects, so don't offer them.
 
@@ -1219,6 +1281,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           return (
             <Collapsible
               key={`effects-${id}`}
+              id={`effects-${id}`}
               defaultOpen={count > 0}
               title={
                 <span className="ed:inline-flex ed:items-center ed:gap-1.5">
@@ -1237,6 +1300,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                   return (
                     <Collapsible
                       key={i}
+                      id={`effect-${id}-${i}`}
                       title={`Effect · ${type}`}
                       right={
                         <button
@@ -1286,11 +1350,44 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           // roomOf(idx + 1)/roomOf(idx) is wrong (Important 5).
           const isLast = idx === reel.tracks.video.length - 1;
           const maxFrames = isLast ? undefined : Math.max(1, maxTransitionFrames(roomOf(idx), roomOf(idx + 1), transitionAlignmentOf(t)));
+          // "No transition" is `isCut` — THE decider (transition-schema.ts),
+          // not a hand-copied `kind === 'cut'`/`'Cut'` string here: it already
+          // treats absent/kind-less/explicit-cut as the same answer, which is
+          // exactly what "off default" needs to mean too. The reset target is
+          // `defaultTransition(CUT_KIND)` for the same reason the Kind
+          // dropdown above builds a fresh object off it — one place decides
+          // what "a plain cut" looks like as a literal, not a second
+          // `{ kind: 'cut' }` written out here.
+          const touched = !isCut(t);
           return (
-            <>
-              <div className={sectionCls}>Transition out</div>
+            <Collapsible
+              key={`transition-out-${id}`}
+              id={`transition-out-${id}`}
+              defaultOpen={touched}
+              title={
+                <span className="ed:inline-flex ed:items-center ed:gap-1.5">
+                  Transition out
+                  {touched && (
+                    <span aria-hidden="true" data-testid="transition-out-dirty-dot" className={dirtyDotCls} />
+                  )}
+                </span>
+              }
+              right={
+                touched && (
+                  <button
+                    type="button"
+                    aria-label="Reset transition to cut"
+                    title="Reset transition to cut"
+                    onClick={() => patchItem('video', id, { transitionOut: defaultTransition(CUT_KIND) })}
+                    className={resetBtnCls}
+                  >
+                    <RotateCcwIcon size={12} />
+                  </button>
+                )
+              }
+            >
               <TransitionFields t={t} accentSlots={slots} meta={meta} maxFrames={maxFrames} onChange={(next) => patchItem('video', id, { transitionOut: next })} />
-            </>
+            </Collapsible>
           );
         })()}
       </div>
@@ -1304,10 +1401,18 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     const patchContent = (patch: Record<string, unknown>) => patchItem('overlays', id, { content: { ...o.content, ...patch } });
     return (
       <div className={panelCls}>
-        <h3 className={headingCls}>Overlay · {content.kind ?? 'overlay'}</h3>
-        <button type="button" className={seekBtnCls} onClick={() => onSeek(Math.round((o.startMs / 1000) * fps))}>
-          <SkipBackIcon size={13} /> seek to start
-        </button>
+        <div className={headingRowCls}>
+          <h3 className={headingRowTitleCls}>Overlay · {content.kind ?? 'overlay'}</h3>
+          <button
+            type="button"
+            aria-label="seek to start"
+            title="seek to start"
+            className={seekIconBtnCls}
+            onClick={() => onSeek(Math.round((o.startMs / 1000) * fps))}
+          >
+            <SkipBackIcon size={13} />
+          </button>
+        </div>
         {content.text !== undefined && (
           <div className={fieldCls}>
             <label className={`${labelCls} ed:block ed:mb-1`}>Text</label>

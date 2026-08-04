@@ -689,7 +689,9 @@ describe('LayeredInspector style-effect catalog (Task 4.4, Gap 1)', () => {
     };
     render(<StatefulInspector initial={withUnknown} selectedId="video:v1" meta={meta} />);
     // Touch an unrelated control (the item's music boost) — this must not
-    // rewrite or drop the unrecognised effect entry.
+    // rewrite or drop the unrecognised effect entry. Music boost sits at its
+    // default (0dB) here, so its own section starts collapsed — open it first.
+    fireEvent.click(screen.getByRole('button', { name: 'Music boost' }));
     const boost = screen.getByLabelText('Music boost (dB)') as HTMLInputElement;
     fireEvent.change(boost, { target: { value: '3' } });
     fireEvent.blur(boost);
@@ -783,16 +785,17 @@ describe('LayeredInspector collapses an untouched Color section, and gives it a 
     tracks: { ...untouched.tracks, video: [{ ...untouched.tracks.video[0], grade: { brightness: 1.2 } }] },
   };
 
-  // The Color header's OWN accessible name isn't safe to query by when the
-  // section is touched: its `right` slot (the reset-all button) carries its
-  // own `aria-label`, and per the accessible-name-from-content algorithm
-  // that label becomes part of the header's computed name too (something
-  // like "Color Reset all color adjustments"), not just "Color". `getByText`
-  // only matches an element's DIRECT text-node children (see
-  // testing-library's `getNodeText`), so it finds the inner `<span>Color</span>`
-  // alone regardless of what the right slot renders — this is what every
-  // click/expanded-state assertion below goes through instead.
-  const colorHeader = () => screen.getByText('Color').closest('[role="button"]') as HTMLElement;
+  // `Collapsible`'s header is a plain container; the toggle is its own real
+  // `<button>` and the `right` slot (the reset-all button, with its own
+  // `aria-label`) is a SIBLING of it, not a descendant — so the toggle's
+  // accessible name is "Color" alone, whether or not the section is touched
+  // and showing a reset button beside it. This used to need a workaround
+  // (`getByText('Color').closest('[role="button"]')`) because the header was
+  // itself a `role="button"` div with `right` nested INSIDE it, which folded
+  // the reset button's label into the header's own accessible name (something
+  // like "Color Reset all color adjustments"). See Collapsible.tsx's own
+  // comment for the fix.
+  const colorHeader = () => screen.getByRole('button', { name: 'Color' });
 
   it('starts collapsed for an item whose grade is untouched', () => {
     render(<LayeredInspector reel={untouched} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
@@ -909,6 +912,153 @@ describe('LayeredInspector gives the effect list its own Effects section', () =>
     expect(screen.getByText('+ Add effect')).toBeInTheDocument();
     rerender(<LayeredInspector reel={{ ...noEffects }} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
     expect(screen.getByText('+ Add effect')).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Music boost used to sit loose in the clip panel as a bare slider. Same
+// mechanism as Color/Effects above, not a third one: a `Collapsible` starting
+// collapsed at the renderer default (0dB — music-envelope.ts's
+// `item?.musicBoostDb ?? 0`) and expanded the moment it isn't. Unlike Color,
+// this section carries no header-level reset: `SliderField`'s own
+// reset-to-default affordance already covers the one field it holds.
+// ---------------------------------------------------------------------------
+describe('LayeredInspector gives Music boost its own collapsible section', () => {
+  const untouched: LayeredReel = {
+    version: 'layered-1', meta: { topic: 't', totalDurationMs: 2000 },
+    tracks: {
+      video: [{ id: 'v1', kind: 'photo', startMs: 0, endMs: 2000, source: 'a.jpg', musicBoostDb: 0 }],
+      audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [],
+    },
+  };
+  const touched: LayeredReel = {
+    ...untouched,
+    tracks: { ...untouched.tracks, video: [{ ...untouched.tracks.video[0], musicBoostDb: 4 }] },
+  };
+
+  it('starts collapsed when the value is at its default (0dB)', () => {
+    render(<LayeredInspector reel={untouched} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByRole('button', { name: 'Music boost' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText('Music boost (dB)')).toBeNull();
+  });
+
+  it('starts expanded when the value is off default', () => {
+    render(<LayeredInspector reel={touched} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByRole('button', { name: 'Music boost' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText('Music boost (dB)')).toBeInTheDocument();
+  });
+
+  it('a manual toggle survives a re-render of the same item', () => {
+    const { rerender } = render(
+      <LayeredInspector reel={untouched} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Music boost' }));
+    expect(screen.getByLabelText('Music boost (dB)')).toBeInTheDocument();
+    rerender(<LayeredInspector reel={{ ...untouched }} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByLabelText('Music boost (dB)')).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Transition out gets the same treatment, with `Cut` (no transition) as its
+// default — decided by `isCut` (transition-schema.ts), THE decider, never a
+// hand-copied `kind === 'cut'` check here. Unlike Music boost, this section's
+// controls have no per-field reset of their own, so it gets the same
+// header-level "reset all" the Color section has.
+// ---------------------------------------------------------------------------
+describe('LayeredInspector gives Transition out its own collapsible section, with Cut as its reset default', () => {
+  const cutReel: LayeredReel = {
+    version: 'layered-1', meta: { topic: 't', totalDurationMs: 2000 },
+    tracks: {
+      video: [{ id: 'v1', kind: 'photo', startMs: 0, endMs: 2000, source: 'a.jpg', musicBoostDb: 0 }],
+      audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [],
+    },
+  };
+  const noKindReel: LayeredReel = {
+    ...cutReel,
+    tracks: { ...cutReel.tracks, video: [{ ...cutReel.tracks.video[0], transitionOut: { kind: 'cut' } }] },
+  };
+  const dissolveReel: LayeredReel = {
+    ...cutReel,
+    tracks: { ...cutReel.tracks, video: [{ ...cutReel.tracks.video[0], transitionOut: { kind: 'dissolve', frames: 15 } }] },
+  };
+
+  it('starts collapsed when the item has no transitionOut at all', () => {
+    render(<LayeredInspector reel={cutReel} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByRole('button', { name: 'Transition out' })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('starts collapsed when transitionOut is explicitly Cut', () => {
+    render(<LayeredInspector reel={noKindReel} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByRole('button', { name: 'Transition out' })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('starts expanded for any other kind', () => {
+    render(<LayeredInspector reel={dissolveReel} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByRole('button', { name: 'Transition out' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText('Kind')).toBeInTheDocument();
+  });
+
+  it('shows no reset-all button when the transition is a cut', () => {
+    render(<LayeredInspector reel={cutReel} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.queryByLabelText('Reset transition to cut')).toBeNull();
+  });
+
+  it('a reset-all click returns the transition to a plain cut', () => {
+    const onChange = vi.fn();
+    render(<LayeredInspector reel={dissolveReel} selectedId="video:v1" onChange={onChange} onSeek={() => {}} fps={30} />);
+    fireEvent.click(screen.getByLabelText('Reset transition to cut'));
+    const next = onChange.mock.calls.at(-1)![0] as LayeredReel;
+    expect(next.tracks.video[0].transitionOut).toEqual({ kind: 'cut' });
+  });
+
+  it('a manual toggle survives a re-render of the same item', () => {
+    const { rerender } = render(
+      <LayeredInspector reel={cutReel} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Transition out' }));
+    expect(screen.getByLabelText('Kind')).toBeInTheDocument();
+    rerender(<LayeredInspector reel={{ ...cutReel }} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByLabelText('Kind')).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The seek-to-start action moved off its own row onto the Clip/Overlay
+// heading row (right-aligned, icon-led) — vertical space in the inspector is
+// scarce and a secondary action doesn't earn a whole row. It must keep the
+// same accessible name and behaviour it always had, in BOTH panels.
+// ---------------------------------------------------------------------------
+describe('LayeredInspector inline seek-to-start control', () => {
+  const videoReel: LayeredReel = {
+    version: 'layered-1', meta: { topic: 't', totalDurationMs: 4000 },
+    tracks: {
+      video: [{ id: 'v1', kind: 'photo', startMs: 1000, endMs: 2000, source: 'a.jpg', musicBoostDb: 0 }],
+      audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [],
+    },
+  };
+  const overlayPanelReel: LayeredReel = {
+    version: 'layered-1', meta: { topic: 't', totalDurationMs: 4000 },
+    tracks: {
+      video: [], audio: [], music: { baseVolumeDb: -8 }, brand: [],
+      overlays: [{ id: 'ov1', startMs: 2000, endMs: 3000, content: { kind: 'text', text: 'Hi' } }],
+    },
+  };
+
+  it('the Clip panel keeps an accessible "seek to start" control and fires onSeek at the clip start frame', () => {
+    const onSeek = vi.fn();
+    render(<LayeredInspector reel={videoReel} selectedId="video:v1" onChange={() => {}} onSeek={onSeek} fps={30} />);
+    fireEvent.click(screen.getByRole('button', { name: 'seek to start' }));
+    expect(onSeek).toHaveBeenCalledWith(30); // 1000ms @ 30fps
+  });
+
+  it('the Overlay panel keeps an accessible "seek to start" control and fires onSeek at the overlay start frame', () => {
+    const onSeek = vi.fn();
+    render(
+      <LayeredInspector reel={overlayPanelReel} selectedId="overlays:ov1" onChange={() => {}} onSeek={onSeek} fps={30} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'seek to start' }));
+    expect(onSeek).toHaveBeenCalledWith(60); // 2000ms @ 30fps
   });
 });
 

@@ -78,6 +78,10 @@ describe('an unrecognised transition kind survives the inspector', () => {
     render(
       <LayeredInspector reel={reelWith(undefined as never)} selectedId="video:v1"
         onChange={() => {}} onSeek={() => {}} fps={30} />);
+    // No transition at all is a cut, so the Transition out section starts
+    // collapsed (see LayeredInspector.tsx's `isCut`-driven Collapsible) —
+    // open it before reading the Kind field.
+    fireEvent.click(screen.getByRole('button', { name: 'Transition out' }));
     expect((screen.getByLabelText('Kind') as HTMLSelectElement).value).toBe('cut');
   });
 });
