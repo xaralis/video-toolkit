@@ -18,6 +18,7 @@ import { overlayRegistry } from '../../theming/brand-theme';
 import { isReservedEffectType, CORE_STYLE_EFFECT_TYPES, resolveStyleEffectRenderer } from '../../theming/effects';
 import { registrationParams, type ParamField } from '../../theming/registry';
 import { ACCENT_HUE, HUE_GUARD, ARC, hslToRgb, redmean } from './lane-colors';
+import type { LayeredReel } from '../../reel-config-base/layered-schema';
 
 /** One declared, editable parameter inside an opaque bag (`props`, effect
  *  params) — and, since Phase 4 Task 1.1, the SAME descriptor the transition
@@ -489,16 +490,101 @@ function buildPalette(size: number): Hsl[] {
 // first test that asks for it), never at import.
 let cachedPalette: readonly Hsl[] | undefined;
 
-/** Exported for `editor-meta.test.ts` ONLY — call this, not a bare property,
- *  so the test can force the (lazy) build. Verifying an exhaustive property
- *  (every pair of entries separated, every entry's hue in-bounds) over the
- *  whole palette is a fundamentally stronger guarantee than sampling
- *  `stableColor`'s output over a list of kind names — it is the direct fix
- *  for "the separation was tuned for one fixture instead of being a property
- *  of the generator." Nothing outside the test should import this. */
+/** Exported for `editor-meta.test.ts` (verifying the exhaustive separation
+ *  property below) AND for `distinctColors` — everything else should go
+ *  through one of those two, not this bare accessor, so the test can force
+ *  the (lazy) build. Verifying an exhaustive property (every pair of entries
+ *  separated, every entry's hue in-bounds) over the whole palette is a
+ *  fundamentally stronger guarantee than sampling `stableColor`'s output over
+ *  a list of kind names — it is the direct fix for "the separation was tuned
+ *  for one fixture instead of being a property of the generator." */
 export function getStableColorPalette(): readonly Hsl[] {
   if (!cachedPalette) cachedPalette = buildPalette(PALETTE_SIZE);
   return cachedPalette;
+}
+
+/** The first `n` palette entries, as `hsl(...)` strings — a maximally
+ *  SEPARATED set of `n` colours, not merely `n` distinct ones.
+ *
+ *  Why a prefix is optimal rather than a coincidence: `buildPalette` builds
+ *  the whole palette by farthest-point (maximin) sampling — `chosen[0]` is a
+ *  seed and every subsequent entry is, at the moment it's added, the
+ *  candidate farthest from every entry already chosen. That greedy property
+ *  holds at EVERY prefix length, not only at the final size: `palette.slice(0,
+ *  n)` is exactly the set farthest-point sampling would have produced had it
+ *  been asked to stop at `n` in the first place. So callers who need a small,
+ *  told-apart-at-a-glance set (e.g. `sourceColors`, below) get optimal
+ *  separation for free by taking a prefix — no reason to do what
+ *  `stableColor` does instead (hash a seed into a slot): hashing can land two
+ *  unrelated seeds on near-neighbours (the whole-palette separation floor is
+ *  only ~22 redmean — see `PALETTE_SIZE`'s comment — nowhere near enough to
+ *  tell two adjacent-hue entries apart at a glance), which is an acceptable
+ *  trade for stableColor's use case (arbitrarily many unrelated brand kinds,
+ *  no fixed count) but wrong for a small, known-size set where every member
+ *  can and should be maximally spread out.
+ *
+ *  Throws rather than wrapping around past the palette size: 2048 sources in
+ *  one reel is not a real video, and silently reusing a slot would hand two
+ *  DIFFERENT sources the same colour — the exact failure this whole feature
+ *  exists to fix, just moved one level up. */
+export function distinctColors(n: number): string[] {
+  const palette = getStableColorPalette();
+  if (n > palette.length) {
+    throw new Error(`distinctColors(${n}) exceeds the palette size (${palette.length})`);
+  }
+  return palette.slice(0, n).map(({ h, s, l }) => `hsl(${h}, ${s}%, ${l}%)`);
+}
+
+// Video-item kinds identified by a single named `source` file — the kinds
+// `sourceColors` colours. `multi-clip` deliberately excluded: it carries
+// `sources: SubSource[]`, not one `source`, and picking `sources[0]` would
+// misrepresent a several-take block as if it were a single one. `card` and
+// `outro` carry no media at all. See `sourceColors`'s own comment for the
+// full rationale.
+const SOURCE_COLORED_KINDS = new Set(['clip', 'broll', 'photo']);
+
+/** Every distinct video-track SOURCE FILE in the reel, mapped to a colour —
+ *  so a timeline block answers "is this the same take as that other block,
+ *  or a different one," which a colour keyed on KIND cannot: a real reel
+ *  that cuts five clips off two source files plus three brolls rendered in
+ *  just two colours (one per kind) before this, no matter how wide the
+ *  palette got. The kind is already in the block's label ("Clip seg-001:
+ *  TH-01_t4.mp4"), so the colour was carrying no information the label
+ *  didn't.
+ *
+ *  Assignment order is the SORTED source path, not order of appearance on
+ *  the timeline. During cut-tune the user reorders and trims constantly, and
+ *  an appearance-order assignment would recolour the whole timeline on every
+ *  reorder — colours that move under you are worse than no colours at all.
+ *  Lexicographic order is stable against every edit except adding or
+ *  removing a source file, and is reproducible across machines and
+ *  sessions, so the same reel opens with the same colours every time.
+ *
+ *  Colours come from `distinctColors` — a PREFIX of the farthest-point
+ *  palette, already maximally separated for however many distinct sources
+ *  this reel has (see `distinctColors`'s own comment for why a prefix, not a
+ *  hash, is the right tool here).
+ *
+ *  Lives here rather than in `lane-colors.ts` (which otherwise owns the
+ *  colour rules, and reads as the more obvious home by name) because this
+ *  function needs `distinctColors`, which itself needs the lazily-built
+ *  palette this file owns — `lane-colors.ts` is imported BY this file
+ *  (`ACCENT_HUE`, `hslToRgb`, `redmean`), so putting `sourceColors` there
+ *  would need an import back the other way and create a cycle. */
+export function sourceColors(reel: LayeredReel): Record<string, string> {
+  const sources = new Set<string>();
+  for (const item of reel.tracks.video) {
+    if (SOURCE_COLORED_KINDS.has(item.kind) && 'source' in item && item.source) {
+      sources.add(item.source);
+    }
+  }
+  const sorted = [...sources].sort();
+  const colors = distinctColors(sorted.length);
+  const out: Record<string, string> = {};
+  sorted.forEach((source, i) => {
+    out[source] = colors[i];
+  });
+  return out;
 }
 
 export function stableColor(seed: string): string {

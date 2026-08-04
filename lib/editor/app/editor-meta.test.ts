@@ -7,12 +7,15 @@ import {
   humanizeKey,
   stableColor,
   getStableColorPalette,
+  distinctColors,
+  sourceColors,
   type EditorMeta,
 } from './editor-meta';
 import { CORE_LANE_COLOR } from './LayeredTimeline';
 import { ACCENT_HUE, HUE_GUARD, ARC, hslToRgb, redmean } from './lane-colors';
 import type { CompositionTheme } from '../../theming/types';
 import type { StyleEffectRenderer } from '../../theming/effects';
+import type { LayeredReel, VideoItem } from '../../reel-config-base/layered-schema';
 
 // A real, resolvable renderer — fix round 1: a renderer-less styleEffects
 // entry must NOT be offered (see editor-meta.ts's styleEffectsFromTheme), so
@@ -426,5 +429,110 @@ describe('editorMetaFromTheme', () => {
     expect(meta.videoProps?.outro).toBeUndefined();
     expect(meta.overlayProps?.chevron).toBeUndefined();
     expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Colour-by-source-file: a timeline block's fill answers "same take, or a
+// different one" — a question a colour keyed on KIND cannot answer once a
+// real reel narrows to a handful of kinds (see LayeredTimeline.tsx's
+// `sourceColors` doc comment for the motivating case). `distinctColors` is
+// the palette-prefix primitive; `sourceColors` is the reel-level derivation
+// built on top of it.
+// ---------------------------------------------------------------------------
+
+function parseHslLocal(color: string): { h: number; s: number; l: number } {
+  const m = /^hsl\((\d+), (\d+)%, (\d+)%\)$/.exec(color);
+  expect(m, `${color} shape`).not.toBeNull();
+  return { h: Number(m![1]), s: Number(m![2]), l: Number(m![3]) };
+}
+
+describe('distinctColors', () => {
+  it('returns n distinct hsl() values', () => {
+    const cols = distinctColors(5);
+    expect(cols).toHaveLength(5);
+    expect(new Set(cols).size).toBe(5);
+    for (const c of cols) expect(c).toMatch(/^hsl\(\d+, \d+%, \d+%\)$/);
+  });
+
+  it('is a stable PREFIX of the palette: a larger n extends a smaller one rather than re-shuffling it', () => {
+    expect(distinctColors(4)).toEqual(distinctColors(4));
+    expect(distinctColors(6).slice(0, 4)).toEqual(distinctColors(4));
+  });
+
+  // Measured on an actual run of THIS palette (see the task report for the
+  // full numbers): distinctColors(8) — a realistic reel's distinct-source
+  // count — measured a minimum pairwise redmean of ~269.14, over 5x
+  // `stableColor`'s (hash-into-the-palette) ~50.26 measured over 8 arbitrary
+  // seeds. 200 leaves real margin under the measured 269.14 without being so
+  // tight that an unrelated, still-reasonable palette change flakes this —
+  // re-measure and re-derive both numbers together if the palette changes.
+  it('separates a realistic (8-source) draw comfortably above what hashing into the palette gives', () => {
+    const rgbs = distinctColors(8).map((c) => {
+      const { h, s, l } = parseHslLocal(c);
+      return hslToRgb(h, s, l);
+    });
+    let min = Infinity;
+    for (let i = 0; i < rgbs.length; i += 1) {
+      for (let j = i + 1; j < rgbs.length; j += 1) min = Math.min(min, redmean(rgbs[i], rgbs[j]));
+    }
+    expect(min).toBeGreaterThanOrEqual(200);
+  });
+
+  it('throws rather than wrapping around past the palette size — a repeated colour is the exact failure this exists to prevent', () => {
+    const size = getStableColorPalette().length;
+    expect(() => distinctColors(size + 1)).toThrow();
+    expect(() => distinctColors(size)).not.toThrow();
+  });
+});
+
+describe('sourceColors', () => {
+  const clip = (id: string, source: string, startMs: number, endMs: number): VideoItem => ({
+    id, kind: 'clip', startMs, endMs, source, sourceInMs: 0, sourceOutMs: endMs - startMs,
+  });
+  const multiClip = (id: string, startMs: number, endMs: number): VideoItem => ({
+    id, kind: 'multi-clip', startMs, endMs, layout: 'split-h',
+    sources: [
+      { source: 'a.mp4', sourceInMs: 0, sourceOutMs: 1000 },
+      { source: 'b.mp4', sourceInMs: 0, sourceOutMs: 1000 },
+    ],
+  });
+  const card = (id: string, startMs: number, endMs: number): VideoItem => ({ id, kind: 'card', startMs, endMs, cardKind: 'stat' });
+  const outro = (id: string, startMs: number, endMs: number): VideoItem => ({ id, kind: 'outro', startMs, endMs });
+
+  function reel(items: VideoItem[]): LayeredReel {
+    return {
+      version: 'layered-1',
+      meta: { topic: 't', totalDurationMs: 10000 },
+      tracks: { video: items, audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [] },
+    };
+  }
+
+  it('gives two items sharing a source the SAME colour, and a different source a DIFFERENT one', () => {
+    const r = reel([
+      clip('v1', 'TH-01.mp4', 0, 1000),
+      clip('v2', 'TH-01.mp4', 1000, 2000),
+      clip('v3', 'TH-02.mp4', 2000, 3000),
+    ]);
+    const colors = sourceColors(r);
+    expect(colors['TH-01.mp4']).toBeDefined();
+    expect(colors['TH-02.mp4']).toBeDefined();
+    expect(colors['TH-01.mp4']).not.toBe(colors['TH-02.mp4']);
+  });
+
+  it('assigns colours by SORTED source order, not order of appearance — reordering the timeline does not recolour it', () => {
+    const r1 = reel([clip('v1', 'b.mp4', 0, 1000), clip('v2', 'a.mp4', 1000, 2000), clip('v3', 'c.mp4', 2000, 3000)]);
+    const r2 = reel([clip('v1', 'c.mp4', 0, 1000), clip('v2', 'a.mp4', 1000, 2000), clip('v3', 'b.mp4', 2000, 3000)]);
+    expect(sourceColors(r1)).toEqual(sourceColors(r2));
+  });
+
+  it('excludes multi-clip, card, and outro — no single source (or none at all) to key on', () => {
+    const r = reel([
+      clip('v1', 'a.mp4', 0, 1000),
+      multiClip('v2', 1000, 2000),
+      card('v3', 2000, 3000),
+      outro('v4', 3000, 4000),
+    ]);
+    expect(Object.keys(sourceColors(r))).toEqual(['a.mp4']);
   });
 });

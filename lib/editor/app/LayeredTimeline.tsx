@@ -22,7 +22,7 @@ import { Waveform, VolumeLine } from './Waveform';
 import { MusicEnvelope } from './MusicEnvelope';
 import { computeMusicEnvelope } from '@video-toolkit/lib/reel-config-base/music-envelope';
 import { resolveMediaSource, type MediaRole } from '@video-toolkit/lib/theming/media-source';
-import { humanizeKey, stableColor, type EditorMeta } from './editor-meta';
+import { humanizeKey, stableColor, sourceColors, type EditorMeta } from './editor-meta';
 import { handleRoomFrames, boundaryState, starvationMessage, type HandleRoom } from '@video-toolkit/lib/reel-config-base/handle-room';
 import { EDITOR_ACCENT } from '../host/ui';
 import { SHORTCUTS } from './shortcuts';
@@ -140,14 +140,43 @@ export const CORE_LANE_COLOR: Record<string, string> = {
 export const colorFor = (effectId: string, meta?: EditorMeta) =>
   meta?.laneColors?.[effectId] ?? CORE_LANE_COLOR[effectId] ?? stableColor(effectId);
 
+// A VIDEO item's own colour. `clip`/`broll`/`photo` are coloured by their
+// SOURCE FILE (`sourceColorMap`, from `sourceColors` in editor-meta.ts) — two
+// blocks cutting the same take share a colour, a different take is visibly a
+// different one, which a colour keyed on `video-${kind}` alone could never
+// show once a reel narrows to a handful of kinds. `multi-clip` (no single
+// `source`), `card`, and `outro` (no media at all) keep their fixed kind
+// colour. A brand's `meta.laneColors['video-<kind>']` override still wins
+// over the derived source colour wherever declared — `colorFor` already
+// checks it first, so the guard below simply skips the source lookup rather
+// than duplicating the precedence.
+function videoItemColor(item: VideoItem, meta: EditorMeta | undefined, sourceColorMap: Record<string, string>): string {
+  const effectId = `video-${item.kind}`;
+  if (!meta?.laneColors?.[effectId] && (item.kind === 'clip' || item.kind === 'broll' || item.kind === 'photo')) {
+    const source = sourceColorMap[item.source];
+    if (source) return source;
+  }
+  return colorFor(effectId, meta);
+}
+
 // A block's fill. A LINKED audio bed (followsVideoId) takes its clip's colour so
-// the pair reads as one unit; everything else uses its own effect colour.
-function blockColor(action: TimelineAction, reel: LayeredReel, meta?: EditorMeta): string {
+// the pair reads as one unit — now the clip's SOURCE colour, via the same
+// `videoItemColor` the video lane itself uses, so the pair still reads as one
+// unit even though "the clip's colour" is no longer a single fixed value per
+// kind. An UNLINKED bed and the music lane keep their kind colour (`audio` /
+// `music`, via the `colorFor` fallback below) — deliberately: they have no
+// clip to mirror, and keeping them on the fixed kind colour is what keeps the
+// audio band visually distinct from the video band.
+export function blockColor(action: TimelineAction, reel: LayeredReel, meta: EditorMeta | undefined, sourceColorMap: Record<string, string>): string {
   const { lane, id } = parseActionId(action.id);
+  if (lane === 'video') {
+    const item = reel.tracks.video.find((v) => v.id === id);
+    if (item) return videoItemColor(item, meta, sourceColorMap);
+  }
   if (lane === 'audio') {
     const a = reel.tracks.audio.find((x) => x.id === id);
     const v = a?.followsVideoId ? reel.tracks.video.find((x) => x.id === a.followsVideoId) : undefined;
-    if (v) return colorFor(`video-${v.kind}`, meta);
+    if (v) return videoItemColor(v, meta, sourceColorMap);
   }
   return colorFor(action.effectId, meta);
 }
@@ -172,6 +201,22 @@ const VIDEO_KIND_LABEL: Record<string, string> = {
   card: 'Card',
   outro: 'Outro',
 };
+
+// The legend's colour key (below the timeline). `clip`/`broll`/`photo` are
+// deliberately absent — they're coloured by SOURCE FILE now (`sourceColors`,
+// editor-meta.ts), so a fixed swatch per kind would be a lie for them (there
+// is no single "Clip" colour any more; the label already carries the
+// filename). These five kinds still have exactly one colour — multi-clip has
+// no single source to key on, card/outro carry no media, and audio/music are
+// the fixed-colour tracks that keep the audio band visually distinct from the
+// (now source-tinted) video band — so a swatch is still honest for them.
+const LEGEND_FIXED_COLOR_KINDS: readonly { effectId: string; label: string }[] = [
+  { effectId: 'video-multi-clip', label: VIDEO_KIND_LABEL['multi-clip'] },
+  { effectId: 'video-card', label: VIDEO_KIND_LABEL.card },
+  { effectId: 'video-outro', label: VIDEO_KIND_LABEL.outro },
+  { effectId: 'audio', label: 'Audio' },
+  { effectId: 'music', label: 'Music' },
+];
 
 // Trim-grip affordance for a clip/broll edge. An edge is "muted" when it CAN'T
 // extend outward: the left in-point is already at the source start
@@ -603,6 +648,11 @@ function LayeredTimelineImpl({
 
   const editorData = useMemo(() => layeredToTimeline(reel, fps).editorData, [reel, fps]);
 
+  // Source-file colour map (editor-meta.ts) — memoized per reel so it is not
+  // recomputed (and its distinctColors call re-run) on every render, only
+  // when the reel's video track actually changes.
+  const sourceColorMap = useMemo(() => sourceColors(reel), [reel]);
+
   // Decode waveform peaks for the audio beds + the music source.
   const audioUrls = useMemo(() => {
     const urls = reel.tracks.audio.map((a) => audioUrl(a.source));
@@ -988,7 +1038,7 @@ function LayeredTimelineImpl({
                 // clip it is being dragged over and only reappears on release.
                 className={`${BLOCK_BASE_CLS} ${action.id === activeActionId ? 'vt-block vt-block-active' : 'vt-block'}`}
                 style={{
-                  background: blockColor(action, reel, meta),
+                  background: blockColor(action, reel, meta, sourceColorMap),
                   outline: action.selected ? `2px solid ${EDITOR_ACCENT}` : undefined,
                   outlineOffset: -2,
                   cursor: slippable ? 'ew-resize' : undefined,
@@ -1152,7 +1202,11 @@ function LayeredTimelineImpl({
         />
       </div>
       </div>
-      {/* Derived from the shortcut registry, so it cannot drift from the bindings. */}
+      {/* Derived from the shortcut registry, so it cannot drift from the
+          bindings. Kept to ONE line (flex-none h-5 + whitespace-nowrap +
+          overflow-hidden — load-bearing: a second line here costs timeline
+          height) — the colour key below rides in the same row rather than
+          adding one of its own. */}
       <div className="ed:flex-none ed:h-5 ed:flex ed:items-center ed:gap-4 ed:px-3 ed:py-1 ed:border-t ed:border-line ed:text-[11px] ed:text-ink-3 ed:whitespace-nowrap ed:overflow-hidden">
         {[...SHORTCUTS.filter((s) => s.group === 'Timeline'), ...GESTURES].map((s) => (
           <span key={s.keys}>
@@ -1160,6 +1214,17 @@ function LayeredTimelineImpl({
           </span>
         ))}
         <span><span className="ed:font-mono ed:text-ink-2">?</span> — all shortcuts</span>
+        {LEGEND_FIXED_COLOR_KINDS.map(({ effectId, label }) => (
+          <span key={effectId} className="ed:flex ed:items-center ed:gap-1">
+            <span
+              aria-hidden
+              className="ed:inline-block ed:w-2 ed:h-2 ed:rounded-full"
+              style={{ background: colorFor(effectId, meta) }}
+            />
+            {label}
+          </span>
+        ))}
+        <span>Clip/broll/photo blocks are tinted by source file</span>
       </div>
     </div>
   );

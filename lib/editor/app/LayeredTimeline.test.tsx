@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { render } from '@testing-library/react';
-import { LayeredTimeline, colorFor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics, zoomFactorFor, followScrollLeft, zoomAnchorScrollLeft, accumulateZoom, TIMELINE_START_LEFT, type PendingZoom } from './LayeredTimeline';
-import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
+import { render, screen, within } from '@testing-library/react';
+import { LayeredTimeline, colorFor, blockColor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics, zoomFactorFor, followScrollLeft, zoomAnchorScrollLeft, accumulateZoom, TIMELINE_START_LEFT, type PendingZoom } from './LayeredTimeline';
+import { sourceColors } from './editor-meta';
+import type { LayeredReel, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
 const reel: LayeredReel = {
   version: 'layered-1', meta: { topic: 't', totalDurationMs: 2000 },
@@ -85,6 +86,126 @@ describe('LayeredTimeline lane colours', () => {
     const meta = { laneColors: { 'overlay-stat-callout': '#123456', 'video-clip': '#654321' } };
     expect(colorFor('overlay-stat-callout', meta)).toBe('#123456');
     expect(colorFor('video-clip', meta)).toBe('#654321');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Colour-by-source-file (blockColor's precedence): a video block's colour now
+// tracks its SOURCE FILE for clip/broll/photo, so two blocks cutting the same
+// take share a colour and a different take is visibly different. The kinds
+// with no single source (multi-clip) or no media at all (card, outro) keep
+// their fixed CORE_LANE_COLOR entry, as does a linked audio bed's PARTNER
+// video item when that item is itself one of those kinds, and an unlinked bed
+// / the music lane always do (they have no clip to mirror).
+// ---------------------------------------------------------------------------
+
+describe('LayeredTimeline blockColor', () => {
+  const videoClip = (id: string, source: string, startMs: number, endMs: number): VideoItem => ({
+    id, kind: 'clip', startMs, endMs, source, sourceInMs: 0, sourceOutMs: endMs - startMs,
+  });
+  const videoAction = (id: string) => ({ id: `video:${id}`, start: 0, end: 1, effectId: 'video-clip' });
+  const audioAction = (id: string) => ({ id: `audio:${id}`, start: 0, end: 1, effectId: 'audio' });
+  const musicAction = () => ({ id: 'music:m', start: 0, end: 1, effectId: 'music' });
+
+  function reelWith(video: VideoItem[], audio: LayeredReel['tracks']['audio'] = []): LayeredReel {
+    return {
+      version: 'layered-1',
+      meta: { topic: 't', totalDurationMs: 10000 },
+      tracks: { video, audio, music: { baseVolumeDb: -8 }, overlays: [], brand: [] },
+    };
+  }
+
+  it('colours two clips off the SAME source identically, and a different source differently', () => {
+    const r = reelWith([
+      videoClip('v1', 'TH-01.mp4', 0, 1000),
+      videoClip('v2', 'TH-01.mp4', 1000, 2000),
+      videoClip('v3', 'TH-02.mp4', 2000, 3000),
+    ]);
+    const map = sourceColors(r);
+    const c1 = blockColor(videoAction('v1'), r, undefined, map);
+    const c2 = blockColor(videoAction('v2'), r, undefined, map);
+    const c3 = blockColor(videoAction('v3'), r, undefined, map);
+    expect(c1).toBe(c2);
+    expect(c1).not.toBe(c3);
+  });
+
+  it('keeps the fixed CORE_LANE_COLOR entry for multi-clip, card, and outro', () => {
+    const multiClip: VideoItem = {
+      id: 'v1', kind: 'multi-clip', startMs: 0, endMs: 1000, layout: 'split-h',
+      sources: [{ source: 'a.mp4', sourceInMs: 0, sourceOutMs: 1000 }, { source: 'b.mp4', sourceInMs: 0, sourceOutMs: 1000 }],
+    };
+    const card: VideoItem = { id: 'v2', kind: 'card', startMs: 1000, endMs: 2000, cardKind: 'stat' };
+    const outro: VideoItem = { id: 'v3', kind: 'outro', startMs: 2000, endMs: 3000 };
+    const r = reelWith([multiClip, card, outro]);
+    const map = sourceColors(r);
+    expect(blockColor({ id: 'video:v1', start: 0, end: 1, effectId: 'video-multi-clip' }, r, undefined, map)).toBe(
+      colorFor('video-multi-clip'),
+    );
+    expect(blockColor({ id: 'video:v2', start: 0, end: 1, effectId: 'video-card' }, r, undefined, map)).toBe(colorFor('video-card'));
+    expect(blockColor({ id: 'video:v3', start: 0, end: 1, effectId: 'video-outro' }, r, undefined, map)).toBe(colorFor('video-outro'));
+  });
+
+  it('gives a LINKED audio bed its clip\'s colour — now the clip\'s SOURCE colour, not its kind colour', () => {
+    const r = reelWith(
+      [videoClip('v1', 'TH-01.mp4', 0, 1000), videoClip('v2', 'TH-02.mp4', 1000, 2000)],
+      [{ id: 'a1', startMs: 0, endMs: 1000, source: 'TH-01.wav', sourceInMs: 0, followsVideoId: 'v1' }],
+    );
+    const map = sourceColors(r);
+    const clipColor = blockColor(videoAction('v1'), r, undefined, map);
+    const bedColor = blockColor(audioAction('a1'), r, undefined, map);
+    expect(bedColor).toBe(clipColor);
+    // And that colour really is the SOURCE colour, not the flat video-clip fallback.
+    expect(bedColor).toBe(map['TH-01.mp4']);
+  });
+
+  it('keeps an UNLINKED bed and the music lane on their fixed kind colour', () => {
+    const r = reelWith(
+      [videoClip('v1', 'TH-01.mp4', 0, 1000)],
+      [{ id: 'a1', startMs: 0, endMs: 1000, source: 'ambience.wav', sourceInMs: 0 }],
+    );
+    const map = sourceColors(r);
+    expect(blockColor(audioAction('a1'), r, undefined, map)).toBe(colorFor('audio'));
+    expect(blockColor(musicAction(), r, undefined, map)).toBe(colorFor('music'));
+  });
+
+  it('still lets a host-declared laneColors override win over the derived source colour', () => {
+    const r = reelWith([videoClip('v1', 'TH-01.mp4', 0, 1000)]);
+    const map = sourceColors(r);
+    const meta = { laneColors: { 'video-clip': '#654321' } };
+    expect(blockColor(videoAction('v1'), r, meta, map)).toBe('#654321');
+  });
+});
+
+describe('LayeredTimeline legend', () => {
+  it('keeps a swatch only for the kinds that still have a fixed colour, and notes the source-file tinting', () => {
+    render(
+      <LayeredTimeline reel={reel} onChange={() => {}} selectedId={null} onSelect={() => {}}
+        playerRef={{ current: null }} fps={30} scaleWidth={80} />,
+    );
+    const note = screen.getByText('Clip/broll/photo blocks are tinted by source file');
+    // The note's own parent is the one-line legend bar itself.
+    const legend = note.parentElement!;
+    expect(within(legend).getByText('Multi')).toBeInTheDocument();
+    expect(within(legend).getByText('Card')).toBeInTheDocument();
+    expect(within(legend).getByText('Outro')).toBeInTheDocument();
+    expect(within(legend).getByText('Audio')).toBeInTheDocument();
+    expect(within(legend).getByText('Music')).toBeInTheDocument();
+    // No "Clip"/"Broll"/"Photo" swatch — those kinds are source-coloured now,
+    // and a fixed swatch for them would be a lie.
+    expect(within(legend).queryByText('Clip')).toBeNull();
+    expect(within(legend).queryByText('Broll')).toBeNull();
+    expect(within(legend).queryByText('Photo')).toBeNull();
+  });
+
+  it('stays exactly one line — the load-bearing layout classes are untouched', () => {
+    render(
+      <LayeredTimeline reel={reel} onChange={() => {}} selectedId={null} onSelect={() => {}}
+        playerRef={{ current: null }} fps={30} scaleWidth={80} />,
+    );
+    const legend = screen.getByText('Clip/broll/photo blocks are tinted by source file').parentElement!;
+    for (const cls of ['ed:flex-none', 'ed:h-5', 'ed:border-t', 'ed:whitespace-nowrap', 'ed:overflow-hidden']) {
+      expect(legend.className, legend.className).toContain(cls);
+    }
   });
 });
 
