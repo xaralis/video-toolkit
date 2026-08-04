@@ -57,6 +57,19 @@ export interface EditorShellProps {
  * to "coming soon" placeholders when omitted. Has no Remotion/composition
  * dependency of its own — the `preview` node is mounted by the caller.
  */
+/** The `aspectRatio` prop as a plain number, for the stage frame's `min()`
+ *  sizing (see its comment). Accepts the CSS `"W / H"` form the host passes
+ *  and a bare decimal, and returns `null` for anything it cannot read —
+ *  including a zero or negative height, which would otherwise produce a
+ *  `calc()` that divides by zero and collapses the frame. A `null` sends the
+ *  frame back to the simpler height-led sizing rather than rendering nothing. */
+export function aspectRatioNumber(ar: string | undefined): number | null {
+  if (!ar) return null;
+  const [w, h] = ar.split('/');
+  const n = h === undefined ? Number(w) : Number(w) / Number(h);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 export function EditorShell({
   preview,
   aspectRatio = '9 / 16',
@@ -78,6 +91,7 @@ export function EditorShell({
   // ⌘S / Ctrl+S is wired by the host through `useShortcuts` (see
   // `app/shortcuts.ts` / `app/useShortcuts.ts`) — the shell itself no longer
   // owns a keydown listener.
+  const arNumber = aspectRatioNumber(aspectRatio);
   return (
     <div className="ed:flex ed:flex-col ed:h-screen ed:bg-shell ed:text-ink ed:font-sans">
       {/* Global reset so the editor fills the viewport with no white page frame.
@@ -158,11 +172,43 @@ export function EditorShell({
       </header>
 
       <div className="ed:flex ed:flex-1 ed:min-h-0">
-        <div className="ed:flex ed:items-center ed:justify-center ed:flex-1 ed:min-w-0 ed:bg-stage ed:p-6">
+        {/* `container-type: size` turns this into a query container, which is
+            what lets the frame below size itself from BOTH of its dimensions.
+            See the frame's own comment for why that is necessary. */}
+        <div
+          className="ed:flex ed:items-center ed:justify-center ed:flex-1 ed:min-w-0 ed:bg-stage ed:p-6"
+          style={{ containerType: 'size' }}
+        >
+          {/* The frame must be exactly the composition's shape, because the
+              Player inside letterboxes itself into whatever box it is given —
+              so a mis-shaped frame shows as a black bar along one edge, which
+              reads as a broken render rather than as layout.
+
+              `height: 100%` + `aspect-ratio` + `max-width: 100%` is the obvious
+              spelling and it is subtly wrong: when the stage is NARROWER than
+              the ratio wants, `max-width` clamps the width while the height
+              stays at 100%, so the box keeps a shape the ratio never asked for.
+              (That is exactly what surfaced when the inspector widened and the
+              stage lost 60px.) Swapping which dimension leads just moves the
+              bug to the other axis — with `aspect-ratio`, whichever dimension
+              is definite wins and the ratio is abandoned.
+
+              `min()` against the container's own size states the real rule
+              instead: take the largest box that fits BOTH ways. `--ar` is the
+              ratio as a number; `aspectRatio` is kept as a belt-and-braces
+              fallback for anywhere `cq*` units are unavailable. */}
           <div
             data-testid="stage-frame"
-            className="ed:h-full ed:max-w-full ed:bg-black ed:overflow-hidden ed:rounded ed:shadow-[0_0_0_1px_var(--ed-color-line)]"
-            style={{ aspectRatio }}
+            className="ed:bg-black ed:overflow-hidden ed:rounded ed:shadow-[0_0_0_1px_var(--ed-color-line)]"
+            style={{
+              aspectRatio,
+              ...(arNumber
+                ? {
+                    width: `min(100cqw, calc(100cqh * ${arNumber}))`,
+                    height: `min(100cqh, calc(100cqw / ${arNumber}))`,
+                  }
+                : { height: '100%', maxWidth: '100%' }),
+            }}
           >
             {preview}
           </div>

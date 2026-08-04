@@ -174,12 +174,43 @@ describe('inspector — framing — Fit & pad', () => {
     expect(screen.getByRole('button', { name: 'Blurred copy' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('greys Pad under fill-frame — nothing to pad', () => {
+  // Hidden, not greyed. Greying says "not right now"; under `cover` there is
+  // no leftover space at all, so a pad is not unavailable — it does not apply.
+  // The reason lives on the always-visible mode toggle above, which is where a
+  // reader can still find it.
+  it('hides the whole pad + placement group under fill-frame', () => {
     mount(reelWith({}));
     openFit();
-    expect(screen.getByRole('button', { name: 'Blurred copy' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Colour' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'None' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Blurred copy' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Colour' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'None' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Backdrop blur')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Position in frame X')).not.toBeInTheDocument();
+  });
+
+  // Hiding must not be destructive: the values are still on the item, so
+  // switching back shows them again. Asserted in two halves because `mount` is
+  // stateless — the first half proves nothing renders, the second proves
+  // switching fit emits ONLY a fit change and leaves the pad values alone.
+  it('hides pad values under fill-frame without clearing them', () => {
+    // No `openFit()`: this fixture carries off-default pad values, so
+    // `hasFitChanges` opens the section already — and `openFit` is a toggle,
+    // which would close it again.
+    const onChange = vi.fn();
+    mount(reelWith({ fit: 'cover', pad: 'color', padColor: '#ff00ff', placeX: 0.2 }), onChange);
+    expect(screen.queryByLabelText('Pad colour')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Whole shot' }));
+    const item = (onChange.mock.calls.at(-1)![0] as LayeredReel).tracks.video[0] as Record<string, unknown>;
+    expect(item.fit).toBe('contain');
+    expect(item.padColor).toBe('#ff00ff');
+    expect(item.placeX).toBe(0.2);
+  });
+
+  it('shows those same values again once the item is contain', () => {
+    mount(reelWith({ fit: 'contain', pad: 'color', padColor: '#ff00ff', placeX: 0.2 }));
+    expect((screen.getByLabelText('Pad colour') as HTMLInputElement).value).toBe('#ff00ff');
+    expect((screen.getByLabelText('Position in frame X') as HTMLInputElement).value).toBe('0.2');
   });
 
   it('defaults Pad to Blurred copy under contain', () => {
@@ -195,22 +226,22 @@ describe('inspector — framing — Fit & pad', () => {
     expect(next.tracks.video[0]).toMatchObject({ pad: 'color', padColor: '#000000' });
   });
 
-  it('greys Pad colour unless pad is Colour', () => {
+  it('hides Pad colour unless pad is Colour — a blurred pad has no colour', () => {
     mount(reelWith({ fit: 'contain' }));
-    expect((screen.getByLabelText('Pad colour') as HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByLabelText('Pad colour')).not.toBeInTheDocument();
   });
 
-  it('enables Pad colour once pad is Colour, preserving an existing value', () => {
+  it('shows Pad colour once pad is Colour, preserving an existing value', () => {
     mount(reelWith({ fit: 'contain', pad: 'color', padColor: '#ff00ff' }));
     const field = screen.getByLabelText('Pad colour') as HTMLInputElement;
     expect(field.disabled).toBe(false);
     expect(field.value).toBe('#ff00ff');
   });
 
-  it('greys the backdrop blur/dim fields unless pad is blur', () => {
+  it('hides the backdrop blur/dim fields unless pad is blur — a flat colour has no blur', () => {
     mount(reelWith({ fit: 'contain', pad: 'none' }));
-    expect((screen.getByLabelText('Backdrop blur') as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByLabelText('Backdrop dim') as HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByLabelText('Backdrop blur')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Backdrop dim')).not.toBeInTheDocument();
   });
 
   it('enables the backdrop blur/dim fields when pad is blur', () => {
@@ -234,16 +265,12 @@ describe('inspector — framing — Fit & pad', () => {
     expect((screen.getByLabelText('Backdrop dim') as HTMLInputElement).value).toBe('0.45');
   });
 
-  it('greys placement under fill-frame, with a reason', () => {
+  it('states the reason on the mode toggle, the one place still visible under fill-frame', () => {
     mount(reelWith({}));
     openFit();
-    expect((screen.getByLabelText('Position in frame X') as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByLabelText('Position in frame Y') as HTMLInputElement).disabled).toBe(true);
-    // Two copies of the same reason exist at once now: the Fit & pad
-    // section's own note (checked here) plus the always-visible "Adjust in
-    // preview" toggle row's note above it (covered in its own describe
-    // block below) — both read the same `resolveFraming`, so they always
-    // agree.
+    // The section's own copy of the note went with the hidden group; the
+    // always-visible "Adjust in preview" row keeps it, so the answer to "why
+    // can I not position this?" is still on screen.
     expect(screen.getAllByText('The shot fills the frame — there is nothing to position.').length).toBeGreaterThan(0);
   });
 

@@ -1175,6 +1175,12 @@ export function LayeredInspector({
                       )
                     }
                   >
+                    {/* Zoom sits on its own row, NOT beside the two focus
+                        sliders. `Row` splits its width evenly, so three fields
+                        in one row left each label ~110px and "Crop focus X"
+                        wrapped onto a second line — which then dragged the
+                        slider below it out of alignment with its neighbour.
+                        Two rows of one-then-two is what fits. */}
                     <Row>
                       <ScrubField
                         lbl="Zoom (1 = none)"
@@ -1193,6 +1199,8 @@ export function LayeredInspector({
                           })
                         }
                       />
+                    </Row>
+                    <Row>
                       <SliderField
                         lbl="Crop focus X"
                         min={0}
@@ -1268,12 +1276,22 @@ export function LayeredInspector({
                       // config can still carry it.
                       onChange={(s) => patchItem('video', id, { fit: s === 'contain' ? 'contain' : undefined })}
                     />
+                    {/* Under `cover` the shot fills the frame: there is no
+                        leftover space, so there is nothing to pad and nothing
+                        to position. The whole group is HIDDEN rather than
+                        greyed — greying says "not right now", which would be a
+                        lie about controls that simply do not apply to this fit.
+                        Nothing is cleared, so switching back to `contain`
+                        restores every value. The mode toggle above stays
+                        visible with its reason line, because that is where a
+                        reader learns WHY this disappeared. */}
+                    {framing.fit !== 'cover' && (
+                      <>
                     <SegmentedField
                       lbl="Pad"
                       value={framing.pad}
                       options={['blur', 'color', 'none']}
                       optionLabel={(o) => (o === 'blur' ? 'Blurred copy' : o === 'color' ? 'Colour' : 'None')}
-                      disabled={framing.fit === 'cover'}
                       // `blur` clears the field, same "default clears the key"
                       // convention `Fit` above uses. `color` writes black
                       // explicitly (`padColor` has no numeric default to fall
@@ -1293,40 +1311,51 @@ export function LayeredInspector({
                         )
                       }
                     />
-                    {/* Plain literal colour, not the dual accent-or-color
-                        field (`AccentOrColorField` above) — a brand-accent pad
-                        is speculative and the dual field carries real
-                        complexity for a case nobody has asked for yet. Swap
-                        this for `AccentOrColorField` if/when a brand wants its
-                        accent usable as a pad colour. */}
-                    <ColorField
-                      lbl="Pad colour"
-                      value={v.padColor}
-                      disabled={framing.pad !== 'color'}
-                      onCommit={(s) => patchItem('video', id, { padColor: s })}
-                    />
-                    <Row>
-                      <SliderField
-                        lbl="Backdrop blur"
-                        min={0}
-                        max={80}
-                        step={1}
-                        value={v.backdropBlur}
-                        fallback={FRAMING_DEFAULTS.backdropBlur}
-                        disabled={framing.pad !== 'blur'}
-                        onCommit={(n) => patchItem('video', id, { backdropBlur: n })}
+                    {/* The pad's own settings are SHOWN OR HIDDEN by which pad
+                        is chosen, not greyed. Greying is the right affordance
+                        when a control is temporarily unavailable and will come
+                        back — that is why the crop and placement fields grey
+                        rather than vanish. These are different: a blurred pad
+                        has no colour and a flat colour has no blur, so the
+                        inapplicable pair is not "unavailable", it belongs to a
+                        variant you are not in. Showing it is noise.
+                        Nothing is cleared, so switching back restores the
+                        value exactly as greying would have. */}
+                    {framing.pad === 'color' && (
+                      /* Plain literal colour, not the dual accent-or-color
+                         field (`AccentOrColorField` above) — a brand-accent pad
+                         is speculative and the dual field carries real
+                         complexity for a case nobody has asked for yet. Swap
+                         this for `AccentOrColorField` if/when a brand wants its
+                         accent usable as a pad colour. */
+                      <ColorField
+                        lbl="Pad colour"
+                        value={v.padColor}
+                        onCommit={(s) => patchItem('video', id, { padColor: s })}
                       />
-                      <SliderField
-                        lbl="Backdrop dim"
-                        min={0}
-                        max={1}
-                        step={0.05}
-                        value={v.backdropDim}
-                        fallback={FRAMING_DEFAULTS.backdropDim}
-                        disabled={framing.pad !== 'blur'}
-                        onCommit={(n) => patchItem('video', id, { backdropDim: n })}
-                      />
-                    </Row>
+                    )}
+                    {framing.pad === 'blur' && (
+                      <Row>
+                        <SliderField
+                          lbl="Backdrop blur"
+                          min={0}
+                          max={80}
+                          step={1}
+                          value={v.backdropBlur}
+                          fallback={FRAMING_DEFAULTS.backdropBlur}
+                          onCommit={(n) => patchItem('video', id, { backdropBlur: n })}
+                        />
+                        <SliderField
+                          lbl="Backdrop dim"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={v.backdropDim}
+                          fallback={FRAMING_DEFAULTS.backdropDim}
+                          onCommit={(n) => patchItem('video', id, { backdropDim: n })}
+                        />
+                      </Row>
+                    )}
                     <Row>
                       <SliderField
                         lbl="Position in frame X"
@@ -1335,7 +1364,6 @@ export function LayeredInspector({
                         step={0.01}
                         value={v.placeX}
                         fallback={FRAMING_DEFAULTS.placeX}
-                        disabled={framing.fit === 'cover'}
                         onCommit={(n) => patchItem('video', id, { placeX: n })}
                       />
                       <SliderField
@@ -1345,12 +1373,10 @@ export function LayeredInspector({
                         step={0.01}
                         value={v.placeY}
                         fallback={FRAMING_DEFAULTS.placeY}
-                        disabled={framing.fit === 'cover'}
                         onCommit={(n) => patchItem('video', id, { placeY: n })}
                       />
                     </Row>
-                    {framing.fit === 'cover' && (
-                      <p className={noteCls}>The shot fills the frame — there is nothing to position.</p>
+                      </>
                     )}
                   </Collapsible>
                 </>
