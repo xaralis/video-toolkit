@@ -176,6 +176,79 @@ describe('SegmentMedia', () => {
       expect(captured.video[0].playbackRate).toBe(0.5);
     });
 
+    // ---- the handle is a TIMELINE quantity, `startFrom` a SOURCE one --------
+    // `handles.inHalf` counts TIMELINE frames (video-track-layout.ts: `seqFrom =
+    // itemStartF - inHalf`, `seqDuration = normalDuration + inHalf + outHalf` —
+    // all timeline). `startFrom` is a SOURCE frame position: measured against
+    // Remotion 4.0.425 with a frame-numbered ramp video, the media frame shown
+    // at outer offset k is `startFrom + k * playbackRate`, so `startFrom` is
+    // NOT scaled by the rate. Subtracting the raw handle therefore only lands
+    // right at 1x; every case below has a speed, a real `sourceInMs` AND a real
+    // handle, which is the combination the rest of this file never exercises.
+    //
+    // The invariant each case pins: at the item's NOMINAL in-point (outer
+    // offset k = inHalf) the media must show exactly `sourceInMs`.
+    describe('borrowed handles at a speed other than 1x', () => {
+      it('converts the in-handle to source frames on a slowed clip', () => {
+        render(
+          <SegmentMedia
+            item={{
+              // Timeline span 4000ms, source span 2000ms → 0.5x.
+              id: 'b1', kind: 'broll', startMs: 0, endMs: 4000, source: 'broll/a.mp4',
+              sourceInMs: 2000, sourceOutMs: 4000,
+            }}
+            handles={{ inHalf: 30, outHalf: 12 }}
+          />,
+        );
+        expect(captured.video[0].playbackRate).toBe(0.5);
+        // sourceInF = 60; the 30 borrowed TIMELINE frames consume 30 * 0.5 = 15
+        // SOURCE frames, so the element starts 15 source frames early, not 30.
+        expect(captured.video[0].startFrom).toBe(45);
+        // 45 + 30 * 0.5 === 60 === sourceInF at the nominal cut.
+        // durationInFrames = 120 + 30 + 12 = 162 outer frames mounted.
+        expect(captured.video[0].endAt).toBe(45 + 162);
+      });
+
+      it('converts the in-handle to source frames on a sped-up clip', () => {
+        render(
+          <SegmentMedia
+            item={{
+              // Timeline span 2000ms, source span 4000ms → 2x.
+              id: 'c1', kind: 'clip', startMs: 1000, endMs: 3000, source: 'recordings/a.mp4',
+              sourceInMs: 3000, sourceOutMs: 7000,
+            }}
+            handles={{ inHalf: 6, outHalf: 4 }}
+          />,
+        );
+        expect(captured.video[0].playbackRate).toBe(2);
+        // sourceInF = 90; 6 borrowed timeline frames = 12 source frames.
+        expect(captured.video[0].startFrom).toBe(78);
+        // 78 + 6 * 2 === 90 at the nominal cut, and 78 + 66 * 2 === 210 ===
+        // sourceOutF at the nominal out-point. durationInFrames = 60 + 6 + 4.
+        expect(captured.video[0].endAt).toBe(78 + 70);
+      });
+
+      it('spends only what the borrow costs instead of underflowing to the file start', () => {
+        render(
+          <SegmentMedia
+            item={{
+              // 0.5x again, but with only 700ms of material before the in-point.
+              id: 'b1', kind: 'broll', startMs: 0, endMs: 4000, source: 'broll/a.mp4',
+              sourceInMs: 700, sourceOutMs: 2700,
+            }}
+            handles={{ inHalf: 30, outHalf: 0 }}
+          />,
+        );
+        // sourceInF = 21, and the borrow costs 15 source frames — affordable.
+        // Subtracting the raw 30 would go negative and clamp to 0, silently
+        // shortening the borrow and leaving the media 700ms early for the whole
+        // clip. `handleRoomFrames` already reports this head in TIMELINE frames
+        // (700 / 0.5 = 1400ms = 42), which is exactly what 30 is measured
+        // against — the budget was already right; only the spending was not.
+        expect(captured.video[0].startFrom).toBe(6);
+      });
+    });
+
     it('never applies to a photo — no source span exists to ratio against', () => {
       render(
         <SegmentMedia

@@ -28,7 +28,12 @@
 // refused footage that existed, a trim reset a clip's speed to 1x, and a split
 // gave both halves a speed nobody set. Any code that needs to turn one domain
 // into the other belongs in `clip-time.ts` — do not open-code `* speed` or
-// `/ speed` at a call site, and do not add a second helper that does it.
+// `/ speed` at a call site, and do not add a second helper that does it
+// ELSEWHERE. Adding one INSIDE `clip-time.ts` is the sanctioned move and how
+// the frame-domain twin `timelineToSourceFrames` got there: the renderer holds
+// a transition's borrowed handle as a frame count, and round-tripping it
+// through milliseconds to reach `timelineToSourceMs` would add rounding noise
+// to buy nothing. One module, more than one unit — that is not a second model.
 //
 // Two places legitimately multiply by a speed and are NOT violations of that:
 // `setItemSpeed` (layered-adapter.ts), which applies the speed being SET rather

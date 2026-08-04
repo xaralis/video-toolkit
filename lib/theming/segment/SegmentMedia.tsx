@@ -12,6 +12,7 @@ import { anchorTiming } from '../../render/overlay-anchor';
 import { resolveFraming } from '../../reel-config-base/framing';
 import { focalObjectPosition } from '../../reel-config-base/focal';
 import { deriveSpeed } from '../../reel-config-base/speed';
+import { timelineToSourceFrames } from '../../reel-config-base/clip-time';
 
 const VIDEO_EXT_RE = /\.(mp4|mov|webm)$/i;
 
@@ -285,17 +286,36 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
 
   if (useImg) return assemble((s) => <Img src={src} style={s} />);
 
-  // clip/broll (and a video-as-photo) all render via OffthreadVideo. Only
-  // clip/broll carry a source trim — photo has no sourceInMs (its full span
-  // IS the on-screen span), so it plays from its own start with no borrow.
-  const startFrom =
-    item.kind === 'photo' ? undefined : Math.max(0, Math.round((item.sourceInMs / 1000) * fps) - handles.inHalf);
-
   // Playback speed — see speed.ts: NOT a schema field, the ratio the item's
   // two spans (timeline vs source) already encode. 1 for every item that
   // predates this feature (their spans were always kept in lock step) and
   // for `photo` (no `sourceInMs`/`sourceOutMs` to ratio against).
   const speed = item.kind === 'photo' ? 1 : deriveSpeed(item);
+
+  // clip/broll (and a video-as-photo) all render via OffthreadVideo. Only
+  // clip/broll carry a source trim — photo has no sourceInMs (its full span
+  // IS the on-screen span), so it plays from its own start with no borrow.
+  //
+  // `startFrom` is a SOURCE frame position and `handles.inHalf` a count of
+  // TIMELINE frames, so the handle must be converted before it can be
+  // subtracted. Measured, not inferred: rendering a frame-numbered ramp video
+  // through `<OffthreadVideo startFrom endAt playbackRate>` (Remotion 4.0.425)
+  // shows source frame `startFrom + k * playbackRate` at outer offset k — i.e.
+  // `startFrom` is NOT scaled by the rate, while everything measured from it
+  // is. (`endAt` is the other way round, counting OUTER frames — see below;
+  // the two props genuinely live in different domains.)
+  //
+  // So the k = `inHalf` outer frames borrowed before the cut cost
+  // `inHalf * speed` SOURCE frames, and subtracting the raw `inHalf` only
+  // lands right at 1x. At 0.5x it took twice the source it should, underflowed
+  // to 0 on a short head, and left the picture early for the whole clip. The
+  // budget side (`handleRoomFrames`, handle-room.ts) was already redefined in
+  // timeline frames by the timeline-vs-source-ms work; this is the half that
+  // SPENDS it, and it is what makes the two agree.
+  const startFrom =
+    item.kind === 'photo'
+      ? undefined
+      : Math.max(0, Math.round((item.sourceInMs / 1000) * fps) - Math.round(timelineToSourceFrames(item, handles.inHalf)));
 
   // Bound playback to the source out-point (+ the borrowed out-handle), so a
   // clip/broll never plays past what its trim covers — needed by callers

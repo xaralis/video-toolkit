@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   sourceToTimelineMs,
   timelineToSourceMs,
+  timelineToSourceFrames,
   headroomTimelineMs,
   tailroomTimelineMs,
   sourceAtTimelineMs,
@@ -28,6 +29,24 @@ describe('the two directions are inverses', () => {
   it('is the identity at 1x — which is why every existing formula still holds', () => {
     expect(sourceToTimelineMs(plain, 1234)).toBe(1234);
     expect(timelineToSourceMs(plain, 1234)).toBe(1234);
+  });
+});
+
+describe('timelineToSourceFrames — the frame-domain twin', () => {
+  it('costs a borrowed handle in source frames, not timeline frames', () => {
+    // The renderer's case: 30 timeline frames borrowed for a transition cost
+    // 15 source frames on a 0.5x clip, and 60 on a 2x one.
+    expect(timelineToSourceFrames(slow, 30)).toBe(15);
+    expect(timelineToSourceFrames(fast, 30)).toBe(60);
+  });
+
+  it('is the identity at 1x — which is why the raw subtraction ever worked', () => {
+    expect(timelineToSourceFrames(plain, 30)).toBe(30);
+  });
+
+  it('agrees with the ms conversion at the same fps', () => {
+    // Same quantity, two units: 30 frames at 30fps is 1000ms.
+    expect(timelineToSourceFrames(slow, 30) / 30).toBe(timelineToSourceMs(slow, 1000) / 1000);
   });
 });
 

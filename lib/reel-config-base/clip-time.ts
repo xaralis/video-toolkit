@@ -40,6 +40,18 @@ export function timelineToSourceMs(item: ClipSpans, timelineMs: number): number 
   return timelineMs * deriveSpeed(item);
 }
 
+/** The frame-domain twin of `timelineToSourceMs`. Speed is a ratio, so the
+ *  conversion needs no fps — and a renderer that already holds a frame count
+ *  (a transition's borrowed handle, say) would otherwise have to round-trip
+ *  through milliseconds and back, adding rounding noise for nothing.
+ *
+ *  Both counts are frames at the SAME fps; this converts the domain, never the
+ *  rate. Deliberately NOT rounded — the caller decides, because it is the one
+ *  that knows whether the result is added to an already-rounded frame. */
+export function timelineToSourceFrames(item: ClipSpans, timelineFrames: number): number {
+  return timelineFrames * deriveSpeed(item);
+}
+
 /** How far the LEFT edge may travel left before running out of source, in
  *  timeline ms. Never negative. */
 export function headroomTimelineMs(item: ClipSpans): number {
