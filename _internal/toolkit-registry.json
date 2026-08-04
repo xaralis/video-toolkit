@@ -172,10 +172,10 @@
     },
     "cut-tune": {
       "path": "commands/cut-tune.md",
-      "description": "Launch Remotion Studio to tune a cut reel's timing + overlay text; Save persists to Root.tsx",
+      "description": "Launch the reel editor to tune a cut reel on a timeline (trim, slip, retime, framing, speed); Save persists to Root.tsx",
       "status": "beta",
       "created": "2026-05-20",
-      "updated": "2026-07-20"
+      "updated": "2026-08-04"
     },
     "render": {
       "path": "commands/render.md",

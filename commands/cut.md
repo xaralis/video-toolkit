@@ -283,8 +283,8 @@ The editor binds port **3100** by default (Vite picks the next free port if
 taken — read the log for the actual URL). It saves back to `src/Root.tsx`, so
 `/toolkit:cut` stays safe to re-run afterwards (Step 9 diffs and merges).
 
-If **no**, remind the user they can launch it later with `npm run editor` from
-the project dir, or `/toolkit:cut-tune` for the Remotion Studio sidebar instead.
+If **no**, remind the user they can launch it later with `/toolkit:cut-tune`,
+which starts the same editor and checks the project's prereqs first.
 
 ### Step 9: Re-run semantics
 

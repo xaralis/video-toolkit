@@ -144,7 +144,7 @@ Vertical 9:16 (1080x1920) short-form reels for social campaigns. Three-layer com
 (film footage; drop into public/recordings + public/broll)
 /toolkit:sync push recordings,broll     # back up code + raw footage (git + R2)
 /toolkit:cut                            # map footage → defaultProps in Root.tsx
-/toolkit:cut-tune                      # iterate timing/text in Studio (lock final durations here)
+/toolkit:cut-tune                      # iterate timing/text in the reel editor (lock final durations here)
 /toolkit:add-music                      # generate ACE-Step bg music sized to the final reel (optional)
 /toolkit:render                         # final MP4 (or /toolkit:render preview for half-scale)
 /toolkit:sync push out                  # back up code + renders (git + R2)
