@@ -38,6 +38,14 @@ describe('contentEndMs', () => {
     expect(contentEndMs([v, outro], 30)).toBe(11667);
   });
 
+  it('rounds a non-integral frames->ms conversion the other way too (pins against Math.floor)', () => {
+    // 20 frames @ 30fps = 666.666...ms -> rounds to 667; Math.floor would give 666,
+    // yielding 11334 instead of the correct 11333.
+    const v = clip('v1', 0, 12000, { transitionOut: { kind: 'fade', frames: 20 } } as Partial<VideoItem>);
+    const outro = { id: 'o', kind: 'outro', startMs: 12000, endMs: 15000 } as unknown as VideoItem;
+    expect(contentEndMs([v, outro], 30)).toBe(11333);
+  });
+
   it('scans backwards and returns the LAST non-outro item, not the first', () => {
     const outro = { id: 'o', kind: 'outro', startMs: 5000, endMs: 8000 } as unknown as VideoItem;
     expect(contentEndMs([clip('v1', 0, 5000), outro, clip('v2', 8000, 12000)], 30)).toBe(12000);
@@ -109,6 +117,20 @@ describe('withDerivedBrandSpan', () => {
       brand: [{ id: 'brand-watermark', kind: 'watermark', startMs: 0, endMs: 99000 }],
     });
     expect(withDerivedBrandSpan(r, 30).tracks.brand[0].endMs).toBe(3000);
+  });
+
+  it('threads the caller-supplied fps into the transitionOut overlap, not a hard-coded 30', () => {
+    // 15 frames @ 25fps = 600ms (at 30fps it would be 500ms) -> content end 11400,
+    // strictly short of the raw clip end (12000). A hard-coded 30 would give 11500.
+    const r = reel({
+      video: [
+        clip('v1', 0, 12000, { transitionOut: { kind: 'fade', frames: 15 } } as Partial<VideoItem>),
+        { id: 'o', kind: 'outro', startMs: 12000, endMs: 15000 } as unknown as VideoItem,
+      ],
+    });
+    const next = withDerivedBrandSpan(r, 25);
+    expect(next.tracks.brand[0].endMs).toBe(11400);
+    expect(next.tracks.brand[0].endMs).toBeLessThan(12000);
   });
 
   it('preserves every other field on the brand item', () => {

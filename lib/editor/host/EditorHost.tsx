@@ -14,6 +14,7 @@ import { ShortcutOverlay } from '../app/ShortcutOverlay';
 import type { EditorMeta } from '../app/editor-meta';
 import type { AccentSlot } from '../../theming/palette';
 import type { LayeredReel } from '../../reel-config-base/layered-schema';
+import { withDerivedBrandSpan } from '../../reel-config-base/content-end';
 import { framesForReel } from './host-duration';
 import { attachCropGestures, MAX_ZOOM, type CropGestureTarget } from './crop-gestures';
 import { resolveFraming } from '../../reel-config-base/framing';
@@ -69,7 +70,29 @@ export interface EditorHostOptions {
  * call with its composition, dimensions and palette — nothing else.
  */
 export function EditorHost({ component, projectName, fps, width, height, accentSlots, meta }: EditorHostOptions) {
-  const { state: reel, set: setReel, undo, redo, reset: resetHistory, canUndo, canRedo } = useHistory<LayeredReel | null>(null);
+  const {
+    state: reel,
+    set: setReelRaw,
+    undo,
+    redo,
+    reset: resetHistory,
+    canUndo,
+    canRedo,
+  } = useHistory<LayeredReel | null>(null);
+  // THE choke point for the derived brand lane. Every reel mutation in the
+  // editor — adapter ops, inspector patches, delete/split/duplicate — funnels
+  // through this setter, so normalising here means no individual operation has
+  // to know brand items exist (and none of them carry `fps` anyway). Identity
+  // is preserved by `withDerivedBrandSpan`, so a no-op edit still short-circuits
+  // in `useHistory` instead of minting an undo step.
+  const setReel = useCallback(
+    (next: LayeredReel | null | ((prev: LayeredReel | null) => LayeredReel | null)) =>
+      setReelRaw((prev) => {
+        const value = typeof next === 'function' ? next(prev) : next;
+        return value ? withDerivedBrandSpan(value, fps) : value;
+      }),
+    [setReelRaw, fps],
+  );
   const [savedReel, setSavedReel] = useState<LayeredReel | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null); // action id `${lane}:${itemId}`
@@ -172,12 +195,18 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
     fetch('/props')
       .then((res) => res.json())
       .then((data) => {
-        const r = (data as { reel: LayeredReel }).reel;
+        // Normalise on load as well as on change: a Root.tsx literal written
+        // before the brand span was derived carries a stale end, and the user
+        // would otherwise see the old span until their first unrelated edit.
+        // `savedReel` gets the SAME normalised reel deliberately — the
+        // correction is a derivation, not the user's edit, and flagging the
+        // editor dirty the instant it opens would be noise.
+        const r = withDerivedBrandSpan((data as { reel: LayeredReel }).reel, fps);
         resetHistory(r);
         setSavedReel(r);
       })
       .catch((err) => console.error('Failed to load /props', err));
-  }, []);
+  }, [fps]);
 
   const dirty = useMemo(() => {
     if (!reel || !savedReel) return false;

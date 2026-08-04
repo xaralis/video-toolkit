@@ -55,6 +55,8 @@ describe('withTotalDuration', () => {
     const next = withTotalDuration(reel);
     expect(next.meta.totalDurationMs).toBe(8000);
     expect(next.tracks.brand[0].endMs).toBe(10000);
+    // Only the total moved — tracks itself must be the SAME object, not a copy.
+    expect(next.tracks).toBe(reel.tracks);
   });
 
   it('extends the total when a music bed reaches past the content', () => {

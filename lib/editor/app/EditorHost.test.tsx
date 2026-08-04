@@ -218,6 +218,35 @@ describe('EditorHost (child modules mocked at the boundary)', () => {
     expect(seenTimelineProps[seenTimelineProps.length - 1].guidesMs).toEqual([0, 800]);
   });
 
+  it('re-derives a stale brand span from the content end on load', async () => {
+    // The reported bug, as data: the watermark's authored end (34000) outlives
+    // the content, which ends at 12000 — the outro runs 12000→15000 and brand
+    // marks must not draw over it.
+    const stale = {
+      ...REEL,
+      meta: { ...REEL.meta, totalDurationMs: 15000 },
+      tracks: {
+        ...REEL.tracks,
+        video: [
+          { id: 'seg-001', kind: 'clip', startMs: 0, endMs: 12000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 12000 },
+          { id: 'outro', kind: 'outro', startMs: 12000, endMs: 15000 },
+        ],
+        brand: [
+          { id: 'brand-watermark', kind: 'watermark', startMs: 0, endMs: 34000 },
+          { id: 'brand-disclaimer', kind: 'disclaimer', startMs: 0, endMs: 41667 },
+        ],
+      },
+    } as unknown as LayeredReel;
+    (globalThis.fetch as any).mockImplementation(async (url: string) =>
+      String(url).startsWith('/props') ? { ok: true, json: async () => ({ reel: stale }) } : { ok: true, json: async () => ({}) },
+    );
+    const { EditorHost: Host } = await import('../host/EditorHost');
+    render(<Host {...opts} />);
+
+    await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+    expect(seenTimelineProps.at(-1).reel.tracks.brand.map((b: { endMs: number }) => b.endMs)).toEqual([12000, 12000]);
+  });
+
   it('attaches the crop-gesture listener to a real element once the preview mounts, gated off by default', async () => {
     const { EditorHost: MockedEditorHost } = await import('../host/EditorHost');
     render(<MockedEditorHost {...opts} />);
