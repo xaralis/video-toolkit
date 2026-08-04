@@ -22,23 +22,16 @@ describe('EditorShell', () => {
     expect(screen.getByRole('button', { name: /Save/i })).toBeDisabled();
   });
 
-  it('always shows Save, disabled when there are no changes; Discard and the unsaved dot render nothing at all while clean', () => {
+  it('Discard is always rendered — disabled (not hidden) while clean', () => {
     const onSave = vi.fn();
     const onDiscard = vi.fn();
     render(<EditorShell preview={null} onSave={onSave} onDiscard={onDiscard} />); // clean
     expect(screen.getByRole('button', { name: /Save/i })).toBeDisabled();
-    expect(screen.queryByRole('button', { name: /Discard/i })).not.toBeInTheDocument();
-    expect(screen.queryByText(/Unsaved/i)).not.toBeInTheDocument();
-  });
-
-  it('shows the unsaved dot and an enabled Discard once dirty, in the left (identity) zone, not the action zone', () => {
-    const { container } = render(<EditorShell preview={null} onSave={vi.fn()} onDiscard={vi.fn()} dirty />);
-    expect(screen.getByText(/Unsaved/i)).toBeInTheDocument();
     const discard = screen.getByRole('button', { name: /Discard/i });
-    expect(discard).not.toBeDisabled();
-    const actionZone = container.querySelector('[data-testid="action-zone"]') as HTMLElement;
-    expect(actionZone).not.toContainElement(discard);
-    expect(actionZone).not.toContainElement(screen.getByText(/Unsaved/i));
+    expect(discard).toBeInTheDocument();
+    expect(discard).toBeDisabled();
+    fireEvent.click(discard);
+    expect(onDiscard).not.toHaveBeenCalled(); // disabled → no-op
   });
 
   it('enables Save and Discard when dirty', () => {
@@ -125,46 +118,52 @@ describe('EditorShell — Undo/Redo are icon-only but keep an accessible name', 
   });
 });
 
-// Header restructure: identity + health on the left (project name, phase,
-// diagnostics), actions on the right.
+// Header restructure: identity on the left (project name, phase — no more
+// diagnostics badge there, it folded into the status chip on the right).
 describe('EditorShell — header zones', () => {
-  it('places the phase control beside the project name, ahead of diagnostics, both outside the action zone', () => {
+  it('places the phase control beside the project name, outside the action zone', () => {
     const { container } = render(
-      <EditorShell
-        preview={null}
-        projectName="my-reel"
-        phaseControl={<span data-testid="phase">editing</span>}
-        diagnostics={<span data-testid="diag">⚠ 1</span>}
-      />,
+      <EditorShell preview={null} projectName="my-reel" phaseControl={<span data-testid="phase">editing</span>} />,
     );
     const header = container.querySelector('header') as HTMLElement;
     const phase = screen.getByTestId('phase');
-    const diag = screen.getByTestId('diag');
     const actionZone = screen.getByTestId('action-zone');
 
     expect(header).toContainElement(phase);
-    expect(header).toContainElement(diag);
     expect(actionZone).not.toContainElement(phase);
-    expect(actionZone).not.toContainElement(diag);
 
-    // Order: name, then phase, then diagnostics.
     const left = phase.parentElement as HTMLElement;
     const order = Array.from(left.children).map((el) => el.getAttribute('data-testid') ?? el.textContent);
     expect(order.indexOf('my-reel')).toBeLessThan(order.indexOf('phase'));
-    expect(order.indexOf('phase')).toBeLessThan(order.indexOf('diag'));
   });
 
   it('omits the phase control entirely when not provided', () => {
     render(<EditorShell preview={null} projectName="my-reel" />);
     expect(screen.queryByTestId('phase')).not.toBeInTheDocument();
   });
+
+  it('places the status chip in the action zone, immediately before Discard', () => {
+    const { container } = render(
+      <EditorShell preview={null} onSave={vi.fn()} onDiscard={vi.fn()} statusChip={<button type="button" data-testid="chip">chip</button>} />,
+    );
+    const actionZone = container.querySelector('[data-testid="action-zone"]') as HTMLElement;
+    const buttons = Array.from(actionZone.querySelectorAll('button'));
+    const labels = buttons.map((b) => b.getAttribute('data-testid') ?? b.textContent);
+    const chipIdx = labels.indexOf('chip');
+    const discardIdx = labels.findIndex((l) => l === 'Discard');
+    const saveIdx = labels.findIndex((l) => l === 'Save');
+    expect(chipIdx).toBeGreaterThanOrEqual(0);
+    expect(chipIdx).toBeLessThan(discardIdx);
+    expect(discardIdx).toBeLessThan(saveIdx);
+  });
 });
 
-// The dirty-state layout regression: the action zone must be width-STABLE
-// across dirty state — nothing in it may appear/disappear/reorder when the
-// reel becomes dirty, only Save's own look changes. The dirty cluster
-// (unsaved dot + Discard) moved to the left (identity) zone, which grows
-// into empty space instead.
+// The dirty-state layout regression this whole header went through twice:
+// the action zone must be width-STABLE across dirty state. This round makes
+// that trivial by construction — Discard is now always rendered (disabled,
+// not hidden) and the status chip is fixed-size in every state — so nothing
+// in the action zone is ever added, removed, or reordered by dirty/health
+// state; only individual controls' own disabled/colour attributes change.
 describe('EditorShell — action zone is stable across dirty state', () => {
   const renderBoth = (dirty: boolean) =>
     render(
@@ -178,84 +177,68 @@ describe('EditorShell — action zone is stable across dirty state', () => {
         canRedo
         renderControls={
           <>
-            <button type="button">Preview</button>
-            <button type="button">Full</button>
+            <button type="button">Render</button>
           </>
         }
+        statusChip={<button type="button" aria-label={dirty ? 'Unsaved changes' : 'Saved'}>chip</button>}
         dirty={dirty}
       />,
     );
 
-  const actionZoneControls = (container: HTMLElement) => {
+  const actionZoneControlTypes = (container: HTMLElement) => {
     const zone = container.querySelector('[data-testid="action-zone"]') as HTMLElement;
-    return Array.from(zone.querySelectorAll('button')).map((b) => b.getAttribute('aria-label') ?? b.textContent);
+    // Identity by ROLE/POSITION, not by label — Save/Discard/the chip all
+    // change their own attributes with dirty state; what must NOT change is
+    // how many controls there are and in what order.
+    return Array.from(zone.querySelectorAll('button')).map((b, i) => `${i}:${b.tagName}`);
   };
 
-  it('renders exactly the same set of controls, in the same order, whether clean or dirty', () => {
+  it('renders the exact same number of controls, in the same order, whether clean or dirty', () => {
     const clean = renderBoth(false);
-    const cleanControls = actionZoneControls(clean.container);
+    const cleanShape = actionZoneControlTypes(clean.container);
     clean.unmount();
 
     const dirtyRender = renderBoth(true);
-    const dirtyControls = actionZoneControls(dirtyRender.container);
+    const dirtyShape = actionZoneControlTypes(dirtyRender.container);
 
-    expect(dirtyControls).toEqual(cleanControls);
+    expect(dirtyShape).toEqual(cleanShape);
   });
 
-  it('Preview, Full, Undo, and Redo each keep the same index in the action zone whether clean or dirty', () => {
+  it('Render, Undo, Redo, the status chip, Discard, and Save each keep the same index whether clean or dirty', () => {
     const clean = renderBoth(false);
-    const cleanControls = actionZoneControls(clean.container);
+    const cleanZone = clean.container.querySelector('[data-testid="action-zone"]') as HTMLElement;
+    const cleanButtons = Array.from(cleanZone.querySelectorAll('button'));
+    const cleanIndexOf = (name: RegExp) => cleanButtons.findIndex((b) => name.test(b.getAttribute('aria-label') ?? b.textContent ?? ''));
+    const indices = {
+      render: cleanIndexOf(/^Render$/),
+      undo: cleanIndexOf(/Undo/),
+      redo: cleanIndexOf(/Redo/),
+      chip: cleanIndexOf(/Saved/),
+      discard: cleanIndexOf(/Discard/),
+      save: cleanIndexOf(/^Save$/),
+    };
     clean.unmount();
 
     const dirtyRender = renderBoth(true);
-    const dirtyControls = actionZoneControls(dirtyRender.container);
+    const dirtyZone = dirtyRender.container.querySelector('[data-testid="action-zone"]') as HTMLElement;
+    const dirtyButtons = Array.from(dirtyZone.querySelectorAll('button'));
+    const dirtyIndexOf = (name: RegExp) => dirtyButtons.findIndex((b) => name.test(b.getAttribute('aria-label') ?? b.textContent ?? ''));
 
-    for (const label of ['Preview', 'Full', 'Undo', 'Redo']) {
-      expect(dirtyControls.indexOf(label)).toBe(cleanControls.indexOf(label));
-      expect(cleanControls.indexOf(label)).toBeGreaterThanOrEqual(0); // sanity: it's actually there
-    }
+    expect(dirtyIndexOf(/^Render$/)).toBe(indices.render);
+    expect(dirtyIndexOf(/Undo/)).toBe(indices.undo);
+    expect(dirtyIndexOf(/Redo/)).toBe(indices.redo);
+    expect(dirtyIndexOf(/Unsaved changes/)).toBe(indices.chip); // same slot, new label
+    expect(dirtyIndexOf(/Discard/)).toBe(indices.discard);
+    expect(dirtyIndexOf(/^Save$/)).toBe(indices.save);
+    for (const v of Object.values(indices)) expect(v).toBeGreaterThanOrEqual(0); // sanity: all found
   });
 
-  it('the unsaved dot and Discard are absent entirely when clean, and both present in the left zone when dirty', () => {
+  it('Discard is present in both states — never conditionally removed', () => {
     const clean = renderBoth(false);
-    expect(clean.queryByText(/Unsaved/i)).not.toBeInTheDocument();
-    expect(clean.queryByRole('button', { name: /Discard/i })).not.toBeInTheDocument();
+    expect(clean.getByRole('button', { name: /Discard/i })).toBeDisabled();
     clean.unmount();
 
     const dirtyRender = renderBoth(true);
-    const header = dirtyRender.container.querySelector('header') as HTMLElement;
-    const actionZone = dirtyRender.container.querySelector('[data-testid="action-zone"]') as HTMLElement;
-    const unsaved = dirtyRender.getByText(/Unsaved/i);
-    const discard = dirtyRender.getByRole('button', { name: /Discard/i });
-    expect(header).toContainElement(unsaved);
-    expect(header).toContainElement(discard);
-    expect(actionZone).not.toContainElement(unsaved);
-    expect(actionZone).not.toContainElement(discard);
-  });
-});
-
-// The render toast (finished render / error) overlays the editor body, never
-// the header, and must not block controls underneath it except its own.
-describe('EditorShell — render status overlay', () => {
-  it('renders nothing extra when renderStatus is omitted', () => {
-    const { container } = render(<EditorShell preview={null} />);
-    expect(container.querySelectorAll('.ed\\:pointer-events-none').length).toBe(0);
-  });
-
-  it('overlays renderStatus outside the header, in a pointer-events-none layer with an auto inner box', () => {
-    const { container } = render(
-      <EditorShell preview={null} renderStatus={<button type="button">Show in Finder</button>} />,
-    );
-    const header = container.querySelector('header') as HTMLElement;
-    const toastBtn = screen.getByRole('button', { name: 'Show in Finder' });
-    expect(header).not.toContainElement(toastBtn);
-
-    // The full-bleed positioning layer must not swallow clicks; only the
-    // toast's own box (and its buttons) should be interactive.
-    const bleedLayer = toastBtn.closest('.ed\\:pointer-events-none') as HTMLElement;
-    expect(bleedLayer).toBeTruthy();
-    const innerBox = toastBtn.closest('.ed\\:pointer-events-auto') as HTMLElement;
-    expect(innerBox).toBeTruthy();
-    expect(bleedLayer).toContainElement(innerBox);
+    expect(dirtyRender.getByRole('button', { name: /Discard/i })).not.toBeDisabled();
   });
 });

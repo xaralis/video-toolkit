@@ -3,7 +3,7 @@ import { Player } from '@remotion/player';
 import type { PlayerRef } from '@remotion/player';
 import { EditorShell } from '../app/EditorShell';
 import { LayeredTimeline, videoUrl, type Diagnostic, type LayeredTimelineHandle } from '../app/LayeredTimeline';
-import { DiagnosticsBadge } from '../app/Diagnostics';
+import { StatusChip } from '../app/Diagnostics';
 import { LayeredInspector } from '../app/LayeredInspector';
 import { RenderButton } from '../app/RenderButton';
 import { useHistory } from '../app/useHistory';
@@ -355,14 +355,13 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
 
   return (
     <RenderButton>
-      {({ phaseControl, renderControls, renderStatus }) => (
+      {({ phaseControl, renderControls }) => (
         <>
           <EditorShell
             projectName={projectName}
             aspectRatio={`${width} / ${height}`}
             phaseControl={phaseControl}
             renderControls={renderControls}
-            renderStatus={renderStatus}
             onSave={handleSave}
             onDiscard={() => savedReel && setReel(savedReel)}
             onUndo={undo}
@@ -371,7 +370,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
             canRedo={canRedo}
             saving={saving}
             dirty={dirty}
-            diagnostics={<DiagnosticsBadge items={diagnostics} onSelect={handleSelect} />}
+            statusChip={<StatusChip items={diagnostics} dirty={dirty} onSelect={handleSelect} />}
             preview={
             <div ref={previewRef} style={{ position: 'relative' }}>
               <Player

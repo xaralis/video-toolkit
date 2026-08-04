@@ -1,46 +1,90 @@
 import { useState } from 'react';
 import type { Diagnostic } from './LayeredTimeline';
-import { TriangleAlertIcon } from './icons';
+import { CircleCheckIcon, CircleDotIcon, TriangleAlertIcon } from './icons';
 
-/** A count in the header that expands into the list. Deliberately NOT a
- *  permanently open panel: on a healthy project it is empty, and it should not
- *  cost timeline height for nothing. Clicking an entry selects the offending
- *  boundary — on a reel with thirty cuts a hatched block outside the viewport
- *  is invisible, so this list is the index into them.
+export type StatusChipState = 'clean' | 'unsaved' | 'issue';
+
+/** Severity order when states overlap: an issue always wins the chip (it is
+ *  the only state that can hide a fact silently otherwise — dirty is ALSO
+ *  visible independently via the enabled, accent-filled Save button, so
+ *  losing the chip to red costs nothing). Clean only when there is neither. */
+export function statusChipState(items: Diagnostic[], dirty: boolean): StatusChipState {
+  if (items.length > 0) return 'issue';
+  if (dirty) return 'unsaved';
+  return 'clean';
+}
+
+/** The box every state renders into. Deliberately has NO colour class of its
+ *  own — only size/shape — so the three states can never differ in it. See
+ *  `Diagnostics.test.tsx` for the assertion that actually proves this. */
+const CHIP_BOX_CLASS =
+  'ed:relative ed:inline-flex ed:items-center ed:justify-center ed:w-8 ed:h-8 ed:shrink-0 ed:rounded-md ed:border ed:bg-transparent ed:cursor-pointer';
+
+const CHIP_STATE_CLASS: Record<StatusChipState, string> = {
+  clean: 'ed:border-success ed:text-success',
+  unsaved: 'ed:border-warn ed:text-warn',
+  issue: 'ed:border-danger ed:text-danger',
+};
+
+function issueLabel(count: number): string {
+  return count === 1 ? '1 issue' : `${count} issues`;
+}
+
+/** The single header health/status chip: one fixed-size box, three states —
+ *  clean (saved), unsaved (dirty), issue (a diagnostic exists) — told apart
+ *  by BOTH icon shape and colour (never colour alone: that fails for
+ *  colour-blind users). Folds the old standalone diagnostics badge and the
+ *  old separate "● Unsaved" text into one indicator, because a document has
+ *  one health, not two competing readouts of it.
  *
- *  WARNING colours, not an accent and not grey. "Brand-neutral" forbids reaching
- *  for a brand's accent slot; it does not require an error to be invisible, and
- *  amber-on-dark is universal UI semantics rather than anybody's brand
- *  vocabulary. An earlier revision was neutral grey and, in a real editor, read
- *  as a disabled chip — the badge is the ONLY unmissable surface this feature
- *  has, so it has to look like something is wrong. */
-export function DiagnosticsBadge({ items, onSelect }: { items: Diagnostic[]; onSelect: (id: string) => void }) {
+ *  Severity wins when states overlap: issue (red) outranks unsaved (orange).
+ *  When both are true the chip goes red, but its tooltip/popup states BOTH
+ *  facts — unsaved-ness must never go silently unmentioned just because an
+ *  issue also exists. (Save's own accent fill is the other, independent
+ *  signal of unsaved-ness, which is what makes ceding the chip to red safe.)
+ *
+ *  The detail popup — click-to-select-the-offending-item — is exactly what
+ *  the old `DiagnosticsBadge` did, preserved here: `onSelect` still fires
+ *  with the diagnostic's `targetId` on a real reel with many boundaries. */
+export function StatusChip({ items, dirty, onSelect }: { items: Diagnostic[]; dirty: boolean; onSelect: (id: string) => void }) {
   const [open, setOpen] = useState(false);
-  if (items.length === 0) return null;
+  const state = statusChipState(items, dirty);
+  const hasIssues = items.length > 0;
+
+  const accessibleName = hasIssues ? issueLabel(items.length) : state === 'unsaved' ? 'Unsaved changes' : 'Saved';
+  const tooltip = [
+    hasIssues ? issueLabel(items.length) : null,
+    // Both facts, always — an issue must never make unsaved-ness invisible.
+    dirty ? 'Unsaved changes' : null,
+    ...items.map((d) => d.message),
+  ]
+    .filter((line): line is string => Boolean(line))
+    .join('\n');
+
   return (
-    <div style={{ position: 'relative', fontSize: 11 }}>
+    <div className="ed:relative">
       <button
-        onClick={() => setOpen((v) => !v)}
-        title={items.map((d) => d.message).join('\n')}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 5,
-          background: '#7a2e24', color: '#ffe9e2', border: '1px solid #b4503f',
-          borderRadius: 3, padding: '3px 9px', cursor: 'pointer', font: 'inherit', fontWeight: 600,
-          boxShadow: '0 0 0 1px rgba(0,0,0,0.35)',
-        }}
+        type="button"
+        onClick={() => hasIssues && setOpen((v) => !v)}
+        title={tooltip}
+        aria-label={accessibleName}
+        className={`${CHIP_BOX_CLASS} ${CHIP_STATE_CLASS[state]}`}
       >
-        <TriangleAlertIcon size={12} />
-        {items.length} {items.length === 1 ? 'issue' : 'issues'}
+        {state === 'issue' ? (
+          <TriangleAlertIcon size={15} />
+        ) : state === 'unsaved' ? (
+          <CircleDotIcon size={15} />
+        ) : (
+          <CircleCheckIcon size={15} />
+        )}
       </button>
-      {open && (
-        // Anchored LEFT: the badge sits beside the project name at the far left
-        // of the header, so a right-anchored panel runs off the pane and clips
-        // the start of every message — which is where the numbers are.
+      {open && hasIssues && (
+        // Anchored LEFT: consistent with the popup's previous position (and
+        // the chip itself sits well left of the viewport's right edge, in
+        // the action zone) — a right-anchored panel would run off the pane.
         //
-        // The arrow (the `::before`-less triangle below) is what makes this
-        // read as attached to the badge rather than a detached toast floating
-        // over the video — the panel used to hang with no visual link back to
-        // what opened it.
+        // The arrow makes this read as attached to the chip rather than a
+        // detached toast floating over the video.
         <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 8, zIndex: 20 }}>
           <div
             aria-hidden
@@ -51,6 +95,9 @@ export function DiagnosticsBadge({ items, onSelect }: { items: Diagnostic[]; onS
             }}
           />
           <ul style={{ position: 'relative', listStyle: 'none', padding: 4, minWidth: 320, maxWidth: '70vw', background: '#232428', border: '1px solid #b4503f', borderRadius: 4, boxShadow: '0 6px 18px rgba(0,0,0,0.5)' }}>
+            {dirty && (
+              <li style={{ padding: '5px 7px', color: '#f0d8d2', fontWeight: 600 }}>Unsaved changes</li>
+            )}
             {items.map((d, i) => (
               <li key={i}>
                 <button

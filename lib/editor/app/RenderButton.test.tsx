@@ -2,19 +2,18 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { RenderButton } from './RenderButton';
 
-/** RenderButton hands its three pieces (phaseControl / renderControls /
- *  renderStatus) out through a render-prop `children` function rather than
- *  rendering them itself — EditorHost places each in a different EditorShell
- *  header zone. This harness renders all three into one DOM so plain RTL
- *  queries can reach whichever piece a test cares about. */
+/** RenderButton hands its two pieces (phaseControl / renderControls) out
+ *  through a render-prop `children` function rather than rendering them
+ *  itself — EditorHost places each in a different EditorShell header zone.
+ *  This harness renders both into one DOM so plain RTL queries can reach
+ *  whichever piece a test cares about. */
 function Harness() {
   return (
     <RenderButton>
-      {({ phaseControl, renderControls, renderStatus }) => (
+      {({ phaseControl, renderControls }) => (
         <div>
           <div data-testid="phase-slot">{phaseControl}</div>
           <div data-testid="controls-slot">{renderControls}</div>
-          <div data-testid="status-slot">{renderStatus}</div>
         </div>
       )}
     </RenderButton>
@@ -57,25 +56,55 @@ describe('RenderButton — phaseControl', () => {
   });
 });
 
-describe('RenderButton — renderControls (Preview|Full)', () => {
-  it('renders both actions, reachable in one click each, with their titles intact', async () => {
+// The render control's whole lifecycle — menu, progress, done, error — has
+// to render inside ONE control. These tests walk all five states and check
+// each one is entirely contained in a single element with a stable class
+// (RENDER_WRAP_CLASS), never a second, separate surface for the same thing.
+describe('RenderButton — renderControls, one control through its whole lifecycle', () => {
+  const wrapOf = (container: HTMLElement) => container.querySelector('[data-testid="controls-slot"] > div') as HTMLElement;
+
+  it('idle: shows a "Render" menu button; the menu is closed until clicked', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({})));
-    render(<Harness />);
-    expect(screen.getByRole('button', { name: /^Preview/ })).toHaveAttribute('title', 'Render a half-scale preview MP4');
-    expect(screen.getByRole('button', { name: /^Full/ })).toHaveAttribute('title', 'Render the final full-scale MP4');
+    const { container } = render(<Harness />);
+    const btn = screen.getByRole('button', { name: /^Render$/ });
+    expect(btn).toHaveAttribute('aria-haspopup', 'menu');
+    expect(btn).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument();
+    // Exactly one control node for the whole lifecycle.
+    expect(wrapOf(container)).toBeTruthy();
   });
 
-  it('starts a preview render on click and disables both buttons while starting', async () => {
+  it('idle, opened: offers Preview and Full with their titles, each in one click', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({})));
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: /^Render$/ }));
+    expect(screen.getByRole('button', { name: /^Render$/ })).toHaveAttribute('aria-expanded', 'true');
+
+    const preview = screen.getByRole('menuitem', { name: 'Preview' });
+    const full = screen.getByRole('menuitem', { name: 'Full' });
+    expect(preview).toHaveAttribute('title', 'Render a half-scale preview MP4');
+    expect(full).toHaveAttribute('title', 'Render the final full-scale MP4');
+  });
+
+  it('closes the menu on outside click without starting a render', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({})));
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: /^Render$/ }));
+    expect(screen.getByRole('menuitem', { name: 'Preview' })).toBeInTheDocument();
+
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole('menuitem', { name: 'Preview' })).not.toBeInTheDocument();
+  });
+
+  it('choosing Preview from the menu starts that render', async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (String(url) === '/render' && init?.method === 'POST') return jsonResponse({});
       return jsonResponse({ running: false, done: false, percent: 0 });
     });
     vi.stubGlobal('fetch', fetchMock);
     render(<Harness />);
-
-    fireEvent.click(screen.getByRole('button', { name: /^Preview/ }));
-    expect(screen.getByRole('button', { name: /^Preview/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /^Full/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /^Render$/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Preview' }));
 
     await waitFor(() => {
       const call = fetchMock.mock.calls.find((c) => c[0] === '/render' && (c[1] as RequestInit)?.method === 'POST');
@@ -84,84 +113,75 @@ describe('RenderButton — renderControls (Preview|Full)', () => {
     });
   });
 
-  it('stays in place and clickable through a completed render — a second render can start without dismissing anything', async () => {
-    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-      if (String(url) === '/render' && init?.method === 'POST') return jsonResponse({});
-      return jsonResponse({ running: false, done: true, percent: 100, mode: 'preview', outPath: '/out/reel.mp4' });
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    render(<Harness />);
-
-    fireEvent.click(screen.getByRole('button', { name: /^Preview/ }));
-
-    await waitFor(() => expect(screen.getByText('reel.mp4')).toBeInTheDocument());
-    // The control itself is still there and enabled — never swapped for a pill.
-    expect(screen.getByRole('button', { name: /^Preview/ })).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: /^Full/ })).not.toBeDisabled();
-  });
-
-  it('shows a determinate progress readout on the control while rendering, without replacing it', async () => {
+  it('rendering: the button is disabled, shows a progress ring and the percentage in its accessible name', async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (String(url) === '/render' && init?.method === 'POST') return jsonResponse({});
       return jsonResponse({ running: true, done: false, percent: 42, mode: 'full' });
     });
     vi.stubGlobal('fetch', fetchMock);
     render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: /^Render$/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Full' }));
 
-    fireEvent.click(screen.getByRole('button', { name: /^Full/ }));
-
-    await waitFor(() => expect(screen.getByText('Full 42%')).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: /^Preview/ })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /^Full/ })).toBeDisabled();
-  });
-});
-
-describe('RenderButton — renderStatus toast', () => {
-  it('is absent while idle', () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({})));
-    render(<Harness />);
-    expect(screen.getByTestId('status-slot')).toBeEmptyDOMElement();
+    const btn = await screen.findByRole('button', { name: /42%/ });
+    expect(btn).toBeDisabled();
+    expect(btn.querySelector('svg[aria-hidden="true"]')).toBeTruthy(); // the ring, hidden from a11y tree
   });
 
-  it('shows the output basename (full path in the title) plus Show in Finder and a dismiss, once done', async () => {
+  it('done: the button reads "Open", reveals on click, and returns to idle', async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (String(url) === '/render' && init?.method === 'POST') return jsonResponse({});
-      return jsonResponse({ running: false, done: true, percent: 100, mode: 'full', outPath: '/Users/x/out/final.mp4' });
+      return jsonResponse({ running: false, done: true, percent: 100, mode: 'preview', outPath: '/Users/x/out/reel.mp4' });
     });
     vi.stubGlobal('fetch', fetchMock);
     render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: /^Render$/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Preview' }));
 
-    fireEvent.click(screen.getByRole('button', { name: /^Full/ }));
+    const openBtn = await screen.findByRole('button', { name: /Render complete\. Open/ });
+    expect(openBtn).toHaveAttribute('title', '/Users/x/out/reel.mp4'); // full path only in the title
+    expect(openBtn.textContent).not.toContain('/Users/x/out/reel.mp4'); // never inline
 
-    const toast = await screen.findByText('final.mp4');
-    expect(toast.closest('[title]')).toHaveAttribute('title', '/Users/x/out/final.mp4');
-
-    const revealBtn = screen.getByRole('button', { name: /Show in Finder/i });
-    fireEvent.click(revealBtn);
+    fireEvent.click(openBtn);
     await waitFor(() => {
       const call = fetchMock.mock.calls.find((c) => c[0] === '/render' && (c[1] as RequestInit)?.body?.toString().includes('reveal'));
       expect(call).toBeDefined();
     });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
-    expect(screen.queryByText('final.mp4')).not.toBeInTheDocument();
+    // Back to idle — a second render can start immediately.
+    expect(await screen.findByRole('button', { name: /^Render$/ })).toBeInTheDocument();
   });
 
-  it('shows an error in the toast (not inline, not shoving the controls) and can be dismissed', async () => {
+  it('done: a separate dismiss returns to idle WITHOUT revealing', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url) === '/render' && init?.method === 'POST') return jsonResponse({});
+      return jsonResponse({ running: false, done: true, percent: 100, mode: 'preview', outPath: '/out/reel.mp4' });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: /^Render$/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Preview' }));
+
+    const dismissBtn = await screen.findByRole('button', { name: 'Dismiss' });
+    fireEvent.click(dismissBtn);
+
+    expect(screen.getByRole('button', { name: /^Render$/ })).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some((c) => c[0] === '/render' && (c[1] as RequestInit)?.body?.toString().includes('reveal'))).toBe(false);
+  });
+
+  it('error: the failure message is reachable via title/aria-label, and clicking returns to idle so the user can retry', async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (String(url) === '/render' && init?.method === 'POST') return jsonResponse({});
       return jsonResponse({ running: false, done: false, percent: 0, error: 'Render process crashed' });
     });
     vi.stubGlobal('fetch', fetchMock);
     render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: /^Render$/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Preview' }));
 
-    fireEvent.click(screen.getByRole('button', { name: /^Preview/ }));
+    const errBtn = await screen.findByRole('button', { name: /Render failed: Render process crashed/ });
+    expect(errBtn).toHaveAttribute('title', 'Render process crashed');
 
-    await screen.findByText('Render process crashed');
-    // The Preview|Full control is usable again — errors don't lock the tool.
-    expect(screen.getByRole('button', { name: /^Preview/ })).not.toBeDisabled();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
-    expect(screen.queryByText('Render process crashed')).not.toBeInTheDocument();
+    fireEvent.click(errBtn);
+    expect(await screen.findByRole('button', { name: /^Render$/ })).toBeInTheDocument();
   });
 });

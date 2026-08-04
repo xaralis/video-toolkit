@@ -35,6 +35,9 @@
   --color-accent-soft: #2e2547;
   --color-warn: #ffb454;
   --color-danger: #ff5c5c;
+  /* The header status chip's "saved" state (green) — universal UI semantics
+   * (success/complete), not a brand accent, same reasoning as warn/danger. */
+  --color-success: #3ecf7e;
   /* The transition-lane marker pill (LayeredTimeline.tsx) — a one-off amber,
    * not part of the neutral/accent palette above, but still a real token
    * rather than an arbitrary value so it has one named, greppable home. */

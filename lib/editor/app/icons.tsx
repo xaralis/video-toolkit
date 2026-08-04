@@ -272,3 +272,23 @@ export function RotateCcwIcon(props: IconProps) {
     </Svg>
   );
 }
+
+/** lucide `circle-check` — clean/saved status */
+export function CircleCheckIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m9 12 2 2 4-4" />
+    </Svg>
+  );
+}
+
+/** lucide `circle-dot` — unsaved-changes status */
+export function CircleDotIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="1" />
+    </Svg>
+  );
+}
