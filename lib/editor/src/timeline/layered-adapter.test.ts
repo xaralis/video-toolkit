@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { LayeredReel, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
+import { deriveSpeed } from '@video-toolkit/lib/reel-config-base/speed';
 import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem, duplicateItem, clipFootageCapMs, resizeBoundsMs, laneOfRow, slipVideoItem, isSlippable, setItemSpeed } from './layered-adapter';
 
 // Small schema-valid LayeredReel fixture: one item per track.
@@ -517,10 +518,25 @@ describe('clipFootageCapMs — clip vs broll policy', () => {
 });
 
 describe('resizeBoundsMs — real-time drag bounds', () => {
-  const clip = (over: Partial<{ startMs: number; sourceInMs: number }> = {}): VideoItem => ({
-    id: 'A', kind: 'clip', startMs: over.startMs ?? 5000, endMs: 10000, source: 's.mp4',
-    sourceInMs: over.sourceInMs ?? 0, sourceOutMs: 5000,
-  });
+  // sourceOutMs defaults to sourceInMs + (endMs - startMs) — i.e. 1x BY
+  // CONSTRUCTION, unless a case explicitly overrides it (the drifted-broll
+  // case below does exactly that). Before this, sourceOutMs was pinned at a
+  // literal 5000 regardless of the other overrides, so overriding sourceInMs
+  // alone silently produced a non-1x item — an accidental artifact from
+  // before playback speed existed, not a deliberate fixture. See the Task 2
+  // report for how this was found (a real, non-snapped 0.76x on the
+  // 'left bound' case) and the plan owner's ruling to fix the data.
+  const clip = (
+    over: Partial<{ startMs: number; endMs: number; sourceInMs: number; sourceOutMs: number }> = {},
+  ): VideoItem => {
+    const startMs = over.startMs ?? 5000;
+    const endMs = over.endMs ?? 10000;
+    const sourceInMs = over.sourceInMs ?? 0;
+    return {
+      id: 'A', kind: 'clip', startMs, endMs, source: 's.mp4',
+      sourceInMs, sourceOutMs: over.sourceOutMs ?? sourceInMs + (endMs - startMs),
+    };
+  };
 
   it('left bound is the source head (start - sourceIn)', () => {
     const b = resizeBoundsMs(clip({ startMs: 5000, sourceInMs: 1200 }), 20000);
@@ -563,6 +579,124 @@ describe('resizeBoundsMs — real-time drag bounds', () => {
     const b = resizeBoundsMs(clip({ startMs: 5000, sourceInMs: 0 }), 8000);
     expect(b!.maxEndMs).toBe(13000); // the file, not the neighbour
     expect(b!.minStartMs).toBe(5000); // the file head, not a previous clip's end
+  });
+});
+
+describe('resizeBoundsMs honours playback speed', () => {
+  // 4s of source over 8s of timeline = 0.5x; the file holds 10s.
+  const slowed = {
+    id: 'v1', kind: 'broll', startMs: 0, endMs: 8000, sourceInMs: 0, sourceOutMs: 4000,
+  } as unknown as VideoItem;
+
+  it('lets a slowed clip reach ALL of its footage, not half of it', () => {
+    // 10s of source at 0.5x is 20s of timeline. Stopping at 10000 refuses
+    // footage the file really has — the reported "won't let me drag further".
+    expect(resizeBoundsMs(slowed, 10000)).toEqual({ minStartMs: 0, maxEndMs: 20000 });
+  });
+
+  it('scales the left bound by speed too', () => {
+    // NOTE: endMs stays 8000 (not the brief's literal 12000) so the clip stays
+    // at 0.5x — with endMs also moved to 12000 the timeline span (8000) no
+    // longer matches the halved source span (2000), which is a real 0.25x
+    // clip, not the 0.5x one the inline comment computes against. Filed as a
+    // deviation in the task report.
+    const trimmed = { ...slowed, startMs: 4000, endMs: 8000, sourceInMs: 2000 } as VideoItem;
+    // 2000ms of source head at 0.5x = 4000ms of timeline: 4000 - 4000 = 0.
+    expect(resizeBoundsMs(trimmed, 10000)!.minStartMs).toBe(0);
+  });
+
+  it('leaves a 1x clip’s bounds exactly where they were', () => {
+    const plain = { ...slowed, endMs: 4000 } as VideoItem; // spans in lockstep
+    expect(resizeBoundsMs(plain, 10000)).toEqual({ minStartMs: 0, maxEndMs: 10000 });
+  });
+
+  it('still reports no right bound at all when the footage length is unknown', () => {
+    expect(resizeBoundsMs(slowed, undefined)!.maxEndMs).toBeUndefined();
+  });
+});
+
+describe('applyTimelineChange — a trim preserves playback speed', () => {
+  const FOOTAGE = 10000;
+  // 4s of source over 8s of timeline = 0.5x.
+  const slowed: VideoItem = {
+    id: 'v1', kind: 'broll', startMs: 0, endMs: 8000, source: 'br.mp4', sourceInMs: 0, sourceOutMs: 4000,
+  };
+  // Scoped to this describe on purpose — the file has other `clip`/`reelWith`
+  // helpers with different (1x-by-construction) contracts.
+  const reelWith = (v: VideoItem): LayeredReel => ({
+    ...REEL,
+    meta: { topic: 'Fixture', totalDurationMs: 30000 },
+    tracks: { ...REEL.tracks, video: [v], audio: [], overlays: [], brand: [] },
+  });
+  const trim = (item: VideoItem, startMs: number, endMs: number) => {
+    const reel = reelWith(item);
+    const { editorData } = layeredToTimeline(reel, 30);
+    const rows = editorData.map((row) =>
+      row.id === 'video'
+        ? { ...row, actions: row.actions.map((a) => ({ ...a, start: startMs / 1000, end: endMs / 1000 })) }
+        : row,
+    );
+    return applyTimelineChange(reel, rows, { footageMsById: { v1: FOOTAGE } }).tracks.video[0];
+  };
+  const trimRight = (item: VideoItem, endMs: number) => trim(item, item.startMs, endMs);
+
+  it('grows the clip when the right edge is dragged outward', () => {
+    // The bug: this returned endMs 5000 — SHORTER than the 8000 it started at.
+    const after = trimRight(slowed, 10000);
+    expect(after.endMs).toBe(10000);
+  });
+
+  it('consumes source in proportion to speed, not 1:1', () => {
+    // +2000ms of timeline at 0.5x costs 1000ms of source.
+    const after = trimRight(slowed, 10000);
+    expect(after.kind === 'broll' && after.sourceOutMs).toBe(5000);
+  });
+
+  it('leaves the speed exactly where the author set it', () => {
+    expect(deriveSpeed(trimRight(slowed, 10000) as typeof slowed)).toBe(0.5);
+  });
+
+  it('stops at the end of the footage, in timeline ms', () => {
+    // All 10s of source at 0.5x = 20s of timeline; asking for more gets 20000.
+    const after = trimRight(slowed, 30000) as typeof slowed;
+    expect(after.sourceOutMs).toBe(FOOTAGE);
+    expect(after.endMs).toBe(20000);
+    expect(deriveSpeed(after)).toBe(0.5);
+  });
+
+  it('clamps to the footage even when that leaves a clip under MIN_CLIP_MS', () => {
+    // A file too short to hold a minimum-length clip: 40ms of source at 0.5x is
+    // 80ms of timeline, under the 100ms floor. The footage cap is applied LAST
+    // and wins — a visibly-too-short clip beats an out-point past the end of
+    // the file (frames that do not exist).
+    const reel = reelWith(slowed);
+    const { editorData } = layeredToTimeline(reel, 30);
+    const rows = editorData.map((row) =>
+      row.id === 'video' ? { ...row, actions: row.actions.map((a) => ({ ...a, start: 0, end: 30 })) } : row,
+    );
+    const after = applyTimelineChange(reel, rows, { footageMsById: { v1: 40 } }).tracks.video[0] as typeof slowed;
+    expect(after.sourceOutMs).toBe(40); // NOT 50 — never past the end of the file
+    expect(after.endMs).toBe(80);
+  });
+
+  it('floors a headroom-clamped left extend at a real 0, never -0', () => {
+    // 1000ms of source over 2900ms of timeline — a speed with no exact binary
+    // representation, so the round-trip through it lands at -1.1e-13 and
+    // Math.round gives -0. `toBe` is Object.is, and Object.is(-0, 0) is false.
+    const odd: VideoItem = { ...slowed, startMs: 5000, endMs: 7900, sourceInMs: 1000, sourceOutMs: 2000 };
+    const after = trim(odd, 2100, 7900) as typeof slowed; // exactly the headroom
+    expect(after.startMs).toBe(2100);
+    expect(after.sourceInMs).toBe(0);
+    expect(Object.is(after.sourceInMs, -0)).toBe(false);
+  });
+
+  it('preserves speed on a LEFT trim too', () => {
+    const start: VideoItem = { ...slowed, startMs: 8000, endMs: 16000, sourceInMs: 2000, sourceOutMs: 6000 };
+    const after = trim(start, 4000, 16000) as typeof slowed;
+    expect(after.startMs).toBe(4000);
+    // 4000ms of timeline at 0.5x costs 2000ms of source: in-point reaches 0.
+    expect(after.sourceInMs).toBe(0);
+    expect(deriveSpeed(after)).toBe(0.5);
   });
 });
 
@@ -985,6 +1119,51 @@ describe('splitItem', () => {
     expect(twice.selectedId).toBe('video:A-b-2');
     const audioIds = twice.reel.tracks.audio.map((a) => a.id);
     expect(new Set(audioIds).size).toBe(audioIds.length);
+  });
+});
+
+describe('splitItem keeps speed on both halves', () => {
+  // 4s of source over 8s of timeline = 0.5x, at 30fps. startMs is
+  // deliberately non-zero: `sourceAtTimelineMs` subtracts startMs internally,
+  // so a caller that mistakenly passed a clip-RELATIVE ms (`atMs - v.startMs`)
+  // instead of the absolute timeline ms would agree with the correct call at
+  // startMs 0 for every value of atMs — the two can only be told apart once
+  // startMs is nonzero.
+  const slowed = {
+    id: 'v1', kind: 'broll', startMs: 1000, endMs: 9000, sourceInMs: 0, sourceOutMs: 4000,
+  } as unknown as VideoItem;
+  // Scoped to this describe on purpose — the file has other `clip`/`reelWith`
+  // helpers with different (1x-by-construction) contracts.
+  const reelWith = (v: VideoItem): LayeredReel => ({
+    ...REEL,
+    meta: { topic: 'Fixture', totalDurationMs: 30000 },
+    tracks: { ...REEL.tracks, video: [v], audio: [], overlays: [], brand: [] },
+  });
+
+  it('cuts the SOURCE at the frame actually showing at the playhead', () => {
+    // Playhead at absolute 5000ms = 4000ms into the clip (startMs 1000) =
+    // half way = 2000ms of source at 0.5x, not 4000.
+    const { reel } = splitItem(reelWith(slowed), 'video:v1', 150, 30); // frame 150 @30fps = 5000ms
+    const [left, right] = reel.tracks.video as Extract<VideoItem, { kind: 'broll' }>[];
+    expect(left.endMs).toBe(5000);
+    expect(left.sourceOutMs).toBe(2000);
+    expect(right.sourceInMs).toBe(2000);
+  });
+
+  it('leaves both halves at the parent’s speed', () => {
+    const { reel } = splitItem(reelWith(slowed), 'video:v1', 150, 30);
+    const [left, right] = reel.tracks.video as Extract<VideoItem, { kind: 'broll' }>[];
+    expect(deriveSpeed(left)).toBe(0.5);
+    expect(deriveSpeed(right)).toBe(0.5);
+  });
+
+  it('is the plain sum at 1x', () => {
+    // Independent of `slowed`'s (now nonzero) startMs — this case is about
+    // speed 1x, not about the startMs != 0 regression, so it keeps its own
+    // startMs 0 fixture, unchanged from before that fixture moved.
+    const plain = { ...slowed, startMs: 0, endMs: 4000 } as VideoItem; // spans in lockstep
+    const { reel } = splitItem(reelWith(plain), 'video:v1', 60, 30); // 2000ms
+    expect((reel.tracks.video[0] as Extract<VideoItem, { kind: 'broll' }>).sourceOutMs).toBe(2000);
   });
 });
 

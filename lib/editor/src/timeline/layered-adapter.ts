@@ -2,6 +2,7 @@ import type { LayeredReel, VideoItem, AudioItem } from '@video-toolkit/lib/reel-
 import { withTotalDuration } from '@video-toolkit/lib/reel-config-base/total-duration';
 import { clampSpeed } from '@video-toolkit/lib/reel-config-base/speed';
 import { resolveSlipsWithVideo } from '@video-toolkit/lib/reel-config-base/slips-with-video';
+import { headroomTimelineMs, sourceAtTimelineMs, sourceToTimelineMs, timelineToSourceMs } from '@video-toolkit/lib/reel-config-base/clip-time';
 import {
   isCut,
   CUT_KIND,
@@ -165,13 +166,37 @@ export function clipFootageCapMs(item: VideoItem, decodedMs: number | undefined)
 // Clip and broll are treated identically: a broll's max length is its footage,
 // same as a clip. A source with no decoded duration (a still image) has no
 // footage bound at all → its right handle is unbounded.
+//
+// BOTH bounds are the FOOTAGE, and only the footage, expressed in TIMELINE ms —
+// which is not the same number as the source ms they come from unless the clip
+// runs at 1x. See ./../../../reel-config-base/clip-time.ts.
+//
+// The right bound is computed as an ABSOLUTE footage-end anchored at `startMs`
+// — `startMs + sourceToTimelineMs(decodedMs - sourceInMs)` — rather than as
+// `endMs + tailroomTimelineMs(item, decodedMs)`. The two are algebraically
+// identical whenever the item's own spans are internally consistent
+// (`endMs - startMs === sourceToTimelineMs(sourceOutMs - sourceInMs)`, which is
+// exactly `deriveSpeed`'s definition) — EXCEPT when `sourceOutMs` already
+// overshoots the real decoded footage (config drift: authored past the file).
+// `tailroomTimelineMs` clamps that case at 0 ("no additional room"), which
+// cannot express "you are already past the file and the bound is BELOW your
+// current end" — the drifted-broll case a pre-existing test pins. Computing
+// the absolute end directly, unclamped, reduces to the exact same number in
+// every non-drift case and correctly pulls the cap back under `endMs` in the
+// drift case.
 export function resizeBoundsMs(
   item: VideoItem,
   decodedMs: number | undefined,
 ): { minStartMs: number; maxEndMs?: number } | null {
   if (item.kind !== 'clip' && item.kind !== 'broll') return null;
-  const maxEndMs = decodedMs && decodedMs > 0 ? item.startMs + (decodedMs - item.sourceInMs) : undefined;
-  return { minStartMs: item.startMs - item.sourceInMs, maxEndMs };
+  return {
+    minStartMs: Math.round(item.startMs - headroomTimelineMs(item)),
+    // `undefined`, not Infinity: LayeredTimeline forwards undefined as "no clamp".
+    maxEndMs:
+      decodedMs && decodedMs > 0
+        ? Math.round(item.startMs + sourceToTimelineMs(item, decodedMs - item.sourceInMs))
+        : undefined,
+  };
 }
 
 // OVERWRITE — what a trim does when it runs into the clip next door.
@@ -279,13 +304,58 @@ function resizeVideoItem(item: VideoItem, np: { startMs: number; endMs: number }
   if ((item.kind !== 'clip' && item.kind !== 'broll') || (dStart !== 0 && dEnd !== 0)) {
     return { ...item, startMs: np.startMs, endMs: np.endMs };
   }
+  // Both branches work in TIMELINE ms and convert ONCE, so the clip's speed
+  // (the ratio of its two spans) comes out of a trim exactly as it went in. At
+  // 1x every line below reduces to the plain sums this used to do.
   if (dStart !== 0) {
-    const applied = Math.min(Math.max(dStart, -item.sourceInMs), item.endMs - item.startMs - MIN_CLIP_MS); // clamp in>=0 and keep >0 duration
-    return { ...item, startMs: item.startMs + applied, sourceInMs: item.sourceInMs + applied };
+    const applied = Math.min(
+      // Can't reveal source that isn't there: the head, in timeline ms.
+      Math.max(dStart, -headroomTimelineMs(item)),
+      // Keep at least MIN_CLIP_MS of TIMELINE length.
+      item.endMs - item.startMs - MIN_CLIP_MS,
+    );
+    return {
+      ...item,
+      startMs: Math.round(item.startMs + applied),
+      // `Math.max(0, …)`: at a speed with no exact binary representation, an
+      // extend clamped exactly at the headroom lands a hair below zero
+      // (-1.1e-13), and `Math.round` of that is `-0`. It renders and serialises
+      // identically to 0, but `Object.is(-0, 0)` is false — so it is a latent
+      // flake in any `toBe(0)` assertion. The floor is a real zero.
+      sourceInMs: Math.max(0, Math.round(item.sourceInMs + timelineToSourceMs(item, applied))),
+    };
   }
-  const rawOut = Math.max(item.sourceInMs + MIN_CLIP_MS, item.sourceOutMs + dEnd);
-  const sourceOutMs = footageMs && footageMs > 0 ? Math.min(footageMs, rawOut) : rawOut; // can't pass the footage end
-  return { ...item, endMs: item.startMs + (sourceOutMs - item.sourceInMs), sourceOutMs };
+  // The right edge is now the INPUT and the source out-point follows it — the
+  // inversion is the fix. The old branch recomputed endMs from sourceOutMs,
+  // i.e. the length the clip would have at 1x, so dragging a slowed clip's
+  // right edge outward made it SHORTER and snapped its speed to 1.
+  //
+  // The footage cap is the ABSOLUTE reachable end, computed the same way
+  // resizeBoundsMs does (and deliberately not `endMs + tailroomTimelineMs`):
+  // tailroom clamps negative room to 0 and so cannot express "the cap is
+  // BELOW your current end", which is exactly the drifted case where a
+  // config's sourceOutMs overruns the decoded file — a case pinned by test and
+  // self-healed here.
+  const maxEndMs = footageMs && footageMs > 0
+    ? item.startMs + sourceToTimelineMs(item, footageMs - item.sourceInMs)
+    : Infinity;
+  // Never shorter than MIN_CLIP_MS of TIMELINE length — but the FOOTAGE CAP IS
+  // APPLIED LAST AND WINS, matching the order the pre-speed code used
+  // (`min(footageMs, rawOut)`). The two constraints can only genuinely conflict
+  // when the file holds less than MIN_CLIP_MS of timeline from the in-point,
+  // and there the honest answer is a clip shorter than the floor: the
+  // alternative is an endMs whose implied sourceOutMs runs past the end of the
+  // file, i.e. inventing frames that do not exist. A too-short clip is visible
+  // and fixable; fabricated source is neither. Stated here rather than left to
+  // operator order, because reversing these two silently reintroduces exactly
+  // the span/source conflation this whole change removes.
+  const endMs = Math.round(Math.min(Math.max(np.endMs, item.startMs + MIN_CLIP_MS), maxEndMs));
+  return {
+    ...item,
+    endMs,
+    // Called on the PRE-edit item: its ratio is the speed being preserved.
+    sourceOutMs: Math.round(item.sourceInMs + timelineToSourceMs(item, endMs - item.startMs)),
+  };
 }
 
 // Whether an item has a single trim source that slip can shift — the ONE
@@ -342,6 +412,18 @@ export function slipVideoItem(
 
   const d = Math.min(Math.max(deltaMs, minDelta), maxDelta);
   if (d === 0) return reel;
+
+  // `d` is SOURCE ms, and the same number is applied to the clip and to every
+  // bed that slips with it — which is what keeps a shot and its own sound
+  // together. Worth knowing on a clip whose speed is not 1: the gesture scales
+  // the delta by that speed (`slipDeltaMs`) so the PICTURE tracks the pointer,
+  // but a bed is never time-stretched, so its audio then slides at the clip's
+  // speed relative to the pointer rather than 1:1. There is no right answer
+  // here — a slowed clip carrying its own sync sound is already incoherent,
+  // because the sound is not slowed with it — and speed deliberately never
+  // reaches an audio path (see the audio branches below and in
+  // `resizeAudioItem`). Recorded so the interaction is not rediscovered as a
+  // new bug.
 
   return {
     ...reel,
@@ -829,9 +911,12 @@ export function splitItem(
   if (v.kind !== 'clip' && v.kind !== 'broll') return { reel, selectedId };
   const atMs = Math.round((atFrame / fps) * 1000);
   if (atMs <= v.startMs + 1 || atMs >= v.endMs - 1) return { reel, selectedId }; // playhead not inside
-  const leftDur = atMs - v.startMs;
   const rightId = uniqueId(`${v.id}-b`, reel.tracks.video.map((x) => x.id));
-  const cut = v.sourceInMs + leftDur;
+  // The SOURCE frame showing at the playhead — `atMs - startMs` is a timeline
+  // length, and on a clip whose speed isn't 1x that is not the same number of
+  // source ms. Splitting on the raw difference gave both halves a speed the
+  // author never set.
+  const cut = Math.round(sourceAtTimelineMs(v, atMs));
 
   const left: VideoItem = { ...v, endMs: atMs, sourceOutMs: cut, transitionOut: { kind: CUT_KIND } };
   const right: VideoItem = { ...v, id: rightId, startMs: atMs, sourceInMs: cut, transitionIn: undefined };

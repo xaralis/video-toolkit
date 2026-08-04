@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SPEED_DEFAULTS, SPEED_MIN, SPEED_MAX, clampSpeed, deriveSpeed, hasSpeedChanges } from './speed';
+import { SPEED_DEFAULTS, SPEED_MIN, SPEED_MAX, SPEED_SNAP_MS, clampSpeed, deriveSpeed, hasSpeedChanges } from './speed';
 
 describe('clampSpeed', () => {
   it('leaves an in-range value untouched', () => {
@@ -74,5 +74,46 @@ describe('hasSpeedChanges', () => {
     expect(hasSpeedChanges(null)).toBe(false);
     expect(hasSpeedChanges('nope')).toBe(false);
     expect(hasSpeedChanges({ kind: 'clip', startMs: 0, endMs: 'x', sourceInMs: 0, sourceOutMs: 3000 })).toBe(false);
+  });
+});
+
+describe('a sub-frame span difference reads as exactly 1x', () => {
+  // The six real items from pp-u-kamenne-vily, by name — these are the cases
+  // this rule exists for.
+  const REAL_CASES = [
+    ['seg-002', 5200, 10567, 0, 5360],
+    ['seg-003', 10567, 15700, 0, 5140],
+    ['seg-004', 15700, 18867, 0, 3160],
+    ['seg-005', 18867, 22234, 0, 3380],
+    ['seg-006', 22234, 28134, 900, 6790],
+    ['seg-008', 32134, 38167, 4860, 10900],
+  ] as const;
+
+  it.each(REAL_CASES)('%s is 1x, not rounding noise', (_id, startMs, endMs, sourceInMs, sourceOutMs) => {
+    expect(deriveSpeed({ startMs, endMs, sourceInMs, sourceOutMs })).toBe(1);
+  });
+
+  it.each(REAL_CASES)('%s therefore reports no speed change to the inspector', (_id, startMs, endMs, sourceInMs, sourceOutMs) => {
+    expect(hasSpeedChanges({ kind: 'broll', startMs, endMs, sourceInMs, sourceOutMs })).toBe(false);
+  });
+
+  it('snaps a difference just inside the threshold', () => {
+    const d = SPEED_SNAP_MS - 1;
+    expect(deriveSpeed({ startMs: 0, endMs: 5000, sourceInMs: 0, sourceOutMs: 5000 + d })).toBe(1);
+  });
+
+  it('does NOT snap a difference just outside it', () => {
+    const d = SPEED_SNAP_MS + 1;
+    expect(deriveSpeed({ startMs: 0, endMs: 5000, sourceInMs: 0, sourceOutMs: 5000 + d })).not.toBe(1);
+  });
+
+  it('leaves a deliberate slow-down completely alone', () => {
+    // 0.5x over 8s is a 4000ms difference — three orders of magnitude past the
+    // threshold. A snap that ever touched this would be a bug, not a rounding fix.
+    expect(deriveSpeed({ startMs: 0, endMs: 8000, sourceInMs: 0, sourceOutMs: 4000 })).toBe(0.5);
+  });
+
+  it('leaves a deliberate speed-up alone', () => {
+    expect(deriveSpeed({ startMs: 0, endMs: 4000, sourceInMs: 0, sourceOutMs: 8000 })).toBe(2);
   });
 });

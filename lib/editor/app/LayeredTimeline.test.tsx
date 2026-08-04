@@ -251,6 +251,30 @@ describe('slipDeltaMs', () => {
   });
 });
 
+// speed converts the TIMELINE travel under the pointer into a SOURCE shift:
+// a slip cannot change a clip's speed (it shifts both source fields by one
+// delta, the timeline never moves), but at any speed other than 1x the media
+// must slide at a different rate than the cursor, or the picture appears to
+// drift out from under the pointer.
+describe('slipDeltaMs follows the pointer at any speed', () => {
+  it('is unchanged at 1x', () => {
+    expect(slipDeltaMs(80, 80, 1)).toBe(-1000);
+  });
+
+  it('shifts HALF as much source on a 0.5x clip, so the picture tracks the cursor', () => {
+    // 80px at 80px/s is 1s of TIMELINE; at 0.5x that is 500ms of source.
+    expect(slipDeltaMs(80, 80, 0.5)).toBe(-500);
+  });
+
+  it('shifts twice as much on a 2x clip', () => {
+    expect(slipDeltaMs(80, 80, 2)).toBe(-2000);
+  });
+
+  it('still normalises -0 to +0', () => {
+    expect(slipDeltaMs(0, 80, 0.5)).toBe(0);
+  });
+});
+
 describe('the playhead-follow scroll container', () => {
   // followScrollLeft is pure and well covered below, but it is fed by a DOM
   // lookup, and a lookup that matches NOTHING disables the feature in complete

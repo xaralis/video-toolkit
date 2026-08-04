@@ -2,6 +2,7 @@ import type { VideoItem } from './layered-schema';
 import { isCut, transitionAlignmentOf, transitionHandles, msToFrames, TRANSITION_ALIGNMENTS } from './transition-schema';
 import type { TransitionAlignment } from './transition-schema';
 import { isNodeEnabled } from './node-enabled';
+import { headroomTimelineMs, tailroomTimelineMs } from './clip-time';
 
 /** Frames of source material a video item can lend on each side of itself:
  *  `head` is what exists BEFORE its in-point, `tail` what exists AFTER its
@@ -31,15 +32,28 @@ export function handleRoomFrames(item: VideoItem, fileMs: number | undefined, fp
   // this is future work, not a bug this file claims to fix.
   if (item.kind !== 'clip' && item.kind !== 'broll') return UNBOUNDED;
   const toFrames = (ms: number) => msToFrames(ms, fps);
+  // A transition borrows TIMELINE frames, not source frames — they differ
+  // whenever this item's playback speed isn't 1x, since `head`/`tail` here
+  // feed straight into `maxTransitionFrames`'s frame arithmetic below. Route
+  // through `clip-time.ts`'s conversions rather than reading `sourceInMs` /
+  // `fileMs - sourceOutMs` directly, so this stays in lockstep with speed.
+  const tailRoomMs = tailroomTimelineMs(item, fileMs);
   return {
-    head: toFrames(item.sourceInMs),
+    head: toFrames(headroomTimelineMs(item)),
     // Clamped at 0: a `sourceOutMs` that overruns the file (drift between an
     // authored trim and the file ffprobe actually measures — see
     // LayeredTimeline.tsx's `capMsById` comment, which documents this as real
     // data, not a hypothetical) would otherwise make `fileMs - sourceOutMs`
     // negative, and a negative "frames available" is nonsense that also
-    // corrupts `maxTransitionFrames`'s arithmetic below.
-    tail: fileMs && fileMs > 0 ? Math.max(0, toFrames(fileMs - item.sourceOutMs)) : Infinity,
+    // corrupts `maxTransitionFrames`'s arithmetic below. `tailroomTimelineMs`
+    // already applies this clamp (and the `Infinity`-for-unknown-footage rule
+    // just above it), so it is kept here rather than re-derived. The explicit
+    // `Infinity` branch keeps that case readable at a glance rather than
+    // resting on `Math.round(Infinity)` being `Infinity` — which it is, so
+    // this guard changes no result; it is here to be obvious, not to fix a
+    // failure. (An earlier version of this comment claimed the unguarded path
+    // produced `NaN`. It does not.)
+    tail: tailRoomMs === Infinity ? Infinity : toFrames(tailRoomMs),
   };
 }
 
