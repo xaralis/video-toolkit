@@ -47,9 +47,12 @@ export function handleRoomFrames(item: VideoItem, fileMs: number | undefined, fp
     // negative, and a negative "frames available" is nonsense that also
     // corrupts `maxTransitionFrames`'s arithmetic below. `tailroomTimelineMs`
     // already applies this clamp (and the `Infinity`-for-unknown-footage rule
-    // just above it), so it is kept here rather than re-derived — but an
-    // `Infinity` room must stay `Infinity`, not become `NaN` through
-    // `Math.round` in `toFrames`.
+    // just above it), so it is kept here rather than re-derived. The explicit
+    // `Infinity` branch keeps that case readable at a glance rather than
+    // resting on `Math.round(Infinity)` being `Infinity` — which it is, so
+    // this guard changes no result; it is here to be obvious, not to fix a
+    // failure. (An earlier version of this comment claimed the unguarded path
+    // produced `NaN`. It does not.)
     tail: tailRoomMs === Infinity ? Infinity : toFrames(tailRoomMs),
   };
 }
