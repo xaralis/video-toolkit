@@ -20,7 +20,7 @@ export const CropSchema = z
       .max(1)
       .step(0.01)
       .describe(
-        'Crop WIDTH as a fraction of the source (1 = full frame / no zoom, 0.5 = middle half → 2× zoom). The height is derived automatically to keep the 9:16 frame. This is the only dimension you set.',
+        'Crop WIDTH as a fraction of the FITTED PICTURE (1 = no zoom, 0.5 = zoom in 2×) — NOT a fraction of the source. The renderer applies scale(1/width) to the element AFTER fit is already applied, so the same width means the same amount of zoom under every fit, not the same visible window (cover starts already cropped to fill the frame; contain starts showing the whole shot). This is the only dimension you set.',
       ),
     x: z
       .number()
@@ -139,23 +139,51 @@ export const ClipSegmentBaseSchema = z.object({
     'Per-clip colour correction — brightness / contrast / saturation / white balance. Applied before the brand LUT (rule #32); for matching shots, not the look.',
   ),
   fit: z
-    .enum(['cover', 'blur-pad'])
+    .enum(['cover', 'contain', 'blur-pad'])
     .optional()
     .describe(
-      'How the shot meets the frame. cover (default): fill it, cropping whatever does not fit. blur-pad: show the WHOLE shot over a blurred, dimmed copy of itself — for footage whose orientation does not match the composition (a portrait phone b-roll in a 16:9 frame), where cover would crop most of the picture away. /toolkit:cut sets this itself when it probes a mismatched source.',
+      'How the shot meets the frame. cover (default): fill it, cropping whatever does not fit. contain: show the WHOLE shot, with the leftover space filled per `pad` — for footage whose orientation does not match the composition (a portrait phone b-roll in a 16:9 frame), where cover would crop most of the picture away. /toolkit:cut sets this itself when it probes a mismatched source. blur-pad is a DEPRECATED ALIAS for contain + pad:"blur" — kept so old configs keep parsing and rendering unchanged; the editor never writes it, author contain (+ pad) instead.',
+    ),
+  pad: z
+    .enum(['blur', 'color', 'none'])
+    .optional()
+    .describe(
+      'contain only — what fills the leftover space around the whole shot. blur (default when absent): a blurred, dimmed copy of the same shot (see backdropBlur/backdropDim). color: a flat fill (see padColor). none: no fill at all.',
+    ),
+  padColor: z
+    .string()
+    .optional()
+    .describe(
+      'Used when pad:"color". Absent means TRANSPARENT, not black — the frame\'s own background shows through.',
+    ),
+  placeX: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe(
+      'contain only. Where the shot sits in the leftover space, horizontally — 0=left, 0.5=centre (default), 1=right.',
+    ),
+  placeY: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe(
+      'contain only. Where the shot sits in the leftover space, vertically — 0=top, 0.5=centre (default), 1=bottom.',
     ),
   backdropBlur: z
     .number()
     .min(0)
     .max(80)
     .optional()
-    .describe('blur-pad only: backdrop blur radius in px (default 32).'),
+    .describe('pad:"blur" only: backdrop blur radius in px (default 32).'),
   backdropDim: z
     .number()
     .min(0)
     .max(1)
     .optional()
-    .describe('blur-pad only: how far the backdrop is darkened — 0 leaves it alone, 1 is black (default 0.45).'),
+    .describe('pad:"blur" only: how far the backdrop is darkened — 0 leaves it alone, 1 is black (default 0.45).'),
   transitionOut: TransitionSchema.optional().describe(
     'Transition to the next segment. Omit for hard cut.',
   ),
@@ -221,23 +249,51 @@ export const BrollSegmentBaseSchema = z.object({
     'Per-clip colour correction — brightness / contrast / saturation / white balance. Applied before the brand LUT (rule #32); for matching shots, not the look.',
   ),
   fit: z
-    .enum(['cover', 'blur-pad'])
+    .enum(['cover', 'contain', 'blur-pad'])
     .optional()
     .describe(
-      'How the shot meets the frame. cover (default): fill it, cropping whatever does not fit. blur-pad: show the WHOLE shot over a blurred, dimmed copy of itself — for footage whose orientation does not match the composition (a portrait phone b-roll in a 16:9 frame), where cover would crop most of the picture away. /toolkit:cut sets this itself when it probes a mismatched source.',
+      'How the shot meets the frame. cover (default): fill it, cropping whatever does not fit. contain: show the WHOLE shot, with the leftover space filled per `pad` — for footage whose orientation does not match the composition (a portrait phone b-roll in a 16:9 frame), where cover would crop most of the picture away. /toolkit:cut sets this itself when it probes a mismatched source. blur-pad is a DEPRECATED ALIAS for contain + pad:"blur" — kept so old configs keep parsing and rendering unchanged; the editor never writes it, author contain (+ pad) instead.',
+    ),
+  pad: z
+    .enum(['blur', 'color', 'none'])
+    .optional()
+    .describe(
+      'contain only — what fills the leftover space around the whole shot. blur (default when absent): a blurred, dimmed copy of the same shot (see backdropBlur/backdropDim). color: a flat fill (see padColor). none: no fill at all.',
+    ),
+  padColor: z
+    .string()
+    .optional()
+    .describe(
+      'Used when pad:"color". Absent means TRANSPARENT, not black — the frame\'s own background shows through.',
+    ),
+  placeX: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe(
+      'contain only. Where the shot sits in the leftover space, horizontally — 0=left, 0.5=centre (default), 1=right.',
+    ),
+  placeY: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe(
+      'contain only. Where the shot sits in the leftover space, vertically — 0=top, 0.5=centre (default), 1=bottom.',
     ),
   backdropBlur: z
     .number()
     .min(0)
     .max(80)
     .optional()
-    .describe('blur-pad only: backdrop blur radius in px (default 32).'),
+    .describe('pad:"blur" only: backdrop blur radius in px (default 32).'),
   backdropDim: z
     .number()
     .min(0)
     .max(1)
     .optional()
-    .describe('blur-pad only: how far the backdrop is darkened — 0 leaves it alone, 1 is black (default 0.45).'),
+    .describe('pad:"blur" only: how far the backdrop is darkened — 0 leaves it alone, 1 is black (default 0.45).'),
   transitionOut: TransitionSchema.optional(),
 });
 

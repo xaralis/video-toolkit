@@ -1,5 +1,9 @@
-/** How far a clip's crop may zoom in (zoom = 1 / crop.width). */
-export const MAX_ZOOM = 6;
+/** How far a clip's crop may zoom in (zoom = 1 / crop.width). Lives in
+ *  `lib/reel-config-base/framing.ts` now — the framing model's one source of
+ *  truth — and is re-exported here so this file's own use below and its
+ *  existing importers (incl. `crop-gestures.test.ts`) keep working unedited. */
+export { MAX_ZOOM } from '../../reel-config-base/framing';
+import { MAX_ZOOM } from '../../reel-config-base/framing';
 
 /** The currently-croppable clip, as the gesture layer needs to see it. */
 export interface CropGestureTarget {

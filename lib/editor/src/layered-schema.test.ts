@@ -114,11 +114,41 @@ describe('VideoItemSchema — media fit', () => {
     expect(VideoItemSchema.parse(base)).not.toHaveProperty('fit');
   });
 
-  it('rejects a fit value that is not a known mode', () => {
-    expect(() => VideoItemSchema.parse({ ...base, fit: 'contain' })).toThrow();
+  it('rejects a genuinely unknown fit value', () => {
+    // 'contain' now parses (it is a real fit, not merely the legacy
+    // 'blur-pad' alias) — re-pointed at a value unknown under both names, so
+    // this still pins the guarantee that the forwarding seam can't silently
+    // drop an unrecognised field.
+    expect(() => VideoItemSchema.parse({ ...base, fit: 'stretch' })).toThrow();
   });
 
   it('rejects a backdropDim outside 0..1', () => {
     expect(() => VideoItemSchema.parse({ ...base, backdropDim: 1.5 })).toThrow();
+  });
+
+  it('accepts fit:"contain" plus pad/padColor/placeX/placeY', () => {
+    const parsed = VideoItemSchema.parse({
+      ...base, fit: 'contain', pad: 'color', padColor: '#abcdef', placeX: 0.25, placeY: 0.75,
+    });
+    expect(parsed).toMatchObject({
+      fit: 'contain', pad: 'color', padColor: '#abcdef', placeX: 0.25, placeY: 0.75,
+    });
+  });
+
+  it('still accepts the deprecated fit:"blur-pad" alias', () => {
+    const parsed = VideoItemSchema.parse({ ...base, fit: 'blur-pad' });
+    expect(parsed.fit).toBe('blur-pad');
+  });
+
+  it('rejects placeX outside 0..1', () => {
+    expect(() => VideoItemSchema.parse({ ...base, placeX: -0.1 })).toThrow();
+  });
+
+  it('leaves pad/padColor/placeX/placeY absent rather than defaulting them', () => {
+    const parsed = VideoItemSchema.parse(base);
+    expect(parsed).not.toHaveProperty('pad');
+    expect(parsed).not.toHaveProperty('padColor');
+    expect(parsed).not.toHaveProperty('placeX');
+    expect(parsed).not.toHaveProperty('placeY');
   });
 });

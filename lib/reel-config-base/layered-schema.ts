@@ -50,19 +50,40 @@ const VideoContainerBase = {
   focalY: z.number().min(0).max(1).optional(),
   crop: z.record(z.string(), z.unknown()).optional(),
   grade: z.record(z.string(), z.unknown()).optional(),
-  // How the media meets the frame. `cover` (the default, and every item
-  // authored before this field existed) crops away whatever doesn't fit —
-  // right for a small aspect mismatch, destructive for a large one. `blur-pad`
-  // shows the whole shot over a blurred, dimmed copy of itself, for footage
-  // whose orientation doesn't match the composition's (a portrait phone b-roll
-  // in a 16:9 frame). Left OPTIONAL with no `.default()`: a default would
-  // materialise `fit: 'cover'` onto every item the editor round-trips, turning
-  // an untouched config into a diff. The renderer supplies the same fallback.
-  //
-  // `contain` without a backdrop is deliberately absent — bare black bars are
-  // never the answer to "my shot is cut off". See
-  // docs/superpowers/specs/2026-08-01-media-fit-blur-pad-design.md.
-  fit: z.enum(['cover', 'blur-pad']).optional(),
+  // How the media meets the frame — TWO independent axes, not one enum. `fit`
+  // decides whether the shot is cropped to fill the frame or shown whole;
+  // `pad` decides what fills the leftover space `contain` leaves behind.
+  // `cover` (the default, and every item authored before this field existed)
+  // crops away whatever doesn't fit — right for a small aspect mismatch,
+  // destructive for a large one. `contain` shows the whole shot, for footage
+  // whose orientation doesn't match the composition's (a portrait phone
+  // b-roll in a 16:9 frame): what fills the space around it is `pad`'s job,
+  // not `fit`'s — a BARE `contain` (`pad: 'none'`) is reachable (nothing in
+  // the model forbids it) but is not what the editor offers by default; a
+  // blurred copy of the shot (`pad: 'blur'`) is. `blur-pad` is a DEPRECATED
+  // ALIAS this schema still parses — see `resolveFraming` in
+  // `lib/reel-config-base/framing.ts`, the one place that reads
+  // `fit === 'blur-pad'` as `{ fit: 'contain', pad: 'blur' }` — kept so every
+  // config authored before this split keeps rendering unchanged with no data
+  // migration; the editor never writes it. Left OPTIONAL with no
+  // `.default()`: a default would materialise `fit: 'cover'` onto every item
+  // the editor round-trips, turning an untouched config into a diff. The
+  // renderer supplies the same fallback (via `resolveFraming`).
+  fit: z.enum(['cover', 'contain', 'blur-pad']).optional(),
+  // contain only. Absent means 'blur' (`resolveFraming`'s default) — the
+  // renderer decides whether `pad` matters for the resolved `fit`.
+  pad: z.enum(['blur', 'color', 'none']).optional(),
+  // Used when pad === 'color'. Absent means TRANSPARENT, not black — the
+  // frame's own background shows through.
+  padColor: z.string().optional(),
+  // contain only. Where the shot sits in the leftover space — 0=left/top,
+  // 0.5=centre (default), 1=right/bottom. Deliberately NOT the same field as
+  // focalX/focalY (source-window pan, independent of fit): switching `fit`
+  // must be lossless in both directions, and one shared `object-position`
+  // field would make a focalX authored for a `cover` crop jump the picture
+  // under `contain`.
+  placeX: z.number().min(0).max(1).optional(),
+  placeY: z.number().min(0).max(1).optional(),
   backdropBlur: z.number().min(0).max(80).optional(),
   // Stored as DIMMING, not brightness: 0 leaves the backdrop alone, 1 is
   // black. The render inverts it once (`brightness(1 - backdropDim)`), so the

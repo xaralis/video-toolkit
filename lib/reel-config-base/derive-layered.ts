@@ -50,8 +50,14 @@ export interface CutSegment {
   grade?: Record<string, unknown>;
   // How the media meets the frame — see VideoContainerBase in layered-schema.ts.
   // Authored per segment by /toolkit:cut when a source's orientation doesn't
-  // match the composition's.
-  fit?: 'cover' | 'blur-pad';
+  // match the composition's. `pad`/`padColor`/`placeX`/`placeY` are the
+  // contain-only pad/placement axes framing.ts introduces; 'blur-pad' is the
+  // deprecated fit alias framing.ts's `resolveFraming` absorbs.
+  fit?: 'cover' | 'contain' | 'blur-pad';
+  pad?: 'blur' | 'color' | 'none';
+  padColor?: string;
+  placeX?: number;
+  placeY?: number;
   backdropBlur?: number;
   backdropDim?: number;
   // Typed with the shared catalog, not a loose record — the layered item this
@@ -143,8 +149,14 @@ function buildVideoItem(seg: CutSegment, startMs: number, endMs: number): VideoI
         ...(seg.grade !== undefined ? { grade: seg.grade } : {}),
         // Media fit — forwarded here, at the seam a dropped field survives
         // silently (schema still accepts it, renderer still honours it,
-        // nothing else looks). Pinned by derive-layered.test.ts.
+        // nothing else looks). Pinned by derive-layered.test.ts. Only
+        // forwarded when authored — materialising a default here would turn
+        // every untouched config into a diff.
         ...(seg.fit !== undefined ? { fit: seg.fit } : {}),
+        ...(seg.pad !== undefined ? { pad: seg.pad } : {}),
+        ...(seg.padColor !== undefined ? { padColor: seg.padColor } : {}),
+        ...(seg.placeX !== undefined ? { placeX: seg.placeX } : {}),
+        ...(seg.placeY !== undefined ? { placeY: seg.placeY } : {}),
         ...(seg.backdropBlur !== undefined ? { backdropBlur: seg.backdropBlur } : {}),
         ...(seg.backdropDim !== undefined ? { backdropDim: seg.backdropDim } : {}),
         ...(effects.length ? { effects } : {}),
@@ -166,8 +178,14 @@ function buildVideoItem(seg: CutSegment, startMs: number, endMs: number): VideoI
         ...(seg.grade !== undefined ? { grade: seg.grade } : {}),
         // Media fit — forwarded here, at the seam a dropped field survives
         // silently (schema still accepts it, renderer still honours it,
-        // nothing else looks). Pinned by derive-layered.test.ts.
+        // nothing else looks). Pinned by derive-layered.test.ts. Only
+        // forwarded when authored — materialising a default here would turn
+        // every untouched config into a diff.
         ...(seg.fit !== undefined ? { fit: seg.fit } : {}),
+        ...(seg.pad !== undefined ? { pad: seg.pad } : {}),
+        ...(seg.padColor !== undefined ? { padColor: seg.padColor } : {}),
+        ...(seg.placeX !== undefined ? { placeX: seg.placeX } : {}),
+        ...(seg.placeY !== undefined ? { placeY: seg.placeY } : {}),
         ...(seg.backdropBlur !== undefined ? { backdropBlur: seg.backdropBlur } : {}),
         ...(seg.backdropDim !== undefined ? { backdropDim: seg.backdropDim } : {}),
         ...(seg.aiGenerated !== undefined ? { aiGenerated: seg.aiGenerated } : {}),
@@ -222,8 +240,14 @@ function buildVideoItem(seg: CutSegment, startMs: number, endMs: number): VideoI
         ...(seg.grade !== undefined ? { grade: seg.grade } : {}),
         // Media fit — forwarded here, at the seam a dropped field survives
         // silently (schema still accepts it, renderer still honours it,
-        // nothing else looks). Pinned by derive-layered.test.ts.
+        // nothing else looks). Pinned by derive-layered.test.ts. Only
+        // forwarded when authored — materialising a default here would turn
+        // every untouched config into a diff.
         ...(seg.fit !== undefined ? { fit: seg.fit } : {}),
+        ...(seg.pad !== undefined ? { pad: seg.pad } : {}),
+        ...(seg.padColor !== undefined ? { padColor: seg.padColor } : {}),
+        ...(seg.placeX !== undefined ? { placeX: seg.placeX } : {}),
+        ...(seg.placeY !== undefined ? { placeY: seg.placeY } : {}),
         ...(seg.backdropBlur !== undefined ? { backdropBlur: seg.backdropBlur } : {}),
         ...(seg.backdropDim !== undefined ? { backdropDim: seg.backdropDim } : {}),
         ...(seg.aiGenerated !== undefined ? { aiGenerated: seg.aiGenerated } : {}),

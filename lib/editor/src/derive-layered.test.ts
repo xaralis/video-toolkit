@@ -350,4 +350,38 @@ describe('deriveLayered — media fit', () => {
     const reel = deriveLayered(withFit('broll') as never, OPTS);
     expect(() => LayeredReelSchema.parse(reel)).not.toThrow();
   });
+
+  // pad/padColor/placeX/placeY are the contain-only pad/placement axes
+  // framing.ts introduces — same forwarding-seam risk as fit/backdropBlur/
+  // backdropDim above: a field dropped here passes every other gate.
+  const withPad = (type: string) => ({
+    topic: 't',
+    segments: [
+      { id: 'seg-001', type, source: 'a.mp4', trimIn: 0, trimOut: 3, audioMode: 'silent',
+        fit: 'contain', pad: 'color', padColor: '#123456', placeX: 0.2, placeY: 0.8 },
+    ],
+  });
+
+  it.each(['clip', 'broll', 'photo'])('carries fit/pad/padColor/placeX/placeY onto a %s item', (type) => {
+    const reel = deriveLayered(withPad(type) as never, OPTS);
+    expect(reel.tracks.video[0]).toMatchObject({
+      fit: 'contain', pad: 'color', padColor: '#123456', placeX: 0.2, placeY: 0.8,
+    });
+  });
+
+  it('leaves pad/padColor/placeX/placeY off an item that authored none of them', () => {
+    const reel = deriveLayered(
+      { topic: 't', segments: [{ id: 'seg-001', type: 'clip', source: 'a.mp4', trimIn: 0, trimOut: 3, audioMode: 'silent' }] } as never,
+      OPTS,
+    );
+    expect(reel.tracks.video[0]).not.toHaveProperty('pad');
+    expect(reel.tracks.video[0]).not.toHaveProperty('padColor');
+    expect(reel.tracks.video[0]).not.toHaveProperty('placeX');
+    expect(reel.tracks.video[0]).not.toHaveProperty('placeY');
+  });
+
+  it('still parses as a valid layered reel with pad/place fields set', () => {
+    const reel = deriveLayered(withPad('broll') as never, OPTS);
+    expect(() => LayeredReelSchema.parse(reel)).not.toThrow();
+  });
 });
