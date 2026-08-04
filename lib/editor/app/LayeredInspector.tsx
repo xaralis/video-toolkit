@@ -642,49 +642,49 @@ const BLEND_DIRECTIONS = ['tl-br', 'tr-bl', 'bl-tr', 'br-tl'];
 // SelectField's unknown-value prepend and renders via PLACEMENT_ALIASES.
 const OVERLAY_POSITIONS: string[] = [...PLACEMENTS];
 
-// The seven Grade fields, shared (Phase 4 Task 3.4) between the item-level
-// `item.grade` Color panel below and a `type: 'grade'` effect's own body in
-// EffectEditor — the two are ONE implementation now (style-effect.ts's
-// `gradeStyleEffect`), so they get ONE control set rather than two hand-kept
-// copies that could drift on a field addition. `disabled` (the second editor
-// guard) greys every field without touching `g` — the caller still owns and
-// passes back whatever value each field currently holds, so a disabled
-// render never drops data, only interaction.
+// The seven Grade fields, edited by ONE place now: the item-level
+// `item.grade` Color panel below. A `type: 'grade'` EFFECT used to exist as a
+// second, redundant way to author the exact same seven parameters (Phase 4
+// Task 3.4 through its removal) — the two were one implementation at render
+// time (style-effect.ts's `gradeStyleEffect`) but two places to edit in the
+// UI, with a whole guard mechanism just to keep them from fighting over one
+// render. `item.grade` is the survivor; this component (and the `disabled`
+// guard that used to grey it) no longer needs a second caller to serve.
 function GradeFields({
   g,
   onPatch,
-  disabled,
 }: {
   g: { brightness?: number; contrast?: number; saturation?: number; temperature?: number; tint?: number; sepia?: number; hueRotateDeg?: number };
   onPatch: (patch: Record<string, number>) => void;
-  disabled?: boolean;
 }) {
   return (
     <>
       <Row>
-        <SliderField lbl="Brightness" min={0.2} max={2} step={0.05} value={g.brightness ?? 1} fallback={1} disabled={disabled} onCommit={(n) => onPatch({ brightness: n })} />
-        <SliderField lbl="Contrast" min={0.2} max={2} step={0.05} value={g.contrast ?? 1} fallback={1} disabled={disabled} onCommit={(n) => onPatch({ contrast: n })} />
+        <SliderField lbl="Brightness" min={0.2} max={2} step={0.05} value={g.brightness ?? 1} fallback={1} onCommit={(n) => onPatch({ brightness: n })} />
+        <SliderField lbl="Contrast" min={0.2} max={2} step={0.05} value={g.contrast ?? 1} fallback={1} onCommit={(n) => onPatch({ contrast: n })} />
       </Row>
       <Row>
-        <SliderField lbl="Saturation" min={0} max={2} step={0.05} value={g.saturation ?? 1} fallback={1} disabled={disabled} onCommit={(n) => onPatch({ saturation: n })} />
-        <SliderField lbl="Temperature" min={-1} max={1} step={0.05} value={g.temperature ?? 0} fallback={0} disabled={disabled} onCommit={(n) => onPatch({ temperature: n })} />
+        <SliderField lbl="Saturation" min={0} max={2} step={0.05} value={g.saturation ?? 1} fallback={1} onCommit={(n) => onPatch({ saturation: n })} />
+        <SliderField lbl="Temperature" min={-1} max={1} step={0.05} value={g.temperature ?? 0} fallback={0} onCommit={(n) => onPatch({ temperature: n })} />
       </Row>
       <Row>
-        <SliderField lbl="Tint" min={-1} max={1} step={0.05} value={g.tint ?? 0} fallback={0} disabled={disabled} onCommit={(n) => onPatch({ tint: n })} />
-        <SliderField lbl="Sepia" min={0} max={1} step={0.05} value={g.sepia ?? 0} fallback={0} disabled={disabled} onCommit={(n) => onPatch({ sepia: n })} />
+        <SliderField lbl="Tint" min={-1} max={1} step={0.05} value={g.tint ?? 0} fallback={0} onCommit={(n) => onPatch({ tint: n })} />
+        <SliderField lbl="Sepia" min={0} max={1} step={0.05} value={g.sepia ?? 0} fallback={0} onCommit={(n) => onPatch({ sepia: n })} />
       </Row>
-      <SliderField lbl="Hue rotate (deg)" min={-180} max={180} step={1} value={g.hueRotateDeg ?? 0} fallback={0} disabled={disabled} onCommit={(n) => onPatch({ hueRotateDeg: n })} />
+      <SliderField lbl="Hue rotate (deg)" min={-180} max={180} step={1} value={g.hueRotateDeg ?? 0} fallback={0} onCommit={(n) => onPatch({ hueRotateDeg: n })} />
     </>
   );
 }
 
 // Editable params (BODY only — the collapsible header + remove ✕ are supplied by
-// the caller's <Collapsible>) for one effect. Core has a bespoke editor for the
-// three effects it OWNS — ken-burns and grade (both rendered by SegmentMedia;
-// ken-burns has two legitimate shapes) and blend (emitted by core's own
-// derivation) — and renders every other effect through ParamFields:
-// brand-declared fields when the catalog declares them, else typed by the
-// values the effect currently holds.
+// the caller's <Collapsible>) for one effect. Core has a bespoke editor for
+// ken-burns (rendered by SegmentMedia; it has two legitimate shapes) and
+// blend (emitted by core's own derivation) — and renders every other effect
+// through ParamFields: brand-declared fields when the catalog declares them,
+// else typed by the values the effect currently holds. A hand-authored
+// `type: 'grade'` effect entry (the catalog no longer offers adding one —
+// see CORE_EFFECTS's comment in editor-meta.ts) falls through to that same
+// generic ParamFields path rather than a bespoke one now.
 function EffectEditor({
   eff,
   fields,
@@ -741,20 +741,14 @@ function EffectEditor({
       </>
     );
   }
-  if (type === 'grade') {
-    // Same seven fields, same shape as `item.grade` — see GradeFields above.
-    // Never disabled here: THIS is the authored effect itself, not the
-    // item-level shorthand the second editor guard greys when this exists.
-    return <GradeFields g={eff as Record<string, number | undefined>} onPatch={onPatch} />;
-  }
   if (type === 'blend') {
     return (
       <>
         <TextField lbl="To source" value={eff.to as string | undefined} onCommit={(s) => onPatch({ to: s || undefined })} />
         <SelectField lbl="Direction" value={eff.direction as string | undefined} options={BLEND_DIRECTIONS} onChange={(s) => onPatch({ direction: s })} />
         {/* `blend`'s RENDERER is brand-owned (a registration this repo never
-            sees — e.g. PP's), not core's, so unlike ken-burns/grade there is
-            no formula here to mirror for what an unset startPct/endPct
+            sees — e.g. PP's), not core's, so unlike ken-burns there is no
+            formula here to mirror for what an unset startPct/endPct
             actually plays as. `min`/`max` are the only honest fallback
             available from core; a brand adding its own inspector for this
             effect can supply the real one. */}
@@ -769,35 +763,33 @@ function EffectEditor({
   return <ParamFields values={params} fields={fields} onPatch={onPatch} accentSlots={accentSlots} axis="effect" kind={type} />;
 }
 
-// `btnCls` plus this call site's own sizing and margin. `seekBtnCls` has no
-// disabled variant anywhere it's used, so its `cursor-pointer` is baked in;
-// `linkBtnCls` DOES gain a disabled variant at one call site (`AddEffectControl`
-// below), so — same hazard `btnCls` itself is written to avoid — it carries no
-// `cursor-*` of its own; every consumer adds its own.
+// `btnCls` plus this call site's own sizing and margin. Neither `seekBtnCls`
+// nor `linkBtnCls` has a disabled variant anywhere it's used any more
+// (`AddEffectControl`'s used to be one — the grade/`blockedTypes` guard it
+// existed for is gone, see that component's own comment) — same hazard
+// `btnCls` itself is written to avoid, `linkBtnCls` carries no `cursor-*` of
+// its own; every consumer adds its own.
 const seekBtnCls = `${btnCls} ed:cursor-pointer ed:mb-2.5 ed:w-auto ed:px-2.5 ed:py-1`;
 const linkBtnCls = `${btnCls} ed:mt-1 ed:w-full ed:px-2.5 ed:py-1.5 ed:text-left`;
 
 // The addable effects: core's own catalog plus whatever the brand declared.
-// Core ships only what core RENDERS (ken-burns and grade via SegmentMedia) —
-// every other effect is a brand's and arrives through EditorMeta.effects.
+// Core ships only what core RENDERS (ken-burns via SegmentMedia) — every
+// other effect is a brand's and arrives through EditorMeta.effects.
 //
-// `blockedTypes` (Phase 4 Task 3.4) is the FIRST editor guard against
-// authoring both `item.grade` and a `type: 'grade'` effect — the two are now
-// ONE implementation (style-effect.ts's `gradeStyleEffect`) and an item
-// carrying both would apply grade with `item.grade` winning the render-time
-// dedup silently, with no signal to the author that the effect they just
-// added does nothing. Disabled AND guarded on click (belt and suspenders: a
-// disabled DOM button already suppresses the click in a real browser, but
-// nothing stops a future caller from removing `disabled` while missing the
-// onClick guard, so both stay).
+// This control used to also take a `blockedTypes` set (Phase 4 Task 3.4
+// through this removal) — a guard against authoring both `item.grade` and a
+// `type: 'grade'` effect on top of it, which would have applied grade with
+// `item.grade` winning the render-time dedup silently. That guard is gone
+// along with the effect it protected against: `grade` no longer has a
+// catalog entry at all (see CORE_EFFECTS's comment in editor-meta.ts), so
+// there is nothing left in "+ Add effect" that could collide with
+// `item.grade` in the first place.
 function AddEffectControl({
   meta,
   onAdd,
-  blockedTypes,
 }: {
   meta?: EditorMeta;
   onAdd: (effect: Record<string, unknown>) => void;
-  blockedTypes?: ReadonlySet<string>;
 }) {
   const [open, setOpen] = useState(false);
   const catalog = effectCatalog(meta);
@@ -811,25 +803,19 @@ function AddEffectControl({
         + Add effect
       </button>
       {open &&
-        catalog.map((e) => {
-          const isBlocked = blockedTypes?.has(e.type) ?? false;
-          return (
-            <button
-              key={e.type}
-              type="button"
-              disabled={isBlocked}
-              title={isBlocked ? 'This item already has a grade — remove it first, or edit that grade directly.' : undefined}
-              onClick={() => {
-                if (isBlocked) return;
-                onAdd({ type: e.type, ...(e.defaults ?? {}) });
-                setOpen(false);
-              }}
-              className={isBlocked ? `${linkBtnCls} ed:opacity-40 ed:cursor-not-allowed` : `${linkBtnCls} ed:cursor-pointer`}
-            >
-              {e.label ?? e.type}
-            </button>
-          );
-        })}
+        catalog.map((e) => (
+          <button
+            key={e.type}
+            type="button"
+            onClick={() => {
+              onAdd({ type: e.type, ...(e.defaults ?? {}) });
+              setOpen(false);
+            }}
+            className={`${linkBtnCls} ed:cursor-pointer`}
+          >
+            {e.label ?? e.type}
+          </button>
+        ))}
     </div>
   );
 }
@@ -977,8 +963,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                 because it decides what the controls under it mean: under
                 blur-pad the whole shot is visible, so there is no crop to
                 focus and the crop controls go inert (greyed, value kept, with
-                a reason printed — the same pattern the grade panel below uses
-                when an authored grade effect takes over). */}
+                a reason printed below). */}
             {(() => {
               const isBlurPad = (v as { fit?: string }).fit === 'blur-pad';
               const backdrop = v as { backdropBlur?: number; backdropDim?: number };
@@ -1069,22 +1054,24 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
             kinds. Neutral = 1 for the multipliers, 0 for GRADE_NEUTRAL_ZERO;
             neutral values are dropped so `grade` stays minimal.
 
-            SECOND editor guard (Phase 4 Task 3.4): greyed — `disabled`,
-            NOT hidden and NOT cleared — whenever the item already carries an
-            authored `type: 'grade'` effect. `item.grade` and that effect are
-            ONE implementation post-3.4 (style-effect.ts's
-            `gradeStyleEffect`), and `applyStyleEffects`'s dedup means
-            `item.grade` always wins the render when both are present — so
-            editing THIS panel while a grade effect exists would silently do
-            nothing. Disabling it is the signal; `v.grade` itself is
-            untouched by `hasGradeEffect` either way, so removing the grade
-            effect later re-enables the SAME stored value, round-tripped. */}
+            This panel is always enabled now. It used to grey itself
+            (`disabled`, Phase 4 Task 3.4's SECOND editor guard) whenever the
+            item also carried an authored `type: 'grade'` EFFECT, since the
+            two were one implementation at render time and the effect would
+            silently win the dedup — but that effect no longer exists as
+            something the UI can add (removed from CORE_EFFECTS; see
+            editor-meta.ts), so the collision this guard protected against
+            cannot occur through authoring any more and the guard went with
+            it. A hand-edited config could still carry a stray `type: 'grade'`
+            effect entry from before this change; render-time backwards
+            compatibility for that is unaffected (`item.grade` still wins the
+            dedup — see style-effect.ts), only this panel's own greying is
+            gone. */}
         {(v.kind === 'clip' || v.kind === 'broll' || v.kind === 'photo') && (() => {
           const g = (v.grade ?? {}) as {
             brightness?: number; contrast?: number; saturation?: number;
             temperature?: number; tint?: number; sepia?: number; hueRotateDeg?: number;
           };
-          const hasGradeEffect = (v.effects ?? []).some((e) => (e as { type?: string }).type === 'grade');
           const patchGrade = (patch: Record<string, number>) => {
             const merged = { ...g, ...patch } as Record<string, number>;
             const cleaned = Object.fromEntries(
@@ -1094,10 +1081,8 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           };
           return (
             <>
-              <div className={sectionCls}>
-                Color{hasGradeEffect ? ' (disabled — this item has its own grade effect)' : ''}
-              </div>
-              <GradeFields g={g} onPatch={patchGrade} disabled={hasGradeEffect} />
+              <div className={sectionCls}>Color</div>
+              <GradeFields g={g} onPatch={patchGrade} />
             </>
           );
         })()}
@@ -1164,12 +1149,6 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
           })}
         <AddEffectControl
           meta={meta}
-          // FIRST editor guard (Phase 4 Task 3.4): `item.grade` already set
-          // means adding a `type: 'grade'` effect on top would be a no-op at
-          // render time (see `applyStyleEffects`'s dedup) — block it here so
-          // the author gets a disabled control instead of a silently inert
-          // effect entry.
-          blockedTypes={v.grade ? new Set(['grade']) : undefined}
           onAdd={(effect) => patchItem('video', id, { effects: [...(v.effects ?? []), effect] })}
         />
           </>

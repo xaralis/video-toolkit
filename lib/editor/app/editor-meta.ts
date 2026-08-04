@@ -71,24 +71,29 @@ export interface EditorMeta {
 }
 
 /** Core's own effect catalog: ONLY what core itself renders. SegmentMedia (the
- *  generic footage renderer) implements Ken Burns and — since Phase 4 Task
- *  3.4, when `grade` joined the style axis alongside it — grade; every other
- *  effect is a brand's and arrives via `EditorMeta.effects`.
+ *  generic footage renderer) implements Ken Burns; every other effect is a
+ *  brand's and arrives via `EditorMeta.effects`.
  *
- *  `grade` has no non-neutral `defaults`: every `Grade` field is optional and
- *  neutral when absent (see the item-level Color panel in
- *  `LayeredInspector.tsx`, which edits the exact same shape), so adding the
- *  effect starts as a genuine no-op the author then tunes — never a
- *  surprise picture change the instant it's added. */
+ *  `grade` USED to be a second entry here (Phase 4 Task 3.4 through this
+ *  removal) — an offerable `type: 'grade'` EFFECT, editable via the exact
+ *  same seven fields as the item-level `item.grade` Color panel in
+ *  `LayeredInspector.tsx`. It was removed because the two were always
+ *  redundant: every video item already has its own Color section for the
+ *  same seven parameters, and the inspector had to grow a whole guard
+ *  mechanism (a "disabled — this item has its own grade effect" state) just
+ *  to keep the two from silently fighting over one render. `item.grade` is
+ *  the survivor — see the Color section below — and this catalog no longer
+ *  offers a second way to author the same thing. `item.grade` and a
+ *  hand-authored `type: 'grade'` effect entry still resolve through the SAME
+ *  renderer at RENDER time (`gradeStyleEffect`, `lib/theming/effects/
+ *  style-effect.ts`) — that renderer arm was deliberately left in place as
+ *  inert backwards compatibility for any already-authored config, it is just
+ *  no longer reachable through this catalog or the "+ Add effect" UI. */
 export const CORE_EFFECTS: readonly EffectDefinition[] = [
   {
     type: 'ken-burns',
     label: 'Ken Burns',
     defaults: { fromScale: 1, toScale: 1.08, fromX: 0.5, toX: 0.5 },
-  },
-  {
-    type: 'grade',
-    label: 'Grade',
   },
 ];
 
@@ -144,10 +149,17 @@ function effectsFromTheme(theme: CompositionTheme): EffectDefinition[] {
 
 /** Every STYLE-axis effect type the theme registers as ITS OWN — i.e. every
  *  key of `theme.styleEffects` except core's two reserved types (`ken-burns`,
- *  `grade`, `CORE_STYLE_EFFECT_TYPES`), which already have static
- *  `CORE_EFFECTS` entries with their own labels/defaults and (for grade) a
- *  bespoke inspector panel — re-deriving them here would just shadow that
- *  with a generic params list.
+ *  `grade`, `CORE_STYLE_EFFECT_TYPES`). `ken-burns` is excluded because it
+ *  already has a static `CORE_EFFECTS` entry with its own bespoke inspector
+ *  panel — re-deriving it here would just shadow that with a generic params
+ *  list. `grade` is excluded too, but for a stricter reason since the effect
+ *  catalog dropped it entirely: it stays a reserved STYLE type (the renderer
+ *  arm is kept, inert, for backwards compatibility — see `CORE_EFFECTS`'s own
+ *  comment), but it is deliberately not re-offered here EITHER — the whole
+ *  point of removing it from `CORE_EFFECTS` was to stop offering a second way
+ *  to author what `item.grade` already covers, and letting it back in
+ *  through the theme-derivation path the moment a theme happens to register
+ *  it under `styleEffects.grade` would undo that.
  *
  *  This is Gap 1 of Task 4.4: a brand's style-effect registration RENDERS
  *  (`SegmentMedia` resolves it via `resolveStyleEffectRenderer`, threaded

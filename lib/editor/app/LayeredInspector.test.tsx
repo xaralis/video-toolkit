@@ -591,13 +591,16 @@ describe('LayeredInspector grade neutral handling', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Phase 4 Task 3.4 — the two editor guards against authoring BOTH `item.grade`
-// and a `type: 'grade'` effect (now one implementation, style-effect.ts's
-// `gradeStyleEffect` — see grade-unification.test.tsx for the render-path
-// proof). Per the task brief, tested with a STATEFUL PARENT: a wrapper that
-// holds real state and re-renders on `onChange`, the shape that would have
-// caught all four prior editor data-loss bugs (an inert `onChange={() => {}}`
-// never lets the component see its own committed value come back).
+// A STATEFUL PARENT: a wrapper that holds real state and re-renders on
+// `onChange`, the shape that would have caught all four prior editor
+// data-loss bugs (an inert `onChange={() => {}}` never lets the component see
+// its own committed value come back). Introduced for Phase 4 Task 3.4's two
+// editor guards against authoring both `item.grade` and a `type: 'grade'`
+// effect — those guards, and the tests that pinned them, are gone (the
+// `grade` effect no longer exists to author at all; `item.grade` is the
+// survivor — see CORE_EFFECTS's comment in editor-meta.ts), but this helper
+// stays: the style-effect catalog tests below still need a real round-trip
+// through committed state.
 // ---------------------------------------------------------------------------
 function StatefulInspector({ initial, selectedId, meta }: { initial: LayeredReel; selectedId: string; meta?: EditorMeta }) {
   const [reel, setReel] = useState(initial);
@@ -683,7 +686,18 @@ describe('LayeredInspector style-effect catalog (Task 4.4, Gap 1)', () => {
   });
 });
 
-describe('LayeredInspector grade unification guards (Phase 4 Task 3.4)', () => {
+// `grade` used to be a second, redundant way to author the same seven
+// parameters `item.grade` (the Color panel) already covers — Phase 4 Task
+// 3.4 through this removal. The two editor guards that used to keep them
+// from silently fighting over one render ("+ Add effect → Grade" disabled
+// when `item.grade` was set; the Color panel greyed when a `type: 'grade'`
+// effect existed) are gone along with the effect itself — see CORE_EFFECTS's
+// comment in editor-meta.ts for why. These pin the two visible consequences:
+// the catalog no longer offers it, and the Color panel — having nothing left
+// to grey against — now stays enabled unconditionally, even in the
+// backwards-compatibility case of a hand-edited config that still carries a
+// stray authored `type: 'grade'` effect entry.
+describe('LayeredInspector grade effect removal', () => {
   const withGradeField: LayeredReel = {
     version: 'layered-1', meta: { topic: 't', totalDurationMs: 2000 },
     tracks: {
@@ -693,7 +707,7 @@ describe('LayeredInspector grade unification guards (Phase 4 Task 3.4)', () => {
     },
   };
 
-  const withGradeEffect: LayeredReel = {
+  const withStrayGradeEffect: LayeredReel = {
     ...withGradeField,
     tracks: {
       ...withGradeField.tracks,
@@ -701,72 +715,32 @@ describe('LayeredInspector grade unification guards (Phase 4 Task 3.4)', () => {
     },
   };
 
-  const noGradeAtAll: LayeredReel = {
-    ...withGradeField,
-    tracks: { ...withGradeField.tracks, video: [{ ...withGradeField.tracks.video[0], grade: undefined } as never] },
-  };
-
-  // GUARD 1: "+ Add effect → Grade" is disabled when item.grade is already
-  // set — MUTATION TARGET: break `AddEffectControl`'s `blockedTypes` guard
-  // (or its call site's `v.grade ? new Set(['grade']) : undefined` in
-  // LayeredInspector.tsx) and this goes red — clicking "Grade" would add a
-  // second, dead grade effect.
-  it('disables "+ Add effect → Grade" when item.grade is already set, and clicking it is a no-op', () => {
+  it('no longer offers "Grade" in "+ Add effect"', () => {
     render(<StatefulInspector initial={withGradeField} selectedId="video:v1" />);
     fireEvent.click(screen.getByText('+ Add effect'));
-    const gradeBtn = screen.getByText('Grade') as HTMLButtonElement;
-    expect(gradeBtn.disabled).toBe(true);
-    fireEvent.click(gradeBtn);
-    expect(screen.queryByText('Effect · grade')).toBeNull();
+    expect(screen.queryByText('Grade')).toBeNull();
   });
 
-  it('allows adding a Grade effect when item.grade is absent', () => {
-    render(<StatefulInspector initial={noGradeAtAll} selectedId="video:v1" />);
-    fireEvent.click(screen.getByText('+ Add effect'));
-    fireEvent.click(screen.getByText('Grade'));
-    expect(screen.getByText('Effect · grade')).not.toBeNull();
-  });
-
-  // GUARD 2: the Color panel is greyed (disabled, not hidden) when a `grade`
-  // effect already exists — MUTATION TARGET: drop the `hasGradeEffect`
-  // computation or the `disabled={hasGradeEffect}` prop in
-  // LayeredInspector.tsx's Color-panel block and this goes red.
-  it('greys the Color panel (Brightness disabled) when a grade effect is present', () => {
-    render(<StatefulInspector initial={withGradeEffect} selectedId="video:v1" />);
+  it('the Color panel (Brightness) stays enabled even with a stray authored grade effect present', () => {
+    render(<StatefulInspector initial={withStrayGradeEffect} selectedId="video:v1" />);
     const brightness = screen.getByLabelText('Brightness') as HTMLInputElement;
-    expect(brightness.disabled).toBe(true);
-  });
-
-  it('the Color panel is enabled when no grade effect is present', () => {
-    render(<StatefulInspector initial={withGradeField} selectedId="video:v1" />);
-    expect((screen.getByLabelText('Brightness') as HTMLInputElement).disabled).toBe(false);
-  });
-
-  // Disabled ≠ cleared — the guard that protects `item.grade` must not be
-  // the thing that destroys it. Pinned end-to-end through the STATEFUL
-  // parent: greyed while a grade effect exists, value SURVIVES, re-enables
-  // and round-trips once the effect is removed, THEN can still be edited.
-  it('item.grade SURVIVES being greyed, re-enabled, and round-tripped after the grade effect is removed', () => {
-    render(<StatefulInspector initial={withGradeEffect} selectedId="video:v1" />);
-    // Greyed, but showing the ORIGINAL item.grade value, not the effect's own.
-    let brightness = screen.getByLabelText('Brightness') as HTMLInputElement;
-    expect(brightness.disabled).toBe(true);
-    expect(brightness.value).toBe('1.2');
-
-    // Remove the grade EFFECT (not the field) — the panel re-enables.
-    fireEvent.click(screen.getByLabelText('remove effect grade'));
-    brightness = screen.getByLabelText('Brightness') as HTMLInputElement;
     expect(brightness.disabled).toBe(false);
-    // The stored item.grade value round-tripped through the whole disable →
-    // re-enable cycle untouched — greying never wrote to it.
-    expect(brightness.value).toBe('1.2');
+    expect(brightness.value).toBe('1.2'); // item.grade's own value, untouched by the stray effect
+  });
 
-    // And it is genuinely editable again, not just visually re-enabled.
-    fireEvent.change(brightness, { target: { value: '1.5' } });
-    // A SliderField (Task 10) is `type="range"` — jest-dom's `toHaveValue`
-    // only special-cases `type="number"`, so a range input's value compares
-    // as a string.
-    expect((screen.getByLabelText('Brightness') as HTMLInputElement).value).toBe('1.5');
+  it('the Color section heading carries no "disabled" suffix any more', () => {
+    render(<StatefulInspector initial={withStrayGradeEffect} selectedId="video:v1" />);
+    expect(screen.getByText('Color')).not.toBeNull();
+    expect(screen.queryByText(/disabled — this item has its own grade effect/)).toBeNull();
+  });
+
+  // A hand-edited config can still carry a `type: 'grade'` effect entry from
+  // before this removal — it renders through the generic ParamFields
+  // fallback now (no bespoke GradeFields branch left in EffectEditor), not a
+  // crash and not a silently dropped entry.
+  it('a stray authored grade effect entry still renders (through the generic fallback), not dropped', () => {
+    render(<StatefulInspector initial={withStrayGradeEffect} selectedId="video:v1" />);
+    expect(screen.getByText('Effect · grade')).not.toBeNull();
   });
 });
 

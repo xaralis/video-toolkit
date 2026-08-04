@@ -5,11 +5,11 @@ import { fieldCls, labelCls, disabledCls } from './field-classes';
 //
 // No `htmlFor`/`id` pairing between the label and the input: `aria-label={lbl}`
 // on the input already supplies the accessible name (and is what the test
-// suite queries by), and an `id` derived from `lbl` text is neither unique
-// (two `GradeFields` instances — the item-level grade and a grade effect —
-// render in the same panel and would both mint `id="sl-Saturation"`) nor
-// always valid HTML (labels like `Zoom (1 = none)` contain characters an
-// `id`/`querySelector` can't carry).
+// suite queries by), and an `id` derived from `lbl` text is neither
+// guaranteed unique (nothing stops two controls sharing a label — e.g. a
+// future second `GradeFields` caller — from both minting `id="sl-Saturation"`
+// in the same panel) nor always valid HTML (labels like `Zoom (1 = none)`
+// contain characters an `id`/`querySelector` can't carry).
 export function SliderField({
   lbl, value, min, max, step, fallback, onCommit, disabled, title,
 }: {

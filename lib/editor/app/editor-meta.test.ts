@@ -21,29 +21,37 @@ import type { StyleEffectRenderer } from '../../theming/effects';
 const dummyStyleRenderer: StyleEffectRenderer = () => ({});
 
 describe('effectCatalog', () => {
-  it('is core-only (Ken Burns and grade — the two effects core itself renders) with no meta', () => {
-    expect(effectCatalog().map((e) => e.type)).toEqual(['ken-burns', 'grade']);
+  // `grade` was removed from the core catalog: every video item already has
+  // its own item-level Color section for the same seven parameters (see
+  // LayeredInspector.tsx), so offering it a SECOND time as an addable effect
+  // was pure redundancy — worse, the two silently fought over one render,
+  // which is why the inspector needed a whole "disabled — this item has its
+  // own grade effect" guard just to keep them from doubling up. `item.grade`
+  // is the survivor; `ken-burns` is now the only effect core itself renders
+  // and offers.
+  it('is core-only (Ken Burns — the one effect core itself renders and offers) with no meta', () => {
+    expect(effectCatalog().map((e) => e.type)).toEqual(['ken-burns']);
     // No brand effect leaks into the core catalog.
     expect(effectCatalog().map((e) => e.type)).not.toContain('vintage');
   });
 
   it('appends a brand effect after the core ones', () => {
     const cat = effectCatalog({ effects: [{ type: 'vintage', defaults: { mode: 'film' } }] });
-    expect(cat.map((e) => e.type)).toEqual(['ken-burns', 'grade', 'vintage']);
+    expect(cat.map((e) => e.type)).toEqual(['ken-burns', 'vintage']);
   });
 
   it('lets a brand entry replace a core one of the same type, in place', () => {
     const cat = effectCatalog({
       effects: [{ type: 'ken-burns', label: 'Pan & zoom', defaults: { direction: 'in' } }, { type: 'grain' }],
     });
-    expect(cat.map((e) => e.type)).toEqual(['ken-burns', 'grade', 'grain']);
+    expect(cat.map((e) => e.type)).toEqual(['ken-burns', 'grain']);
     expect(cat[0].label).toBe('Pan & zoom');
     expect(cat[0].defaults).toEqual({ direction: 'in' });
   });
 
   it('does not mutate CORE_EFFECTS across calls', () => {
     effectCatalog({ effects: [{ type: 'vintage' }] });
-    expect(CORE_EFFECTS.map((e) => e.type)).toEqual(['ken-burns', 'grade']);
+    expect(CORE_EFFECTS.map((e) => e.type)).toEqual(['ken-burns']);
   });
 
   it('effectDefinition finds a brand-declared type', () => {
@@ -260,13 +268,13 @@ describe('editorMetaFromTheme', () => {
       effects: { vintage: { params: [{ prop: 'mode', options: ['film', 'vhs'] }] } },
     };
     const meta = editorMetaFromTheme(theme);
-    expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns', 'grade', 'vintage']);
+    expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns', 'vintage']);
     expect(effectDefinition(meta, 'vintage')?.params?.[0].options).toEqual(['film', 'vhs']);
   });
 
   it('derives an effect with no params at all — registering it is what makes it addable', () => {
     const theme: CompositionTheme = { ...bare, effects: { vintage: {} } };
-    expect(effectCatalog(editorMetaFromTheme(theme)).map((e) => e.type)).toEqual(['ken-burns', 'grade', 'vintage']);
+    expect(effectCatalog(editorMetaFromTheme(theme)).map((e) => e.type)).toEqual(['ken-burns', 'vintage']);
   });
 
   it('derives overlayProps from an overlay registration’s params', () => {
@@ -293,24 +301,26 @@ describe('editorMetaFromTheme', () => {
       ...bare,
       effects: {
         'ken-burns': { params: [{ prop: 'beats', type: 'number' }] },
-        // grade joined the reserved set at Phase 4 Task 3.4 — a brand's own
-        // wrapper-axis registration for it must be just as inert as its
-        // ken-burns counterpart above.
+        // grade stays a reserved type (its STYLE-axis renderer is kept, inert,
+        // for backwards compatibility — see CORE_EFFECTS's comment in
+        // editor-meta.ts) — a brand's own wrapper-axis registration for it
+        // must be just as inert as its ken-burns counterpart above.
         grade: { params: [{ prop: 'lut', type: 'string' }] },
         vintage: {},
       },
     };
     const meta = editorMetaFromTheme(theme);
     expect(meta.effects?.map((e) => e.type)).toEqual(['vintage']);
-    // Core's own ken-burns/grade entries are untouched: core RENDERS both
-    // (SegmentMedia), so they stay offerable with core's own defaults, not
-    // the brand's params.
+    // Core's own ken-burns entry is untouched: core RENDERS it (SegmentMedia),
+    // so it stays offerable with core's own defaults, not the brand's params.
     const kb = effectDefinition(meta, 'ken-burns');
     expect(kb?.label).toBe('Ken Burns');
     expect(kb?.params).toBeUndefined();
-    const gr = effectDefinition(meta, 'grade');
-    expect(gr?.label).toBe('Grade');
-    expect(gr?.params).toBeUndefined();
+    // `grade` has NO catalog entry at all any more (removed from CORE_EFFECTS
+    // — item.grade's Color panel is the one place to author it now), so it
+    // stays undefined here even though it is reserved and even though the
+    // theme registered params for it.
+    expect(effectDefinition(meta, 'grade')).toBeUndefined();
   });
 
   // Gap 1 (Task 4.4): a brand's STYLE-axis registration (`theme.styleEffects`)
@@ -325,14 +335,14 @@ describe('editorMetaFromTheme', () => {
       },
     };
     const meta = editorMetaFromTheme(theme);
-    expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns', 'grade', 'vignette-pulse']);
+    expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns', 'vignette-pulse']);
     expect(effectDefinition(meta, 'vignette-pulse')?.params).toEqual([{ prop: 'intensity', type: 'number' }]);
   });
 
   it('derives a param-less brand STYLE-axis registration too — registering it is what makes it addable', () => {
     const theme: CompositionTheme = { ...bare, styleEffects: { 'light-sweep': { renderer: dummyStyleRenderer } } };
     const meta = editorMetaFromTheme(theme);
-    expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns', 'grade', 'light-sweep']);
+    expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns', 'light-sweep']);
     expect(effectDefinition(meta, 'light-sweep')?.params).toBeUndefined();
   });
 
@@ -349,14 +359,18 @@ describe('editorMetaFromTheme', () => {
       styleEffects: { 'film-burn': { params: [{ prop: 'amount', type: 'number' }] } }, // no renderer
     };
     const meta = editorMetaFromTheme(theme);
-    expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns', 'grade']);
+    expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns']);
     expect(effectDefinition(meta, 'film-burn')).toBeUndefined();
   });
 
   it('does NOT re-derive core\'s own reserved style types (ken-burns, grade) from theme.styleEffects', () => {
-    // Core registers both on styleEffects internally at render time, but the
-    // catalog must keep core's OWN labelled entries (bespoke inspector UI for
-    // grade), not shadow them with a generic params list.
+    // Core registers both on styleEffects internally at render time. `ken-burns`
+    // keeps its own labelled catalog entry (bespoke inspector UI), so the
+    // theme's registration for it must not shadow that with a generic params
+    // list. `grade` has no catalog entry at all any more (removed from
+    // CORE_EFFECTS — item.grade's Color panel is the one place to author it),
+    // and this proves the theme's registration for it doesn't sneak one back
+    // in either: reserved AND catalog-less stays catalog-less.
     const theme: CompositionTheme = {
       ...bare,
       styleEffects: {
@@ -365,11 +379,10 @@ describe('editorMetaFromTheme', () => {
       } as never,
     };
     const meta = editorMetaFromTheme(theme);
-    expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns', 'grade']);
+    expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns']);
     expect(effectDefinition(meta, 'ken-burns')?.label).toBe('Ken Burns');
     expect(effectDefinition(meta, 'ken-burns')?.params).toBeUndefined();
-    expect(effectDefinition(meta, 'grade')?.label).toBe('Grade');
-    expect(effectDefinition(meta, 'grade')?.params).toBeUndefined();
+    expect(effectDefinition(meta, 'grade')).toBeUndefined();
   });
 
   it('lets an explicit videoProps entry override that kind while others stay theme-derived', () => {
@@ -390,9 +403,9 @@ describe('editorMetaFromTheme', () => {
     const theme: CompositionTheme = { ...bare, effects: { vintage: { params: [{ prop: 'mode' }] } } };
     const meta = editorMetaFromTheme(theme, { effects: [{ type: 'vintage', label: 'Vintage', defaults: { mode: 'film' } }] });
     const cat = effectCatalog(meta);
-    expect(cat.map((e) => e.type)).toEqual(['ken-burns', 'grade', 'vintage']);
-    expect(cat[2].label).toBe('Vintage');
-    expect(cat[2].defaults).toEqual({ mode: 'film' });
+    expect(cat.map((e) => e.type)).toEqual(['ken-burns', 'vintage']);
+    expect(cat[1].label).toBe('Vintage');
+    expect(cat[1].defaults).toEqual({ mode: 'film' });
   });
 
   it('passes laneColors and overlayLabels through untouched — they have no theme source', () => {
@@ -412,6 +425,6 @@ describe('editorMetaFromTheme', () => {
     // No declared fields for any kind, and the catalog is exactly core's.
     expect(meta.videoProps?.outro).toBeUndefined();
     expect(meta.overlayProps?.chevron).toBeUndefined();
-    expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns', 'grade']);
+    expect(effectCatalog(meta).map((e) => e.type)).toEqual(['ken-burns']);
   });
 });
