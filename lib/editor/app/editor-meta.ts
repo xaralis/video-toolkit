@@ -83,12 +83,17 @@ export interface EditorMeta {
  *  mechanism (a "disabled — this item has its own grade effect" state) just
  *  to keep the two from silently fighting over one render. `item.grade` is
  *  the survivor — see the Color section below — and this catalog no longer
- *  offers a second way to author the same thing. `item.grade` and a
- *  hand-authored `type: 'grade'` effect entry still resolve through the SAME
- *  renderer at RENDER time (`gradeStyleEffect`, `lib/theming/effects/
- *  style-effect.ts`) — that renderer arm was deliberately left in place as
- *  inert backwards compatibility for any already-authored config, it is just
- *  no longer reachable through this catalog or the "+ Add effect" UI. */
+ *  offers a second way to author the same thing.
+ *
+ *  What is gone is only the CATALOG ENTRY and the "+ Add effect" route to it
+ *  — the renderer arm itself is NOT inert. `gradeStyleEffect`
+ *  (`lib/theming/effects/style-effect.ts`) is load-bearing: every video item
+ *  that carries `item.grade` gets it synthesized into a `{type:'grade',
+ *  ...item.grade}` effect (`syntheticGradeEffect`) and run through this same
+ *  renderer at RENDER time, unconditionally — deleting the renderer arm
+ *  would break colour grading for every graded clip, not just the
+ *  already-vestigial hand-authored `type: 'grade'` literal it also still
+ *  accepts for backwards compatibility. */
 export const CORE_EFFECTS: readonly EffectDefinition[] = [
   {
     type: 'ken-burns',

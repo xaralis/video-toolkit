@@ -225,8 +225,12 @@ function syntheticGradeEffect(item: VideoItem): Effect | undefined {
  *  everything here. It also means `item.grade` is what WINS the dedup below
  *  when an item somehow carries both `item.grade` and an authored
  *  `type: 'grade'` effect (a hand-edited literal can — see the module
- *  comment on `gradeStyleEffect`; the schema does not reject it and the
- *  editor's own guards are what prevent AUTHORING both through the UI) —
+ *  comment on `gradeStyleEffect`; the schema does not reject it). There are
+ *  no editor guards preventing this any more — they were removed along with
+ *  the catalog's `type: 'grade'` entry (see CORE_EFFECTS's comment in
+ *  editor-meta.ts): the "+ Add effect" UI simply has no route left that
+ *  could author a second `grade`, so the pair can only arise from a
+ *  hand-edited literal, never from the editor itself. Either way,
  *  `item.grade` is applied and marked `applied` before the array is ever
  *  walked, so the redundant array entry is silently skipped, never doubled.
  *

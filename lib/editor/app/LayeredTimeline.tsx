@@ -301,13 +301,21 @@ export interface PendingZoom {
  *  several zoom events before React commits a single render — the layout
  *  effect that applies `pendingZoom` is keyed on `scaleWidth` and only runs
  *  once that commit happens, so several captures can land before it ever
- *  fires. Each capture's `factor` is only THAT ONE event's ratio, but
- *  `scaleWidth` has by then moved by the PRODUCT of all of them — so the
- *  factor must be multiplied in, never replaced, or the anchor correction is
- *  computed for a much smaller zoom than actually happened and the content
- *  drifts under the pointer for the length of the gesture (settling only on
- *  the final event, whose correction lands against an already-settled
- *  layout — exactly the "it only settles once I stop zooming" symptom).
+ *  fires. Each capture's `factor` is only THAT ONE event's ratio, but by the
+ *  time the layout effect runs, `scaleWidth` has moved by the PRODUCT of all
+ *  of them — GUARANTEED, not merely observed: the host's `zoomBy`
+ *  (`EditorHost.tsx`, via `zoomByRef` in `host/zoom-by.ts`) reads and writes
+ *  a ref synchronously on every call rather than the `scaleWidth` render
+ *  closure, so N calls landing in the same tick compound instead of
+ *  overwriting each other. This function's own `factor` must be multiplied
+ *  in to match, never replaced, or the anchor correction is computed for a
+ *  much smaller zoom than actually happened and the content drifts under the
+ *  pointer for the length of the gesture (settling only on the final event,
+ *  whose correction lands against an already-settled layout — exactly the
+ *  "it only settles once I stop zooming" symptom). The two are coupled: this
+ *  multiply-in is only correct because `zoomBy` actually compounds; if
+ *  `zoomBy` ever regresses to reading `scaleWidth` from a closure again, this
+ *  function would silently start over-correcting.
  *
  *  The FIRST capture's `anchorX`/`view` are kept for every fold after it:
  *  that is the true pre-gesture geometry, and the anchor should stay where

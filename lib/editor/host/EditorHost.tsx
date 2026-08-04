@@ -16,7 +16,7 @@ import type { AccentSlot } from '../../theming/palette';
 import type { LayeredReel } from '../../reel-config-base/layered-schema';
 import { framesForReel } from './host-duration';
 import { attachCropGestures, MAX_ZOOM, type CropGestureTarget } from './crop-gestures';
-import { zoomByClamped } from './zoom-by';
+import { zoomByRef } from './zoom-by';
 import { EDITOR_ACCENT, toggleBtnClass, zoomBtnClass } from './ui';
 import { MagnifierIcon, Timecode } from './toolbar';
 import { MediaLoadingOverlay, pendingSources } from './MediaLoading';
@@ -125,19 +125,22 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   // every caller that anchors a zoom (`LayeredTimelineHandle.zoomAtCenter`)
   // needs the number that actually happened, because at the clamp boundary
   // the two differ (a requested ×1.25 at scaleWidth 350 only ever reaches
-  // 400, i.e. ×1.143) and anchoring on the request overshoots. Reads
-  // `scaleWidth` from the render closure rather than through `setScaleWidth`'s
-  // functional-updater form: the updater runs asynchronously (during React's
-  // commit), so a value derived inside it isn't available to return here —
-  // reading the closure value is safe because this is only ever called from a
-  // synchronous event handler, never twice in the same tick.
+  // 400, i.e. ×1.143) and anchoring on the request overshoots.
+  //
+  // Backed by `scaleWidthRef`, not the `scaleWidth` render closure: several
+  // wheel/pinch events can land in the SAME tick, before React ever commits a
+  // render, and a closure read would see the same stale base for all of them
+  // (last write wins, every intermediate step lost). `zoomByRef` reads AND
+  // writes the ref synchronously, so N calls in one tick compound by the
+  // PRODUCT of their achieved ratios — this is what makes the premise
+  // `accumulateZoom` (`LayeredTimeline.tsx`) depends on actually true, rather
+  // than merely asserted. `scaleWidthRef` is the only writer of `scaleWidth`
+  // in this component (grepped) — if another one is ever added, it must keep
+  // the ref in step too, or route through this same helper.
+  const scaleWidthRef = useRef(scaleWidth);
   const zoomBy = useCallback(
-    (factor: number): number => {
-      const { next, ratio } = zoomByClamped(scaleWidth, factor, ZOOM_MIN, ZOOM_MAX);
-      if (next !== scaleWidth) setScaleWidth(next);
-      return ratio;
-    },
-    [scaleWidth],
+    (factor: number): number => zoomByRef(scaleWidthRef, factor, ZOOM_MIN, ZOOM_MAX, setScaleWidth),
+    [],
   );
 
   useEffect(() => {
@@ -489,7 +492,12 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
                 </button>
                 <button
                   type="button"
-                  onClick={() => timelineRef.current?.zoomAtCenter(zoomBy(80 / scaleWidth))}
+                  // The target ratio is computed from `scaleWidthRef`, not the
+                  // `scaleWidth` render closure — the two only ever differ
+                  // mid-burst (see zoomBy's doc comment), but this button reads
+                  // the same authoritative value zoomBy itself compounds
+                  // against, rather than a second, possibly-stale source.
+                  onClick={() => timelineRef.current?.zoomAtCenter(zoomBy(80 / scaleWidthRef.current))}
                   title="Reset zoom to 100%"
                   className="ed:text-xs ed:text-ink-2 ed:font-mono ed:tabular-nums"
                   style={{ background: 'none', border: 'none', minWidth: 44, textAlign: 'center', cursor: 'pointer', padding: 0 }}

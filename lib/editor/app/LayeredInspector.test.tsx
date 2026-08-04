@@ -728,10 +728,15 @@ describe('LayeredInspector grade effect removal', () => {
     expect(brightness.value).toBe('1.2'); // item.grade's own value, untouched by the stray effect
   });
 
-  it('the Color section heading carries no "disabled" suffix any more', () => {
+  it('the Color section heading carries no "disabled" suffix any more, even with a stray authored grade effect present', () => {
     render(<StatefulInspector initial={withStrayGradeEffect} selectedId="video:v1" />);
+    // `getByText` matches the FULL string exactly by default — this fails on
+    // its own if the heading were ever "Color (disabled)" or similar, which
+    // is what makes it informative on its own. (A second assertion used to
+    // additionally `queryByText` a regex for the OLD removed guard message —
+    // that text has no code path left that could ever produce it, so it
+    // passed regardless of any future change to this heading; dropped.)
     expect(screen.getByText('Color')).not.toBeNull();
-    expect(screen.queryByText(/disabled — this item has its own grade effect/)).toBeNull();
   });
 
   // A hand-edited config can still carry a `type: 'grade'` effect entry from

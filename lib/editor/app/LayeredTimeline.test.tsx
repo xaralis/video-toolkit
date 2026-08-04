@@ -343,12 +343,19 @@ describe('accumulateZoom — folding multiple pre-commit zoom captures', () => {
     for (const e of events) stale = overwrite(stale, e.anchorX, e.achieved, e.view);
     const wrongTarget = zoomAnchorScrollLeft(stale!.anchorX, stale!.view, stale!.factor);
 
-    // Post-fix: accumulateZoom across the identical sequence.
+    // Post-fix: accumulateZoom across the identical sequence lands on exactly
+    // the anchor/view/factor a single combined-factor zoom would use — that's
+    // already proven by construction in the "multiplies factors together"
+    // test above, so re-deriving a `rightTarget` via `zoomAnchorScrollLeft`
+    // here would call it with bit-identical arguments to `groundTruth` and
+    // assert a tautology. Assert the real, non-obvious claim instead: the
+    // fixed capture's own fields equal the gesture's true start/product.
     let fixed: PendingZoom | null = null;
     for (const e of events) fixed = accumulateZoom(fixed, e.anchorX, e.achieved, e.view);
-    const rightTarget = zoomAnchorScrollLeft(fixed!.anchorX, fixed!.view, fixed!.factor);
+    expect(fixed!.anchorX).toBe(events[0].anchorX);
+    expect(fixed!.view).toEqual(events[0].view);
+    expect(fixed!.factor).toBeCloseTo(combinedFactor, 10);
 
-    expect(rightTarget).toBe(groundTruth);
     expect(wrongTarget).not.toBe(groundTruth);
   });
 });

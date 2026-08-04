@@ -5,8 +5,13 @@ import { EDITOR_ACCENT } from '../host/ui';
  *
  *  Rule 1 is load-bearing: the accent means active/selected, so no lane may
  *  wear it — this holds even when it costs separation between lanes.
- *  Rule 2 keeps the set harmonious: one cool arc, adjacent to the accent,
- *  minus a guard band around the accent itself. */
+ *  Rule 2 used to mean a narrow cool arc adjacent to the accent — that read
+ *  as "harmonious" but was rejected for producing too few distinguishable
+ *  colours (every lane a shade of blue). It now spans the WHOLE wheel minus
+ *  the guard band around the accent (`ARC`, below) — the "family" the set
+ *  reads as is held instead by a common saturation and lightness shared
+ *  across every entry (see `CORE_LANE_COLOR` in LayeredTimeline.tsx and
+ *  `stableColor` in editor-meta.ts), not by proximity in hue. */
 
 /** Hue in degrees. `null` means "achromatic" (a neutral slate — genuinely has
  *  no hue, exempt from both rules below). Anything that fails to parse as a

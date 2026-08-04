@@ -683,9 +683,14 @@ function GradeFields({
 // blend (emitted by core's own derivation) — and renders every other effect
 // through ParamFields: brand-declared fields when the catalog declares them,
 // else typed by the values the effect currently holds. A hand-authored
-// `type: 'grade'` effect entry (the catalog no longer offers adding one —
-// see CORE_EFFECTS's comment in editor-meta.ts) falls through to that same
-// generic ParamFields path rather than a bespoke one now.
+// `type: 'grade'` effect entry (the catalog no longer offers ADDING one via
+// this UI — see CORE_EFFECTS's comment in editor-meta.ts) falls through to
+// that same generic ParamFields path rather than a bespoke one now — that's
+// only about editing an already-authored literal here in the inspector.
+// It does NOT mean the renderer is vestigial: `gradeStyleEffect`
+// (lib/theming/effects/style-effect.ts) is load-bearing and runs for EVERY
+// graded clip, reached via `item.grade` (see `syntheticGradeEffect`), not
+// only for this hand-authored fallback case.
 function EffectEditor({
   eff,
   fields,

@@ -28,10 +28,22 @@ describe('lane colours', () => {
     }
   });
 
-  it('draws every coloured lane from the declared arc', () => {
+  // NOT a check that every hue falls inside the declared arc any more — `ARC`
+  // was widened to the whole wheel ([0, 360]), so every well-formed chromatic
+  // hex clears these bounds trivially and this stopped proving anything about
+  // the arc the day it widened. What it still catches: `hueOf` returns `NaN`
+  // (not `null`) for anything that fails to parse as `#rrggbb` (see the
+  // `hueOf` describe block below), and `NaN` fails BOTH numeric comparisons —
+  // so a malformed hex value accidentally landing in `CORE_LANE_COLOR` (a
+  // typo, a 3-digit shorthand, an `rgb()` string) still fails this loudly
+  // instead of silently skipping like a genuine achromatic `null` does.
+  it('never lets a malformed hex hide as an achromatic (null) entry in CORE_LANE_COLOR', () => {
     for (const [id, hex] of entries) {
       const h = hueOf(hex);
-      if (h === null) continue;
+      if (h === null) continue; // a genuine achromatic slate — nothing to check
+      expect(Number.isNaN(h), `${id} (${hex}) failed to parse as a well-formed hex`).toBe(false);
+      // Bounds implied by `hueOf`'s own contract (a real hue is always
+      // [0, 360)) — kept as a belt-and-braces sanity check, not an ARC check.
       expect(h, `${id} (${hex})`).toBeGreaterThanOrEqual(ARC[0]);
       expect(h, `${id} (${hex})`).toBeLessThanOrEqual(ARC[1]);
     }
