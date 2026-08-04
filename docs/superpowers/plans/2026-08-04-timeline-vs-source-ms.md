@@ -314,7 +314,8 @@ describe('tailroomTimelineMs — how far the RIGHT edge may travel right', () =>
 
 describe('sourceAtTimelineMs — the split point', () => {
   it('maps an absolute timeline position to the source frame showing there', () => {
-    // 4000ms into a 0.5x clip that starts at 1000 => 1500ms of source consumed.
+    // 4000ms into a 0.5x clip that starts at 1000 => 2000ms of source consumed,
+    // landing at sourceInMs 2000 + 2000 = 4000.
     expect(sourceAtTimelineMs(slow, 5000)).toBe(4000);
   });
 
