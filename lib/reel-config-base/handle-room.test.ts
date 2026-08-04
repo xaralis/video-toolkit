@@ -28,6 +28,32 @@ describe('handleRoomFrames', () => {
   });
 });
 
+describe('handleRoomFrames reports TIMELINE frames, not source frames', () => {
+  // 0.5x: 4s of source over 8s of timeline, 2s of source head, at 30fps.
+  const slowed = {
+    id: 'v1', kind: 'broll', startMs: 0, endMs: 8000, sourceInMs: 2000, sourceOutMs: 6000,
+  } as unknown as VideoItem;
+
+  it('stretches a slowed clip’s head into the frames it can really lend', () => {
+    // 2000ms of source head at 0.5x = 4000ms of timeline = 120 frames @30fps.
+    expect(handleRoomFrames(slowed, 10000, 30).head).toBe(120);
+  });
+
+  it('stretches its tail the same way', () => {
+    // File 10000 - out 6000 = 4000ms of source; at 0.5x = 8000ms = 240 frames.
+    expect(handleRoomFrames(slowed, 10000, 30).tail).toBe(240);
+  });
+
+  it('is unchanged at 1x', () => {
+    const plain = { ...slowed, endMs: 4000 } as VideoItem;
+    expect(handleRoomFrames(plain, 10000, 30)).toEqual({ head: 60, tail: 120 });
+  });
+
+  it('still reports an infinite tail when the file length is unknown', () => {
+    expect(handleRoomFrames(slowed, undefined, 30).tail).toBe(Infinity);
+  });
+});
+
 describe('maxTransitionFrames', () => {
   const left = { head: 999, tail: 10 };
   const right = { head: 4, tail: 999 };
