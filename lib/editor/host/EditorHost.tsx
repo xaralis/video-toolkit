@@ -191,6 +191,25 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
     [],
   );
 
+  // Project identity for the header. `projectName` (the mount option) is baked
+  // into each TEMPLATE's `.editor/main.tsx`, so it names the template, not the
+  // project — every campaign-reels project called itself "campaign-reels" and
+  // its own name appeared nowhere. project.json knows both, so it wins; the
+  // mount option stays as the fallback for a project without one (core's
+  // examples and showcase).
+  //
+  // This re-fetches `/project-state`, which `RenderButton` also reads for the
+  // phase chip. A deliberate, cheap duplication rather than threading state
+  // through: the two consumers are independent, and the endpoint is a local
+  // file read.
+  const [identity, setIdentity] = useState<{ name?: string; template?: string }>({});
+  useEffect(() => {
+    fetch('/project-state')
+      .then((res) => res.json())
+      .then((d) => setIdentity({ name: (d as { name?: string }).name, template: (d as { template?: string }).template }))
+      .catch(() => setIdentity({})); // no endpoint (or no project.json) — fall back to the mount option
+  }, []);
+
   useEffect(() => {
     fetch('/props')
       .then((res) => res.json())
@@ -475,7 +494,8 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
       {({ phaseControl, renderControls }) => (
         <>
           <EditorShell
-            projectName={projectName}
+            projectName={identity.name ?? projectName}
+            templateName={identity.template}
             aspectRatio={`${width} / ${height}`}
             phaseControl={phaseControl}
             renderControls={renderControls}

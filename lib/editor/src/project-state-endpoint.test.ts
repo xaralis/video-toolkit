@@ -79,6 +79,31 @@ describe('createProjectStateHandler GET', () => {
     expect(parse(res)).toMatchObject({ exists: true, phase: 'editing', name: 'my-reel' });
   });
 
+  it('reports the template the project was built from', async () => {
+    // The editor header names the project AND the template it uses; the
+    // template is not derivable from anything else the host has (the
+    // `projectName` mount option is hardcoded per template, which is exactly
+    // why it showed 'campaign-reels' for every project).
+    fs.writeFileSync(
+      projectJsonPath,
+      JSON.stringify({ name: 'pp-u-kamenne-vily', template: 'campaign-reels', phase: 'editing' }),
+    );
+    const handler = createProjectStateHandler({ projectJsonPath });
+    const res = makeRes();
+    handler(makeReq('GET'), res);
+    await res.finished;
+    expect(parse(res)).toMatchObject({ name: 'pp-u-kamenne-vily', template: 'campaign-reels' });
+  });
+
+  it('leaves template undefined when project.json does not name one', async () => {
+    fs.writeFileSync(projectJsonPath, JSON.stringify({ name: 'my-reel', phase: 'editing' }));
+    const handler = createProjectStateHandler({ projectJsonPath });
+    const res = makeRes();
+    handler(makeReq('GET'), res);
+    await res.finished;
+    expect(parse(res).template).toBeUndefined();
+  });
+
   it('treats an unknown phase value as null', async () => {
     fs.writeFileSync(projectJsonPath, JSON.stringify({ phase: 'weird' }));
     const handler = createProjectStateHandler({ projectJsonPath });

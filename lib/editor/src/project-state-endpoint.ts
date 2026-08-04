@@ -62,6 +62,12 @@ export function createProjectStateHandler(
         exists: project !== null,
         phase: project && isPhase(project.phase) ? project.phase : null,
         name: project && typeof project.name === 'string' ? project.name : undefined,
+        // The header names the project AND the template it renders from. The
+        // template is not derivable anywhere else at runtime: the mount
+        // option a project passes is baked into the template's own
+        // `.editor/main.tsx`, so every project built from `campaign-reels`
+        // called itself "campaign-reels" until this shipped.
+        template: project && typeof project.template === 'string' ? project.template : undefined,
         phases: PROJECT_PHASES,
       });
       return;

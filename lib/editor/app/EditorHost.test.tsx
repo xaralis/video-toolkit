@@ -67,6 +67,38 @@ describe('EditorHost', () => {
     await waitFor(() => expect(screen.getByText('test-reels')).toBeInTheDocument());
   });
 
+  it('names the PROJECT and its template, not the hardcoded mount option', async () => {
+    // `projectName` is baked into each template's `.editor/main.tsx`, so every
+    // project built from campaign-reels showed "campaign-reels" and its own
+    // name appeared nowhere. project.json knows better — and wins.
+    (globalThis.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).startsWith('/props')) return { ok: true, json: async () => ({ reel: REEL }) };
+      if (String(url).startsWith('/project-state'))
+        return { ok: true, json: async () => ({ exists: true, name: 'pp-u-kamenne-vily', template: 'campaign-reels', phase: 'editing', phases: [] }) };
+      return { ok: true, json: async () => ({}) };
+    });
+    render(<EditorHost {...opts} />);
+
+    await waitFor(() => expect(screen.getByText('pp-u-kamenne-vily')).toBeInTheDocument());
+    expect(screen.getByTestId('template-name')).toHaveTextContent('campaign-reels');
+    expect(screen.queryByText('test-reels')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the mount option when there is no project.json', async () => {
+    // Core's own examples and showcase have no project.json — they must still
+    // show something rather than an empty header.
+    (globalThis.fetch as any).mockImplementation(async (url: string) => {
+      if (String(url).startsWith('/props')) return { ok: true, json: async () => ({ reel: REEL }) };
+      if (String(url).startsWith('/project-state'))
+        return { ok: true, json: async () => ({ exists: false, name: undefined, template: undefined, phase: null, phases: [] }) };
+      return { ok: true, json: async () => ({}) };
+    });
+    render(<EditorHost {...opts} />);
+
+    await waitFor(() => expect(screen.getByText('test-reels')).toBeInTheDocument());
+    expect(screen.queryByTestId('template-name')).not.toBeInTheDocument();
+  });
+
   it('renders the beats-snap toggle unconditionally, disabled without guides', async () => {
     // Core ships the feature for every brand; the absence of guidesMs is what
     // turns it off, not a per-brand flag.

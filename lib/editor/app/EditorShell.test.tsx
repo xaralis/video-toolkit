@@ -11,6 +11,23 @@ describe('EditorShell', () => {
     expect(screen.getByText(/Timeline/i)).toBeInTheDocument();
   });
 
+  it('names the template beside the project, so the two are never confused', () => {
+    render(<EditorShell preview={null} projectName="pp-u-kamenne-vily" templateName="campaign-reels" />);
+    const name = screen.getByText('pp-u-kamenne-vily');
+    const template = screen.getByText('campaign-reels');
+    expect(name).toBeInTheDocument();
+    expect(template).toBeInTheDocument();
+    // "Near it" is the requirement: same identity group, not opposite ends of
+    // the header. Sharing a parent is what makes them read as one label.
+    expect(name.parentElement).toBe(template.parentElement);
+  });
+
+  it('renders no template chip when the project does not name one', () => {
+    render(<EditorShell preview={null} projectName="my-reel" />);
+    expect(screen.getByText('my-reel')).toBeInTheDocument();
+    expect(screen.queryByTestId('template-name')).not.toBeInTheDocument();
+  });
+
   it('calls onSave when Save is clicked (dirty), and disables while saving or clean', () => {
     const onSave = vi.fn();
     const { rerender } = render(<EditorShell preview={null} onSave={onSave} dirty />);
