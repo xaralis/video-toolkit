@@ -89,18 +89,34 @@ export function EditorShell({
           margin, which showed as a white border around the UI. */}
       <style>{`html, body, #root { height: 100%; margin: 0; } body { background: var(--ed-color-stage); }`}</style>
       <header className="ed:flex ed:items-center ed:justify-between ed:px-5 ed:py-3 ed:bg-panel ed:border-b ed:border-line ed:shrink-0">
-        {/* Identity + health: what this PROJECT is and whether it's okay —
-            never actions, so phase and diagnostics live here, not on the right. */}
+        {/* Identity + health + document state: what this PROJECT is, whether
+            it has unsaved edits, and whether it's okay. None of this is an
+            action, so it stays out of the right zone — and this side is
+            left-aligned, so the unsaved dot + Discard growing in here (only
+            while dirty) pushes into empty space, never into a control that
+            has to hold still. The conventional home for a dirty indicator is
+            beside the document's own identity (a tab's dirty dot, "All
+            changes saved" beside a doc title) — not the toolbar. */}
         <div className="ed:flex ed:items-center ed:gap-3">
           <span className="ed:text-sm ed:font-semibold ed:text-ink">{projectName}</span>
+          {dirty && <span className="ed:text-xs ed:font-medium ed:text-warn">● Unsaved</span>}
+          {dirty && (
+            <button
+              type="button"
+              className="ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:px-[14px] ed:py-2 ed:text-[13px] ed:cursor-pointer ed:hover:border-ink-3 ed:hover:text-ink ed:disabled:opacity-45 ed:disabled:cursor-default"
+              onClick={onDiscard}
+              disabled={saving}
+            >
+              Discard
+            </button>
+          )}
           {phaseControl}
           {diagnostics}
         </div>
-        {/* Actions: things you DO. Ordered by how often you reach for them —
-            the render controls are the tool's whole output and get the
-            strongest visual weight; undo/redo are routine and go icon-only;
-            the dirty cluster (unsaved indicator + Discard) only exists while
-            there's something to discard, so a clean project shows just Save. */}
+        {/* Actions: things you DO. This zone's control SET never changes with
+            dirty state — only Save's own look (accent+enabled vs neutral+
+            disabled) does — so Preview|Full and Undo/Redo never shift
+            position when the reel becomes dirty. */}
         <div data-testid="action-zone" className="ed:flex ed:items-center ed:gap-3">
           {renderControls && (
             <>
@@ -133,37 +149,20 @@ export function EditorShell({
               <span className="ed:w-px ed:h-[22px] ed:bg-line ed:mx-0.5" />
             </>
           )}
-          {/* Dirty cluster: renders NOTHING while clean — no reserved space,
-              no disabled Discard sitting around for a state that doesn't
-              exist. Because this whole row is right-aligned, the unsaved dot
-              and Discard grow LEFTWARDS into the middle when they appear, so
-              Save (last child, always present) never moves. */}
-          <div data-testid="dirty-cluster" className="ed:flex ed:items-center ed:gap-3">
-            {dirty && <span className="ed:text-xs ed:font-medium ed:text-warn">● Unsaved</span>}
-            {dirty && (
-              <button
-                type="button"
-                className="ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:px-[14px] ed:py-2 ed:text-[13px] ed:cursor-pointer ed:hover:border-ink-3 ed:hover:text-ink ed:disabled:opacity-45 ed:disabled:cursor-default"
-                onClick={onDiscard}
-                disabled={saving}
-              >
-                Discard
-              </button>
-            )}
-            {/* Save is always present — the anchor that must not move. */}
-            <button
-              type="button"
-              className={
-                dirty
-                  ? 'ed:bg-accent ed:text-accent-ink ed:border-0 ed:rounded-md ed:px-[18px] ed:py-2 ed:text-[13px] ed:font-semibold ed:cursor-pointer ed:disabled:bg-control ed:disabled:text-ink-3 ed:disabled:cursor-default'
-                  : 'ed:bg-accent ed:text-accent-ink ed:border-0 ed:rounded-md ed:px-[18px] ed:py-2 ed:text-[13px] ed:font-semibold ed:cursor-pointer ed:disabled:bg-control ed:disabled:text-ink-3 ed:disabled:cursor-default ed:bg-control ed:text-ink-3 ed:cursor-default'
-              }
-              onClick={onSave}
-              disabled={!dirty || saving}
-            >
-              Save
-            </button>
-          </div>
+          {/* Save is always present, unconditionally — the only control in
+              this zone whose STYLE (not presence) reflects dirty state. */}
+          <button
+            type="button"
+            className={
+              dirty
+                ? 'ed:bg-accent ed:text-accent-ink ed:border-0 ed:rounded-md ed:px-[18px] ed:py-2 ed:text-[13px] ed:font-semibold ed:cursor-pointer ed:disabled:bg-control ed:disabled:text-ink-3 ed:disabled:cursor-default'
+                : 'ed:bg-accent ed:text-accent-ink ed:border-0 ed:rounded-md ed:px-[18px] ed:py-2 ed:text-[13px] ed:font-semibold ed:cursor-pointer ed:disabled:bg-control ed:disabled:text-ink-3 ed:disabled:cursor-default ed:bg-control ed:text-ink-3 ed:cursor-default'
+            }
+            onClick={onSave}
+            disabled={!dirty || saving}
+          >
+            Save
+          </button>
         </div>
       </header>
 

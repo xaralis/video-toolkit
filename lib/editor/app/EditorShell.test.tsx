@@ -31,24 +31,14 @@ describe('EditorShell', () => {
     expect(screen.queryByText(/Unsaved/i)).not.toBeInTheDocument();
   });
 
-  it('shows the unsaved dot and an enabled Discard once dirty', () => {
-    render(<EditorShell preview={null} onSave={vi.fn()} onDiscard={vi.fn()} dirty />);
+  it('shows the unsaved dot and an enabled Discard once dirty, in the left (identity) zone, not the action zone', () => {
+    const { container } = render(<EditorShell preview={null} onSave={vi.fn()} onDiscard={vi.fn()} dirty />);
     expect(screen.getByText(/Unsaved/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Discard/i })).not.toBeDisabled();
-  });
-
-  it("Save's position in the action cluster does not depend on dirty — the dirty controls grow leftwards, nothing to Save's right moves", () => {
-    // jsdom has no layout, so this is asserted structurally: Save is the
-    // last child of the dirty cluster whether or not Discard/Unsaved render
-    // alongside it.
-    const { container, rerender } = render(<EditorShell preview={null} onSave={vi.fn()} onDiscard={vi.fn()} />); // clean
-    const cluster = () => container.querySelector('[data-testid="dirty-cluster"]') as HTMLElement;
-    expect(cluster().lastElementChild).toHaveTextContent('Save');
-    expect(cluster().children).toHaveLength(1); // just Save
-
-    rerender(<EditorShell preview={null} onSave={vi.fn()} onDiscard={vi.fn()} dirty />);
-    expect(cluster().lastElementChild).toHaveTextContent('Save');
-    expect(cluster().children).toHaveLength(3); // unsaved dot, Discard, Save
+    const discard = screen.getByRole('button', { name: /Discard/i });
+    expect(discard).not.toBeDisabled();
+    const actionZone = container.querySelector('[data-testid="action-zone"]') as HTMLElement;
+    expect(actionZone).not.toContainElement(discard);
+    expect(actionZone).not.toContainElement(screen.getByText(/Unsaved/i));
   });
 
   it('enables Save and Discard when dirty', () => {
@@ -167,6 +157,80 @@ describe('EditorShell — header zones', () => {
   it('omits the phase control entirely when not provided', () => {
     render(<EditorShell preview={null} projectName="my-reel" />);
     expect(screen.queryByTestId('phase')).not.toBeInTheDocument();
+  });
+});
+
+// The dirty-state layout regression: the action zone must be width-STABLE
+// across dirty state — nothing in it may appear/disappear/reorder when the
+// reel becomes dirty, only Save's own look changes. The dirty cluster
+// (unsaved dot + Discard) moved to the left (identity) zone, which grows
+// into empty space instead.
+describe('EditorShell — action zone is stable across dirty state', () => {
+  const renderBoth = (dirty: boolean) =>
+    render(
+      <EditorShell
+        preview={null}
+        onSave={vi.fn()}
+        onDiscard={vi.fn()}
+        onUndo={vi.fn()}
+        onRedo={vi.fn()}
+        canUndo
+        canRedo
+        renderControls={
+          <>
+            <button type="button">Preview</button>
+            <button type="button">Full</button>
+          </>
+        }
+        dirty={dirty}
+      />,
+    );
+
+  const actionZoneControls = (container: HTMLElement) => {
+    const zone = container.querySelector('[data-testid="action-zone"]') as HTMLElement;
+    return Array.from(zone.querySelectorAll('button')).map((b) => b.getAttribute('aria-label') ?? b.textContent);
+  };
+
+  it('renders exactly the same set of controls, in the same order, whether clean or dirty', () => {
+    const clean = renderBoth(false);
+    const cleanControls = actionZoneControls(clean.container);
+    clean.unmount();
+
+    const dirtyRender = renderBoth(true);
+    const dirtyControls = actionZoneControls(dirtyRender.container);
+
+    expect(dirtyControls).toEqual(cleanControls);
+  });
+
+  it('Preview, Full, Undo, and Redo each keep the same index in the action zone whether clean or dirty', () => {
+    const clean = renderBoth(false);
+    const cleanControls = actionZoneControls(clean.container);
+    clean.unmount();
+
+    const dirtyRender = renderBoth(true);
+    const dirtyControls = actionZoneControls(dirtyRender.container);
+
+    for (const label of ['Preview', 'Full', 'Undo', 'Redo']) {
+      expect(dirtyControls.indexOf(label)).toBe(cleanControls.indexOf(label));
+      expect(cleanControls.indexOf(label)).toBeGreaterThanOrEqual(0); // sanity: it's actually there
+    }
+  });
+
+  it('the unsaved dot and Discard are absent entirely when clean, and both present in the left zone when dirty', () => {
+    const clean = renderBoth(false);
+    expect(clean.queryByText(/Unsaved/i)).not.toBeInTheDocument();
+    expect(clean.queryByRole('button', { name: /Discard/i })).not.toBeInTheDocument();
+    clean.unmount();
+
+    const dirtyRender = renderBoth(true);
+    const header = dirtyRender.container.querySelector('header') as HTMLElement;
+    const actionZone = dirtyRender.container.querySelector('[data-testid="action-zone"]') as HTMLElement;
+    const unsaved = dirtyRender.getByText(/Unsaved/i);
+    const discard = dirtyRender.getByRole('button', { name: /Discard/i });
+    expect(header).toContainElement(unsaved);
+    expect(header).toContainElement(discard);
+    expect(actionZone).not.toContainElement(unsaved);
+    expect(actionZone).not.toContainElement(discard);
   });
 });
 
