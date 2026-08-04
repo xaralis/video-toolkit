@@ -37,6 +37,7 @@ R2_SECRET_ACCESS_KEY / R2_ACCOUNT_ID). Set up via /setup or by hand.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -95,6 +96,18 @@ def list_remote_objects(client, bucket: str, name: str, subdirs: list[str]) -> l
             for obj in page.get("Contents", []) or []:
                 out.append((subdir, obj["Key"], obj["Size"]))
     return out
+
+
+def json_equivalent(a: Path, b: Path) -> bool:
+    """True when two files parse to the same JSON, formatting aside.
+
+    Anything unreadable or unparseable is *not* equivalent — the caller must
+    fall through to overwriting rather than silently keeping a corrupt file.
+    """
+    try:
+        return json.loads(a.read_text()) == json.loads(b.read_text())
+    except (OSError, ValueError, UnicodeDecodeError):
+        return False
 
 
 def cmd_push(name: str, subdirs: list[str], dry_run: bool, overwrite: bool) -> int:
@@ -168,6 +181,30 @@ def cmd_pull(name: str, subdirs: list[str], dry_run: bool, overwrite: bool) -> i
         if not overwrite and local_path.exists() and local_path.stat().st_size == size:
             skipped += 1
             continue
+
+        # A JSON file that is byte-different can still be *semantically*
+        # identical — transcripts are git-tracked and R2's copies differ from
+        # the committed ones only in indentation. Overwriting them dirties the
+        # repo with 1152-line no-op diffs, so fetch to a temp file and keep
+        # what is on disk when the parsed content matches. JSON only, and only
+        # when there is something to compare against: everything else (footage,
+        # renders) stays on the cheap size check and keeps printing before the
+        # download so a 500 MB pull still shows progress.
+        if not dry_run and not overwrite and local_path.suffix == ".json" and local_path.exists():
+            tmp = local_path.with_name(local_path.name + ".r2tmp")
+            try:
+                client.download_file(bucket, key, str(tmp))
+                if json_equivalent(tmp, local_path):
+                    skipped += 1
+                    continue
+                tmp.replace(local_path)
+            finally:
+                tmp.unlink(missing_ok=True)
+            print(f"   pulling  {subdir}/{filename}  ({humansize(size)})")
+            downloaded += 1
+            total_bytes += size
+            continue
+
         action = "would pull" if dry_run else "pulling"
         print(f"   {action}  {subdir}/{filename}  ({humansize(size)})")
         if not dry_run:
