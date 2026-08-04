@@ -325,6 +325,10 @@ export function deriveLayered(config: CutConfig, opts: DeriveLayeredOpts): Layer
           sourceInMs: msFromSec(seg.trimIn),
           volumeDb: 0,
           followsVideoId: seg.id,
+          // A clip's 'voice' audio IS its own sync sound (same shot, same
+          // take) — written explicitly rather than left to the fallback, per
+          // the brief's "no migration, but author explicitly from now on".
+          slipsWithVideo: true,
         });
       }
       // 'silent' → no audio item; 'voice' with no/empty source → no item either
@@ -340,6 +344,11 @@ export function deriveLayered(config: CutConfig, opts: DeriveLayeredOpts): Layer
             sourceInMs: msFromSec(seg.audioStartSec),
             volumeDb: 0,
             followsVideoId: seg.id,
+            // 'inherit-from-clip' means exactly what the finding this field
+            // rests on describes: narration borrowed from a DIFFERENT shot,
+            // laid under this b-roll picture. Slipping the b-roll must not
+            // move it — written explicitly, not left to the fallback.
+            slipsWithVideo: false,
           });
         }
         // no/empty audioSource → no item (avoid phantom source: '')
@@ -359,13 +368,15 @@ export function deriveLayered(config: CutConfig, opts: DeriveLayeredOpts): Layer
         const s = seg.sources[0];
         audioItems.push({
           id: `${seg.id}-audio`, startMs, endMs,
-          source: s.source, sourceInMs: msFromSec(s.trimIn), volumeDb: 0, followsVideoId: seg.id,
+          // 'first'/'mix' both pull audio from this segment's OWN sources
+          // array (its own footage) — its own sound, written explicitly.
+          source: s.source, sourceInMs: msFromSec(s.trimIn), volumeDb: 0, followsVideoId: seg.id, slipsWithVideo: true,
         });
       } else if (seg.audioMode === 'mix') {
         seg.sources.forEach((s, i) => {
           audioItems.push({
             id: `${seg.id}-audio-${i}`, startMs, endMs,
-            source: s.source, sourceInMs: msFromSec(s.trimIn), volumeDb: 0, followsVideoId: seg.id,
+            source: s.source, sourceInMs: msFromSec(s.trimIn), volumeDb: 0, followsVideoId: seg.id, slipsWithVideo: true,
           });
         });
       }

@@ -1,6 +1,7 @@
 import type { LayeredReel, VideoItem, AudioItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import { withTotalDuration } from '@video-toolkit/lib/reel-config-base/total-duration';
 import { clampSpeed } from '@video-toolkit/lib/reel-config-base/speed';
+import { resolveSlipsWithVideo } from '@video-toolkit/lib/reel-config-base/slips-with-video';
 import {
   isCut,
   CUT_KIND,
@@ -312,6 +313,15 @@ export function isSlippable(item: VideoItem | undefined): item is Extract<VideoI
 // KNOWN GAP: a linked bed contributes no RIGHT bound — the editor does not
 // decode bed durations today, so slipping right can run a short bed past its
 // own end (silence, not desync). Pass audio caps here when they exist.
+//
+// Only beds that actually SLIP (`resolveSlipsWithVideo`) take part in any of
+// this — both the bounds maths and the applied shift. A bed that keeps its
+// own timing (narration under b-roll) is not a party to the slip at all: its
+// `sourceInMs` must not constrain how far the picture can move, and its
+// source window must not move either. Letting a non-slipping bed's headroom
+// cap the picture's slip would be a silent, hard-to-notice bug — the picture
+// simply stops being slippable as far as it should, for a reason nothing in
+// the UI explains.
 export function slipVideoItem(
   reel: LayeredReel,
   id: string,
@@ -322,9 +332,10 @@ export function slipVideoItem(
   if (!isSlippable(item)) return reel;
 
   const beds = reel.tracks.audio.filter((a) => a.followsVideoId === id);
+  const slippingBeds = beds.filter((b) => resolveSlipsWithVideo(item, b));
   // Most-negative delta anyone can take (each party's own head), then the
-  // least-generous of them.
-  const minDelta = Math.max(-item.sourceInMs, ...beds.map((b) => -b.sourceInMs));
+  // least-generous of them. Only slipping beds' headroom counts.
+  const minDelta = Math.max(-item.sourceInMs, ...slippingBeds.map((b) => -b.sourceInMs));
   const cap = footageMsById[id];
   const maxDelta = cap && cap > 0 ? cap - item.sourceOutMs : Infinity;
   if (maxDelta < minDelta) return reel; // bounds crossed (authored out past the file)
@@ -342,7 +353,7 @@ export function slipVideoItem(
           : v,
       ),
       audio: reel.tracks.audio.map((a) =>
-        a.followsVideoId === id
+        a.followsVideoId === id && resolveSlipsWithVideo(item, a)
           ? {
               ...a,
               sourceInMs: a.sourceInMs + d,

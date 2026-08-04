@@ -1366,3 +1366,49 @@ describe('LayeredInspector gives Speed its own collapsible section', () => {
     expect(v1.sourceOutMs).toBe(3000); // back to matching endMs - startMs (ripple off by default)
   });
 });
+
+describe('LayeredInspector — audio slip-lock control ("Slips with the clip" / "Keeps its own timing")', () => {
+  const reelWith = (audio: LayeredReel['tracks']['audio'][number]): LayeredReel => ({
+    version: 'layered-1', meta: { topic: 't', totalDurationMs: 3000 },
+    tracks: {
+      video: [{ id: 'v1', kind: 'clip', startMs: 0, endMs: 3000, source: 'TH-01_t4.mp4', sourceInMs: 0, sourceOutMs: 3000 }],
+      audio: [audio], music: { baseVolumeDb: -8 }, overlays: [], brand: [],
+    },
+  });
+
+  it('reads the RESOLVED value via the fallback when slipsWithVideo is absent and sources share a stem (own sound → checked)', () => {
+    const reel = reelWith({ id: 'a1', startMs: 0, endMs: 3000, source: 'TH-01_t4.eq.m4a', sourceInMs: 0, followsVideoId: 'v1' });
+    render(<LayeredInspector reel={reel} selectedId="audio:a1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByRole('checkbox', { name: 'Slips with the clip' })).toBeChecked();
+  });
+
+  it('reads the RESOLVED value via the fallback when sources differ (narration under a different picture → unchecked)', () => {
+    const reel = reelWith({ id: 'a1', startMs: 0, endMs: 3000, source: 'TH-01_t4.eq.m4a', sourceInMs: 0, followsVideoId: 'v1' });
+    reel.tracks.video[0] = { ...reel.tracks.video[0], source: 'BR-trida-miru_01_upright.mp4' } as typeof reel.tracks.video[0];
+    render(<LayeredInspector reel={reel} selectedId="audio:a1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByRole('checkbox', { name: 'Keeps its own timing' })).not.toBeChecked();
+  });
+
+  it('an explicit slipsWithVideo overrides the fallback', () => {
+    // Same-stem sources would fall back to true; explicit false must win.
+    const reel = reelWith({ id: 'a1', startMs: 0, endMs: 3000, source: 'TH-01_t4.eq.m4a', sourceInMs: 0, followsVideoId: 'v1', slipsWithVideo: false });
+    render(<LayeredInspector reel={reel} selectedId="audio:a1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByRole('checkbox', { name: 'Keeps its own timing' })).not.toBeChecked();
+  });
+
+  it('toggling writes an explicit boolean, never leaving it to the fallback', () => {
+    const onChange = vi.fn();
+    const reel = reelWith({ id: 'a1', startMs: 0, endMs: 3000, source: 'TH-01_t4.eq.m4a', sourceInMs: 0, followsVideoId: 'v1' });
+    render(<LayeredInspector reel={reel} selectedId="audio:a1" onChange={onChange} onSeek={() => {}} fps={30} />);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Slips with the clip' }));
+    const next = onChange.mock.calls[0][0] as LayeredReel;
+    expect(next.tracks.audio[0].slipsWithVideo).toBe(false);
+  });
+
+  it('the control is absent for an unlinked bed — the promise is meaningless without a clip to slip with', () => {
+    const reel = reelWith({ id: 'a1', startMs: 0, endMs: 3000, source: 'x.m4a', sourceInMs: 0 });
+    render(<LayeredInspector reel={reel} selectedId="audio:a1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.queryByRole('checkbox', { name: 'Slips with the clip' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: 'Keeps its own timing' })).toBeNull();
+  });
+});

@@ -30,6 +30,7 @@ import { transitionAlignmentOf } from '@video-toolkit/lib/reel-config-base/trans
 import { GRADE_DEFAULTS, hasGradeChanges } from '@video-toolkit/lib/reel-config-base/grade';
 import { FRAMING_DEFAULTS, MAX_ZOOM, resolveFraming, hasCropChanges, hasFitChanges } from '@video-toolkit/lib/reel-config-base/framing';
 import { SPEED_DEFAULTS, SPEED_MIN, SPEED_MAX, deriveSpeed, hasSpeedChanges } from '@video-toolkit/lib/reel-config-base/speed';
+import { resolveSlipsWithVideo } from '@video-toolkit/lib/reel-config-base/slips-with-video';
 import { useLiveField } from './controls/use-live-field';
 import { fieldCls, labelCls, inputCls, rowCls, readonlyValueCls, sectionCls, resetBtnCls, dirtyDotCls, countBadgeCls, disabledCls } from './controls/field-classes';
 import { ScrubField } from './controls/ScrubField';
@@ -1892,6 +1893,36 @@ export function LayeredInspector({
             <UnlinkIcon size={13} /> Independent · Link to clip
           </button>
         )}
+        {/* The SLIP promise, separate from the link above: Link/Unlink governs
+            whether this bed moves and trims with its clip on the timeline;
+            this governs whether it also moves when that clip is SLIPPED
+            (⌥+drag, the source window shifting under an unchanged timeline
+            span). Only meaningful while linked — an unlinked bed isn't a
+            party to its former clip's slip at all. Reads the RESOLVED value
+            (explicit `slipsWithVideo`, or the filename-identity fallback —
+            see `resolveSlipsWithVideo`) so a legacy talking-head bed shows
+            checked with no data migration; toggling always writes an
+            explicit boolean so the user's choice is never left to the
+            fallback again. */}
+        {a.followsVideoId &&
+          (() => {
+            const video = reel.tracks.video.find((v) => v.id === a.followsVideoId);
+            const slips = resolveSlipsWithVideo(video, a);
+            return (
+              <div className={fieldCls} title={slips ? 'Slipping the clip moves this bed with it — use for a shot\'s own sync sound.' : "Slipping the clip leaves this bed's timing alone — use for narration under b-roll."}>
+                <label className={`${labelCls} ed:flex ed:items-center ed:gap-1.5 ed:cursor-pointer`}>
+                  <input
+                    type="checkbox"
+                    className="ed:accent-accent"
+                    checked={slips}
+                    aria-label={slips ? 'Slips with the clip' : "Keeps its own timing"}
+                    onChange={(e) => patchItem('audio', id, { slipsWithVideo: e.target.checked })}
+                  />
+                  {slips ? 'Slips with the clip' : 'Keeps its own timing'}
+                </label>
+              </div>
+            );
+          })()}
       </div>
     );
   }

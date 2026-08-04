@@ -143,6 +143,17 @@ For each segment, derive the config fields:
 
 - **broll segment** with silent audio: `audioMode: 'silent'`.
 
+  **Slip behaviour, derived automatically — no field to author here.** The
+  layered model this compiles into (`deriveLayered`) writes each bed's
+  `slipsWithVideo` explicitly, never left to the fallback: a `clip` segment's
+  `voice` audio and a `multi-clip`'s `first`/`mix` audio are that shot's own
+  sync sound, so they get `slipsWithVideo: true` — slipping the picture
+  (⌥+drag in the editor) moves the sound with it, or the lips would desync.
+  A `broll` segment's `audioMode: 'inherit-from-clip'` bed is narration
+  borrowed from a DIFFERENT shot (`audioSource` names it), so it gets
+  `slipsWithVideo: false` — slipping the b-roll picture must not move the
+  narration.
+
 - **outro segment**: `{ id, type: 'outro' }` only.
 
 - **any segment whose source orientation doesn't match the composition's**: set

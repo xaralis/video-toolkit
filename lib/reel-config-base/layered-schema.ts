@@ -134,6 +134,18 @@ export const AudioItemSchema = z.object({
   fadeInMs: Ms.optional(), // linear gain ramp from item start
   fadeOutMs: Ms.optional(), // linear gain ramp into item end
   followsVideoId: z.string().optional(), // the video item this bed was derived from (for alignment; editing may detach)
+  // Whether this bed's SOURCE WINDOW moves when its video is slipped
+  // (⌥+drag). This is a SEPARATE promise from `followsVideoId` (which only
+  // governs moving/trimming on the TIMELINE) — a talking-head's own sync
+  // sound must slip with its picture or the lips desync, but narration laid
+  // under b-roll must NOT move just because the b-roll's source window
+  // shifts. Left OPTIONAL with no `.default()`: absence must not mean
+  // `false` for every config authored before this field existed — see
+  // `resolveSlipsWithVideo` in `slips-with-video.ts`, the one place that
+  // resolves it (its filename-identity fallback for the absent case).
+  // `/toolkit:cut` writes this explicitly for every bed it derives; only
+  // pre-existing configs rely on the fallback.
+  slipsWithVideo: z.boolean().optional(),
 });
 
 export const OverlayItemSchema = z.object({

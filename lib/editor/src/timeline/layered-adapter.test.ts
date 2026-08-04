@@ -1131,6 +1131,55 @@ describe('slipVideoItem', () => {
     expect(out.tracks.audio[0].sourceInMs).toBe(0);
   });
 
+  // THE SPLIT this field exists for: a linked bed that does not slip with its
+  // video (narration under b-roll) keeps its source window untouched while
+  // the picture's still moves — this is the whole point of `slipsWithVideo`.
+  it('leaves a non-slipping linked bed\'s source window untouched while the picture still slips', () => {
+    const reel: LayeredReel = {
+      ...SLIP_REEL,
+      tracks: {
+        ...SLIP_REEL.tracks,
+        audio: [{ id: 'a1', startMs: 0, endMs: 3000, source: 'narration.mp3', sourceInMs: 2000, sourceOutMs: 5000, followsVideoId: 'v1', slipsWithVideo: false }],
+      },
+    };
+    const out = slipVideoItem(reel, 'v1', 500, CAPS);
+    expect(vid(out).sourceInMs).toBe(1500); // the picture still moves
+    expect(out.tracks.audio[0].sourceInMs).toBe(2000); // the bed does not
+    expect(out.tracks.audio[0].sourceOutMs).toBe(5000);
+  });
+
+  // The existing lockstep behaviour must not regress for a bed that IS
+  // explicitly marked as slipping (the talking-head case).
+  it('still moves an explicitly-slipping linked bed in lockstep with the picture', () => {
+    const reel: LayeredReel = {
+      ...SLIP_REEL,
+      tracks: {
+        ...SLIP_REEL.tracks,
+        audio: [{ id: 'a1', startMs: 0, endMs: 3000, source: 'a.mp3', sourceInMs: 2000, sourceOutMs: 5000, followsVideoId: 'v1', slipsWithVideo: true }],
+      },
+    };
+    const out = slipVideoItem(reel, 'v1', 500, CAPS);
+    expect(out.tracks.audio[0].sourceInMs).toBe(2500);
+    expect(out.tracks.audio[0].sourceOutMs).toBe(5500);
+  });
+
+  // A non-slipping bed's headroom must not cap how far the PICTURE can slip —
+  // letting it would be a silent, hard-to-notice bug (see the comment above
+  // slipVideoItem). Here the bed has almost no head (100ms) while the clip
+  // has 1000ms; without the fix the whole gesture would be clamped to -100.
+  it("a non-slipping bed's small sourceInMs does not cap the picture's slip", () => {
+    const reel: LayeredReel = {
+      ...SLIP_REEL,
+      tracks: {
+        ...SLIP_REEL.tracks,
+        audio: [{ id: 'a1', startMs: 0, endMs: 3000, source: 'narration.mp3', sourceInMs: 100, followsVideoId: 'v1', slipsWithVideo: false }],
+      },
+    };
+    const out = slipVideoItem(reel, 'v1', -900, CAPS);
+    expect(vid(out).sourceInMs).toBe(100); // clip clamped only by its OWN head (1000 - 900)
+    expect(out.tracks.audio[0].sourceInMs).toBe(100); // bed untouched
+  });
+
   it('leaves an unlinked bed alone', () => {
     const reel: LayeredReel = {
       ...SLIP_REEL,

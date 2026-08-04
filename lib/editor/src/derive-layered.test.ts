@@ -122,6 +122,20 @@ describe('deriveLayered', () => {
     const brollAudio = r.tracks.audio.find((a) => a.id === 'seg-002-audio');
     expect(brollAudio).toMatchObject({ source: 'a.mp4', sourceInMs: 5750, followsVideoId: 'seg-002' });
   });
+  // slipsWithVideo is written EXPLICITLY, never left to the fallback — a
+  // clip's own 'voice' audio is that shot's own sync sound (true), while a
+  // broll's 'inherit-from-clip' bed is narration borrowed from a different
+  // shot (false). See commands/cut.md and lib/reel-config-base/slips-with-video.ts.
+  it("a clip's voice audio is written with slipsWithVideo: true (its own sync sound)", () => {
+    const r = deriveLayered(OLD, OPTS);
+    const clipAudio = r.tracks.audio.find((a) => a.id === 'seg-001-audio');
+    expect(clipAudio?.slipsWithVideo).toBe(true);
+  });
+  it("a broll's inherit-from-clip audio is written with slipsWithVideo: false (narration under a different picture)", () => {
+    const r = deriveLayered(OLD, OPTS);
+    const brollAudio = r.tracks.audio.find((a) => a.id === 'seg-002-audio');
+    expect(brollAudio?.slipsWithVideo).toBe(false);
+  });
   it('extend-previous: no new item is added; the previous audio item is extended to cover its span', () => {
     const r = deriveLayered(EXT, OPTS);
     // seg-a silent, seg-b extend-previous with no prior item (no-op, no crash),
@@ -239,7 +253,7 @@ describe('deriveLayered', () => {
       const r = deriveLayered(MULTI_FIRST, OPTS);
       expect(r.tracks.audio).toHaveLength(1);
       expect(r.tracks.audio[0]).toMatchObject({
-        id: 'seg-mf-audio', source: 'a.MP4', sourceInMs: 2000, startMs: 0, endMs: 3000, followsVideoId: 'seg-mf',
+        id: 'seg-mf-audio', source: 'a.MP4', sourceInMs: 2000, startMs: 0, endMs: 3000, followsVideoId: 'seg-mf', slipsWithVideo: true,
       });
     });
     it("multi-clip 'mix' → one audio item per source, all bound to the clip", () => {
@@ -247,6 +261,7 @@ describe('deriveLayered', () => {
       expect(r.tracks.audio).toHaveLength(2);
       expect(r.tracks.audio.map((a) => a.id)).toEqual(['seg-mm-audio-0', 'seg-mm-audio-1']);
       expect(r.tracks.audio.every((a) => a.followsVideoId === 'seg-mm')).toBe(true);
+      expect(r.tracks.audio.every((a) => a.slipsWithVideo === true)).toBe(true);
       expect(r.tracks.audio[1]).toMatchObject({ source: 'b.MP4', sourceInMs: 0 });
     });
   });
