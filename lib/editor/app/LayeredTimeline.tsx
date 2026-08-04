@@ -22,6 +22,7 @@ import { useSourceDurations } from './useSourceDurations';
 import { Waveform, VolumeLine } from './Waveform';
 import { MusicEnvelope } from './MusicEnvelope';
 import { computeMusicEnvelope } from '@video-toolkit/lib/reel-config-base/music-envelope';
+import { deriveSpeed } from '@video-toolkit/lib/reel-config-base/speed';
 import { resolveMediaSource, type MediaRole } from '@video-toolkit/lib/theming/media-source';
 import { humanizeKey, stableColor, sourceColors, type EditorMeta } from './editor-meta';
 import { handleRoomFrames, boundaryState, starvationMessage, type HandleRoom } from '@video-toolkit/lib/reel-config-base/handle-room';
@@ -225,11 +226,14 @@ function gripState(
 
 // px dragged → ms of source shift. NEGATED: dragging right pulls the media right
 // inside a fixed window, so what precedes it slides into view (sourceInMs falls).
-// Matches Premiere/Resolve. `scaleWidth` is px per second.
-// `|| 0` normalizes the `-0` that `-(0 / scaleWidth) * 1000` produces for
+// Matches Premiere/Resolve. `scaleWidth` is px per second. `speed` converts the
+// TIMELINE travel under the pointer into a SOURCE shift — at 0.5x, one second
+// of timeline is half a second of source, so the shift must be smaller; at 2x,
+// larger. Defaults to 1 so existing (pre-speed) call sites are unaffected.
+// `|| 0` normalizes the `-0` that `-(0 / scaleWidth) * 1000 * speed` produces for
 // dxPx===0 back to `+0` — Object.is (and so `toBe(0)`) treats them as unequal.
-export function slipDeltaMs(dxPx: number, scaleWidth: number): number {
-  return -(dxPx / scaleWidth) * 1000 || 0;
+export function slipDeltaMs(dxPx: number, scaleWidth: number, speed: number = 1): number {
+  return -(dxPx / scaleWidth) * 1000 * speed || 0;
 }
 
 // Zoom per pixel of wheel travel, as ln(factor). A mouse notch (deltaY ≈ 100 in
@@ -1043,7 +1047,13 @@ function LayeredTimelineImpl({
   const moveSlip = (e: ReactPointerEvent<HTMLDivElement>) => {
     const s = slipRef.current;
     if (!s) return;
-    onChange(slipVideoItem(s.base, s.id, slipDeltaMs(e.clientX - s.x0, scaleWidth), capMsById));
+    // Resolve against s.base — the reel as it stood when the gesture began —
+    // not the live reel, so the conversion rate can't shift under the user
+    // mid-drag. Fall back to 1 if the item can't be found (shouldn't happen;
+    // beginSlip already required isSlippable to start the gesture).
+    const item = s.base.tracks.video.find((v) => v.id === s.id);
+    const speed = isSlippable(item) ? deriveSpeed(item) : 1;
+    onChange(slipVideoItem(s.base, s.id, slipDeltaMs(e.clientX - s.x0, scaleWidth, speed), capMsById));
   };
 
   const endSlip = (e: ReactPointerEvent<HTMLDivElement>) => {
