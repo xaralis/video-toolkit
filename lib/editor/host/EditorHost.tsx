@@ -354,204 +354,210 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   const hasGuides = Boolean(reel.meta.guidesMs?.length);
 
   return (
-    <>
-      <EditorShell
-        projectName={projectName}
-        aspectRatio={`${width} / ${height}`}
-        renderControls={<RenderButton />}
-        onSave={handleSave}
-        onDiscard={() => savedReel && setReel(savedReel)}
-        onUndo={undo}
-        onRedo={redo}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        saving={saving}
-        dirty={dirty}
-        diagnostics={<DiagnosticsBadge items={diagnostics} onSelect={handleSelect} />}
-        preview={
-          <div ref={previewRef} style={{ position: 'relative' }}>
-            <Player
-              ref={playerRef}
-              component={component}
-              inputProps={inputProps}
-              durationInFrames={durationInFrames}
-              compositionWidth={width}
-              compositionHeight={height}
-              fps={fps}
-              style={{ width: '100%' }}
-            />
-            <MediaLoadingOverlay
-              loaded={videoUrls.length - pendingMedia}
-              total={videoUrls.length}
-              buffering={buffering}
-            />
-            {(selVideo?.kind === 'clip' || selVideo?.kind === 'broll') && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setShowFocus((s) => !s)}
-                  style={{
-                    position: 'absolute',
-                    top: 8,
-                    left: 8,
-                    background: showFocus ? EDITOR_ACCENT : 'rgba(20,21,25,0.8)',
-                    color: showFocus ? '#17181c' : '#e8e8ea',
-                    border: '1px solid #34363e',
-                    borderRadius: 4,
-                    padding: '4px 10px',
-                    fontSize: 12,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Focus/Zoom
-                </button>
-                {showFocus && (
-                  <div
+    <RenderButton>
+      {({ phaseControl, renderControls, renderStatus }) => (
+        <>
+          <EditorShell
+            projectName={projectName}
+            aspectRatio={`${width} / ${height}`}
+            phaseControl={phaseControl}
+            renderControls={renderControls}
+            renderStatus={renderStatus}
+            onSave={handleSave}
+            onDiscard={() => savedReel && setReel(savedReel)}
+            onUndo={undo}
+            onRedo={redo}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            saving={saving}
+            dirty={dirty}
+            diagnostics={<DiagnosticsBadge items={diagnostics} onSelect={handleSelect} />}
+            preview={
+            <div ref={previewRef} style={{ position: 'relative' }}>
+              <Player
+                ref={playerRef}
+                component={component}
+                inputProps={inputProps}
+                durationInFrames={durationInFrames}
+                compositionWidth={width}
+                compositionHeight={height}
+                fps={fps}
+                style={{ width: '100%' }}
+              />
+              <MediaLoadingOverlay
+                loaded={videoUrls.length - pendingMedia}
+                total={videoUrls.length}
+                buffering={buffering}
+              />
+              {(selVideo?.kind === 'clip' || selVideo?.kind === 'broll') && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowFocus((s) => !s)}
                     style={{
                       position: 'absolute',
-                      bottom: 8,
+                      top: 8,
                       left: 8,
-                      right: 8,
-                      background: 'rgba(20,21,25,0.85)',
-                      color: '#c8cbd2',
+                      background: showFocus ? EDITOR_ACCENT : 'rgba(20,21,25,0.8)',
+                      color: showFocus ? '#17181c' : '#e8e8ea',
                       border: '1px solid #34363e',
                       borderRadius: 4,
-                      padding: '4px 8px',
-                      fontSize: 10.5,
-                      lineHeight: 1.3,
-                      textAlign: 'center',
-                      pointerEvents: 'none',
+                      padding: '4px 10px',
+                      fontSize: 12,
+                      cursor: 'pointer',
                     }}
                   >
-                    {1 / (((selVideo?.crop as { width?: number } | undefined)?.width) ?? 1) >= MAX_ZOOM - 0.01
-                      ? `Max zoom reached (${MAX_ZOOM}×)`
-                      : 'Pinch = zoom · Two-finger scroll or drag = move'}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        }
-        timeline={
-          <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', flex: 'none' }}>
-              {/* LEFT: jump-to-start, playback, jump-to-end, ripple, delete, timecode */}
-              <button type="button" onClick={() => playerRef.current?.seekTo(0)} className={zoomBtnClass} title="Jump to start">
-                <SkipBackIcon size={14} />
-              </button>
-              <button type="button" onClick={() => playerRef.current?.toggle()} className={zoomBtnClass} title={playing ? 'Pause' : 'Play'}>
-                {playing ? <PauseIcon size={14} /> : <PlayIcon size={14} />}
-              </button>
-              <button type="button" onClick={() => playerRef.current?.seekTo(Math.max(0, durationInFrames - 1))} className={zoomBtnClass} title="Jump to end">
-                <SkipForwardIcon size={14} />
-              </button>
-              <button type="button" onClick={() => setRipple((r) => !r)} className={toggleBtnClass(ripple)} title="Ripple: resizing a clip shifts everything after it (and before it) to keep the timeline butted; dragging carries everything behind it too. Off: only what you grab moves.">
-                <WavesIcon size={14} /> Ripple {ripple ? 'on' : 'off'}
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={!selectedId}
-                className={`${zoomBtnClass} ed:w-auto ed:px-2`}
-                style={{ opacity: selectedId ? 1 : 0.4 }}
-                title="Delete the selected clip (⌫)"
-              >
-                <TrashIcon size={14} /> Delete
-              </button>
-              <Timecode playerRef={playerRef} durationInFrames={durationInFrames} fps={fps} />
-
-              {/* RIGHT: snapping, snap-to-beats, then zoom */}
-              <button type="button" onClick={() => setSnapping((s) => !s)} className={`${toggleBtnClass(snapping)} ed:ml-auto`} title="Snap edges and moves to the grid">
-                <MagnetIcon size={14} /> Snap {snapping ? 'on' : 'off'}
-              </button>
-              {/* Shipped for every brand — a reel without beat guides disables it
-                  by itself, so no per-brand flag is needed. */}
-              <button
-                type="button"
-                onClick={() => setSnapToBeats((s) => !s)}
-                disabled={!snapping || !hasGuides}
-                className={toggleBtnClass(snapping && snapToBeats)}
-                style={{ opacity: snapping && hasGuides ? 1 : 0.4 }}
-                title={snapping ? 'Snap edges and moves to the nearest beat (on release)' : 'Enable Snap first'}
-              >
-                <MusicIcon size={14} /> Beats snap {snapping && snapToBeats ? 'on' : 'off'}
-              </button>
-              <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                {/* All three route through `zoomAtCenter` with the ACHIEVED
-                    ratio, same as the keyboard shortcuts — this is the most
-                    discoverable zoom control, so it's the one place the
-                    left-edge-drift regression these controls exist to fix
-                    would be most visible if it were skipped here. */}
-                <button
-                  type="button"
-                  onClick={() => timelineRef.current?.zoomAtCenter(zoomBy(1 / 1.4))}
-                  className={zoomBtnClass}
-                  title="Zoom timeline out (⌘/Ctrl + scroll)"
-                >
-                  <MagnifierIcon sign="minus" />
+                    Focus/Zoom
+                  </button>
+                  {showFocus && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: 8,
+                        left: 8,
+                        right: 8,
+                        background: 'rgba(20,21,25,0.85)',
+                        color: '#c8cbd2',
+                        border: '1px solid #34363e',
+                        borderRadius: 4,
+                        padding: '4px 8px',
+                        fontSize: 10.5,
+                        lineHeight: 1.3,
+                        textAlign: 'center',
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      {1 / (((selVideo?.crop as { width?: number } | undefined)?.width) ?? 1) >= MAX_ZOOM - 0.01
+                        ? `Max zoom reached (${MAX_ZOOM}×)`
+                        : 'Pinch = zoom · Two-finger scroll or drag = move'}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          }
+          timeline={
+            <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', flex: 'none' }}>
+                {/* LEFT: jump-to-start, playback, jump-to-end, ripple, delete, timecode */}
+                <button type="button" onClick={() => playerRef.current?.seekTo(0)} className={zoomBtnClass} title="Jump to start">
+                  <SkipBackIcon size={14} />
+                </button>
+                <button type="button" onClick={() => playerRef.current?.toggle()} className={zoomBtnClass} title={playing ? 'Pause' : 'Play'}>
+                  {playing ? <PauseIcon size={14} /> : <PlayIcon size={14} />}
+                </button>
+                <button type="button" onClick={() => playerRef.current?.seekTo(Math.max(0, durationInFrames - 1))} className={zoomBtnClass} title="Jump to end">
+                  <SkipForwardIcon size={14} />
+                </button>
+                <button type="button" onClick={() => setRipple((r) => !r)} className={toggleBtnClass(ripple)} title="Ripple: resizing a clip shifts everything after it (and before it) to keep the timeline butted; dragging carries everything behind it too. Off: only what you grab moves.">
+                  <WavesIcon size={14} /> Ripple {ripple ? 'on' : 'off'}
                 </button>
                 <button
                   type="button"
-                  // The target ratio is computed from `scaleWidthRef`, not the
-                  // `scaleWidth` render closure — the two only ever differ
-                  // mid-burst (see zoomBy's doc comment), but this button reads
-                  // the same authoritative value zoomBy itself compounds
-                  // against, rather than a second, possibly-stale source.
-                  onClick={() => timelineRef.current?.zoomAtCenter(zoomBy(80 / scaleWidthRef.current))}
-                  title="Reset zoom to 100%"
-                  className="ed:text-xs ed:text-ink-2 ed:font-mono ed:tabular-nums"
-                  style={{ background: 'none', border: 'none', minWidth: 44, textAlign: 'center', cursor: 'pointer', padding: 0 }}
+                  onClick={handleDelete}
+                  disabled={!selectedId}
+                  className={`${zoomBtnClass} ed:w-auto ed:px-2`}
+                  style={{ opacity: selectedId ? 1 : 0.4 }}
+                  title="Delete the selected clip (⌫)"
                 >
-                  {Math.round((scaleWidth / 80) * 100)}%
+                  <TrashIcon size={14} /> Delete
                 </button>
+                <Timecode playerRef={playerRef} durationInFrames={durationInFrames} fps={fps} />
+  
+                {/* RIGHT: snapping, snap-to-beats, then zoom */}
+                <button type="button" onClick={() => setSnapping((s) => !s)} className={`${toggleBtnClass(snapping)} ed:ml-auto`} title="Snap edges and moves to the grid">
+                  <MagnetIcon size={14} /> Snap {snapping ? 'on' : 'off'}
+                </button>
+                {/* Shipped for every brand — a reel without beat guides disables it
+                    by itself, so no per-brand flag is needed. */}
                 <button
                   type="button"
-                  onClick={() => timelineRef.current?.zoomAtCenter(zoomBy(1.4))}
-                  className={zoomBtnClass}
-                  title="Zoom timeline in (⌘/Ctrl + scroll)"
+                  onClick={() => setSnapToBeats((s) => !s)}
+                  disabled={!snapping || !hasGuides}
+                  className={toggleBtnClass(snapping && snapToBeats)}
+                  style={{ opacity: snapping && hasGuides ? 1 : 0.4 }}
+                  title={snapping ? 'Snap edges and moves to the nearest beat (on release)' : 'Enable Snap first'}
                 >
-                  <MagnifierIcon sign="plus" />
+                  <MusicIcon size={14} /> Beats snap {snapping && snapToBeats ? 'on' : 'off'}
                 </button>
+                <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                  {/* All three route through `zoomAtCenter` with the ACHIEVED
+                      ratio, same as the keyboard shortcuts — this is the most
+                      discoverable zoom control, so it's the one place the
+                      left-edge-drift regression these controls exist to fix
+                      would be most visible if it were skipped here. */}
+                  <button
+                    type="button"
+                    onClick={() => timelineRef.current?.zoomAtCenter(zoomBy(1 / 1.4))}
+                    className={zoomBtnClass}
+                    title="Zoom timeline out (⌘/Ctrl + scroll)"
+                  >
+                    <MagnifierIcon sign="minus" />
+                  </button>
+                  <button
+                    type="button"
+                    // The target ratio is computed from `scaleWidthRef`, not the
+                    // `scaleWidth` render closure — the two only ever differ
+                    // mid-burst (see zoomBy's doc comment), but this button reads
+                    // the same authoritative value zoomBy itself compounds
+                    // against, rather than a second, possibly-stale source.
+                    onClick={() => timelineRef.current?.zoomAtCenter(zoomBy(80 / scaleWidthRef.current))}
+                    title="Reset zoom to 100%"
+                    className="ed:text-xs ed:text-ink-2 ed:font-mono ed:tabular-nums"
+                    style={{ background: 'none', border: 'none', minWidth: 44, textAlign: 'center', cursor: 'pointer', padding: 0 }}
+                  >
+                    {Math.round((scaleWidth / 80) * 100)}%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => timelineRef.current?.zoomAtCenter(zoomBy(1.4))}
+                    className={zoomBtnClass}
+                    title="Zoom timeline in (⌘/Ctrl + scroll)"
+                  >
+                    <MagnifierIcon sign="plus" />
+                  </button>
+                </div>
+              </div>
+              <div style={{ flex: '1 1 auto', minHeight: 0 }}>
+                <LayeredTimeline
+                  ref={timelineRef}
+                  reel={reel}
+                  onChange={setReel}
+                  selectedId={selectedId}
+                  onSelect={handleSelect}
+                  playerRef={playerRef}
+                  fps={fps}
+                  ripple={ripple}
+                  scaleWidth={scaleWidth}
+                  snapping={snapping}
+                  snapToBeats={snapping && snapToBeats}
+                  onZoom={zoomBy}
+                  savedReel={savedReel}
+                  guidesMs={reel.meta.guidesMs}
+                  meta={meta}
+                  onDiagnostics={setDiagnostics}
+                />
               </div>
             </div>
-            <div style={{ flex: '1 1 auto', minHeight: 0 }}>
-              <LayeredTimeline
-                ref={timelineRef}
-                reel={reel}
-                onChange={setReel}
-                selectedId={selectedId}
-                onSelect={handleSelect}
-                playerRef={playerRef}
-                fps={fps}
-                ripple={ripple}
-                scaleWidth={scaleWidth}
-                snapping={snapping}
-                snapToBeats={snapping && snapToBeats}
-                onZoom={zoomBy}
-                savedReel={savedReel}
-                guidesMs={reel.meta.guidesMs}
-                meta={meta}
-                onDiagnostics={setDiagnostics}
-              />
-            </div>
-          </div>
-        }
-        inspector={
-          <LayeredInspector
-            reel={reel}
-            selectedId={selectedId}
-            onChange={setReel}
-            onSeek={(f) => playerRef.current?.seekTo(f)}
-            fps={fps}
-            width={width}
-            height={height}
-            accentSlots={accentSlots}
-            meta={meta}
-            sourceDurations={sourceDurations}
+          }
+          inspector={
+            <LayeredInspector
+              reel={reel}
+              selectedId={selectedId}
+              onChange={setReel}
+              onSeek={(f) => playerRef.current?.seekTo(f)}
+              fps={fps}
+              width={width}
+              height={height}
+              accentSlots={accentSlots}
+              meta={meta}
+              sourceDurations={sourceDurations}
+            />
+          }
           />
-        }
-      />
-      <ShortcutOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
-    </>
+          <ShortcutOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
+        </>
+      )}
+    </RenderButton>
   );
 }

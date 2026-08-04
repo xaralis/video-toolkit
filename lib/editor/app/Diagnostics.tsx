@@ -36,18 +36,33 @@ export function DiagnosticsBadge({ items, onSelect }: { items: Diagnostic[]; onS
         // Anchored LEFT: the badge sits beside the project name at the far left
         // of the header, so a right-anchored panel runs off the pane and clips
         // the start of every message — which is where the numbers are.
-        <ul style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 20, listStyle: 'none', padding: 4, minWidth: 320, maxWidth: '70vw', background: '#232428', border: '1px solid #b4503f', borderRadius: 4, boxShadow: '0 6px 18px rgba(0,0,0,0.5)' }}>
-          {items.map((d, i) => (
-            <li key={i}>
-              <button
-                onClick={() => d.targetId && onSelect(d.targetId)}
-                style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', color: '#f0d8d2', padding: '5px 7px', cursor: d.targetId ? 'pointer' : 'default', font: 'inherit', whiteSpace: 'normal' }}
-              >
-                {d.message}
-              </button>
-            </li>
-          ))}
-        </ul>
+        //
+        // The arrow (the `::before`-less triangle below) is what makes this
+        // read as attached to the badge rather than a detached toast floating
+        // over the video — the panel used to hang with no visual link back to
+        // what opened it.
+        <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 8, zIndex: 20 }}>
+          <div
+            aria-hidden
+            style={{
+              position: 'absolute', top: -6, left: 12, width: 10, height: 10,
+              background: '#232428', border: '1px solid #b4503f', borderRight: 'none', borderBottom: 'none',
+              transform: 'rotate(45deg)',
+            }}
+          />
+          <ul style={{ position: 'relative', listStyle: 'none', padding: 4, minWidth: 320, maxWidth: '70vw', background: '#232428', border: '1px solid #b4503f', borderRadius: 4, boxShadow: '0 6px 18px rgba(0,0,0,0.5)' }}>
+            {items.map((d, i) => (
+              <li key={i}>
+                <button
+                  onClick={() => d.targetId && onSelect(d.targetId)}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', color: '#f0d8d2', padding: '5px 7px', cursor: d.targetId ? 'pointer' : 'default', font: 'inherit', whiteSpace: 'normal' }}
+                >
+                  {d.message}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );

@@ -22,14 +22,33 @@ describe('EditorShell', () => {
     expect(screen.getByRole('button', { name: /Save/i })).toBeDisabled();
   });
 
-  it('always shows Save and Discard; both disabled when there are no changes', () => {
+  it('always shows Save, disabled when there are no changes; Discard and the unsaved dot render nothing at all while clean', () => {
     const onSave = vi.fn();
     const onDiscard = vi.fn();
     render(<EditorShell preview={null} onSave={onSave} onDiscard={onDiscard} />); // clean
     expect(screen.getByRole('button', { name: /Save/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /Discard/i })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: /Discard/i }));
-    expect(onDiscard).not.toHaveBeenCalled(); // disabled → no-op
+    expect(screen.queryByRole('button', { name: /Discard/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Unsaved/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the unsaved dot and an enabled Discard once dirty', () => {
+    render(<EditorShell preview={null} onSave={vi.fn()} onDiscard={vi.fn()} dirty />);
+    expect(screen.getByText(/Unsaved/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Discard/i })).not.toBeDisabled();
+  });
+
+  it("Save's position in the action cluster does not depend on dirty — the dirty controls grow leftwards, nothing to Save's right moves", () => {
+    // jsdom has no layout, so this is asserted structurally: Save is the
+    // last child of the dirty cluster whether or not Discard/Unsaved render
+    // alongside it.
+    const { container, rerender } = render(<EditorShell preview={null} onSave={vi.fn()} onDiscard={vi.fn()} />); // clean
+    const cluster = () => container.querySelector('[data-testid="dirty-cluster"]') as HTMLElement;
+    expect(cluster().lastElementChild).toHaveTextContent('Save');
+    expect(cluster().children).toHaveLength(1); // just Save
+
+    rerender(<EditorShell preview={null} onSave={vi.fn()} onDiscard={vi.fn()} dirty />);
+    expect(cluster().lastElementChild).toHaveTextContent('Save');
+    expect(cluster().children).toHaveLength(3); // unsaved dot, Discard, Save
   });
 
   it('enables Save and Discard when dirty', () => {
@@ -80,5 +99,99 @@ describe('EditorShell — preview aspect ratio', () => {
   it('falls back to 9 / 16 when the caller says nothing', () => {
     const { container } = render(<EditorShell preview={<div />} />);
     expect(frame(container).style.aspectRatio).toBe('9 / 16');
+  });
+});
+
+// Undo/Redo dropped their text labels (icon-only, header restructure) — each
+// button's `title` becomes its computed accessible name once the icon (which
+// is aria-hidden) is the only content, but that is exactly the kind of thing
+// that's worth proving rather than assuming, so an explicit `aria-label` was
+// added too. Both are asserted here.
+describe('EditorShell — Undo/Redo are icon-only but keep an accessible name', () => {
+  it('Undo is reachable by accessible name, with no visible text label', () => {
+    render(<EditorShell preview={null} onUndo={vi.fn()} onRedo={vi.fn()} canUndo />);
+    const undo = screen.getByRole('button', { name: /Undo/i });
+    expect(undo).toHaveAttribute('title', 'Undo (⌘Z)');
+    expect(undo).toHaveAttribute('aria-label', 'Undo');
+    expect(undo.textContent).toBe(''); // icon only — no "Undo" text node
+  });
+
+  it('Redo is reachable by accessible name, with no visible text label', () => {
+    render(<EditorShell preview={null} onUndo={vi.fn()} onRedo={vi.fn()} canRedo />);
+    const redo = screen.getByRole('button', { name: /Redo/i });
+    expect(redo).toHaveAttribute('title', 'Redo (⌘⇧Z)');
+    expect(redo).toHaveAttribute('aria-label', 'Redo');
+    expect(redo.textContent).toBe('');
+  });
+
+  it('are disabled when canUndo/canRedo are false, and omitted entirely without handlers', () => {
+    const { rerender } = render(<EditorShell preview={null} onUndo={vi.fn()} onRedo={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /Undo/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Redo/i })).toBeDisabled();
+
+    rerender(<EditorShell preview={null} />);
+    expect(screen.queryByRole('button', { name: /Undo/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Redo/i })).not.toBeInTheDocument();
+  });
+});
+
+// Header restructure: identity + health on the left (project name, phase,
+// diagnostics), actions on the right.
+describe('EditorShell — header zones', () => {
+  it('places the phase control beside the project name, ahead of diagnostics, both outside the action zone', () => {
+    const { container } = render(
+      <EditorShell
+        preview={null}
+        projectName="my-reel"
+        phaseControl={<span data-testid="phase">editing</span>}
+        diagnostics={<span data-testid="diag">⚠ 1</span>}
+      />,
+    );
+    const header = container.querySelector('header') as HTMLElement;
+    const phase = screen.getByTestId('phase');
+    const diag = screen.getByTestId('diag');
+    const actionZone = screen.getByTestId('action-zone');
+
+    expect(header).toContainElement(phase);
+    expect(header).toContainElement(diag);
+    expect(actionZone).not.toContainElement(phase);
+    expect(actionZone).not.toContainElement(diag);
+
+    // Order: name, then phase, then diagnostics.
+    const left = phase.parentElement as HTMLElement;
+    const order = Array.from(left.children).map((el) => el.getAttribute('data-testid') ?? el.textContent);
+    expect(order.indexOf('my-reel')).toBeLessThan(order.indexOf('phase'));
+    expect(order.indexOf('phase')).toBeLessThan(order.indexOf('diag'));
+  });
+
+  it('omits the phase control entirely when not provided', () => {
+    render(<EditorShell preview={null} projectName="my-reel" />);
+    expect(screen.queryByTestId('phase')).not.toBeInTheDocument();
+  });
+});
+
+// The render toast (finished render / error) overlays the editor body, never
+// the header, and must not block controls underneath it except its own.
+describe('EditorShell — render status overlay', () => {
+  it('renders nothing extra when renderStatus is omitted', () => {
+    const { container } = render(<EditorShell preview={null} />);
+    expect(container.querySelectorAll('.ed\\:pointer-events-none').length).toBe(0);
+  });
+
+  it('overlays renderStatus outside the header, in a pointer-events-none layer with an auto inner box', () => {
+    const { container } = render(
+      <EditorShell preview={null} renderStatus={<button type="button">Show in Finder</button>} />,
+    );
+    const header = container.querySelector('header') as HTMLElement;
+    const toastBtn = screen.getByRole('button', { name: 'Show in Finder' });
+    expect(header).not.toContainElement(toastBtn);
+
+    // The full-bleed positioning layer must not swallow clicks; only the
+    // toast's own box (and its buttons) should be interactive.
+    const bleedLayer = toastBtn.closest('.ed\\:pointer-events-none') as HTMLElement;
+    expect(bleedLayer).toBeTruthy();
+    const innerBox = toastBtn.closest('.ed\\:pointer-events-auto') as HTMLElement;
+    expect(innerBox).toBeTruthy();
+    expect(bleedLayer).toContainElement(innerBox);
   });
 });

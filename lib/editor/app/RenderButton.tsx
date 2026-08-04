@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { CheckIcon, TriangleAlertIcon, XIcon } from './icons';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { CheckIcon, ChevronDownIcon, TriangleAlertIcon, XIcon } from './icons';
 
 /**
  * "Render preview / full" control for the editor's header toolbar, plus the
@@ -8,8 +8,10 @@ import { CheckIcon, TriangleAlertIcon, XIcon } from './icons';
  * Talks to the dev-server's `/render` endpoint (`createRenderHandler`, see
  * `lib/editor/src/render-endpoint.ts`): POSTs `{ mode }` to kick off a real
  * Remotion render, then polls GET `/render` once a second for progress. A
- * finished render stays visible with a "Show in Finder" action (POST
- * `{ action: 'reveal' }`) until dismissed.
+ * finished render is reported via `renderStatus` (a small toast the caller
+ * places over the editor area) until dismissed — the Preview/Full control
+ * itself is never replaced by it, so a second render can be started right
+ * away.
  *
  * The phase select talks to `/project-state` (`createProjectStateHandler`):
  * it shows/updates the project's `project.json` phase, and launching a FULL
@@ -17,7 +19,14 @@ import { CheckIcon, TriangleAlertIcon, XIcon } from './icons';
  * When the endpoint isn't wired (older hosts), the select simply hides.
  * Dependency-free by design (only `react` + `fetch`) so it can be dropped
  * into any brand's `.editor/main.tsx` host unchanged.
- */
+ *
+ * The phase chip and the render controls/status live in different header
+ * zones (see `EditorShell`'s `phaseControl` / `renderControls` /
+ * `renderStatus` props), but both depend on state (`/project-state`,
+ * `/render` polling) that only makes sense fetched once. Rather than lifting
+ * that state to the caller, this component keeps owning it and hands the
+ * three pieces out through a render-prop `children` function — the caller
+ * decides WHERE each piece goes, this component decides what's IN them. */
 
 type RenderMode = 'preview' | 'full';
 
@@ -39,58 +48,34 @@ interface ProjectStateResponse {
 
 const POLL_INTERVAL_MS = 1000;
 
-const BTN_H = 28;
-const BTN_FONT = 12;
+/** One half of the Preview|Full segmented control. Filled/raised (`control` +
+ *  `line-strong`), never the accent — the accent is reserved for Save and
+ *  selection (see EditorShell), so a promoted-but-not-accent treatment is
+ *  what keeps this reading as "the primary action" without competing with
+ *  those two. */
+const segmentBtnClass =
+  'ed:relative ed:inline-flex ed:items-center ed:justify-center ed:gap-1 ed:px-4 ed:py-[7px] ed:text-[13px] ed:font-medium ed:text-ink ed:bg-transparent ed:border-0 ed:cursor-pointer ed:hover:not-disabled:bg-line ed:disabled:opacity-50 ed:disabled:cursor-default ed:tabular-nums';
 
-const btnStyle: CSSProperties = {
-  background: '#26282f',
-  border: '1px solid #34363e',
-  color: '#e8e8ea',
-  borderRadius: 4,
-  height: BTN_H,
-  fontSize: BTN_FONT,
-  padding: '0 12px',
-  cursor: 'pointer',
-};
+const toastClass =
+  'ed:flex ed:items-center ed:gap-2 ed:bg-panel ed:border ed:rounded-md ed:shadow-[0_6px_18px_rgba(0,0,0,0.5)] ed:px-3 ed:py-2 ed:text-[13px] ed:text-ink ed:max-w-[420px]';
 
-const btnDisabledStyle: CSSProperties = {
-  ...btnStyle,
-  opacity: 0.5,
-  cursor: 'default',
-};
-
-const pillStyle: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 6,
-  background: '#26282f',
-  border: '1px solid #34363e',
-  color: '#e8e8ea',
-  borderRadius: 4,
-  height: BTN_H,
-  fontSize: BTN_FONT,
-  padding: '0 12px',
-  whiteSpace: 'nowrap',
-};
-
-const selectStyle: CSSProperties = {
-  ...btnStyle,
-  padding: '0 6px',
-  appearance: 'auto',
-};
-
-const errorTextStyle: CSSProperties = {
-  fontSize: BTN_FONT,
-  color: '#ff8a7a',
-  whiteSpace: 'nowrap',
-  maxWidth: 260,
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-};
+const toastBtnClass =
+  'ed:inline-flex ed:items-center ed:gap-1 ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded ed:px-2 ed:py-1 ed:text-[12px] ed:cursor-pointer ed:hover:text-ink ed:shrink-0';
 
 type Phase = 'idle' | 'starting' | 'rendering' | 'done' | 'error';
 
-export function RenderButton() {
+interface RenderButtonParts {
+  /** The project-phase chip, or `null` when `/project-state` isn't wired. */
+  phaseControl: ReactNode;
+  /** The Preview|Full segmented control — always present, never replaced;
+   *  shows a determinate progress bar + percentage while rendering. */
+  renderControls: ReactNode;
+  /** A dismissible toast for a finished render or an error, or `null` while
+   *  there's nothing to report. The caller overlays it on the editor area. */
+  renderStatus: ReactNode;
+}
+
+export function RenderButton({ children }: { children: (parts: RenderButtonParts) => ReactNode }) {
   const [phase, setPhase] = useState<Phase>('idle');
   const [mode, setMode] = useState<RenderMode | undefined>(undefined);
   const [percent, setPercent] = useState(0);
@@ -248,85 +233,92 @@ export function RenderButton() {
     }).catch(() => {});
   };
 
-  const phaseSelect = projectPhases ? (
-    <select
-      value={projectPhase ?? ''}
-      onChange={(e) => updateProjectPhase(e.target.value)}
-      style={selectStyle}
-      title="Project phase (written to project.json)"
-    >
-      {projectPhase === null && <option value="">— phase —</option>}
-      {projectPhases.map((p) => (
-        <option key={p} value={p}>
-          {p}
-        </option>
-      ))}
-    </select>
+  const dismiss = () => setPhase('idle');
+
+  const phaseControl = projectPhases ? (
+    <div className="ed:relative ed:inline-flex ed:items-center">
+      <select
+        value={projectPhase ?? ''}
+        onChange={(e) => updateProjectPhase(e.target.value)}
+        title="Project phase (written to project.json)"
+        className="ed:appearance-none ed:bg-control ed:text-ink-2 ed:text-[12px] ed:font-medium ed:border ed:border-line ed:rounded-full ed:pl-3 ed:pr-6 ed:py-[3px] ed:cursor-pointer ed:hover:text-ink ed:hover:border-line-strong"
+      >
+        {projectPhase === null && <option value="">— phase —</option>}
+        {projectPhases.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
+      </select>
+      <ChevronDownIcon size={11} className="ed:pointer-events-none ed:absolute ed:right-2 ed:text-ink-3" />
+    </div>
   ) : null;
 
-  let controls: ReactNode;
-  if (phase === 'rendering') {
-    controls = (
-      <div style={pillStyle}>
-        Rendering {mode ?? '…'}… {percent}%
-      </div>
-    );
-  } else if (phase === 'done') {
-    // The finished render stays visible (with the reveal action) until
-    // dismissed or a new render starts.
-    controls = (
-      <>
-        <div style={pillStyle}>
-          <CheckIcon size={13} /> {outPath}
-        </div>
-        <button type="button" style={btnStyle} onClick={reveal} title="Show the rendered file in the OS file manager">
+  // The segmented control is never swapped out for a pill/status view — it
+  // stays in place across every phase so a render can always be (re)started
+  // without dismissing anything first. Only 'starting' and 'rendering'
+  // disable it, matching what the control could always do: no way existed to
+  // fire a second render while one was already in flight.
+  const busy = phase === 'starting' || phase === 'rendering';
+  const renderControls = (
+    <div className="ed:relative ed:inline-flex ed:items-stretch ed:overflow-hidden ed:rounded-md ed:border ed:border-line-strong ed:bg-control">
+      <button
+        type="button"
+        className={segmentBtnClass}
+        disabled={busy}
+        onClick={() => startRender('preview')}
+        title="Render a half-scale preview MP4"
+      >
+        Preview{phase === 'rendering' && mode === 'preview' ? ` ${percent}%` : ''}
+      </button>
+      <span className="ed:w-px ed:bg-line-strong ed:self-stretch" />
+      <button
+        type="button"
+        className={segmentBtnClass}
+        disabled={busy}
+        onClick={() => startRender('full')}
+        title="Render the final full-scale MP4"
+      >
+        Full{phase === 'rendering' && mode === 'full' ? ` ${percent}%` : ''}
+      </button>
+      {phase === 'rendering' && (
+        <div
+          aria-hidden="true"
+          className="ed:absolute ed:left-0 ed:bottom-0 ed:h-[3px] ed:bg-ink-2"
+          style={{ width: `${percent}%` }}
+        />
+      )}
+    </div>
+  );
+
+  let renderStatus: ReactNode = null;
+  if (phase === 'done') {
+    const base = outPath ? (outPath.split(/[\\/]/).pop() ?? outPath) : undefined;
+    renderStatus = (
+      <div className={`${toastClass} ed:border-line-strong`} title={outPath}>
+        <CheckIcon size={14} />
+        <span className="ed:truncate">{base}</span>
+        <button type="button" className={toastBtnClass} onClick={reveal} title="Show the rendered file in the OS file manager">
           Show in Finder
         </button>
-        <button type="button" style={{ ...btnStyle, display: 'inline-flex', alignItems: 'center' }} onClick={() => setPhase('idle')} title="Dismiss">
+        <button type="button" className={toastBtnClass} onClick={dismiss} title="Dismiss" aria-label="Dismiss">
           <XIcon size={13} />
         </button>
-      </>
+      </div>
     );
-  } else {
-    // idle / starting / error: buttons stay visible (disabled while the POST
-    // that kicks off a render is in flight) so the user always has something
-    // to click.
-    const disabled = phase === 'starting';
-    controls = (
-      <>
-        {phase === 'error' && error && (
-          <span style={errorTextStyle} title={error}>
-            <TriangleAlertIcon size={13} /> {error}
-          </span>
-        )}
-        <button
-          type="button"
-          style={disabled ? btnDisabledStyle : btnStyle}
-          disabled={disabled}
-          onClick={() => startRender('preview')}
-          title="Render a half-scale preview MP4"
-        >
-          Preview
+  } else if (phase === 'error' && error) {
+    renderStatus = (
+      <div className={`${toastClass} ed:border-danger ed:text-danger`} title={error}>
+        <TriangleAlertIcon size={14} />
+        <span className="ed:truncate">{error}</span>
+        <button type="button" className={toastBtnClass} onClick={dismiss} title="Dismiss" aria-label="Dismiss">
+          <XIcon size={13} />
         </button>
-        <button
-          type="button"
-          style={disabled ? btnDisabledStyle : btnStyle}
-          disabled={disabled}
-          onClick={() => startRender('full')}
-          title="Render the final full-scale MP4"
-        >
-          Full
-        </button>
-      </>
+      </div>
     );
   }
 
-  return (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-      {phaseSelect}
-      {controls}
-    </div>
-  );
+  return <>{children({ phaseControl, renderControls, renderStatus })}</>;
 }
 
 export default RenderButton;

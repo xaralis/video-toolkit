@@ -20,12 +20,23 @@ export interface EditorShellProps {
    *  nothing to show — a healthy project's header looks exactly as it did
    *  before this existed. */
   diagnostics?: ReactNode;
+  /** The project-phase chip, shown beside the project name (left zone) —
+   *  it describes the project, not an action, so it does not belong among
+   *  the render/undo/save controls on the right. Omitted entirely when the
+   *  caller has no phase control to show. */
+  phaseControl?: ReactNode;
   /** Rendered in the right panel. Falls back to a placeholder when omitted. */
   inspector?: ReactNode;
   /** Rendered in the bottom strip. Falls back to a placeholder when omitted. */
   timeline?: ReactNode;
-  /** Prominent render controls (e.g. Preview/Full) shown at the top of the header. */
+  /** Prominent render controls (e.g. a Preview|Full segmented control) shown
+   *  at the front of the header's action zone. */
   renderControls?: ReactNode;
+  /** A dismissible status (finished render, error) overlaid on the editor
+   *  body — never in the header, so it can't shove the action controls or
+   *  block a second render from starting. Omitted entirely when there's
+   *  nothing to report. */
+  renderStatus?: ReactNode;
   /** The preview stage's aspect ratio, as a CSS `aspect-ratio` value (e.g.
    *  `'16 / 9'`). Defaults to `'9 / 16'` — the shell was built for vertical
    *  reels and hard-coded that, which letterboxed a 1920×1080 web-program-intro
@@ -57,9 +68,11 @@ export function EditorShell({
   saving,
   dirty,
   diagnostics,
+  phaseControl,
   inspector,
   timeline,
   renderControls,
+  renderStatus,
   onUndo,
   onRedo,
   canUndo,
@@ -76,11 +89,19 @@ export function EditorShell({
           margin, which showed as a white border around the UI. */}
       <style>{`html, body, #root { height: 100%; margin: 0; } body { background: var(--ed-color-stage); }`}</style>
       <header className="ed:flex ed:items-center ed:justify-between ed:px-5 ed:py-3 ed:bg-panel ed:border-b ed:border-line ed:shrink-0">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* Identity + health: what this PROJECT is and whether it's okay —
+            never actions, so phase and diagnostics live here, not on the right. */}
+        <div className="ed:flex ed:items-center ed:gap-3">
           <span className="ed:text-sm ed:font-semibold ed:text-ink">{projectName}</span>
+          {phaseControl}
           {diagnostics}
         </div>
-        <div className="ed:flex ed:items-center ed:gap-3">
+        {/* Actions: things you DO. Ordered by how often you reach for them —
+            the render controls are the tool's whole output and get the
+            strongest visual weight; undo/redo are routine and go icon-only;
+            the dirty cluster (unsaved indicator + Discard) only exists while
+            there's something to discard, so a clean project shows just Save. */}
+        <div data-testid="action-zone" className="ed:flex ed:items-center ed:gap-3">
           {renderControls && (
             <>
               {renderControls}
@@ -91,74 +112,92 @@ export function EditorShell({
             <>
               <button
                 type="button"
-                className="ed:inline-flex ed:items-center ed:gap-1.5 ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:px-3 ed:py-[7px] ed:text-[13px] ed:cursor-pointer ed:hover:not-disabled:text-ink ed:disabled:opacity-40 ed:disabled:cursor-default"
+                className="ed:inline-flex ed:items-center ed:justify-center ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:w-8 ed:h-8 ed:cursor-pointer ed:hover:not-disabled:text-ink ed:disabled:opacity-40 ed:disabled:cursor-default"
                 onClick={onUndo}
                 disabled={!canUndo}
                 title="Undo (⌘Z)"
+                aria-label="Undo"
               >
-                <UndoIcon size={15} /> Undo
+                <UndoIcon size={15} />
               </button>
               <button
                 type="button"
-                className="ed:inline-flex ed:items-center ed:gap-1.5 ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:px-3 ed:py-[7px] ed:text-[13px] ed:cursor-pointer ed:hover:not-disabled:text-ink ed:disabled:opacity-40 ed:disabled:cursor-default"
+                className="ed:inline-flex ed:items-center ed:justify-center ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:w-8 ed:h-8 ed:cursor-pointer ed:hover:not-disabled:text-ink ed:disabled:opacity-40 ed:disabled:cursor-default"
                 onClick={onRedo}
                 disabled={!canRedo}
                 title="Redo (⌘⇧Z)"
+                aria-label="Redo"
               >
-                <RedoIcon size={15} /> Redo
+                <RedoIcon size={15} />
               </button>
               <span className="ed:w-px ed:h-[22px] ed:bg-line ed:mx-0.5" />
             </>
           )}
-          {/* Always occupies its space (visibility, not conditional render) so
-              toggling dirty never shifts the Save/Discard buttons. */}
-          <span
-            className="ed:text-xs ed:font-medium ed:text-warn"
-            style={{ visibility: dirty ? 'visible' : 'hidden' }}
-          >
-            ● Unsaved
-          </span>
-          {/* Save + Discard are always present; both disable when there's nothing to save. */}
-          <button
-            type="button"
-            className="ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:px-[14px] ed:py-2 ed:text-[13px] ed:cursor-pointer ed:hover:border-ink-3 ed:hover:text-ink ed:disabled:opacity-45 ed:disabled:cursor-default"
-            onClick={onDiscard}
-            disabled={!dirty || saving}
-          >
-            Discard
-          </button>
-          <button
-            type="button"
-            className={
-              dirty
-                ? 'ed:bg-accent ed:text-accent-ink ed:border-0 ed:rounded-md ed:px-[18px] ed:py-2 ed:text-[13px] ed:font-semibold ed:cursor-pointer ed:disabled:bg-control ed:disabled:text-ink-3 ed:disabled:cursor-default'
-                : 'ed:bg-accent ed:text-accent-ink ed:border-0 ed:rounded-md ed:px-[18px] ed:py-2 ed:text-[13px] ed:font-semibold ed:cursor-pointer ed:disabled:bg-control ed:disabled:text-ink-3 ed:disabled:cursor-default ed:bg-control ed:text-ink-3 ed:cursor-default'
-            }
-            onClick={onSave}
-            disabled={!dirty || saving}
-          >
-            Save
-          </button>
+          {/* Dirty cluster: renders NOTHING while clean — no reserved space,
+              no disabled Discard sitting around for a state that doesn't
+              exist. Because this whole row is right-aligned, the unsaved dot
+              and Discard grow LEFTWARDS into the middle when they appear, so
+              Save (last child, always present) never moves. */}
+          <div data-testid="dirty-cluster" className="ed:flex ed:items-center ed:gap-3">
+            {dirty && <span className="ed:text-xs ed:font-medium ed:text-warn">● Unsaved</span>}
+            {dirty && (
+              <button
+                type="button"
+                className="ed:bg-transparent ed:text-ink-2 ed:border ed:border-line-strong ed:rounded-md ed:px-[14px] ed:py-2 ed:text-[13px] ed:cursor-pointer ed:hover:border-ink-3 ed:hover:text-ink ed:disabled:opacity-45 ed:disabled:cursor-default"
+                onClick={onDiscard}
+                disabled={saving}
+              >
+                Discard
+              </button>
+            )}
+            {/* Save is always present — the anchor that must not move. */}
+            <button
+              type="button"
+              className={
+                dirty
+                  ? 'ed:bg-accent ed:text-accent-ink ed:border-0 ed:rounded-md ed:px-[18px] ed:py-2 ed:text-[13px] ed:font-semibold ed:cursor-pointer ed:disabled:bg-control ed:disabled:text-ink-3 ed:disabled:cursor-default'
+                  : 'ed:bg-accent ed:text-accent-ink ed:border-0 ed:rounded-md ed:px-[18px] ed:py-2 ed:text-[13px] ed:font-semibold ed:cursor-pointer ed:disabled:bg-control ed:disabled:text-ink-3 ed:disabled:cursor-default ed:bg-control ed:text-ink-3 ed:cursor-default'
+              }
+              onClick={onSave}
+              disabled={!dirty || saving}
+            >
+              Save
+            </button>
+          </div>
         </div>
       </header>
 
-      <div className="ed:flex ed:flex-1 ed:min-h-0">
-        <div className="ed:flex ed:items-center ed:justify-center ed:flex-1 ed:min-w-0 ed:bg-stage ed:p-6">
-          <div
-            data-testid="stage-frame"
-            className="ed:h-full ed:max-w-full ed:bg-black ed:overflow-hidden ed:rounded ed:shadow-[0_0_0_1px_var(--ed-color-line)]"
-            style={{ aspectRatio }}
-          >
-            {preview}
+      <div className="ed:relative ed:flex ed:flex-col ed:flex-1 ed:min-h-0">
+        <div className="ed:flex ed:flex-1 ed:min-h-0">
+          <div className="ed:flex ed:items-center ed:justify-center ed:flex-1 ed:min-w-0 ed:bg-stage ed:p-6">
+            <div
+              data-testid="stage-frame"
+              className="ed:h-full ed:max-w-full ed:bg-black ed:overflow-hidden ed:rounded ed:shadow-[0_0_0_1px_var(--ed-color-line)]"
+              style={{ aspectRatio }}
+            >
+              {preview}
+            </div>
+          </div>
+          <div className="ed:w-80 ed:shrink-0 ed:bg-panel ed:border-l ed:border-line ed:overflow-hidden ed:text-ink-3 ed:text-[13px]">
+            {inspector ?? 'Inspector (coming soon)'}
           </div>
         </div>
-        <div className="ed:w-80 ed:shrink-0 ed:bg-panel ed:border-l ed:border-line ed:overflow-hidden ed:text-ink-3 ed:text-[13px]">
-          {inspector ?? 'Inspector (coming soon)'}
-        </div>
-      </div>
 
-      <div className="ed:h-[300px] ed:shrink-0 ed:bg-panel ed:border-t ed:border-line ed:flex ed:items-center ed:justify-center ed:text-ink-3 ed:text-[13px]">
-        {timeline ?? 'Timeline (coming soon)'}
+        <div className="ed:h-[300px] ed:shrink-0 ed:bg-panel ed:border-t ed:border-line ed:flex ed:items-center ed:justify-center ed:text-ink-3 ed:text-[13px]">
+          {timeline ?? 'Timeline (coming soon)'}
+        </div>
+
+        {/* Overlays the editor body (preview + inspector + timeline), never
+            the header — a finished render or an error must not shove the
+            action controls. `pointer-events-none` on the full-bleed
+            positioning layer, `pointer-events-auto` on just the toast box,
+            mirrors MediaLoadingOverlay's own solved pattern (host/MediaLoading.tsx)
+            for "covers an area but must not swallow clicks under it". */}
+        {renderStatus && (
+          <div className="ed:absolute ed:inset-0 ed:z-20 ed:flex ed:items-end ed:justify-end ed:p-4 ed:pointer-events-none">
+            <div className="ed:pointer-events-auto">{renderStatus}</div>
+          </div>
+        )}
       </div>
     </div>
   );
