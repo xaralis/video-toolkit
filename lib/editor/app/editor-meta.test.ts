@@ -6,13 +6,11 @@ import {
   effectDefinition,
   humanizeKey,
   stableColor,
-  getStableColorPalette,
-  distinctColors,
+  LANE_PALETTE,
   sourceColors,
   type EditorMeta,
 } from './editor-meta';
-import { CORE_LANE_COLOR } from './LayeredTimeline';
-import { ACCENT_HUE, HUE_GUARD, ARC, hslToRgb, redmean } from './lane-colors';
+import { ACCENT_HUE, HUE_GUARD } from './lane-colors';
 import type { CompositionTheme } from '../../theming/types';
 import type { StyleEffectRenderer } from '../../theming/effects';
 import type { LayeredReel, VideoItem } from '../../reel-config-base/layered-schema';
@@ -79,6 +77,81 @@ function parseHsl(color: string): { h: number; s: number; l: number } {
   return { h: Number(m![1]), s: Number(m![2]), l: Number(m![3]) };
 }
 
+// Circular hue distance, wrapping at 0/360 — a naive `Math.abs(a - b)` gets
+// this wrong for a pair that straddles the wrap point (e.g. 359 and 1 read
+// as 358deg apart instead of the true 2deg), which is exactly the case
+// `LANE_PALETTE`'s hue-0 entry needs checked correctly against whatever
+// wraps around to sit next to it.
+function hueDistance(a: number, b: number): number {
+  const d = Math.abs(a - b) % 360;
+  return Math.min(d, 360 - d);
+}
+
+describe('LANE_PALETTE', () => {
+  const parsed = LANE_PALETTE.map((c) => parseHsl(c));
+
+  it('has 18 entries', () => {
+    expect(LANE_PALETTE).toHaveLength(18);
+  });
+
+  // What used to hold "by construction" for the deleted generator (every
+  // candidate hue was constrained to clear the guard band before
+  // farthest-point selection ever ran) now has to hold "by assertion" for a
+  // hand-authored literal — this is that assertion, using the formula the
+  // brief specifies: |hue - ACCENT_HUE| > HUE_GUARD, via the wrapping
+  // `hueDistance` above rather than a bare subtraction.
+  it('every entry clears the accent guard band', () => {
+    for (const { h } of parsed) {
+      const d = hueDistance(h, ACCENT_HUE);
+      expect(d, `hue ${h} is ${d.toFixed(1)}deg from the accent (guard ${HUE_GUARD})`).toBeGreaterThan(HUE_GUARD);
+    }
+  });
+
+  // `hueDistance`'s own correctness at the 0/360 seam — a naive
+  // `Math.abs(a - b)` would say 1 and 359 are 358deg apart; they are
+  // actually 2deg apart once the wheel wraps.
+  it('wraps hue distance correctly at the 0/360 boundary', () => {
+    expect(hueDistance(1, 359)).toBeCloseTo(2, 6);
+    expect(hueDistance(0, 350)).toBeCloseTo(10, 6);
+  });
+
+  it('every entry is exactly S=52%, L=45% — the family rule shared with CORE_LANE_COLOR', () => {
+    for (const { s, l } of parsed) {
+      expect(s).toBe(52);
+      expect(l).toBe(45);
+    }
+  });
+
+  it('all 18 entries are distinct', () => {
+    expect(new Set(LANE_PALETTE).size).toBe(LANE_PALETTE.length);
+  });
+
+  // Consecutive ARRAY entries are what `sourceColors`/`stableColor` actually
+  // hand to neighbours (adjacent sources, adjacent unknown kinds), so this
+  // checks array order, not sorted-hue order — including the wrap from the
+  // last entry back to the first, since cycling (LANE_PALETTE[i %
+  // length]) makes that pair adjacent too once a reel exceeds 18 sources.
+  it('keeps every consecutive pair — including the wrap from last to first — at least 100deg apart in hue', () => {
+    const hues = parsed.map((p) => p.h);
+    let min = Infinity;
+    let worst: [number, number] = [hues[0], hues[0]];
+    for (let i = 0; i < hues.length; i += 1) {
+      const a = hues[i];
+      const b = hues[(i + 1) % hues.length];
+      const d = hueDistance(a, b);
+      if (d < min) {
+        min = d;
+        worst = [a, b];
+      }
+    }
+    // Measured minimum for this exact array: 116deg, between hue 102 and hue
+    // 218 (the pair straddling the accent guard band's below-guard edge).
+    // Re-derive rather than trust this comment if LANE_PALETTE's order or
+    // values ever change.
+    expect(min, `${worst[0]} -> ${worst[1]}`).toBeGreaterThanOrEqual(100);
+  });
+});
+
 describe('stableColor', () => {
   it('is deterministic per seed and differs between seeds', () => {
     expect(stableColor('overlay-chevron')).toBe(stableColor('overlay-chevron'));
@@ -86,166 +159,15 @@ describe('stableColor', () => {
     expect(stableColor('x')).toMatch(/^hsl\(\d+, \d+%, \d+%\)$/);
   });
 
-  // The actual root-cause fix: separation used to be checked over ONE fixed
-  // 16-kind list, which passed by construction for that list — an
-  // independent audit (random salts, random kind names) found the SAME
-  // generator gave worse-than-baseline separation and a tripled duplicate
-  // rate for kinds outside it. `STABLE_COLOR_PALETTE` (editor-meta.ts) is now
-  // built by farthest-point sampling, a real geometric construction, so this
-  // checks EVERY pair of the whole palette — not a sample, not a fixture —
-  // which is the guarantee the old test only claimed to have. The palette is
-  // built LAZILY (see `getStableColorPalette` in editor-meta.ts, so import
-  // doesn't pay its ~77ms construction cost) — calling the accessor here
-  // forces that build for this test.
-  it('STABLE_COLOR_PALETTE separates every one of its own entries from every other', () => {
-    const rgbs = getStableColorPalette().map((c) => hslToRgb(c.h, c.s, c.l));
-    // Measured minimum over all C(2048,2) = 2,096,128 pairs of this exact
-    // palette (PALETTE_SIZE=2048, built once, lazily, on first use — see
-    // buildPalette in editor-meta.ts, over the widened sat 20-90% / light
-    // 15-80% box) is ~22.52 (palette[941] vs palette[2047]) — re-derived after
-    // `ARC` widened from a narrow 190-280 cool arc to the whole wheel minus
-    // the accent's guard band (lane-colors.ts); the wider hue space leaves
-    // farthest-point sampling more room, so this floor ROSE from the prior
-    // ~11.65. 20 keeps a real margin under that without being so tight that
-    // an unrelated, still-reasonable change to PALETTE_SIZE or the sat/light
-    // ranges flakes this — re-measure (log `min` below) and re-derive both
-    // together if either changes. This is checked on the SAME rounded h/s/l
-    // values `stableColor` actually emits (palette entries are rounded
-    // before farthest-point selection runs, not after — see `buildPalette`),
-    // so the floor covers what ships, not a continuous approximation of it.
-    const PALETTE_FLOOR = 20;
-    // A single assertion at the end, not one per pair: 2,096,128 `expect()`
-    // calls (with an eagerly-built label string each) made this test take
-    // >10s: plain-JS min-tracking, then one assert, is the same guarantee at
-    // negligible cost. `!(d >= min)`, not `d < min`: the latter is FALSE for
-    // a NaN `d` (any comparison with NaN is false), so a NaN redmean distance
-    // — e.g. from a NaN saturation or lightness slipping into the palette —
-    // would silently never update `min` and never fail this test. `!(d >=
-    // min)` is true for NaN (since `NaN >= min` is false), so it's caught.
-    let min = Infinity;
-    let worstPair: [number, number] = [0, 0];
-    for (let i = 0; i < rgbs.length; i += 1) {
-      for (let j = i + 1; j < rgbs.length; j += 1) {
-        const d = redmean(rgbs[i], rgbs[j]);
-        if (!(d >= min)) {
-          min = d;
-          worstPair = [i, j];
-        }
-      }
-    }
-    expect(min, `palette[${worstPair[0]}] vs palette[${worstPair[1]}]`).toBeGreaterThanOrEqual(PALETTE_FLOOR);
-  });
-
-  // Mutation-tested: reverting the palette's hue construction to a plain
-  // `hash % 360` (the pre-harmonisation behaviour) still passed the OLD
-  // version of this file's separation test, and under that mutant most
-  // generated colours land outside the arc and several land INSIDE the
-  // accent guard band — the exact rule-1 violation this task exists to
-  // prevent. The palette loop below checks the EXACT rounded h/s/l every
-  // `STABLE_COLOR_PALETTE` entry carries (rounding happens once, before
-  // farthest-point selection — see `buildPalette` — not as a display step
-  // afterwards), so this is exhaustive over literally every colour
-  // `stableColor` can ever emit, not a sample of it; the 300-seed black-box
-  // loop through `stableColor` itself is kept alongside it only to prove the
-  // hash-to-index wrapper doesn't introduce its own bug independent of the
-  // palette (e.g. an off-by-one), not to add coverage the exhaustive loop
-  // lacks.
-  it('never generates a colour outside the arc, or inside the accent guard band', () => {
-    const guardLo = ACCENT_HUE - HUE_GUARD;
-    const guardHi = ACCENT_HUE + HUE_GUARD;
-    for (const { h } of getStableColorPalette()) {
-      expect(h, `palette hue ${h}`).toBeGreaterThanOrEqual(ARC[0]);
-      expect(h, `palette hue ${h}`).toBeLessThanOrEqual(ARC[1]);
-      expect(h < guardLo || h > guardHi, `palette hue ${h} inside guard band [${guardLo}, ${guardHi}]`).toBe(true);
-    }
+  // Draws from the SAME curated palette `sourceColors` cycles through —
+  // there is exactly one look in the editor, no second palette to drift
+  // from the first. Since every `LANE_PALETTE` entry already clears the
+  // guard band (asserted above), this transitively re-proves the old
+  // "never generates a colour inside the guard band" guarantee too.
+  it('always draws from LANE_PALETTE', () => {
     for (let i = 0; i < 300; i += 1) {
-      const { h } = parseHsl(stableColor(`generated-kind-${i}`));
-      expect(h).toBeGreaterThanOrEqual(ARC[0]);
-      expect(h).toBeLessThanOrEqual(ARC[1]);
-      expect(h < guardLo || h > guardHi).toBe(true);
+      expect(LANE_PALETTE).toContain(stableColor(`generated-kind-${i}`));
     }
-  });
-
-  // A brand's overlay kinds never reach `stableColor` if core already colours
-  // them (`colorFor` in LayeredTimeline.tsx tries `CORE_LANE_COLOR` first) —
-  // a prior version of this file's fixture included `video-photo` and
-  // `brand-watermark`, both CORE_LANE_COLOR keys, so its measured "floor" was
-  // partly defended by pairs that can never actually occur through
-  // `stableColor`. This pool is exclusively kinds NOT in CORE_LANE_COLOR.
-  const REACHABLE_KIND_POOL = [
-    'overlay-chevron', 'overlay-lottie', 'overlay-update-badge', 'overlay-text', 'overlay-title',
-    'overlay-stat-callout', 'overlay-quote-pull', 'overlay-source-tag', 'overlay-party-logos',
-    'overlay-caption', 'overlay-legal', 'overlay-ticker', 'overlay-cta', 'overlay-lower-third',
-    'overlay-progress', 'overlay-social-handle', 'overlay-countdown', 'overlay-map-pin',
-    'overlay-price-tag', 'overlay-testimonial', 'overlay-badge', 'overlay-alert', 'overlay-poll',
-    'overlay-rating', 'overlay-weather', 'overlay-score', 'overlay-caption-2', 'overlay-emoji-burst',
-  ];
-  for (const kind of REACHABLE_KIND_POOL) {
-    if (kind in CORE_LANE_COLOR) throw new Error(`${kind} is a CORE_LANE_COLOR key — stableColor never sees it`);
-  }
-
-  // The pre-harmonisation generator (`hue = mix32(hash) % 360` at one of 3
-  // saturations / 4 lightnesses), kept here ONLY as a fixed comparison
-  // baseline — not a design to return to, but a concrete answer to "does the
-  // new generator actually do better than the old one on kinds it wasn't
-  // tuned against."
-  function oldGenerator(seed: string): { h: number; s: number; l: number } {
-    let hash = 0;
-    for (let i = 0; i < seed.length; i += 1) hash = (Math.imul(hash, 31) + seed.charCodeAt(i)) >>> 0;
-    let m = hash >>> 0;
-    m ^= m >>> 16;
-    m = Math.imul(m, 0x85ebca6b) >>> 0;
-    m ^= m >>> 13;
-    m = Math.imul(m, 0xc2b2ae35) >>> 0;
-    m ^= m >>> 16;
-    m >>>= 0;
-    const SAT = [34, 42, 50];
-    const LIG = [28, 36, 44, 52];
-    return { h: m % 360, s: SAT[(m >>> 20) % SAT.length], l: LIG[(m >>> 12) % LIG.length] };
-  }
-
-  function minPairwiseDistance(cols: { h: number; s: number; l: number }[]): number {
-    const rgbs = cols.map((c) => hslToRgb(c.h, c.s, c.l));
-    let min = Infinity;
-    for (let i = 0; i < rgbs.length; i += 1) {
-      for (let j = i + 1; j < rgbs.length; j += 1) min = Math.min(min, redmean(rgbs[i], rgbs[j]));
-    }
-    return min;
-  }
-
-  // UNFILTERED — a prior version of this test skipped any kind whose new
-  // colour already duplicated an earlier one before comparing, which
-  // filtered out the new generator's dominant failure mode while leaving the
-  // old generator's intact, then declared the new one better. That was not
-  // evidence, and this test does not repeat the mistake: it does NOT assert
-  // "new beats old" on a single arbitrary list, because that claim isn't
-  // well-founded — a single dozen-name draw is a coin flip (whichever
-  // generator's hash happens to spread THIS list's names further apart
-  // wins), not a structural comparison, and forcing it to pass would mean
-  // re-picking the list or the count until it did.
-  //
-  // Measured, honestly, on the raw first 12 names of the pool below with no
-  // selection, after `ARC` widened to the whole wheel minus the accent's
-  // guard band (lane-colors.ts): new = 56.84, old = 51.13 (the old
-  // generator's own numbers don't depend on ARC, so its figure is
-  // unchanged). The new generator happens to beat the old one on this
-  // particular list now — that flipped from the prior narrow-arc measurement
-  // (new = 34.55, old = 51.13) — but this test still does not assert "new
-  // beats old", on purpose: a single dozen-name draw is a coin flip either
-  // way, not a structural comparison. The real, structural claim — the one
-  // `STABLE_COLOR_PALETTE`'s exhaustive test above proves — is that
-  // separation between two DIFFERENT palette entries is ALWAYS at least
-  // ~22.52 (measured exhaustively over all 2096128 pairs), a guarantee the
-  // old generator's three uncoordinated hash draws never had at any list
-  // size. What this test actually checks, honestly: the new generator does
-  // not degenerate to an exact duplicate on this realistic, disclosed list
-  // (a real, bounded risk — see `PALETTE_SIZE`'s comment in editor-meta.ts
-  // for the measured rate).
-  it('does not collapse a realistic (reachable-only) kind list into a duplicate colour', () => {
-    const drawn = REACHABLE_KIND_POOL.slice(0, 12);
-    const newMin = minPairwiseDistance(drawn.map((k) => parseHsl(stableColor(k))));
-    const oldMin = minPairwiseDistance(drawn.map(oldGenerator));
-    expect(newMin, `two of these 12 kinds rendered as the exact same colour (old generator's min for the same list: ${oldMin})`).toBeGreaterThan(0);
   });
 });
 
@@ -436,55 +358,9 @@ describe('editorMetaFromTheme', () => {
 // Colour-by-source-file: a timeline block's fill answers "same take, or a
 // different one" — a question a colour keyed on KIND cannot answer once a
 // real reel narrows to a handful of kinds (see LayeredTimeline.tsx's
-// `sourceColors` doc comment for the motivating case). `distinctColors` is
-// the palette-prefix primitive; `sourceColors` is the reel-level derivation
-// built on top of it.
+// `sourceColors` doc comment for the motivating case). `sourceColors` cycles
+// `LANE_PALETTE` (see that describe block above) by sorted source order.
 // ---------------------------------------------------------------------------
-
-function parseHslLocal(color: string): { h: number; s: number; l: number } {
-  const m = /^hsl\((\d+), (\d+)%, (\d+)%\)$/.exec(color);
-  expect(m, `${color} shape`).not.toBeNull();
-  return { h: Number(m![1]), s: Number(m![2]), l: Number(m![3]) };
-}
-
-describe('distinctColors', () => {
-  it('returns n distinct hsl() values', () => {
-    const cols = distinctColors(5);
-    expect(cols).toHaveLength(5);
-    expect(new Set(cols).size).toBe(5);
-    for (const c of cols) expect(c).toMatch(/^hsl\(\d+, \d+%, \d+%\)$/);
-  });
-
-  it('is a stable PREFIX of the palette: a larger n extends a smaller one rather than re-shuffling it', () => {
-    expect(distinctColors(4)).toEqual(distinctColors(4));
-    expect(distinctColors(6).slice(0, 4)).toEqual(distinctColors(4));
-  });
-
-  // Measured on an actual run of THIS palette (see the task report for the
-  // full numbers): distinctColors(8) — a realistic reel's distinct-source
-  // count — measured a minimum pairwise redmean of ~269.14, over 5x
-  // `stableColor`'s (hash-into-the-palette) ~50.26 measured over 8 arbitrary
-  // seeds. 200 leaves real margin under the measured 269.14 without being so
-  // tight that an unrelated, still-reasonable palette change flakes this —
-  // re-measure and re-derive both numbers together if the palette changes.
-  it('separates a realistic (8-source) draw comfortably above what hashing into the palette gives', () => {
-    const rgbs = distinctColors(8).map((c) => {
-      const { h, s, l } = parseHslLocal(c);
-      return hslToRgb(h, s, l);
-    });
-    let min = Infinity;
-    for (let i = 0; i < rgbs.length; i += 1) {
-      for (let j = i + 1; j < rgbs.length; j += 1) min = Math.min(min, redmean(rgbs[i], rgbs[j]));
-    }
-    expect(min).toBeGreaterThanOrEqual(200);
-  });
-
-  it('throws rather than wrapping around past the palette size — a repeated colour is the exact failure this exists to prevent', () => {
-    const size = getStableColorPalette().length;
-    expect(() => distinctColors(size + 1)).toThrow();
-    expect(() => distinctColors(size)).not.toThrow();
-  });
-});
 
 describe('sourceColors', () => {
   const clip = (id: string, source: string, startMs: number, endMs: number): VideoItem => ({
@@ -534,5 +410,27 @@ describe('sourceColors', () => {
       outro('v4', 3000, 4000),
     ]);
     expect(Object.keys(sourceColors(r))).toEqual(['a.mp4']);
+  });
+
+  // Cycling, not generating: LANE_PALETTE has 18 entries, so a reel with
+  // more distinct sources than that reuses colours starting from entry 0
+  // again — the user's explicit instruction ("prostě je tam jen střídat"),
+  // not a defect. Zero-padded source names sort lexicographically in the
+  // same order they're created, so `sorted[i]` below lines up with palette
+  // index `i` directly.
+  it('cycles once distinct sources exceed the palette size — entry 0 repeats at index 18, and it never throws', () => {
+    const sources = Array.from({ length: 20 }, (_, i) => `src-${String(i).padStart(2, '0')}.mp4`);
+    const items = sources.map((source, i) => clip(`v${i}`, source, i * 1000, (i + 1) * 1000));
+    const r = reel(items);
+    let colors: Record<string, string> = {};
+    expect(() => {
+      colors = sourceColors(r);
+    }).not.toThrow();
+    const sorted = [...sources].sort();
+    expect(Object.keys(colors)).toHaveLength(20);
+    expect(colors[sorted[0]]).toBe(LANE_PALETTE[0]);
+    expect(colors[sorted[17]]).toBe(LANE_PALETTE[17]);
+    expect(colors[sorted[18]]).toBe(LANE_PALETTE[0]);
+    expect(colors[sorted[19]]).toBe(LANE_PALETTE[1]);
   });
 });

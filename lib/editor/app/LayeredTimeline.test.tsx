@@ -176,35 +176,22 @@ describe('LayeredTimeline blockColor', () => {
   });
 });
 
-describe('LayeredTimeline legend', () => {
-  it('keeps a swatch only for the kinds that still have a fixed colour, and notes the source-file tinting', () => {
-    render(
-      <LayeredTimeline reel={reel} onChange={() => {}} selectedId={null} onSelect={() => {}}
-        playerRef={{ current: null }} fps={30} scaleWidth={80} />,
-    );
-    const note = screen.getByText('Clip/broll/photo blocks are tinted by source file');
-    // The note's own parent is the one-line legend bar itself.
-    const legend = note.parentElement!;
-    expect(within(legend).getByText('Multi')).toBeInTheDocument();
-    expect(within(legend).getByText('Card')).toBeInTheDocument();
-    expect(within(legend).getByText('Outro')).toBeInTheDocument();
-    expect(within(legend).getByText('Audio')).toBeInTheDocument();
-    expect(within(legend).getByText('Music')).toBeInTheDocument();
-    // No "Clip"/"Broll"/"Photo" swatch — those kinds are source-coloured now,
-    // and a fixed swatch for them would be a lie.
-    expect(within(legend).queryByText('Clip')).toBeNull();
-    expect(within(legend).queryByText('Broll')).toBeNull();
-    expect(within(legend).queryByText('Photo')).toBeNull();
-  });
-
+// The colour-key legend that used to live in this bar (a swatch per
+// fixed-colour kind plus a "tinted by source file" note) was removed — the
+// user found it unneeded. The bar itself stays: it still carries the
+// keyboard-shortcut/gesture hints, and its one-line layout is still
+// load-bearing (a second line here costs timeline height), so that half of
+// the old coverage is kept below rather than dropped along with the legend.
+describe('LayeredTimeline shortcut bar', () => {
   it('stays exactly one line — the load-bearing layout classes are untouched', () => {
     render(
       <LayeredTimeline reel={reel} onChange={() => {}} selectedId={null} onSelect={() => {}}
         playerRef={{ current: null }} fps={30} scaleWidth={80} />,
     );
-    const legend = screen.getByText('Clip/broll/photo blocks are tinted by source file').parentElement!;
+    const bar = screen.getByTestId('timeline-shortcut-bar');
+    expect(within(bar).getByText('all shortcuts', { exact: false })).toBeInTheDocument();
     for (const cls of ['ed:flex-none', 'ed:h-5', 'ed:border-t', 'ed:whitespace-nowrap', 'ed:overflow-hidden']) {
-      expect(legend.className, legend.className).toContain(cls);
+      expect(bar.className, bar.className).toContain(cls);
     }
   });
 });

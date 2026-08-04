@@ -202,22 +202,6 @@ const VIDEO_KIND_LABEL: Record<string, string> = {
   outro: 'Outro',
 };
 
-// The legend's colour key (below the timeline). `clip`/`broll`/`photo` are
-// deliberately absent — they're coloured by SOURCE FILE now (`sourceColors`,
-// editor-meta.ts), so a fixed swatch per kind would be a lie for them (there
-// is no single "Clip" colour any more; the label already carries the
-// filename). These five kinds still have exactly one colour — multi-clip has
-// no single source to key on, card/outro carry no media, and audio/music are
-// the fixed-colour tracks that keep the audio band visually distinct from the
-// (now source-tinted) video band — so a swatch is still honest for them.
-const LEGEND_FIXED_COLOR_KINDS: readonly { effectId: string; label: string }[] = [
-  { effectId: 'video-multi-clip', label: VIDEO_KIND_LABEL['multi-clip'] },
-  { effectId: 'video-card', label: VIDEO_KIND_LABEL.card },
-  { effectId: 'video-outro', label: VIDEO_KIND_LABEL.outro },
-  { effectId: 'audio', label: 'Audio' },
-  { effectId: 'music', label: 'Music' },
-];
-
 // Trim-grip affordance for a clip/broll edge. An edge is "muted" when it CAN'T
 // extend outward: the left in-point is already at the source start
 // (sourceInMs<=0, nothing earlier to reveal); the right out-point has hit its
@@ -798,8 +782,8 @@ function LayeredTimelineImpl({
   const editorData = useMemo(() => layeredToTimeline(reel, fps).editorData, [reel, fps]);
 
   // Source-file colour map (editor-meta.ts) — memoized per reel so it is not
-  // recomputed (and its distinctColors call re-run) on every render, only
-  // when the reel's video track actually changes.
+  // recomputed on every render, only when the reel's video track actually
+  // changes.
   const sourceColorMap = useMemo(() => sourceColors(reel), [reel]);
 
   // Decode waveform peaks for the audio beds + the music source.
@@ -1378,26 +1362,18 @@ function LayeredTimelineImpl({
       {/* Derived from the shortcut registry, so it cannot drift from the
           bindings. Kept to ONE line (flex-none h-5 + whitespace-nowrap +
           overflow-hidden — load-bearing: a second line here costs timeline
-          height) — the colour key below rides in the same row rather than
-          adding one of its own. */}
-      <div className="ed:flex-none ed:h-5 ed:flex ed:items-center ed:gap-4 ed:px-3 ed:py-1 ed:border-t ed:border-line ed:text-[11px] ed:text-ink-3 ed:whitespace-nowrap ed:overflow-hidden">
+          height). The colour-key legend that used to ride in this same row
+          was removed — the user found it unneeded. */}
+      <div
+        data-testid="timeline-shortcut-bar"
+        className="ed:flex-none ed:h-5 ed:flex ed:items-center ed:gap-4 ed:px-3 ed:py-1 ed:border-t ed:border-line ed:text-[11px] ed:text-ink-3 ed:whitespace-nowrap ed:overflow-hidden"
+      >
         {[...SHORTCUTS.filter((s) => s.group === 'Timeline'), ...GESTURES].map((s) => (
           <span key={s.keys}>
             <span className="ed:font-mono ed:text-ink-2">{s.keys}</span> — {s.label}
           </span>
         ))}
         <span><span className="ed:font-mono ed:text-ink-2">?</span> — all shortcuts</span>
-        {LEGEND_FIXED_COLOR_KINDS.map(({ effectId, label }) => (
-          <span key={effectId} className="ed:flex ed:items-center ed:gap-1">
-            <span
-              aria-hidden
-              className="ed:inline-block ed:w-2 ed:h-2 ed:rounded-full"
-              style={{ background: colorFor(effectId, meta) }}
-            />
-            {label}
-          </span>
-        ))}
-        <span>Clip/broll/photo blocks are tinted by source file</span>
       </div>
     </div>
   );
