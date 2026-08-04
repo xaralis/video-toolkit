@@ -13,6 +13,40 @@ import path from 'path';
 
 export type RenderMode = 'preview' | 'full';
 
+/**
+ * Where a render writes: `out/<project>-<mode>.mp4`.
+ *
+ * The name comes from the PROJECT, not the composition. Every project built
+ * from the same template shares a composition id, so the old
+ * `out/<compositionId>.mp4` produced the identical filename for all of them —
+ * indistinguishable the moment two land in one folder, which for a reviewer
+ * means one downloads folder. The mode is always spelled out, `-full`
+ * included: under the old scheme only previews were labelled, so the file that
+ * mattered was the one with no label on it.
+ *
+ * `project.json`'s `name` wins; without it (or with it malformed, unnamed, or
+ * carrying a path separator) the project directory's own name is used. That
+ * fallback is also the guard: a name is a filename component here and is never
+ * allowed to reach outside `out/`.
+ */
+export function renderOutPath(projectRoot: string, mode: RenderMode): string {
+  const dirName = path.basename(projectRoot);
+  let name: string | undefined;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(projectRoot, 'project.json'), 'utf-8')) as {
+      name?: unknown;
+    };
+    if (typeof parsed.name === 'string' && parsed.name.trim()) name = parsed.name.trim();
+  } catch {
+    // missing or malformed project.json — the directory name is the fallback
+  }
+  // A name must be a single path component. Anything else falls back rather
+  // than being sanitised: a silently rewritten filename is harder to explain
+  // than one that is simply the folder's name.
+  if (!name || name !== path.basename(name)) name = dirName;
+  return `out/${name}-${mode}.mp4`;
+}
+
 export interface RenderJobState {
   running: boolean;
   mode?: RenderMode;
@@ -190,7 +224,7 @@ export function createRenderHandler(
   }
 
   function startRender(mode: RenderMode): void {
-    const outPath = `out/${compositionId}${mode === 'preview' ? '-preview' : ''}.mp4`;
+    const outPath = renderOutPath(projectRoot, mode);
     const args = ['remotion', 'render', compositionId, outPath];
     if (mode === 'preview') {
       args.push('--scale=0.5');
