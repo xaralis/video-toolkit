@@ -664,6 +664,32 @@ describe('applyTimelineChange — a trim preserves playback speed', () => {
     expect(deriveSpeed(after)).toBe(0.5);
   });
 
+  it('clamps to the footage even when that leaves a clip under MIN_CLIP_MS', () => {
+    // A file too short to hold a minimum-length clip: 40ms of source at 0.5x is
+    // 80ms of timeline, under the 100ms floor. The footage cap is applied LAST
+    // and wins — a visibly-too-short clip beats an out-point past the end of
+    // the file (frames that do not exist).
+    const reel = reelWith(slowed);
+    const { editorData } = layeredToTimeline(reel, 30);
+    const rows = editorData.map((row) =>
+      row.id === 'video' ? { ...row, actions: row.actions.map((a) => ({ ...a, start: 0, end: 30 })) } : row,
+    );
+    const after = applyTimelineChange(reel, rows, { footageMsById: { v1: 40 } }).tracks.video[0] as typeof slowed;
+    expect(after.sourceOutMs).toBe(40); // NOT 50 — never past the end of the file
+    expect(after.endMs).toBe(80);
+  });
+
+  it('floors a headroom-clamped left extend at a real 0, never -0', () => {
+    // 1000ms of source over 2900ms of timeline — a speed with no exact binary
+    // representation, so the round-trip through it lands at -1.1e-13 and
+    // Math.round gives -0. `toBe` is Object.is, and Object.is(-0, 0) is false.
+    const odd: VideoItem = { ...slowed, startMs: 5000, endMs: 7900, sourceInMs: 1000, sourceOutMs: 2000 };
+    const after = trim(odd, 2100, 7900) as typeof slowed; // exactly the headroom
+    expect(after.startMs).toBe(2100);
+    expect(after.sourceInMs).toBe(0);
+    expect(Object.is(after.sourceInMs, -0)).toBe(false);
+  });
+
   it('preserves speed on a LEFT trim too', () => {
     const start: VideoItem = { ...slowed, startMs: 8000, endMs: 16000, sourceInMs: 2000, sourceOutMs: 6000 };
     const after = trim(start, 4000, 16000) as typeof slowed;

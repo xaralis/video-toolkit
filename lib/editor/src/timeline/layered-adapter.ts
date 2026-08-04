@@ -317,7 +317,12 @@ function resizeVideoItem(item: VideoItem, np: { startMs: number; endMs: number }
     return {
       ...item,
       startMs: Math.round(item.startMs + applied),
-      sourceInMs: Math.round(item.sourceInMs + timelineToSourceMs(item, applied)),
+      // `Math.max(0, …)`: at a speed with no exact binary representation, an
+      // extend clamped exactly at the headroom lands a hair below zero
+      // (-1.1e-13), and `Math.round` of that is `-0`. It renders and serialises
+      // identically to 0, but `Object.is(-0, 0)` is false — so it is a latent
+      // flake in any `toBe(0)` assertion. The floor is a real zero.
+      sourceInMs: Math.max(0, Math.round(item.sourceInMs + timelineToSourceMs(item, applied))),
     };
   }
   // The right edge is now the INPUT and the source out-point follows it — the
@@ -334,8 +339,17 @@ function resizeVideoItem(item: VideoItem, np: { startMs: number; endMs: number }
   const maxEndMs = footageMs && footageMs > 0
     ? item.startMs + sourceToTimelineMs(item, footageMs - item.sourceInMs)
     : Infinity;
-  // Never shorter than MIN_CLIP_MS of TIMELINE length.
-  const endMs = Math.round(Math.max(Math.min(np.endMs, maxEndMs), item.startMs + MIN_CLIP_MS));
+  // Never shorter than MIN_CLIP_MS of TIMELINE length — but the FOOTAGE CAP IS
+  // APPLIED LAST AND WINS, matching the order the pre-speed code used
+  // (`min(footageMs, rawOut)`). The two constraints can only genuinely conflict
+  // when the file holds less than MIN_CLIP_MS of timeline from the in-point,
+  // and there the honest answer is a clip shorter than the floor: the
+  // alternative is an endMs whose implied sourceOutMs runs past the end of the
+  // file, i.e. inventing frames that do not exist. A too-short clip is visible
+  // and fixable; fabricated source is neither. Stated here rather than left to
+  // operator order, because reversing these two silently reintroduces exactly
+  // the span/source conflation this whole change removes.
+  const endMs = Math.round(Math.min(Math.max(np.endMs, item.startMs + MIN_CLIP_MS), maxEndMs));
   return {
     ...item,
     endMs,
