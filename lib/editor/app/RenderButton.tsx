@@ -118,6 +118,9 @@ export function RenderButton({ children }: { children: (parts: RenderButtonParts
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
   const menuRef = useRef<HTMLDivElement>(null);
+  // The menu's trigger, so Escape can return focus to it rather than
+  // stranding focus on the removed menu.
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const stopPolling = () => {
     if (intervalRef.current !== null) {
@@ -140,15 +143,35 @@ export function RenderButton({ children }: { children: (parts: RenderButtonParts
     if (phase !== 'idle') setMenuOpen(false);
   }, [phase]);
 
-  // Outside click closes the menu — the standard dropdown contract; without
-  // it the menu can only ever be closed by picking an option.
+  // Outside click AND Escape close the menu — together they are the standard
+  // dropdown contract; without them the menu can only ever be closed by
+  // picking an option, i.e. by starting a render you may not have wanted.
+  // Escape is not optional politeness: it is the only dismissal a
+  // keyboard-only user has, since they cannot "click outside".
+  //
+  // The Escape listener is capturing and stops propagation, so dismissing an
+  // open menu never also reaches the editor's global shortcut handler
+  // (`useShortcuts`) — one Escape does one thing, which is what a user
+  // pressing it to back out expects.
   useEffect(() => {
     if (!menuOpen) return;
     const onDocMouseDown = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
     };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      setMenuOpen(false);
+      // Return focus to the trigger: closing a menu must not strand focus on
+      // a node that no longer exists.
+      triggerRef.current?.focus();
+    };
     document.addEventListener('mousedown', onDocMouseDown);
-    return () => document.removeEventListener('mousedown', onDocMouseDown);
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      document.removeEventListener('mousedown', onDocMouseDown);
+      document.removeEventListener('keydown', onKeyDown, true);
+    };
   }, [menuOpen]);
 
   // Discover the project lifecycle endpoint. Hosts without it (or projects
@@ -361,6 +384,7 @@ export function RenderButton({ children }: { children: (parts: RenderButtonParts
       <div className={RENDER_WRAP_CLASS} ref={menuRef}>
         <button
           type="button"
+          ref={triggerRef}
           className={RENDER_BTN_CLASS}
           onClick={() => setMenuOpen((v) => !v)}
           aria-haspopup="menu"

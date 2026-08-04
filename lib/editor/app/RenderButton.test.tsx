@@ -96,6 +96,24 @@ describe('RenderButton — renderControls, one control through its whole lifecyc
     expect(screen.queryByRole('menuitem', { name: 'Preview' })).not.toBeInTheDocument();
   });
 
+  // Escape is the ONLY dismissal a keyboard-only user has — they cannot
+  // "click outside" — so an outside-click-only menu is a keyboard trap whose
+  // only exit is starting a render you did not want.
+  it('closes the menu on Escape, without starting a render, and returns focus to the trigger', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({}));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<Harness />);
+    const trigger = screen.getByRole('button', { name: /^Render$/ });
+    fireEvent.click(trigger);
+    expect(screen.getByRole('menuitem', { name: 'Preview' })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('menuitem', { name: 'Preview' })).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining('render'), expect.anything());
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it('choosing Preview from the menu starts that render', async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (String(url) === '/render' && init?.method === 'POST') return jsonResponse({});
