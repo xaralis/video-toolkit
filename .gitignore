@@ -20,6 +20,12 @@ pip-delete-this-directory.txt
 
 # Node.js
 node_modules/
+# ...and a SYMLINK named node_modules, which the rule above does not match:
+# a trailing slash restricts the pattern to directories, and a symlink is a
+# file to git. A linked node_modules is a normal way to run a package inside a
+# throwaway git worktree, and one got committed that way (a 120000 blob holding
+# an absolute local path) before this line existed.
+node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
