@@ -281,6 +281,40 @@ export function zoomAnchorScrollLeft(
   return Math.min(max, Math.max(0, content * factor - offset));
 }
 
+export interface PendingZoom {
+  anchorX: number;
+  factor: number;
+  view: { scrollLeft: number; scrollWidth: number; clientWidth: number };
+}
+
+/** Folds one new zoom capture into a possibly-still-unconsumed `pendingZoom`.
+ *
+ *  A continuous trackpad pinch (or a fast run of ⌘/Ctrl+wheel notches) fires
+ *  several zoom events before React commits a single render — the layout
+ *  effect that applies `pendingZoom` is keyed on `scaleWidth` and only runs
+ *  once that commit happens, so several captures can land before it ever
+ *  fires. Each capture's `factor` is only THAT ONE event's ratio, but
+ *  `scaleWidth` has by then moved by the PRODUCT of all of them — so the
+ *  factor must be multiplied in, never replaced, or the anchor correction is
+ *  computed for a much smaller zoom than actually happened and the content
+ *  drifts under the pointer for the length of the gesture (settling only on
+ *  the final event, whose correction lands against an already-settled
+ *  layout — exactly the "it only settles once I stop zooming" symptom).
+ *
+ *  The FIRST capture's `anchorX`/`view` are kept for every fold after it:
+ *  that is the true pre-gesture geometry, and the anchor should stay where
+ *  the gesture started, not migrate to wherever the pointer/viewport happen
+ *  to read on a later, not-yet-committed event. */
+export function accumulateZoom(
+  prev: PendingZoom | null,
+  anchorX: number,
+  achieved: number,
+  view: { scrollLeft: number; scrollWidth: number; clientWidth: number },
+): PendingZoom {
+  if (!prev) return { anchorX, factor: achieved, view };
+  return { ...prev, factor: prev.factor * achieved };
+}
+
 // The trim handles are xzdarcy's own invisible stretch zones; these grips are a
 // visual layer on top (pointer-events:none so the real handles still drag).
 // Default: faint. Hover the block: its grips brighten (shows WHICH clip's handle
@@ -538,11 +572,14 @@ function LayeredTimelineImpl({
       const scrollTarget = scrollEl();
       if (!scrollTarget) return;
       const rect = scrollTarget.getBoundingClientRect();
-      pendingZoom.current = {
-        anchorX: e.clientX - rect.left,
-        factor: achieved,
-        view: { scrollLeft: scrollTarget.scrollLeft, scrollWidth: scrollTarget.scrollWidth, clientWidth: scrollTarget.clientWidth },
-      };
+      // ACCUMULATE, don't overwrite — see accumulateZoom's doc comment. Several
+      // wheel events can land here before the layout effect below ever runs.
+      pendingZoom.current = accumulateZoom(
+        pendingZoom.current,
+        e.clientX - rect.left,
+        achieved,
+        { scrollLeft: scrollTarget.scrollLeft, scrollWidth: scrollTarget.scrollWidth, clientWidth: scrollTarget.clientWidth },
+      );
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
@@ -706,11 +743,15 @@ function LayeredTimelineImpl({
       }
       const el = scrollEl();
       if (!el) return;
-      pendingZoom.current = {
-        anchorX: el.clientWidth / 2,
+      // Same accumulation as the wheel handler — a fast run of toolbar/keyboard
+      // zooms (or one racing an in-flight wheel gesture) can also land more than
+      // one capture before the layout effect consumes it.
+      pendingZoom.current = accumulateZoom(
+        pendingZoom.current,
+        el.clientWidth / 2,
         factor,
-        view: { scrollLeft: el.scrollLeft, scrollWidth: el.scrollWidth, clientWidth: el.clientWidth },
-      };
+        { scrollLeft: el.scrollLeft, scrollWidth: el.scrollWidth, clientWidth: el.clientWidth },
+      );
     },
   }), []);
 

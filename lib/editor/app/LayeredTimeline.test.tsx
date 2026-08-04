@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
-import { LayeredTimeline, colorFor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics, zoomFactorFor, followScrollLeft, zoomAnchorScrollLeft, TIMELINE_START_LEFT } from './LayeredTimeline';
+import { LayeredTimeline, colorFor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics, zoomFactorFor, followScrollLeft, zoomAnchorScrollLeft, accumulateZoom, TIMELINE_START_LEFT, type PendingZoom } from './LayeredTimeline';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
 const reel: LayeredReel = {
@@ -278,6 +278,78 @@ describe('zoomAnchorScrollLeft', () => {
 
   it('does not divide by zero on an unmeasured viewport', () => {
     expect(Number.isFinite(zoomAnchorScrollLeft(0, { scrollLeft: 0, scrollWidth: 0, clientWidth: 0 }, 2))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// accumulateZoom — the fix for the "items drift while zooming, settle only
+// once you stop" bug. A continuous trackpad pinch fires several wheel events
+// before React commits a single render, so several pendingZoom CAPTURES can
+// land before the scaleWidth-keyed layout effect ever runs to consume one.
+// The pre-fix code (both the wheel handler and zoomAtCenter) simply
+// OVERWROTE `pendingZoom.current` on every event — `{ anchorX, factor:
+// achieved, view }` — so only the LAST event's single-step factor survived,
+// even though scaleWidth had by then moved by the PRODUCT of all of them.
+// These tests pin the correct behaviour (accumulateZoom) against that exact
+// overwrite semantics, reproduced verbatim from the pre-fix source (see git
+// history of LayeredTimeline.tsx) rather than assumed.
+// ---------------------------------------------------------------------------
+describe('accumulateZoom — folding multiple pre-commit zoom captures', () => {
+  const view0 = { scrollLeft: 400, scrollWidth: 4000, clientWidth: 800 };
+
+  /** The PRE-FIX capture logic, byte-for-byte: every event replaces the
+   *  pending capture outright. Used only to prove the old behaviour was
+   *  wrong — not imported from production code, since it no longer exists
+   *  there. */
+  const overwrite = (
+    _prev: PendingZoom | null,
+    anchorX: number,
+    achieved: number,
+    view: PendingZoom['view'],
+  ): PendingZoom => ({ anchorX, factor: achieved, view });
+
+  it('multiplies factors together and keeps the FIRST capture\'s anchor/view', () => {
+    let pending: PendingZoom | null = null;
+    pending = accumulateZoom(pending, 300, 1.05, view0);
+    pending = accumulateZoom(pending, 320, 1.05, { ...view0, scrollLeft: 410 });
+    pending = accumulateZoom(pending, 340, 1.05, { ...view0, scrollLeft: 420 });
+
+    expect(pending.anchorX).toBe(300);
+    expect(pending.view).toEqual(view0);
+    expect(pending.factor).toBeCloseTo(1.05 ** 3, 10);
+  });
+
+  it('starts a fresh capture once pendingZoom is null again (consumed, or gesture just began)', () => {
+    const first = accumulateZoom(null, 300, 1.1, view0);
+    expect(first).toEqual({ anchorX: 300, factor: 1.1, view: view0 });
+  });
+
+  it('reproduces the real sequence — several wheel-event captures before one effect run — and proves the pre-fix overwrite lands the WRONG scroll target while the fix lands the correct one', () => {
+    const events: Array<{ anchorX: number; achieved: number; view: PendingZoom['view'] }> = [
+      { anchorX: 300, achieved: 1.05, view: view0 },
+      { anchorX: 320, achieved: 1.05, view: { ...view0, scrollLeft: 410 } },
+      { anchorX: 340, achieved: 1.05, view: { ...view0, scrollLeft: 420 } },
+    ];
+    const combinedFactor = events.reduce((acc, e) => acc * e.achieved, 1);
+
+    // Ground truth: what a single zoom by the COMBINED factor, anchored at the
+    // gesture's true start (the first event's anchor/pre-gesture view), lands
+    // on — this is what the layout effect must produce once it finally runs.
+    const groundTruth = zoomAnchorScrollLeft(events[0].anchorX, events[0].view, combinedFactor);
+
+    // Pre-fix: each event overwrites pendingZoom; only the LAST one survives
+    // to be consumed by the effect.
+    let stale: PendingZoom | null = null;
+    for (const e of events) stale = overwrite(stale, e.anchorX, e.achieved, e.view);
+    const wrongTarget = zoomAnchorScrollLeft(stale!.anchorX, stale!.view, stale!.factor);
+
+    // Post-fix: accumulateZoom across the identical sequence.
+    let fixed: PendingZoom | null = null;
+    for (const e of events) fixed = accumulateZoom(fixed, e.anchorX, e.achieved, e.view);
+    const rightTarget = zoomAnchorScrollLeft(fixed!.anchorX, fixed!.view, fixed!.factor);
+
+    expect(rightTarget).toBe(groundTruth);
+    expect(wrongTarget).not.toBe(groundTruth);
   });
 });
 
