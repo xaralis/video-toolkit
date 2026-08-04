@@ -79,17 +79,24 @@ export function StatusChip({ items, dirty, onSelect }: { items: Diagnostic[]; di
         )}
       </button>
       {open && hasIssues && (
-        // Anchored LEFT: consistent with the popup's previous position (and
-        // the chip itself sits well left of the viewport's right edge, in
-        // the action zone) — a right-anchored panel would run off the pane.
+        // Anchored RIGHT. This was left-anchored on the reasoning that "the
+        // chip sits well left of the viewport's right edge" — true when the
+        // chip lived beside the project name, false the moment it moved into
+        // the action zone next to Discard/Save, where it sits ~200px from the
+        // right edge and a 320px-wide panel opening rightwards is simply cut
+        // off. Anchoring to the chip's right edge makes the panel grow into
+        // the pane rather than out of it, which holds for any chip position
+        // in this zone.
         //
         // The arrow makes this read as attached to the chip rather than a
         // detached toast floating over the video.
-        <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 8, zIndex: 20 }}>
+        <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 8, zIndex: 20 }}>
           <div
             aria-hidden
             style={{
-              position: 'absolute', top: -6, left: 12, width: 10, height: 10,
+              // Mirrors the panel's right anchoring, so the arrow stays under
+              // the chip instead of pointing at empty space.
+              position: 'absolute', top: -6, right: 12, width: 10, height: 10,
               background: '#232428', border: '1px solid #b4503f', borderRight: 'none', borderBottom: 'none',
               transform: 'rotate(45deg)',
             }}
