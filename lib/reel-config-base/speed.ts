@@ -19,6 +19,16 @@
 // grade.ts): one defaults object, one tolerant reader, one change predicate
 // the reel editor uses to decide what starts expanded/dirty — not a literal
 // `1` typed in three places.
+//
+// THE RATIO LIVES HERE; THE CONVERSION LIVES IN `./clip-time.ts`. Because speed
+// is that ratio, a clip's timeline milliseconds and its source milliseconds are
+// different units the moment the ratio is not 1 — and they are both plain
+// `number`, so nothing stops one being added to the other. That is not
+// hypothetical: five places did exactly that, which is why a trim handle
+// refused footage that existed, a trim reset a clip's speed to 1x, and a split
+// gave both halves a speed nobody set. Any code that needs to turn one domain
+// into the other belongs in `clip-time.ts` — do not open-code `* speed` or
+// `/ speed` at a call site, and do not add a second helper that does it.
 export const SPEED_DEFAULTS = { speed: 1 } as const;
 
 // Sane clamp on the derived/authored ratio. 10x (checkerboard-fast, still
