@@ -103,6 +103,24 @@ describe('createEditorViteConfig', () => {
     expect(cfg({ port: 3200 }).server.port).toBe(3200);
   });
 
+  // The editor's own source is served from the toolkit submodule over `/@fs/`.
+  // Vite guards that with `server.fs.allow`, and left unset it infers the
+  // PROJECT directory by walking up from `root` — so every toolkit file 403s
+  // with "outside of Vite serving allow list". Reproduced against a real dev
+  // server before this was added.
+  it('allows serving from the brand-repo root, the toolkit and the project', () => {
+    const allow = cfg().server.fs.allow;
+    // The brand repo root — derived from the toolkit anchor, so it holds for
+    // `.editor` under `projects/` as well as under `templates/`.
+    expect(allow).toContain('/repo');
+    expect(allow).toContain('/repo/toolkit');
+    expect(allow).toContain(TEMPLATE);
+  });
+
+  it('keeps Vite\'s fs guard ON — the allow list is widened, not disabled', () => {
+    expect(cfg().server.fs.strict).not.toBe(false);
+  });
+
   it('sets zod$ unconditionally, resolved via the injected resolver', () => {
     expect(cfg().resolve.alias['zod$']).toBe('/fake/zod/index.js');
   });

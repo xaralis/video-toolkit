@@ -116,6 +116,29 @@ export function createEditorViteConfig(opts: EditorViteConfigOptions): Record<st
     publicDir: path.resolve(templateRoot, 'public'),
     server: {
       port,
+      // The editor's own source is served from the TOOLKIT submodule over
+      // `/@fs/…`, which Vite guards with `server.fs.allow`. Left unset, that
+      // list is whatever `searchForWorkspaceRoot` infers by walking up from
+      // `root` (`.editor/`) — and across a submodule boundary it infers the
+      // PROJECT directory, so every toolkit file 403s:
+      //
+      //   The request url "…/toolkit/lib/editor/host/EditorHost.tsx" is
+      //   outside of Vite serving allow list.
+      //   - …/projects/<name>
+      //
+      // Declaring the list explicitly removes the guesswork. The brand-repo
+      // root is derived from `toolkitLib` rather than by counting `..` from
+      // `templateRoot`, so it holds whether `.editor/` sits under `projects/`
+      // or `templates/`. `templateRoot` and the toolkit root are listed too:
+      // they are inside the repo root in the normal layout, but a toolkit
+      // checked out elsewhere would otherwise silently break the same way.
+      //
+      // `strict` is deliberately left at its default (on) — this widens the
+      // allow list to what the editor genuinely needs, it does not disable
+      // the protection.
+      fs: {
+        allow: [path.resolve(toolkitLib, '../..'), path.resolve(toolkitLib, '..'), templateRoot],
+      },
     },
     resolve: {
       // The editor's own components are served from the TOOLKIT submodule
