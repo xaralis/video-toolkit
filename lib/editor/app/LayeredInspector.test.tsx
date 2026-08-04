@@ -553,8 +553,10 @@ describe('LayeredInspector effect catalog', () => {
 // used to be inlined as `k === 'temperature' || k === 'tint' ? 0 : 1` — i.e.
 // "1 is neutral for everything else". Under that rule an authored `sepia: 1`
 // (fully sepia) is silently DESTROYED the moment any other grade control is
-// touched, the same data-loss class as Task 1.2b's coerce-to-cut. These pin the
-// GRADE_NEUTRAL_ZERO set that replaced it, from both sides.
+// touched, the same data-loss class as Task 1.2b's coerce-to-cut. These pin
+// the shared `GRADE_DEFAULTS` (`lib/reel-config-base/grade.ts`, the object
+// that replaced the inspector's own local `GRADE_NEUTRAL_ZERO` set), from
+// both sides.
 describe('LayeredInspector grade neutral handling', () => {
   const withGrade = (grade: Record<string, number>): LayeredReel => ({
     ...base,
@@ -585,6 +587,10 @@ describe('LayeredInspector grade neutral handling', () => {
 
   it('offers a control for each, seeded at the neutral 0', () => {
     render(<LayeredInspector reel={base} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    // `base`'s item has no grade at all — untouched, so the Color section
+    // starts collapsed (see the "collapse an untouched Color section"
+    // describe block below) and has to be opened by hand first.
+    fireEvent.click(screen.getByRole('button', { name: 'Color' }));
     expect((screen.getByLabelText('Sepia') as HTMLInputElement).value).toBe('0');
     expect((screen.getByLabelText('Hue rotate (deg)') as HTMLInputElement).value).toBe('0');
   });
@@ -635,6 +641,9 @@ describe('LayeredInspector style-effect catalog (Task 4.4, Gap 1)', () => {
 
   it('offers the theme-derived style effect in "+ Add effect", alongside core', () => {
     render(<LayeredInspector reel={clean} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} meta={meta} />);
+    // `clean` carries no effects — the Effects section starts collapsed (see
+    // the "gets its own Effects section" describe block below).
+    fireEvent.click(screen.getByRole('button', { name: 'Effects' }));
     fireEvent.click(screen.getByText('+ Add effect'));
     expect(screen.getByText('Ken Burns')).toBeTruthy();
     expect(screen.getByText('vignette-pulse')).toBeTruthy(); // catalog button label falls back to the raw type, no humanizing
@@ -643,6 +652,8 @@ describe('LayeredInspector style-effect catalog (Task 4.4, Gap 1)', () => {
   it('round-trips an authored intensity through a STATEFUL parent: add → edit → re-render → still there → editable again', () => {
     render(<StatefulInspector initial={clean} selectedId="video:v1" meta={meta} />);
 
+    // `clean` carries no effects — open the Effects section by hand first.
+    fireEvent.click(screen.getByRole('button', { name: 'Effects' }));
     // Add the brand style effect.
     fireEvent.click(screen.getByText('+ Add effect'));
     fireEvent.click(screen.getByText('vignette-pulse'));
@@ -717,6 +728,8 @@ describe('LayeredInspector grade effect removal', () => {
 
   it('no longer offers "Grade" in "+ Add effect"', () => {
     render(<StatefulInspector initial={withGradeField} selectedId="video:v1" />);
+    // `withGradeField` carries no effects — open the Effects section first.
+    fireEvent.click(screen.getByRole('button', { name: 'Effects' }));
     fireEvent.click(screen.getByText('+ Add effect'));
     expect(screen.queryByText('Grade')).toBeNull();
   });
@@ -746,6 +759,156 @@ describe('LayeredInspector grade effect removal', () => {
   it('a stray authored grade effect entry still renders (through the generic fallback), not dropped', () => {
     render(<StatefulInspector initial={withStrayGradeEffect} selectedId="video:v1" />);
     expect(screen.getByText('Effect · grade')).not.toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A clip nobody has graded and nobody has added an effect to used to show
+// eight sliders and a stray "+ Add effect" button saying nothing, pushing
+// everything below out of view. Both the Color and Effects sections now
+// start collapsed when they have nothing to show and expanded the instant
+// they do — same `Collapsible`, same mechanism (see the doc comments at each
+// section in LayeredInspector.tsx), not two differently-behaving patterns.
+// ---------------------------------------------------------------------------
+describe('LayeredInspector collapses an untouched Color section, and gives it a reset', () => {
+  const untouched: LayeredReel = {
+    version: 'layered-1', meta: { topic: 't', totalDurationMs: 2000 },
+    tracks: {
+      video: [{ id: 'v1', kind: 'photo', startMs: 0, endMs: 2000, source: 'a.jpg', musicBoostDb: 0 }],
+      audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [],
+    },
+  };
+  const touched: LayeredReel = {
+    ...untouched,
+    tracks: { ...untouched.tracks, video: [{ ...untouched.tracks.video[0], grade: { brightness: 1.2 } }] },
+  };
+
+  // The Color header's OWN accessible name isn't safe to query by when the
+  // section is touched: its `right` slot (the reset-all button) carries its
+  // own `aria-label`, and per the accessible-name-from-content algorithm
+  // that label becomes part of the header's computed name too (something
+  // like "Color Reset all color adjustments"), not just "Color". `getByText`
+  // only matches an element's DIRECT text-node children (see
+  // testing-library's `getNodeText`), so it finds the inner `<span>Color</span>`
+  // alone regardless of what the right slot renders — this is what every
+  // click/expanded-state assertion below goes through instead.
+  const colorHeader = () => screen.getByText('Color').closest('[role="button"]') as HTMLElement;
+
+  it('starts collapsed for an item whose grade is untouched', () => {
+    render(<LayeredInspector reel={untouched} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(colorHeader()).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText('Brightness')).toBeNull();
+  });
+
+  it('starts expanded for an item whose grade differs from the defaults', () => {
+    render(<LayeredInspector reel={touched} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(colorHeader()).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText('Brightness')).toBeInTheDocument();
+  });
+
+  it('a manual expand survives a re-render of the same item', () => {
+    const { rerender } = render(
+      <LayeredInspector reel={untouched} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />,
+    );
+    fireEvent.click(colorHeader());
+    expect(screen.getByLabelText('Brightness')).toBeInTheDocument();
+    // A fresh (but equivalent) reel object, same selected id — the shape of
+    // a re-render coming back through the same `onChange` round-trip every
+    // other control here goes through, not merely React re-invoking with
+    // identical props.
+    rerender(<LayeredInspector reel={{ ...untouched }} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByLabelText('Brightness')).toBeInTheDocument();
+  });
+
+  it('a manual collapse survives a re-render of the same item', () => {
+    const { rerender } = render(
+      <LayeredInspector reel={touched} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />,
+    );
+    fireEvent.click(colorHeader()); // touched starts open — close it
+    expect(screen.queryByLabelText('Brightness')).toBeNull();
+    rerender(<LayeredInspector reel={{ ...touched }} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.queryByLabelText('Brightness')).toBeNull();
+  });
+
+  it('shows no dot when untouched', () => {
+    render(<LayeredInspector reel={untouched} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.queryByTestId('grade-dirty-dot')).toBeNull();
+  });
+
+  it('shows a dot on the header once touched, and it stays after a manual collapse', () => {
+    render(<LayeredInspector reel={touched} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    // Present immediately (the section starts expanded since it's touched) —
+    // the dot is decorative (`aria-hidden`, hence a `data-testid` query
+    // rather than an accessible one) and not conditioned on open/closed.
+    expect(screen.getByTestId('grade-dirty-dot')).toBeInTheDocument();
+    fireEvent.click(colorHeader()); // collapse it by hand
+    // Still there — this is the case the brief calls out: a touched section
+    // the user has collapsed must not read as empty.
+    expect(screen.getByTestId('grade-dirty-dot')).toBeInTheDocument();
+  });
+
+  it('shows no reset-all button when untouched', () => {
+    render(<LayeredInspector reel={untouched} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.queryByLabelText('Reset all color adjustments')).toBeNull();
+  });
+
+  it('a reset-all click clears every grade field at once', () => {
+    const onChange = vi.fn();
+    render(<LayeredInspector reel={touched} selectedId="video:v1" onChange={onChange} onSeek={() => {}} fps={30} />);
+    fireEvent.click(screen.getByLabelText('Reset all color adjustments'));
+    const next = onChange.mock.calls.at(-1)![0] as LayeredReel;
+    expect(next.tracks.video[0].grade).toBeUndefined();
+  });
+
+  it('a single field reset deletes only that key, leaving the rest of the grade untouched', () => {
+    const twoFields: LayeredReel = {
+      ...untouched,
+      tracks: { ...untouched.tracks, video: [{ ...untouched.tracks.video[0], grade: { brightness: 1.2, contrast: 1.3 } }] },
+    };
+    const onChange = vi.fn();
+    render(<LayeredInspector reel={twoFields} selectedId="video:v1" onChange={onChange} onSeek={() => {}} fps={30} />);
+    fireEvent.click(screen.getByLabelText('Reset Brightness'));
+    const next = onChange.mock.calls.at(-1)![0] as LayeredReel;
+    expect(next.tracks.video[0].grade).toEqual({ contrast: 1.3 });
+  });
+});
+
+describe('LayeredInspector gives the effect list its own Effects section', () => {
+  const noEffects: LayeredReel = {
+    version: 'layered-1', meta: { topic: 't', totalDurationMs: 2000 },
+    tracks: {
+      video: [{ id: 'v1', kind: 'photo', startMs: 0, endMs: 2000, source: 'a.jpg', musicBoostDb: 0 }],
+      audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [],
+    },
+  };
+  const oneEffect: LayeredReel = {
+    ...noEffects,
+    tracks: { ...noEffects.tracks, video: [{ ...noEffects.tracks.video[0], effects: [{ type: 'vintage', mode: 'film' }] }] },
+  };
+
+  it('starts collapsed with no effects — the "+ Add effect" button is not reachable until expanded', () => {
+    render(<LayeredInspector reel={noEffects} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByRole('button', { name: 'Effects' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('+ Add effect')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Effects' }));
+    expect(screen.getByText('+ Add effect')).toBeInTheDocument();
+  });
+
+  it('starts expanded with one effect', () => {
+    render(<LayeredInspector reel={oneEffect} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByRole('button', { name: 'Effects' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('+ Add effect')).toBeInTheDocument();
+    expect(screen.getByText('Effect · vintage')).toBeInTheDocument();
+  });
+
+  it('a manual toggle survives a re-render of the same item', () => {
+    const { rerender } = render(
+      <LayeredInspector reel={noEffects} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Effects' }));
+    expect(screen.getByText('+ Add effect')).toBeInTheDocument();
+    rerender(<LayeredInspector reel={{ ...noEffects }} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByText('+ Add effect')).toBeInTheDocument();
   });
 });
 
