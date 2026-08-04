@@ -294,6 +294,8 @@ describe('video params and effects, declared by the theme', () => {
     render(
       <LayeredInspector reel={clipReel} selectedId="video:v1" onChange={onChange} onSeek={() => {}} fps={30}
         meta={editorMetaFromTheme(theme)} />);
+    // `clipReel` carries no effects — the Effects section starts collapsed.
+    fireEvent.click(screen.getByRole('button', { name: 'Effects' }));
     fireEvent.click(screen.getByText('+ Add effect'));
     fireEvent.click(screen.getByText('vintage'));
     expect((onChange.mock.calls.at(-1)![0] as LayeredReel).tracks.video[0].effects).toEqual([{ type: 'vintage' }]);

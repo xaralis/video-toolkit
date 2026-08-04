@@ -33,3 +33,29 @@ export const disabledCls = 'ed:opacity-45 ed:cursor-not-allowed';
 // duplicated in both files, which is exactly the drift-after-a-later-edit
 // hazard this module exists to avoid (see the file-level comment above).
 export const sectionCls = 'ed:text-[10px] ed:text-ink-3 ed:uppercase ed:tracking-wider ed:mt-2.5 ed:mb-1.5';
+
+// The small, quiet reset-to-default icon button `SliderField`/`ScrubField`
+// show next to a field once its value has drifted from `defaultValue` (and
+// the equivalent "reset all" button on the Color section's `Collapsible`
+// header) — sized to sit beside the value readout without shifting the row's
+// layout when it appears/disappears (see `resetSpacerCls`, the fixed-size
+// placeholder shown in its place otherwise).
+export const resetBtnCls =
+  'ed:inline-flex ed:items-center ed:justify-center ed:w-[15px] ed:h-[15px] ed:rounded ed:text-ink-3 ed:cursor-pointer ed:hover:text-ink ed:hover:bg-control';
+
+// Same footprint as `resetBtnCls`, invisible — reserves the reset button's
+// space so a field's row doesn't reflow the instant its value crosses back
+// over its default.
+export const resetSpacerCls = 'ed:inline-block ed:w-[15px] ed:h-[15px]';
+
+// The "still has changes" mark a section's `Collapsible` header shows once
+// it's touched but the user has manually collapsed it — so a non-empty
+// section never reads as empty. Decorative only (`aria-hidden`); the
+// computed state (`hasGradeChanges`, an effect count) is the source of truth,
+// this is just what makes it visible at a glance. The Color section uses the
+// plain dot (nothing to count); Effects shows its own count instead (see
+// `countBadgeCls` below) — same mechanism, a different natural badge shape.
+export const dirtyDotCls = 'ed:inline-block ed:w-1.5 ed:h-1.5 ed:rounded-full ed:bg-accent';
+
+export const countBadgeCls =
+  'ed:inline-flex ed:items-center ed:justify-center ed:min-w-[14px] ed:h-[14px] ed:px-1 ed:rounded-full ed:bg-line-strong ed:text-ink-3 ed:text-[9px] ed:font-mono ed:leading-none';

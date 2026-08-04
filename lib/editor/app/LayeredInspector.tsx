@@ -18,7 +18,7 @@ import { parseActionId, type LaneId } from '../src/timeline/layered-adapter';
 import type { AccentSlot } from '../../theming/palette';
 import { PLACEMENTS } from '../../theming/placement';
 import { effectCatalog, effectDefinition, humanizeKey, paramChoices, type EditorMeta, type ParamField } from './editor-meta';
-import { LinkIcon, SkipBackIcon, UnlinkIcon, XIcon } from './icons';
+import { LinkIcon, RotateCcwIcon, SkipBackIcon, UnlinkIcon, XIcon } from './icons';
 import { warnOnce } from '../../render/warn-once';
 import { videoUrl } from './LayeredTimeline';
 import { framesForReel } from '../host/host-duration';
@@ -26,8 +26,9 @@ import { formatTimecode } from './controls/timecode';
 import { aspectLabel, failedSources } from './project-summary';
 import { handleRoomFrames, maxTransitionFrames, type HandleRoom } from '@video-toolkit/lib/reel-config-base/handle-room';
 import { transitionAlignmentOf } from '@video-toolkit/lib/reel-config-base/transition-schema';
+import { GRADE_DEFAULTS, hasGradeChanges } from '@video-toolkit/lib/reel-config-base/grade';
 import { useLiveField } from './controls/use-live-field';
-import { fieldCls, labelCls, inputCls, rowCls, readonlyValueCls, sectionCls } from './controls/field-classes';
+import { fieldCls, labelCls, inputCls, rowCls, readonlyValueCls, sectionCls, resetBtnCls, dirtyDotCls, countBadgeCls } from './controls/field-classes';
 import { ScrubField } from './controls/ScrubField';
 import { SliderField } from './controls/SliderField';
 import { TimecodeField } from './controls/TimecodeField';
@@ -457,7 +458,20 @@ function renderParamControl({
         onCommit={onCommit}
       />
     ) : (
-      <ScrubField key={field.prop} lbl={lbl} step={step} min={min} max={max} value={v} onCommit={onCommit} />
+      <ScrubField
+        key={field.prop}
+        lbl={lbl}
+        step={step}
+        min={min}
+        max={max}
+        value={v}
+        // Opt-in, and only when the registration declared a REAL default
+        // (unlike the SliderField branch above, this path has no `min` to
+        // float back to — a scrub field's `min`/`max` are often unset
+        // entirely) — no guessing a floor as a stand-in default here.
+        defaultValue={typeof field.default === 'number' ? field.default : undefined}
+        onCommit={onCommit}
+      />
     );
   }
   if (t === 'boolean')
@@ -627,14 +641,6 @@ export function TransitionFields({
   );
 }
 
-/** Grade fields whose NEUTRAL value is 0, not 1. The inspector drops neutral
- *  fields so `grade` stays minimal; getting this set wrong is silent DATA LOSS
- *  — before Phase 4 Task 2.7 the rule was inlined as `k === 'temperature' || k
- *  === 'tint'`, so adding `sepia`/`hueRotateDeg` to Grade would have made an
- *  authored `sepia: 1` (fully sepia) vanish the moment any grade control was
- *  touched. One named set, so a future Grade field is a one-line decision. */
-const GRADE_NEUTRAL_ZERO: ReadonlySet<string> = new Set(['temperature', 'tint', 'sepia', 'hueRotateDeg']);
-
 const BLEND_DIRECTIONS = ['tl-br', 'tr-bl', 'bl-tr', 'br-tl'];
 // The position dropdown offers exactly the canonical placement vocabulary —
 // deriving it (instead of a hand-copied list) is what keeps the dropdown, the
@@ -651,6 +657,24 @@ const OVERLAY_POSITIONS: string[] = [...PLACEMENTS];
 // UI, with a whole guard mechanism just to keep them from fighting over one
 // render. `item.grade` is the survivor; this component (and the `disabled`
 // guard that used to grey it) no longer needs a second caller to serve.
+//
+// Every slider's `fallback` (what unset renders as) AND its reset target come
+// from the shared `GRADE_DEFAULTS` (`lib/reel-config-base/grade.ts`) — the
+// same object `hasGradeChanges` compares against and `gradeFilter`/
+// `gradeWbGains` read at render time. This used to be duplicated three ways —
+// inlined here as `?? 1`/`?? 0`, a second time in a local `GRADE_NEUTRAL_ZERO`
+// set for the cleaning filter below, and a third time in `grade.ts` itself —
+// which is exactly the kind of drift that made a hand-copied "1 is neutral
+// for everything else" rule silently destroy an authored `sepia: 1` before
+// Phase 4 Task 2.7 named the zero-neutral set explicitly. One object now;
+// every consumer reads from it.
+//
+// Reset deletes the key rather than writing the default value back in
+// literally: `onReset` re-commits the field at its own default, and
+// `patchGrade` below drops any field that lands back at GRADE_DEFAULTS, so a
+// reset field leaves no entry in the saved `grade` bag (and stays consistent
+// with `hasGradeChanges`, which is what decides whether the Color section
+// even has anything to show).
 function GradeFields({
   g,
   onPatch,
@@ -661,18 +685,18 @@ function GradeFields({
   return (
     <>
       <Row>
-        <SliderField lbl="Brightness" min={0.2} max={2} step={0.05} value={g.brightness ?? 1} fallback={1} onCommit={(n) => onPatch({ brightness: n })} />
-        <SliderField lbl="Contrast" min={0.2} max={2} step={0.05} value={g.contrast ?? 1} fallback={1} onCommit={(n) => onPatch({ contrast: n })} />
+        <SliderField lbl="Brightness" min={0.2} max={2} step={0.05} value={g.brightness} fallback={GRADE_DEFAULTS.brightness} onCommit={(n) => onPatch({ brightness: n })} onReset={() => onPatch({ brightness: GRADE_DEFAULTS.brightness })} />
+        <SliderField lbl="Contrast" min={0.2} max={2} step={0.05} value={g.contrast} fallback={GRADE_DEFAULTS.contrast} onCommit={(n) => onPatch({ contrast: n })} onReset={() => onPatch({ contrast: GRADE_DEFAULTS.contrast })} />
       </Row>
       <Row>
-        <SliderField lbl="Saturation" min={0} max={2} step={0.05} value={g.saturation ?? 1} fallback={1} onCommit={(n) => onPatch({ saturation: n })} />
-        <SliderField lbl="Temperature" min={-1} max={1} step={0.05} value={g.temperature ?? 0} fallback={0} onCommit={(n) => onPatch({ temperature: n })} />
+        <SliderField lbl="Saturation" min={0} max={2} step={0.05} value={g.saturation} fallback={GRADE_DEFAULTS.saturation} onCommit={(n) => onPatch({ saturation: n })} onReset={() => onPatch({ saturation: GRADE_DEFAULTS.saturation })} />
+        <SliderField lbl="Temperature" min={-1} max={1} step={0.05} value={g.temperature} fallback={GRADE_DEFAULTS.temperature} onCommit={(n) => onPatch({ temperature: n })} onReset={() => onPatch({ temperature: GRADE_DEFAULTS.temperature })} />
       </Row>
       <Row>
-        <SliderField lbl="Tint" min={-1} max={1} step={0.05} value={g.tint ?? 0} fallback={0} onCommit={(n) => onPatch({ tint: n })} />
-        <SliderField lbl="Sepia" min={0} max={1} step={0.05} value={g.sepia ?? 0} fallback={0} onCommit={(n) => onPatch({ sepia: n })} />
+        <SliderField lbl="Tint" min={-1} max={1} step={0.05} value={g.tint} fallback={GRADE_DEFAULTS.tint} onCommit={(n) => onPatch({ tint: n })} onReset={() => onPatch({ tint: GRADE_DEFAULTS.tint })} />
+        <SliderField lbl="Sepia" min={0} max={1} step={0.05} value={g.sepia} fallback={GRADE_DEFAULTS.sepia} onCommit={(n) => onPatch({ sepia: n })} onReset={() => onPatch({ sepia: GRADE_DEFAULTS.sepia })} />
       </Row>
-      <SliderField lbl="Hue rotate (deg)" min={-180} max={180} step={1} value={g.hueRotateDeg ?? 0} fallback={0} onCommit={(n) => onPatch({ hueRotateDeg: n })} />
+      <SliderField lbl="Hue rotate (deg)" min={-180} max={180} step={1} value={g.hueRotateDeg} fallback={GRADE_DEFAULTS.hueRotateDeg} onCommit={(n) => onPatch({ hueRotateDeg: n })} onReset={() => onPatch({ hueRotateDeg: GRADE_DEFAULTS.hueRotateDeg })} />
     </>
   );
 }
@@ -994,6 +1018,11 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                       // Round the display — width is stored as 1/zoom, so the round-trip
                       // otherwise shows e.g. 3.0003 instead of 3.
                       value={Math.round((1 / ((v.crop as { width?: number } | undefined)?.width ?? 1)) * 100) / 100}
+                      // "1 = none" IS the label's own stated default — genuinely
+                      // meaningful, unlike most ScrubFields here. Resetting clears
+                      // `crop` entirely (same as committing 1 does above), not just
+                      // the zoom number.
+                      defaultValue={1}
                       onCommit={(z) =>
                         patchItem('video', id, {
                           crop: z > 1 ? { ...((v.crop as object) ?? {}), width: 1 / z } : undefined,
@@ -1057,8 +1086,8 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
         {/* Per-clip colour grade (brightness/contrast/saturation/sepia/hue
             rotation are native CSS filters; temperature/tint drive an SVG
             white-balance matrix). Applies to the SegmentMedia-rendered footage
-            kinds. Neutral = 1 for the multipliers, 0 for GRADE_NEUTRAL_ZERO;
-            neutral values are dropped so `grade` stays minimal.
+            kinds. Neutral values (GRADE_DEFAULTS, grade.ts) are dropped so
+            `grade` stays minimal.
 
             This panel is always enabled now. It used to grey itself
             (`disabled`, Phase 4 Task 3.4's SECOND editor guard) whenever the
@@ -1072,24 +1101,74 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
             effect entry from before this change; render-time backwards
             compatibility for that is unaffected (`item.grade` still wins the
             dedup — see style-effect.ts), only this panel's own greying is
-            gone. */}
+            gone.
+
+            The section starts COLLAPSED when the grade is untouched (a clip
+            nobody has graded used to show eight sliders saying nothing,
+            pushing everything below out of view) and EXPANDED the moment it
+            isn't — `hasGradeChanges` (grade.ts) makes that call, not a
+            guess. `key={`color-${id}`}` is what makes "starts" mean
+            anything: this component itself isn't remounted when the selected
+            item changes (EditorHost renders one `LayeredInspector` for the
+            whole lifetime), so without a key tied to the item's own id,
+            switching from a touched clip to an untouched one would keep
+            whatever `open` state React happened to be holding for "the
+            Collapsible at this position" instead of recomputing it for the
+            newly-selected item. The same key is exactly why a MANUAL toggle
+            survives a re-render of the SAME item (e.g. committing a slider):
+            the key doesn't change, so React doesn't remount, so the chevron
+            the user clicked stays clicked. NAMESPACED (`color-`, not bare
+            `id`) because the Effects section below keys off the same item id
+            too — two sibling elements under the same parent sharing one bare
+            key is a real duplicate-key collision (React's reconciler matches
+            by key across ALL of a parent's children, not just same-type
+            ones), and it manifested exactly as you'd fear: editing a value
+            inside one section could silently hand its DOM/state to the
+            other on the next render. */}
         {(v.kind === 'clip' || v.kind === 'broll' || v.kind === 'photo') && (() => {
           const g = (v.grade ?? {}) as {
             brightness?: number; contrast?: number; saturation?: number;
             temperature?: number; tint?: number; sepia?: number; hueRotateDeg?: number;
           };
+          const touched = hasGradeChanges(v.grade);
           const patchGrade = (patch: Record<string, number>) => {
             const merged = { ...g, ...patch } as Record<string, number>;
             const cleaned = Object.fromEntries(
-              Object.entries(merged).filter(([k, val]) => typeof val === 'number' && val !== (GRADE_NEUTRAL_ZERO.has(k) ? 0 : 1)),
+              Object.entries(merged).filter(
+                ([k, val]) => typeof val === 'number' && val !== GRADE_DEFAULTS[k as keyof typeof GRADE_DEFAULTS],
+              ),
             );
             patchItem('video', id, { grade: Object.keys(cleaned).length ? cleaned : undefined });
           };
           return (
-            <>
-              <div className={sectionCls}>Color</div>
+            <Collapsible
+              key={`color-${id}`}
+              defaultOpen={touched}
+              title={
+                <span className="ed:inline-flex ed:items-center ed:gap-1.5">
+                  Color
+                  {/* Collapsed-header affordance: touched but manually closed
+                      still LOOKS non-empty. Decorative dot, not a count — see
+                      field-classes.ts's `dirtyDotCls`. */}
+                  {touched && <span aria-hidden="true" data-testid="grade-dirty-dot" className={dirtyDotCls} />}
+                </span>
+              }
+              right={
+                touched && (
+                  <button
+                    type="button"
+                    aria-label="Reset all color adjustments"
+                    title="Reset all color adjustments"
+                    onClick={() => patchItem('video', id, { grade: undefined })}
+                    className={resetBtnCls}
+                  >
+                    <RotateCcwIcon size={12} />
+                  </button>
+                )
+              }
+            >
               <GradeFields g={g} onPatch={patchGrade} />
-            </>
+            </Collapsible>
           );
         })()}
         {/* The item's opaque brand render-hint bag (`props` — e.g. an outro's
@@ -1120,45 +1199,75 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
             not silenced. */}
         <SliderField lbl="Music boost (dB)" min={-60} max={12} step={0.5} value={v.musicBoostDb} fallback={0} onCommit={(n) => patchItem('video', id, { musicBoostDb: n })} />
         {/* Effects only apply to footage renderers (SegmentMedia + brand wrappers).
-            outro/card render bespoke and ignore item.effects, so don't offer them. */}
-        {(v.kind === 'clip' || v.kind === 'broll' || v.kind === 'photo' || v.kind === 'multi-clip') && (
-          <>
-        {v.effects &&
-          v.effects.map((eff, i) => {
-            const type = (eff as { type?: string }).type ?? 'effect';
-            return (
-              <Collapsible
-                key={i}
-                title={`Effect · ${type}`}
-                right={
-                  <button
-                    type="button"
-                    aria-label={`remove effect ${type}`}
-                    onClick={() => patchItem('video', id, { effects: v.effects!.filter((_, j) => j !== i) })}
-                    style={{ background: 'none', border: 'none', color: '#9a9da5', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
-                  >
-                    <XIcon size={13} />
-                  </button>
-                }
-              >
-                <EffectEditor
-                  eff={eff as Record<string, unknown>}
-                  fields={effectDefinition(meta, type)?.params}
-                  accentSlots={accentSlots}
-                  focalX={v.focalX}
-                  onPatch={(patch) =>
-                    patchItem('video', id, { effects: v.effects!.map((e, j) => (j === i ? { ...(e as Record<string, unknown>), ...patch } : e)) })
-                  }
-                />
-              </Collapsible>
-            );
-          })}
-        <AddEffectControl
-          meta={meta}
-          onAdd={(effect) => patchItem('video', id, { effects: [...(v.effects ?? []), effect] })}
-        />
-          </>
-        )}
+            outro/card render bespoke and ignore item.effects, so don't offer them.
+
+            Same mechanism as the Color section above, not a second one: a
+            `Collapsible` keyed on the item's own id (so switching items
+            recomputes the initial state, and a manual toggle survives a
+            re-render of the SAME item), starting collapsed when there is
+            nothing to show (no effects — the list AND the "+ Add effect"
+            button it gates were previously a stray, header-less block) and
+            expanded the moment there is. The effect count is this section's
+            own form of Part 1's "touched but manually collapsed" affordance
+            — there's no natural dot here the way there is for Color, but a
+            count is exactly as informative. Namespaced `effects-${id}` key,
+            not bare `id` — see the Color section's comment above for why a
+            shared bare key across these two sibling sections is a real bug,
+            not a style nit. */}
+        {(v.kind === 'clip' || v.kind === 'broll' || v.kind === 'photo' || v.kind === 'multi-clip') && (() => {
+          const count = v.effects?.length ?? 0;
+          return (
+            <Collapsible
+              key={`effects-${id}`}
+              defaultOpen={count > 0}
+              title={
+                <span className="ed:inline-flex ed:items-center ed:gap-1.5">
+                  Effects
+                  {count > 0 && (
+                    <span aria-hidden="true" data-testid="effect-count-badge" className={countBadgeCls}>
+                      {count}
+                    </span>
+                  )}
+                </span>
+              }
+            >
+              {v.effects &&
+                v.effects.map((eff, i) => {
+                  const type = (eff as { type?: string }).type ?? 'effect';
+                  return (
+                    <Collapsible
+                      key={i}
+                      title={`Effect · ${type}`}
+                      right={
+                        <button
+                          type="button"
+                          aria-label={`remove effect ${type}`}
+                          onClick={() => patchItem('video', id, { effects: v.effects!.filter((_, j) => j !== i) })}
+                          style={{ background: 'none', border: 'none', color: '#9a9da5', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
+                        >
+                          <XIcon size={13} />
+                        </button>
+                      }
+                    >
+                      <EffectEditor
+                        eff={eff as Record<string, unknown>}
+                        fields={effectDefinition(meta, type)?.params}
+                        accentSlots={accentSlots}
+                        focalX={v.focalX}
+                        onPatch={(patch) =>
+                          patchItem('video', id, { effects: v.effects!.map((e, j) => (j === i ? { ...(e as Record<string, unknown>), ...patch } : e)) })
+                        }
+                      />
+                    </Collapsible>
+                  );
+                })}
+              <AddEffectControl
+                meta={meta}
+                onAdd={(effect) => patchItem('video', id, { effects: [...(v.effects ?? []), effect] })}
+              />
+            </Collapsible>
+          );
+        })()}
         {(() => {
           // ANY authored kind is shown as ITSELF. This used to test the kind
           // against TRANSITION_CATALOG and fall back to `{kind:'cut'}` — which,
