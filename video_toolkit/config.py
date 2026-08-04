@@ -25,10 +25,13 @@ _DOTENV_WARNED = False
 
 def _load_dotenv() -> None:
     global _DOTENV_WARNED
+    from video_toolkit.paths import find_env_file
+
+    env_path = find_env_file()
     try:
         from dotenv import load_dotenv
     except ImportError:
-        if not _DOTENV_WARNED and (find_workspace_root() / ".env").exists():
+        if not _DOTENV_WARNED and env_path is not None:
             print(
                 "WARNING: python-dotenv not installed; .env file will be ignored. "
                 "Run: pip install -r tools/requirements.txt",
@@ -36,8 +39,9 @@ def _load_dotenv() -> None:
             )
             _DOTENV_WARNED = True
         return
-    # Always load from repo-root .env so behavior doesn't depend on cwd.
-    load_dotenv(find_workspace_root() / ".env")
+    # Always load from the resolved .env so behavior doesn't depend on cwd.
+    if env_path is not None:
+        load_dotenv(env_path)
 
 
 def load_registry() -> dict:

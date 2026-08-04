@@ -53,6 +53,7 @@ import sys
 from pathlib import Path
 
 from video_toolkit.paths import NotFound, find_template, workspace_root
+from video_toolkit.textio import write_text_lf
 
 # Files the PROJECT owns BY PATH. A short, explicit list — the template ships its own demo versions
 # at these paths, so they always differ and would always need a human decision otherwise. This is a
@@ -208,7 +209,7 @@ def save_vendored(
             section: dict(sorted(body.items())) for section, body in sorted(deps.items()) if body
         },
     }
-    (project_dir / MANIFEST_NAME).write_text(json.dumps(payload, indent=2) + "\n")
+    write_text_lf(project_dir / MANIFEST_NAME, json.dumps(payload, indent=2) + "\n")
 
 
 def _is_vendored_copy(dst_path: Path, key: str, vendored: dict[str, str]) -> bool:
@@ -462,7 +463,7 @@ def merge_package_json(
                 deps.setdefault(section, {})[key] = version
         if not dry_run:
             project_dir.mkdir(parents=True, exist_ok=True)
-            project_pkg.write_text(json.dumps(merged, indent=2, ensure_ascii=False) + "\n")
+            write_text_lf(project_pkg, json.dumps(merged, indent=2, ensure_ascii=False) + "\n")
         return report
 
     project_data = json.loads(project_pkg.read_text())
@@ -511,7 +512,7 @@ def merge_package_json(
     check_identity_preserved(identity, project_data)
 
     if changed and not dry_run:
-        project_pkg.write_text(json.dumps(project_data, indent=2, ensure_ascii=False) + "\n")
+        write_text_lf(project_pkg, json.dumps(project_data, indent=2, ensure_ascii=False) + "\n")
 
     return report
 

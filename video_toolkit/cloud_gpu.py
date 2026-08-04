@@ -19,7 +19,9 @@ from contextlib import contextmanager
 import requests
 from dotenv import load_dotenv
 
-load_dotenv()
+from video_toolkit.paths import find_env_file
+
+load_dotenv(find_env_file())
 
 # ---------------------------------------------------------------------------
 # Provider config: maps tool_name → env var for each provider

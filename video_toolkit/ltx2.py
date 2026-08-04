@@ -39,7 +39,9 @@ except ImportError as e:
     print("Install with: pip install python-dotenv")
     sys.exit(1)
 
-load_dotenv()
+from video_toolkit.paths import find_env_file
+
+load_dotenv(find_env_file())
 
 sys.path.insert(0, str(Path(__file__).parent))
 from file_transfer import download_from_url, get_r2_payload_config

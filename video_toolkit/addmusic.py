@@ -32,6 +32,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from elevenlabs.client import ElevenLabs
 
+from video_toolkit.paths import find_env_file
+
 # Add parent to path for local imports
 sys.path.insert(0, str(Path(__file__).parent))
 from config import get_elevenlabs_api_key
@@ -252,7 +254,7 @@ def mix_audio_with_video(
 
 
 def main():
-    load_dotenv()
+    load_dotenv(find_env_file())
     args = parse_args()
 
     # Validate input file exists

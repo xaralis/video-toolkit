@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 from video_toolkit.paths import workspace_root
+from video_toolkit.textio import write_text_lf
 
 CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;700&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -267,7 +268,7 @@ def render(md_path: Path, html_path: Path) -> None:
 
     # Write CSS to a temp file so pandoc can embed it via --include-in-header
     css_path = html_path.parent / ".screenplay-style.css"
-    css_path.write_text(f"<style>{CSS}</style>")
+    write_text_lf(css_path, f"<style>{CSS}</style>")
 
     cmd = [
         "pandoc",

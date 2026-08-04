@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 
 from video_toolkit.paths import workspace_root
+from video_toolkit.textio import write_text_lf
 
 TARGET_DIFF_LU = 15  # music sits this many LU below voice during voice segments
 
@@ -78,7 +79,7 @@ def patch_volume(root_tsx: Path, new_db: float) -> None:
         lambda m: f"{m.group(1)}{new_db}",
         text, count=1,
     )
-    root_tsx.write_text(new_text)
+    write_text_lf(root_tsx, new_text)
 
 
 def main() -> int:

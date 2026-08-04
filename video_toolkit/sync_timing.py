@@ -35,6 +35,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from video_toolkit.textio import write_text_lf
 
 
 # ─── Audio Duration ──────────────────────────────────────────
@@ -785,7 +786,7 @@ Examples:
                 config_path, config_text, matches, args.padding,
             )
             if count > 0:
-                config_path.write_text(updated_text)
+                write_text_lf(config_path, updated_text)
                 output["applied"] = True
                 output["updates_applied"] = count
                 output["backup"] = str(config_path.with_suffix(".ts.bak"))
@@ -810,7 +811,7 @@ Examples:
             config_path, config_text, matches, args.padding,
         )
         if count > 0:
-            config_path.write_text(updated_text)
+            write_text_lf(config_path, updated_text)
             backup = config_path.with_suffix(".ts.bak")
             print(f"\nApplied {count} update(s) to {config_path}", file=sys.stderr)
             print(f"Backup saved to {backup}", file=sys.stderr)
