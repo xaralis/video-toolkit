@@ -340,6 +340,137 @@ export interface PendingZoom {
   view: { scrollLeft: number; scrollWidth: number; clientWidth: number };
 }
 
+// ---------------------------------------------------------------------------
+// The clip-row relayout gap. THIS WAS MEASURED, not inferred — probing a real
+// editor (a brand project's `npm run editor`) across zoom events found:
+//
+//  - the zoom readout goes 199% -> 280%, and
+//    `.ReactVirtualized__Grid__innerScrollContainer`'s width tracks it exactly
+//    (9547.45px -> 13451.7px -> 18954.6px): `scaleWidth` state and the Grid's
+//    own props DO update.
+//  - `.timeline-editor-edit-row` stays at width: 4812px across every one of
+//    those zooms — 4812 is the row's width AT THE INITIAL 100% ZOOM. It never
+//    moves again.
+//  - an action's inline style (`height: 34px; left: 246.48px; width:
+//    161.52px`) is BYTE-IDENTICAL before and after a zoom.
+//  - snapshotting every action by its label and comparing content-x/width
+//    across a zoom: every ratio is exactly 1.0000, while the scroll extent's
+//    ratio is 1.4095.
+//
+// So the scrollABLE extent grows (react-virtualized's own bookkeeping) but
+// the rows and the clips inside them stay frozen at a stale scale — the
+// ruler is a separate element that redraws straight from `scaleWidth`, which
+// is why it looks perfect while the clips don't. The underlying gap is in
+// `@xzdarcy/react-timeline-editor` (confirmed by reading its source): its
+// only `reRender` effects are keyed on the DATA prop
+// (`useEffect(()=>{ L && P.current.reRender() }, [x])`), and
+// `TimelineState.reRender()` is the PLAYBACK engine's tick
+// (`reRender(){ this.isPlaying || this._tickAction(this._currentTime) }`),
+// not a layout recompute — neither one ever tells react-virtualized's Grid
+// that a zoom changed what its cells should measure as.
+//
+// The confirmed fix: reaching react-virtualized's Grid instance and calling
+// its own `recomputeGridSize()` snapped the row from 4812 straight to
+// 18954.6 — one call, correct layout. There is no ref to the Grid (xzdarcy
+// mounts it internally), so it's reached by walking the React fiber tree up
+// from the DOM node `scrollEl()` already finds (see `findGridInstance`
+// below) and cached the same way `scrollEl` caches its own node.
+//
+// A future reader deleting this: the two numbers above (4812 staying frozen
+// while the scroll extent moves to 18954.6, ratio 1.4095 while every action's
+// own ratio holds at 1.0000) are what prove the gap is real and where it
+// lives. Re-verify with the same DOM probe before assuming a library update
+// closed it.
+// ---------------------------------------------------------------------------
+
+/** A react-virtualized Grid instance, narrowed to the one method this file
+ *  needs. (The real class exposes much more; nothing else is used here.) */
+export interface GridInstance {
+  recomputeGridSize: () => void;
+}
+
+/** Walks up the React fiber tree from a DOM node to the nearest ancestor
+ *  whose `stateNode` exposes a `recomputeGridSize` function — i.e. the
+ *  react-virtualized `Grid` class instance backing that node. There is no
+ *  public ref or prop for this (see the block above); this is the only way
+ *  to reach it from outside the library.
+ *
+ *  React attaches a fiber pointer to every host DOM node it renders, under a
+ *  property keyed `__reactFiber$<random>` (the suffix is a per-mount random
+ *  string, so it can't be hard-coded). From there `fiber.return` walks
+ *  upward toward the root; `fiber.stateNode` is the component instance for a
+ *  class component's fiber (undefined/a raw DOM node for everything else).
+ *
+ *  Bounded (`maxAncestors`) and NOT the first `stateNode` found — a class
+ *  component sitting between the DOM node and the Grid (react-virtualized's
+ *  own wrappers, or xzdarcy's) would otherwise be mistaken for it, since
+ *  `stateNode` is set on plenty of fibers that aren't the Grid. Returns null
+ *  rather than throwing when nothing matches (wrong React version, library
+ *  internals changed, or a stray call before mount) — callers must degrade
+ *  gracefully, not crash the editor over a lookup that reaches into two
+ *  libraries' private internals. */
+export function findGridInstance(domNode: Node, maxAncestors = 12): GridInstance | null {
+  const fiberKey = Object.keys(domNode).find((k) => k.startsWith('__reactFiber$'));
+  if (!fiberKey) return null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- React's fiber shape isn't a public type.
+  let fiber: any = (domNode as any)[fiberKey];
+  for (let i = 0; fiber != null && i <= maxAncestors; i++) {
+    const inst = fiber.stateNode;
+    if (inst && typeof inst.recomputeGridSize === 'function') return inst as GridInstance;
+    fiber = fiber.return;
+  }
+  return null;
+}
+
+/** The body of the layout effect keyed on `scaleWidth`, extracted so it's
+ *  unit-testable (jsdom runs no layout, so the effect itself is a
+ *  hand-verification item like `zoomAnchorScrollLeft` — but the ORDERING and
+ *  degradation rules below don't need real layout to pin).
+ *
+ *  Order is: recompute the Grid's cell sizes FIRST, THEN apply the scroll
+ *  anchor. The anchor's own numbers (`zoomAnchorScrollLeft`) don't depend on
+ *  a fresh DOM read — `pending.view` is the PRE-zoom geometry captured by the
+ *  caller — but xzdarcy's `setScrollLeft` flows into react-virtualized as a
+ *  controlled `scrollLeft` prop, and applying it while the Grid still thinks
+ *  the content is the OLD (smaller) size risks the row settling back to a
+ *  stale extent on the very next re-render. Measured in this repo (see the
+ *  block above `GridInstance`): `grid.recomputeGridSize()` calls React's
+ *  `forceUpdate()` internally, which does NOT apply synchronously — reading
+ *  the DOM immediately after calling it, from the same synchronous scope,
+ *  still saw the PRE-recompute state (confirmed with a throwaway probe: a
+ *  class component's `forceUpdate`, triggered from a parent's
+ *  `useLayoutEffect`, left the DOM unchanged by the time that effect
+ *  function returned — even wrapped in `flushSync`, which React explicitly
+ *  refuses mid-commit: "flushSync was called from inside a lifecycle
+ *  method"). The SAME probe found the update WAS visible by the very next
+ *  microtask — React flushes the deferred sync-priority re-render once the
+ *  whole commit's layout effects finish, before yielding control, so a
+ *  `queueMicrotask` scheduled from inside the layout effect runs after that
+ *  flush. Hence: recompute synchronously, then defer applying the anchor to
+ *  a microtask rather than running both in one synchronous block. */
+export function applyZoomLayout({
+  grid,
+  pendingRef,
+  setScrollLeft,
+}: {
+  grid: GridInstance | null;
+  pendingRef: { current: PendingZoom | null };
+  setScrollLeft: (scrollLeft: number) => void;
+}): void {
+  // Clear unconditionally, before the early return below — a stale anchor
+  // surviving into an unrelated later zoom (one that doesn't happen to
+  // re-enter this branch) is exactly the bug the wheel handler's own no-op
+  // branch guards against elsewhere in this file; this preserves the same
+  // property for the layout effect's side.
+  const pending = pendingRef.current;
+  pendingRef.current = null;
+  if (!pending) return;
+  grid?.recomputeGridSize();
+  queueMicrotask(() => {
+    setScrollLeft(zoomAnchorScrollLeft(pending.anchorX, pending.view, pending.factor));
+  });
+}
+
 /** Folds one new zoom capture into a possibly-still-unconsumed `pendingZoom`.
  *
  *  A continuous trackpad pinch (or a fast run of ⌘/Ctrl+wheel notches) fires
@@ -789,6 +920,24 @@ function LayeredTimelineImpl({
     return scrollElRef.current;
   };
 
+  // The react-virtualized Grid instance backing `scrollEl()`'s node — reached
+  // by walking the React fiber tree (see `findGridInstance`'s doc comment for
+  // why this reaches into two libraries' internals, and the measured numbers
+  // that justify it). Cached the same way `scrollEl` caches its own node,
+  // keyed off THAT node so a remount (which changes what `scrollEl()`
+  // returns, including its `isConnected` re-lookup) invalidates the cached
+  // instance rather than handing back a detached one.
+  const gridInstanceRef = useRef<{ node: HTMLElement; instance: GridInstance | null } | null>(null);
+  const gridInstance = (): GridInstance | null => {
+    const node = scrollEl();
+    if (!node) return null;
+    const cached = gridInstanceRef.current;
+    if (cached && cached.node === node && node.isConnected) return cached.instance;
+    const instance = findGridInstance(node);
+    gridInstanceRef.current = { node, instance };
+    return instance;
+  };
+
   // The zoom-buttons/keyboard-shortcut escape hatch (see LayeredTimelineHandle
   // above the props interface). No cursor to anchor on, so the centre of the
   // viewport stands in for it — captured here, synchronously, the same way
@@ -821,17 +970,25 @@ function LayeredTimelineImpl({
     },
   }), []);
 
-  // Applies a pending zoom's anchor once the DOM has re-laid-out at the new
+  // Applies a pending zoom's anchor once React has committed at the new
   // scale — keyed on `scaleWidth` because that is the value whose change
-  // means the layout has actually moved. `pendingZoom` was captured BEFORE
-  // that layout happened (wheel handler above, or `zoomAtCenter`), so this
+  // means a new layout is due. `pendingZoom` was captured BEFORE that
+  // happened (wheel handler above, or `zoomAtCenter`), so `applyZoomLayout`
   // reads the captured view rather than re-measuring `scrollEl()` here, which
   // by now reflects the NEW scale and would double-apply the zoom.
+  //
+  // xzdarcy never recomputes react-virtualized's Grid on a `scaleWidth`
+  // change on its own (see the block above `GridInstance`) — the rows and
+  // clips stay laid out at whatever scale was current the last time the DATA
+  // changed. `applyZoomLayout` forces that recompute first, then applies the
+  // anchor; see its own doc comment for why those two steps can't both run
+  // synchronously in this one effect.
   useLayoutEffect(() => {
-    const p = pendingZoom.current;
-    pendingZoom.current = null;
-    if (!p) return;
-    stateRef.current?.setScrollLeft(zoomAnchorScrollLeft(p.anchorX, p.view, p.factor));
+    applyZoomLayout({
+      grid: gridInstance(),
+      pendingRef: pendingZoom,
+      setScrollLeft: (n) => stateRef.current?.setScrollLeft(n),
+    });
   }, [scaleWidth]);
 
   // Keep the playhead in view. Without this a seek (⏮/⏭, a jump, or playback

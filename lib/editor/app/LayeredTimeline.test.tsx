@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
-import { LayeredTimeline, colorFor, blockColor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics, zoomFactorFor, followScrollLeft, zoomAnchorScrollLeft, accumulateZoom, TIMELINE_START_LEFT, type PendingZoom } from './LayeredTimeline';
+import { LayeredTimeline, colorFor, blockColor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics, zoomFactorFor, followScrollLeft, zoomAnchorScrollLeft, accumulateZoom, TIMELINE_START_LEFT, findGridInstance, applyZoomLayout, type PendingZoom, type GridInstance } from './LayeredTimeline';
 import { sourceColors } from './editor-meta';
 import type { LayeredReel, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
@@ -478,6 +478,150 @@ describe('accumulateZoom — folding multiple pre-commit zoom captures', () => {
     expect(fixed!.factor).toBeCloseTo(combinedFactor, 10);
 
     expect(wrongTarget).not.toBe(groundTruth);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findGridInstance — the fiber walk that reaches react-virtualized's Grid
+// instance (see LayeredTimeline.tsx's own long comment above `GridInstance`
+// for the measured evidence this exists to fix: clip rows staying frozen at
+// a stale zoom scale while the scroll extent grows around them). jsdom runs
+// no layout, but the fiber walk itself needs none — it only reads a plain
+// object property chain, which a hand-built fake node can reproduce exactly.
+// ---------------------------------------------------------------------------
+describe('findGridInstance — walking the React fiber tree for a Grid instance', () => {
+  // A React fiber is a big, cyclic, largely-untyped object in real life; the
+  // walk only ever reads `.return` and `.stateNode`, so the fake chain below
+  // carries nothing else.
+  type FakeFiber = { return: FakeFiber | null; stateNode?: unknown };
+
+  const fakeDomNode = (fiber: FakeFiber | null): Node => {
+    const node: Record<string, unknown> = {};
+    if (fiber) node['__reactFiber$abc123'] = fiber;
+    return node as unknown as Node;
+  };
+
+  it('finds a Grid instance sitting directly on the node\'s own fiber (depth 0)', () => {
+    const grid: GridInstance = { recomputeGridSize: () => {} };
+    const fiber: FakeFiber = { return: null, stateNode: grid };
+    expect(findGridInstance(fakeDomNode(fiber))).toBe(grid);
+  });
+
+  it('finds a Grid instance three parents up', () => {
+    const grid: GridInstance = { recomputeGridSize: () => {} };
+    const gridFiber: FakeFiber = { return: null, stateNode: grid };
+    const f2: FakeFiber = { return: gridFiber, stateNode: {} };
+    const f1: FakeFiber = { return: f2, stateNode: undefined };
+    const f0: FakeFiber = { return: f1, stateNode: {} };
+    expect(findGridInstance(fakeDomNode(f0))).toBe(grid);
+  });
+
+  it('returns null when nothing within the bound has recomputeGridSize', () => {
+    // A chain of 20 fibers, deliberately longer than the default bound (12),
+    // none of them the Grid — not even at the very top of the chain, so a
+    // walk that (incorrectly) ignored the bound would still fail to find one.
+    let innermost: FakeFiber | null = null;
+    for (let i = 0; i < 20; i++) innermost = { return: innermost, stateNode: { notAGrid: true } };
+    expect(findGridInstance(fakeDomNode(innermost))).toBeNull();
+  });
+
+  it('keeps walking past a stateNode that is NOT the Grid (does not stop at the first stateNode)', () => {
+    const grid: GridInstance = { recomputeGridSize: () => {} };
+    const gridFiber: FakeFiber = { return: null, stateNode: grid };
+    // An intervening class component instance with no recomputeGridSize —
+    // must not be mistaken for the Grid.
+    const wrapperFiber: FakeFiber = { return: gridFiber, stateNode: { someOtherMethod: () => {} } };
+    expect(findGridInstance(fakeDomNode(wrapperFiber))).toBe(grid);
+  });
+
+  it('returns null when the node carries no React fiber pointer at all', () => {
+    expect(findGridInstance(fakeDomNode(null))).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyZoomLayout — the layout effect's body, extracted so the ordering and
+// degradation rules are unit-testable without real layout (jsdom runs none —
+// same limitation already documented on zoomAnchorScrollLeft). Confirmed by
+// a throwaway probe (see LayeredTimeline.tsx's doc comment on this function):
+// a class component's forceUpdate, triggered from a parent's
+// useLayoutEffect, is NOT visible in the DOM by the time that effect
+// function returns, but IS visible by the very next microtask — hence the
+// queueMicrotask deferral these tests await.
+// ---------------------------------------------------------------------------
+describe('applyZoomLayout — recompute-then-anchor ordering', () => {
+  const pending: PendingZoom = {
+    anchorX: 300,
+    factor: 1.25,
+    view: { scrollLeft: 400, scrollWidth: 4000, clientWidth: 800 },
+  };
+
+  it('calls recomputeGridSize BEFORE setScrollLeft, not just both eventually', async () => {
+    const calls: string[] = [];
+    const grid: GridInstance = { recomputeGridSize: () => calls.push('recompute') };
+    const pendingRef = { current: pending };
+
+    applyZoomLayout({
+      grid,
+      pendingRef,
+      setScrollLeft: () => calls.push('setScrollLeft'),
+    });
+    // setScrollLeft is deferred to a microtask — synchronously, only the
+    // recompute has happened.
+    expect(calls).toEqual(['recompute']);
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(calls).toEqual(['recompute', 'setScrollLeft']);
+  });
+
+  it('still calls setScrollLeft with the correct anchor value when the grid instance is null', async () => {
+    const pendingRef = { current: pending };
+    let received: number | null = null;
+
+    applyZoomLayout({
+      grid: null,
+      pendingRef,
+      setScrollLeft: (n) => { received = n; },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(received).toBe(zoomAnchorScrollLeft(pending.anchorX, pending.view, pending.factor));
+  });
+
+  it('does nothing at all when there is no pending zoom', async () => {
+    const pendingRef = { current: null as PendingZoom | null };
+    let recomputeCalled = false;
+    let setScrollLeftCalled = false;
+
+    applyZoomLayout({
+      grid: { recomputeGridSize: () => { recomputeCalled = true; } },
+      pendingRef,
+      setScrollLeft: () => { setScrollLeftCalled = true; },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(recomputeCalled).toBe(false);
+    expect(setScrollLeftCalled).toBe(false);
+  });
+
+  it('clears the pending ref even on the no-pending early-return path', () => {
+    // Guards the same hazard the wheel handler's own no-op branch guards
+    // against elsewhere in this file: a stale anchor surviving into an
+    // unrelated later zoom. Here there's nothing to clear (already null),
+    // but the call must not throw or leave it in some other state.
+    const pendingRef = { current: null as PendingZoom | null };
+    applyZoomLayout({ grid: null, pendingRef, setScrollLeft: () => {} });
+    expect(pendingRef.current).toBeNull();
+  });
+
+  it('clears the pending ref synchronously, before the deferred setScrollLeft even runs', () => {
+    const pendingRef = { current: pending };
+    applyZoomLayout({ grid: null, pendingRef, setScrollLeft: () => {} });
+    // No await here on purpose — this checks the SYNCHRONOUS part of the call.
+    expect(pendingRef.current).toBeNull();
   });
 });
 
