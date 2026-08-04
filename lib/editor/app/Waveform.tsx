@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { PEAKS_PER_SEC } from './useAudioPeaks';
+import { waveformBarWidth, waveformPath } from './timeline-paths';
 
 export interface WaveformProps {
   peaks?: Float32Array;
@@ -26,30 +27,23 @@ export interface WaveformProps {
 // fills the container (preserveAspectRatio="none", stretches). With `pxPerSec`
 // it renders at a fixed px width anchored to one edge (see the prop docs) so a
 // live trim holds the samples in place instead of sliding them.
-export function Waveform({ peaks, sourceInMs = 0, spanMs, color = 'rgba(255,255,255,0.55)', pxPerSec, anchor = 'right' }: WaveformProps) {
+//
+// MEMOIZED, and that is load-bearing rather than tidiness — see the header of
+// ./timeline-paths.ts for the measurement. The timeline library re-renders on
+// every playhead frame, so without this the path below was rebuilt ~219 times a
+// second across the reel's blocks while nothing about any of them changed. The
+// memo holds because every prop is either a primitive or `peaks`, which comes
+// from useAudioPeaks' module-level cache and so keeps one reference per URL for
+// the whole session; a future change that starts handing this a freshly-sliced
+// array per render would silently defeat the memo and restore the cost.
+function WaveformImpl({ peaks, sourceInMs = 0, spanMs, color = 'rgba(255,255,255,0.55)', pxPerSec, anchor = 'right' }: WaveformProps) {
   if (!peaks || peaks.length === 0) return null;
   const startIdx = Math.floor((sourceInMs / 1000) * PEAKS_PER_SEC);
   const count = Math.max(1, Math.round((spanMs / 1000) * PEAKS_PER_SEC));
   const W = 1000;
   const H = 100;
-  const mid = H / 2;
-  const step = W / count;
-  // Bar width follows the SPACING, so a short block and a long one read with the
-  // same weight. The viewBox is a fixed 1000 units wide however many peaks go
-  // into it, so a hard-coded strokeWidth makes density a function of block
-  // length: a 3s bed (step 8.3) drew hairlines covering ~12% of the width while
-  // a 54s music bed (step 0.46) drew overlapping strokes that merged into a
-  // solid mass. That difference reads as "the music is more visible" and no
-  // amount of opacity fixes it. 0.7 leaves a hairline gap between bars so the
-  // shape stays legible instead of becoming a filled block.
-  const barWidth = Math.max(0.6, step * 0.7);
-  let d = '';
-  for (let i = 0; i < count; i++) {
-    const p = peaks[startIdx + i] ?? 0;
-    const x = i * step;
-    const h = p * mid;
-    d += `M${x.toFixed(1)},${(mid - h).toFixed(1)}L${x.toFixed(1)},${(mid + h).toFixed(1)}`;
-  }
+  const barWidth = waveformBarWidth(count, W);
+  const d = waveformPath(peaks, startIdx, count, W, H);
   const layout: React.CSSProperties = pxPerSec
     ? { top: 0, bottom: 0, width: (spanMs / 1000) * pxPerSec, [anchor]: 0 }
     : { inset: 0, width: '100%' };
@@ -63,6 +57,8 @@ export function Waveform({ peaks, sourceInMs = 0, spanMs, color = 'rgba(255,255,
     </svg>
   );
 }
+
+export const Waveform = memo(WaveformImpl);
 
 // A horizontal volume level line over an audio block (its constant volumeDb).
 // dB mapped [vMin, vMax] → bottom…top, clamped. When `onChange` is given, the
