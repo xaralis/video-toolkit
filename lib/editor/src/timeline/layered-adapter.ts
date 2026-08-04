@@ -2,6 +2,7 @@ import type { LayeredReel, VideoItem, AudioItem } from '@video-toolkit/lib/reel-
 import { withTotalDuration } from '@video-toolkit/lib/reel-config-base/total-duration';
 import { clampSpeed } from '@video-toolkit/lib/reel-config-base/speed';
 import { resolveSlipsWithVideo } from '@video-toolkit/lib/reel-config-base/slips-with-video';
+import { headroomTimelineMs, sourceToTimelineMs } from '@video-toolkit/lib/reel-config-base/clip-time';
 import {
   isCut,
   CUT_KIND,
@@ -165,13 +166,37 @@ export function clipFootageCapMs(item: VideoItem, decodedMs: number | undefined)
 // Clip and broll are treated identically: a broll's max length is its footage,
 // same as a clip. A source with no decoded duration (a still image) has no
 // footage bound at all → its right handle is unbounded.
+//
+// BOTH bounds are the FOOTAGE, and only the footage, expressed in TIMELINE ms —
+// which is not the same number as the source ms they come from unless the clip
+// runs at 1x. See ./../../../reel-config-base/clip-time.ts.
+//
+// The right bound is computed as an ABSOLUTE footage-end anchored at `startMs`
+// — `startMs + sourceToTimelineMs(decodedMs - sourceInMs)` — rather than as
+// `endMs + tailroomTimelineMs(item, decodedMs)`. The two are algebraically
+// identical whenever the item's own spans are internally consistent
+// (`endMs - startMs === sourceToTimelineMs(sourceOutMs - sourceInMs)`, which is
+// exactly `deriveSpeed`'s definition) — EXCEPT when `sourceOutMs` already
+// overshoots the real decoded footage (config drift: authored past the file).
+// `tailroomTimelineMs` clamps that case at 0 ("no additional room"), which
+// cannot express "you are already past the file and the bound is BELOW your
+// current end" — the drifted-broll case a pre-existing test pins. Computing
+// the absolute end directly, unclamped, reduces to the exact same number in
+// every non-drift case and correctly pulls the cap back under `endMs` in the
+// drift case.
 export function resizeBoundsMs(
   item: VideoItem,
   decodedMs: number | undefined,
 ): { minStartMs: number; maxEndMs?: number } | null {
   if (item.kind !== 'clip' && item.kind !== 'broll') return null;
-  const maxEndMs = decodedMs && decodedMs > 0 ? item.startMs + (decodedMs - item.sourceInMs) : undefined;
-  return { minStartMs: item.startMs - item.sourceInMs, maxEndMs };
+  return {
+    minStartMs: Math.round(item.startMs - headroomTimelineMs(item)),
+    // `undefined`, not Infinity: LayeredTimeline forwards undefined as "no clamp".
+    maxEndMs:
+      decodedMs && decodedMs > 0
+        ? Math.round(item.startMs + sourceToTimelineMs(item, decodedMs - item.sourceInMs))
+        : undefined,
+  };
 }
 
 // OVERWRITE — what a trim does when it runs into the clip next door.

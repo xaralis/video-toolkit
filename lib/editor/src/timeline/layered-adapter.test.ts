@@ -517,10 +517,25 @@ describe('clipFootageCapMs — clip vs broll policy', () => {
 });
 
 describe('resizeBoundsMs — real-time drag bounds', () => {
-  const clip = (over: Partial<{ startMs: number; sourceInMs: number }> = {}): VideoItem => ({
-    id: 'A', kind: 'clip', startMs: over.startMs ?? 5000, endMs: 10000, source: 's.mp4',
-    sourceInMs: over.sourceInMs ?? 0, sourceOutMs: 5000,
-  });
+  // sourceOutMs defaults to sourceInMs + (endMs - startMs) — i.e. 1x BY
+  // CONSTRUCTION, unless a case explicitly overrides it (the drifted-broll
+  // case below does exactly that). Before this, sourceOutMs was pinned at a
+  // literal 5000 regardless of the other overrides, so overriding sourceInMs
+  // alone silently produced a non-1x item — an accidental artifact from
+  // before playback speed existed, not a deliberate fixture. See the Task 2
+  // report for how this was found (a real, non-snapped 0.76x on the
+  // 'left bound' case) and the plan owner's ruling to fix the data.
+  const clip = (
+    over: Partial<{ startMs: number; endMs: number; sourceInMs: number; sourceOutMs: number }> = {},
+  ): VideoItem => {
+    const startMs = over.startMs ?? 5000;
+    const endMs = over.endMs ?? 10000;
+    const sourceInMs = over.sourceInMs ?? 0;
+    return {
+      id: 'A', kind: 'clip', startMs, endMs, source: 's.mp4',
+      sourceInMs, sourceOutMs: over.sourceOutMs ?? sourceInMs + (endMs - startMs),
+    };
+  };
 
   it('left bound is the source head (start - sourceIn)', () => {
     const b = resizeBoundsMs(clip({ startMs: 5000, sourceInMs: 1200 }), 20000);
@@ -563,6 +578,39 @@ describe('resizeBoundsMs — real-time drag bounds', () => {
     const b = resizeBoundsMs(clip({ startMs: 5000, sourceInMs: 0 }), 8000);
     expect(b!.maxEndMs).toBe(13000); // the file, not the neighbour
     expect(b!.minStartMs).toBe(5000); // the file head, not a previous clip's end
+  });
+});
+
+describe('resizeBoundsMs honours playback speed', () => {
+  // 4s of source over 8s of timeline = 0.5x; the file holds 10s.
+  const slowed = {
+    id: 'v1', kind: 'broll', startMs: 0, endMs: 8000, sourceInMs: 0, sourceOutMs: 4000,
+  } as unknown as VideoItem;
+
+  it('lets a slowed clip reach ALL of its footage, not half of it', () => {
+    // 10s of source at 0.5x is 20s of timeline. Stopping at 10000 refuses
+    // footage the file really has — the reported "won't let me drag further".
+    expect(resizeBoundsMs(slowed, 10000)).toEqual({ minStartMs: 0, maxEndMs: 20000 });
+  });
+
+  it('scales the left bound by speed too', () => {
+    // NOTE: endMs stays 8000 (not the brief's literal 12000) so the clip stays
+    // at 0.5x — with endMs also moved to 12000 the timeline span (8000) no
+    // longer matches the halved source span (2000), which is a real 0.25x
+    // clip, not the 0.5x one the inline comment computes against. Filed as a
+    // deviation in the task report.
+    const trimmed = { ...slowed, startMs: 4000, endMs: 8000, sourceInMs: 2000 } as VideoItem;
+    // 2000ms of source head at 0.5x = 4000ms of timeline: 4000 - 4000 = 0.
+    expect(resizeBoundsMs(trimmed, 10000)!.minStartMs).toBe(0);
+  });
+
+  it('leaves a 1x clip’s bounds exactly where they were', () => {
+    const plain = { ...slowed, endMs: 4000 } as VideoItem; // spans in lockstep
+    expect(resizeBoundsMs(plain, 10000)).toEqual({ minStartMs: 0, maxEndMs: 10000 });
+  });
+
+  it('still reports no right bound at all when the footage length is unknown', () => {
+    expect(resizeBoundsMs(slowed, undefined)!.maxEndMs).toBeUndefined();
   });
 });
 
