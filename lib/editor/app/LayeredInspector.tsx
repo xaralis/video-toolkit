@@ -1966,10 +1966,23 @@ export function LayeredInspector({
   return (
     <div className={panelCls}>
       <h3 className={headingCls}>Brand · {b.kind}</h3>
+      {/* Read-only ON PURPOSE. The brand lane's span is derived from the content
+          end (see withDerivedBrandSpan) — the timeline already has `brand` in
+          LOCKED_LANES, and an editable field here would be a control that cannot
+          change the output, which is worse than no control at all. */}
       <Row>
-        <TimecodeField lbl="Start" ms={b.startMs} fps={fps} onCommit={(ms) => patchItem('brand', id, { startMs: ms })} />
-        <TimecodeField lbl="End" ms={b.endMs} fps={fps} onCommit={(ms) => patchItem('brand', id, { endMs: ms })} />
+        <div className={fieldCls}>
+          <label className={`${labelCls} ed:block ed:mb-1`}>Start</label>
+          <div className={readonlyValueCls}>{formatTimecode(b.startMs, fps)}</div>
+        </div>
+        <div className={fieldCls}>
+          <label className={`${labelCls} ed:block ed:mb-1`}>End</label>
+          <div className={readonlyValueCls}>{formatTimecode(b.endMs, fps)}</div>
+        </div>
       </Row>
+      <div className="ed:text-[11px] ed:text-ink-2 ed:mt-2">
+        Derived: brand marks cover the content and stop before the outro. Trim the last content clip to change this.
+      </div>
     </div>
   );
 }

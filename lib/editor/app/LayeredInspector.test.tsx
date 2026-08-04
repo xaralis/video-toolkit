@@ -1412,3 +1412,21 @@ describe('LayeredInspector — audio slip-lock control ("Slips with the clip" / 
     expect(screen.queryByRole('checkbox', { name: 'Keeps its own timing' })).toBeNull();
   });
 });
+
+describe('LayeredInspector brand panel', () => {
+  const brandReel: LayeredReel = {
+    ...base,
+    tracks: { ...base.tracks, brand: [{ id: 'brand-watermark', kind: 'watermark', startMs: 0, endMs: 2000 }] },
+  };
+
+  it('shows the derived span read-only and offers no timing inputs', () => {
+    const { container } = render(
+      <LayeredInspector reel={brandReel} selectedId="brand:brand-watermark" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    // The panel's whole point: nothing on it is editable.
+    expect(container.querySelectorAll('input')).toHaveLength(0);
+    expect(container.textContent).toContain('Derived');
+    // The values are still shown, just not as fields.
+    expect(container.textContent).toContain('Start');
+    expect(container.textContent).toContain('End');
+  });
+});
