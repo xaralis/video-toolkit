@@ -2,7 +2,7 @@ import type { LayeredReel, VideoItem, AudioItem } from '@video-toolkit/lib/reel-
 import { withTotalDuration } from '@video-toolkit/lib/reel-config-base/total-duration';
 import { clampSpeed } from '@video-toolkit/lib/reel-config-base/speed';
 import { resolveSlipsWithVideo } from '@video-toolkit/lib/reel-config-base/slips-with-video';
-import { headroomTimelineMs, sourceToTimelineMs, timelineToSourceMs } from '@video-toolkit/lib/reel-config-base/clip-time';
+import { headroomTimelineMs, sourceAtTimelineMs, sourceToTimelineMs, timelineToSourceMs } from '@video-toolkit/lib/reel-config-base/clip-time';
 import {
   isCut,
   CUT_KIND,
@@ -899,9 +899,12 @@ export function splitItem(
   if (v.kind !== 'clip' && v.kind !== 'broll') return { reel, selectedId };
   const atMs = Math.round((atFrame / fps) * 1000);
   if (atMs <= v.startMs + 1 || atMs >= v.endMs - 1) return { reel, selectedId }; // playhead not inside
-  const leftDur = atMs - v.startMs;
   const rightId = uniqueId(`${v.id}-b`, reel.tracks.video.map((x) => x.id));
-  const cut = v.sourceInMs + leftDur;
+  // The SOURCE frame showing at the playhead — `atMs - startMs` is a timeline
+  // length, and on a clip whose speed isn't 1x that is not the same number of
+  // source ms. Splitting on the raw difference gave both halves a speed the
+  // author never set.
+  const cut = Math.round(sourceAtTimelineMs(v, atMs));
 
   const left: VideoItem = { ...v, endMs: atMs, sourceOutMs: cut, transitionOut: { kind: CUT_KIND } };
   const right: VideoItem = { ...v, id: rightId, startMs: atMs, sourceInMs: cut, transitionIn: undefined };

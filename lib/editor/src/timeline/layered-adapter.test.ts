@@ -1122,6 +1122,51 @@ describe('splitItem', () => {
   });
 });
 
+describe('splitItem keeps speed on both halves', () => {
+  // 4s of source over 8s of timeline = 0.5x, at 30fps. startMs is
+  // deliberately non-zero: `sourceAtTimelineMs` subtracts startMs internally,
+  // so a caller that mistakenly passed a clip-RELATIVE ms (`atMs - v.startMs`)
+  // instead of the absolute timeline ms would agree with the correct call at
+  // startMs 0 for every value of atMs — the two can only be told apart once
+  // startMs is nonzero.
+  const slowed = {
+    id: 'v1', kind: 'broll', startMs: 1000, endMs: 9000, sourceInMs: 0, sourceOutMs: 4000,
+  } as unknown as VideoItem;
+  // Scoped to this describe on purpose — the file has other `clip`/`reelWith`
+  // helpers with different (1x-by-construction) contracts.
+  const reelWith = (v: VideoItem): LayeredReel => ({
+    ...REEL,
+    meta: { topic: 'Fixture', totalDurationMs: 30000 },
+    tracks: { ...REEL.tracks, video: [v], audio: [], overlays: [], brand: [] },
+  });
+
+  it('cuts the SOURCE at the frame actually showing at the playhead', () => {
+    // Playhead at absolute 5000ms = 4000ms into the clip (startMs 1000) =
+    // half way = 2000ms of source at 0.5x, not 4000.
+    const { reel } = splitItem(reelWith(slowed), 'video:v1', 150, 30); // frame 150 @30fps = 5000ms
+    const [left, right] = reel.tracks.video as Extract<VideoItem, { kind: 'broll' }>[];
+    expect(left.endMs).toBe(5000);
+    expect(left.sourceOutMs).toBe(2000);
+    expect(right.sourceInMs).toBe(2000);
+  });
+
+  it('leaves both halves at the parent’s speed', () => {
+    const { reel } = splitItem(reelWith(slowed), 'video:v1', 150, 30);
+    const [left, right] = reel.tracks.video as Extract<VideoItem, { kind: 'broll' }>[];
+    expect(deriveSpeed(left)).toBe(0.5);
+    expect(deriveSpeed(right)).toBe(0.5);
+  });
+
+  it('is the plain sum at 1x', () => {
+    // Independent of `slowed`'s (now nonzero) startMs — this case is about
+    // speed 1x, not about the startMs != 0 regression, so it keeps its own
+    // startMs 0 fixture, unchanged from before that fixture moved.
+    const plain = { ...slowed, startMs: 0, endMs: 4000 } as VideoItem; // spans in lockstep
+    const { reel } = splitItem(reelWith(plain), 'video:v1', 60, 30); // 2000ms
+    expect((reel.tracks.video[0] as Extract<VideoItem, { kind: 'broll' }>).sourceOutMs).toBe(2000);
+  });
+});
+
 describe('duplicateItem', () => {
   const reel: LayeredReel = {
     ...REEL,
