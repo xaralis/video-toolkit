@@ -147,6 +147,51 @@ describe('EditorHost (child modules mocked at the boundary)', () => {
     vi.doUnmock('../host/crop-gestures');
   });
 
+  // The framing mode switch moved OUT of the inspector panel and onto the
+  // preview: it acts on the picture, and in the panel nobody went looking for
+  // it. These cover what the inspector's own tests used to, at its new home.
+  // Selection has to come through the mocked timeline's `onSelect` — the real
+  // one virtualizes its rows to zero height in jsdom, so a clip can never be
+  // clicked.
+  const selectClip = async (id = 'video:seg-001') => {
+    const { EditorHost: Host } = await import('../host/EditorHost');
+    render(<Host {...opts} />);
+    await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+    act(() => seenTimelineProps.at(-1).onSelect(id));
+  };
+
+  it('shows the framing mode switch on the preview once a clip is selected', async () => {
+    await selectClip();
+    const group = await screen.findByRole('group', { name: 'Adjust in preview' });
+    expect(group).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Crop/ })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('does not show it with nothing selected — there is no clip to adjust', async () => {
+    const { EditorHost: Host } = await import('../host/EditorHost');
+    render(<Host {...opts} />);
+    await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+    expect(screen.queryByRole('group', { name: 'Adjust in preview' })).not.toBeInTheDocument();
+  });
+
+  it('arms a mode, and clicking the active tile turns it back off', async () => {
+    await selectClip();
+    const crop = await screen.findByRole('button', { name: /Crop/ });
+    fireEvent.click(crop);
+    expect(crop).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(crop);
+    expect(crop).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('disables Position under fill-frame, stating why — there is no slack to position into', async () => {
+    await selectClip();
+    const place = await screen.findByRole('button', { name: /Position/ });
+    expect(place).toBeDisabled();
+    expect(place.getAttribute('title')).toMatch(/nothing to position/);
+    // Only that one tile — Crop stays live.
+    expect(screen.getByRole('button', { name: /Crop/ })).not.toBeDisabled();
+  });
+
   it('passes the same `meta` reference to LayeredTimeline and LayeredInspector', async () => {
     // Identity, not just deep-equality: this task's whole point is a stable
     // reference reaching the memoized timeline (see EditorHostOptions.meta).
@@ -191,11 +236,9 @@ describe('EditorHost (child modules mocked at the boundary)', () => {
     expect(read()).toBeUndefined();
   });
 
-  it('routes framingMode from the inspector toggle row into the crop-gesture target', async () => {
-    // Both framing modes now start from LayeredInspector's toggle row
-    // (onFramingModeChange), not a preview button — this proves the whole
-    // path: inspector callback → host state → the read() the gesture layer
-    // actually sees, for BOTH modes. Uses `fit: 'contain'` so 'place' mode is
+  it('routes framingMode from the preview mode switch into the crop-gesture target', async () => {
+    // Proves the whole path for BOTH modes: preview button → host state → the
+    // read() the gesture layer actually sees. Uses `fit: 'contain'` so 'place' mode is
     // actually legitimate here (under 'cover', the stuck-mode guard tested
     // separately below would immediately revert it to 'off').
     const withContain = { ...REEL, tracks: { ...REEL.tracks, video: [{ ...REEL.tracks.video[0], fit: 'contain' }] } } as LayeredReel;
@@ -210,16 +253,13 @@ describe('EditorHost (child modules mocked at the boundary)', () => {
 
     act(() => seenTimelineProps[seenTimelineProps.length - 1].onSelect('video:seg-001'));
     await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].selectedId).toBe('video:seg-001'));
-    expect(seenInspectorProps[seenInspectorProps.length - 1].framingMode).toBe('off');
     expect(attached[0][1]()).toBeUndefined();
 
-    act(() => seenInspectorProps[seenInspectorProps.length - 1].onFramingModeChange('crop'));
-    await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].framingMode).toBe('crop'));
-    expect(attached[0][1]()).toMatchObject({ mode: 'crop', focalX: 0.5, focalY: 0.5, placeX: 0.5, placeY: 0.5, zoom: 1 });
+    fireEvent.click(await screen.findByRole('button', { name: /Crop/ }));
+    await waitFor(() => expect(attached[0][1]()).toMatchObject({ mode: 'crop', focalX: 0.5, focalY: 0.5, placeX: 0.5, placeY: 0.5, zoom: 1 }));
 
-    act(() => seenInspectorProps[seenInspectorProps.length - 1].onFramingModeChange('place'));
-    await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].framingMode).toBe('place'));
-    expect(attached[0][1]()).toMatchObject({ mode: 'place' });
+    fireEvent.click(screen.getByRole('button', { name: /Position/ }));
+    await waitFor(() => expect(attached[0][1]()).toMatchObject({ mode: 'place' }));
   });
 
   it('resets framingMode to off when the selection changes, same as the old Focus/Zoom toggle did', async () => {
@@ -230,21 +270,20 @@ describe('EditorHost (child modules mocked at the boundary)', () => {
 
     act(() => seenTimelineProps[seenTimelineProps.length - 1].onSelect('video:seg-001'));
     await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].selectedId).toBe('video:seg-001'));
-    act(() => seenInspectorProps[seenInspectorProps.length - 1].onFramingModeChange('crop'));
-    await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].framingMode).toBe('crop'));
+    fireEvent.click(await screen.findByRole('button', { name: /Crop/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Crop/ })).toHaveAttribute('aria-pressed', 'true'));
 
     act(() => seenTimelineProps[seenTimelineProps.length - 1].onSelect(null));
     await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].selectedId).toBe(null));
-    expect(seenInspectorProps[seenInspectorProps.length - 1].framingMode).toBe('off');
+    // The switch itself goes with the selection; the mode underneath it is off.
+    expect(screen.queryByRole('group', { name: 'Adjust in preview' })).not.toBeInTheDocument();
   });
 
   it("turns 'place' mode back off when the selected clip's fit changes to cover out from under it", async () => {
-    // Task 5b's requirement: a mode must not stay stuck on a now-impossible
-    // mode. Handled here in the host (see EditorHost.tsx's dedicated effect),
-    // not in the inspector — the host already owns framingMode and already
-    // reads `selVideo` for the gesture target, so the reaction lives next to
-    // the state it corrects rather than being pushed down into a panel that
-    // only renders it.
+    // A mode must not stay stuck on a now-impossible one. Handled in the host
+    // (see EditorHost.tsx's dedicated effect) — it already owns framingMode
+    // and already reads `selVideo` for the gesture target, so the reaction
+    // lives next to the state it corrects.
     const withContain = { ...REEL, tracks: { ...REEL.tracks, video: [{ ...REEL.tracks.video[0], fit: 'contain' }] } } as LayeredReel;
     (globalThis.fetch as any).mockImplementation(async (url: string) =>
       String(url).startsWith('/props') ? { ok: true, json: async () => ({ reel: withContain }) } : { ok: true, json: async () => ({}) },
@@ -256,8 +295,8 @@ describe('EditorHost (child modules mocked at the boundary)', () => {
 
     act(() => seenTimelineProps[seenTimelineProps.length - 1].onSelect('video:seg-001'));
     await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].selectedId).toBe('video:seg-001'));
-    act(() => seenInspectorProps[seenInspectorProps.length - 1].onFramingModeChange('place'));
-    await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].framingMode).toBe('place'));
+    fireEvent.click(await screen.findByRole('button', { name: /Position/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Position/ })).toHaveAttribute('aria-pressed', 'true'));
 
     const coverReel = {
       ...withContain,
@@ -266,7 +305,7 @@ describe('EditorHost (child modules mocked at the boundary)', () => {
     const onChange = seenTimelineProps[seenTimelineProps.length - 1].onChange;
     act(() => onChange(coverReel));
 
-    await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].framingMode).toBe('off'));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Position/ })).toHaveAttribute('aria-pressed', 'false'));
   });
 
   it('Escape closes the shortcut overlay instead of clearing the selection underneath it', async () => {

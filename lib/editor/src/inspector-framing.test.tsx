@@ -39,23 +39,6 @@ const reelWith = (extra: Record<string, unknown>): LayeredReel => ({
 const mount = (reel: LayeredReel, onChange = () => {}) =>
   render(<LayeredInspector reel={reel} selectedId="video:v1" onChange={onChange} onSeek={() => {}} fps={30} />);
 
-const mountWithFramingMode = (
-  reel: LayeredReel,
-  framingMode: 'off' | 'crop' | 'place',
-  onFramingModeChange: (mode: 'off' | 'crop' | 'place') => void = () => {},
-) =>
-  render(
-    <LayeredInspector
-      reel={reel}
-      selectedId="video:v1"
-      onChange={() => {}}
-      onSeek={() => {}}
-      fps={30}
-      framingMode={framingMode}
-      onFramingModeChange={onFramingModeChange}
-    />,
-  );
-
 const cropHeader = () => screen.getByRole('button', { name: 'Crop & zoom' });
 const fitHeader = () => screen.getByRole('button', { name: 'Fit & pad' });
 const openCrop = () => fireEvent.click(cropHeader());
@@ -265,14 +248,10 @@ describe('inspector — framing — Fit & pad', () => {
     expect((screen.getByLabelText('Backdrop dim') as HTMLInputElement).value).toBe('0.45');
   });
 
-  it('states the reason on the mode toggle, the one place still visible under fill-frame', () => {
-    mount(reelWith({}));
-    openFit();
-    // The section's own copy of the note went with the hidden group; the
-    // always-visible "Adjust in preview" row keeps it, so the answer to "why
-    // can I not position this?" is still on screen.
-    expect(screen.getAllByText('The shot fills the frame — there is nothing to position.').length).toBeGreaterThan(0);
-  });
+  // The "why can I not position this?" reason moved with the mode switch onto
+  // the preview (EditorHost.test.tsx, "disables Position under fill-frame,
+  // stating why"). Nothing in the panel states it any more, because nothing in
+  // the panel offers the action.
 
   it('keeps placement live under contain', () => {
     mount(reelWith({ fit: 'contain' }));
@@ -322,72 +301,3 @@ describe('inspector — framing — Fit & pad', () => {
   });
 });
 
-describe('inspector — "Adjust in preview" toggle row', () => {
-  // Both framing gesture modes now start here — always visible (outside both
-  // Collapsible sections above), directly under Trim in/out. The row itself
-  // holds no state; it reflects/dispatches the host's `framingMode`.
-
-  it('is visible without opening either collapsible section', () => {
-    mount(reelWith({}));
-    expect(screen.getByRole('group', { name: 'Adjust in preview' })).toBeInTheDocument();
-  });
-
-  it('reads neither tile as pressed when framingMode is "off"', () => {
-    mountWithFramingMode(reelWith({}), 'off');
-    expect(screen.getByRole('button', { name: 'Crop & zoom (adjust in preview)' })).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByRole('button', { name: 'Position in frame (adjust in preview)' })).toHaveAttribute('aria-pressed', 'false');
-  });
-
-  it('reads the active tile as pressed', () => {
-    mountWithFramingMode(reelWith({ fit: 'contain' }), 'place');
-    expect(screen.getByRole('button', { name: 'Position in frame (adjust in preview)' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Crop & zoom (adjust in preview)' })).toHaveAttribute('aria-pressed', 'false');
-  });
-
-  it('reports the clicked mode', () => {
-    const onFramingModeChange = vi.fn();
-    mountWithFramingMode(reelWith({}), 'off', onFramingModeChange);
-    fireEvent.click(screen.getByRole('button', { name: 'Crop & zoom (adjust in preview)' }));
-    expect(onFramingModeChange).toHaveBeenCalledWith('crop');
-  });
-
-  it('clicking the already-active tile turns the mode off — the toggle affordance', () => {
-    const onFramingModeChange = vi.fn();
-    mountWithFramingMode(reelWith({}), 'crop', onFramingModeChange);
-    fireEvent.click(screen.getByRole('button', { name: 'Crop & zoom (adjust in preview)' }));
-    expect(onFramingModeChange).toHaveBeenCalledWith('off');
-  });
-
-  it('switching from the active tile to the other tile changes mode directly, not through off', () => {
-    const onFramingModeChange = vi.fn();
-    mountWithFramingMode(reelWith({ fit: 'contain' }), 'crop', onFramingModeChange);
-    fireEvent.click(screen.getByRole('button', { name: 'Position in frame (adjust in preview)' }));
-    expect(onFramingModeChange).toHaveBeenCalledWith('place');
-  });
-
-  it('disables Position in frame under fit:cover, with a stated reason', () => {
-    mount(reelWith({}));
-    expect(screen.getByRole('button', { name: 'Position in frame (adjust in preview)' })).toBeDisabled();
-    expect(screen.getByText('The shot fills the frame — there is nothing to position.')).toBeTruthy();
-    // Crop & zoom stays live — only the one tile is disabled, not the group.
-    expect(screen.getByRole('button', { name: 'Crop & zoom (adjust in preview)' })).not.toBeDisabled();
-  });
-
-  it('treats a legacy fit:"blur-pad" item as contain, so Position in frame stays enabled', () => {
-    mount(reelWith({ fit: 'blur-pad' }));
-    expect(screen.getByRole('button', { name: 'Position in frame (adjust in preview)' })).not.toBeDisabled();
-    expect(screen.queryByText('The shot fills the frame — there is nothing to position.')).toBeNull();
-  });
-
-  it('re-enables Position in frame under contain', () => {
-    mount(reelWith({ fit: 'contain' }));
-    expect(screen.getByRole('button', { name: 'Position in frame (adjust in preview)' })).not.toBeDisabled();
-  });
-
-  it('clicking a disabled Position-in-frame tile does not report a click', () => {
-    const onFramingModeChange = vi.fn();
-    mountWithFramingMode(reelWith({}), 'off', onFramingModeChange);
-    fireEvent.click(screen.getByRole('button', { name: 'Position in frame (adjust in preview)' }));
-    expect(onFramingModeChange).not.toHaveBeenCalled();
-  });
-});

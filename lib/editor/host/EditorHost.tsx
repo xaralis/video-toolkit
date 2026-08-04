@@ -18,10 +18,10 @@ import { framesForReel } from './host-duration';
 import { attachCropGestures, MAX_ZOOM, type CropGestureTarget } from './crop-gestures';
 import { resolveFraming } from '../../reel-config-base/framing';
 import { zoomByRef } from './zoom-by';
-import { toggleBtnClass, zoomBtnClass } from './ui';
+import { EDITOR_ACCENT, toggleBtnClass, zoomBtnClass } from './ui';
 import { MagnifierIcon, Timecode } from './toolbar';
 import { MediaLoadingOverlay, pendingSources } from './MediaLoading';
-import { MagnetIcon, MusicIcon, PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon, TrashIcon, WavesIcon } from '../app/icons';
+import { CropIcon, MagnetIcon, MoveIcon, MusicIcon, PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon, TrashIcon, WavesIcon } from '../app/icons';
 
 // Applied to the preview wrapper whenever a framing gesture mode is active —
 // the ONLY thing left saying "this is interactive" now that the preview has
@@ -31,6 +31,17 @@ import { MagnetIcon, MusicIcon, PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIc
 // distinction matters here specifically), plus a visible accent outline.
 const previewInteractiveCls =
   'ed:cursor-grab ed:active:cursor-grabbing ed:outline ed:outline-2 ed:outline-accent ed:-outline-offset-2';
+
+/** The two framing gesture modes, as they appear on the preview.
+ *
+ *  Short labels with icons, not the sentences these started as ("Crop & zoom"
+ *  / "Position in frame"): the row sits over the picture, where every pixel it
+ *  covers is picture the user wanted to see. The icon carries the meaning and
+ *  the word disambiguates it. */
+const FRAMING_MODES = [
+  { key: 'crop' as const, label: 'Crop', Icon: CropIcon },
+  { key: 'place' as const, label: 'Position', Icon: MoveIcon },
+];
 
 export interface EditorHostOptions {
   /** The brand's composition, rendered in the preview Player. */
@@ -459,6 +470,65 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
                 total={videoUrls.length}
                 buffering={buffering}
               />
+              {/* The mode switch lives HERE, on the preview, not in the
+                  inspector panel. It was in the panel first, on the reasoning
+                  that every other clip property is edited there — but the
+                  thing it acts on is this picture, and in the panel nobody
+                  went looking for it. A control belongs next to its effect.
+                  Only shown for the kinds whose framing is adjustable. */}
+              {(selVideo?.kind === 'clip' || selVideo?.kind === 'broll') && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 8,
+                    left: 8,
+                    display: 'flex',
+                    gap: 4,
+                    background: 'rgba(20,21,25,0.85)',
+                    border: '1px solid #34363e',
+                    borderRadius: 6,
+                    padding: 3,
+                  }}
+                  role="group"
+                  aria-label="Adjust in preview"
+                >
+                  {FRAMING_MODES.map(({ key, label, Icon }) => {
+                    const on = framingMode === key;
+                    // Placement has no slack under `cover` — the shot already
+                    // fills the frame. `resolveFraming`, not the raw `fit`, so
+                    // a legacy `blur-pad` item counts as contain.
+                    const off = key === 'place' && selVideo && resolveFraming(selVideo).fit === 'cover';
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        aria-pressed={on}
+                        disabled={!!off}
+                        title={off ? 'The shot fills the frame — there is nothing to position.' : `${label} in the preview`}
+                        onClick={() => setFramingMode(on ? 'off' : key)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          border: 0,
+                          borderRadius: 4,
+                          padding: '4px 8px',
+                          fontSize: 11,
+                          font: 'inherit',
+                          fontWeight: on ? 600 : 400,
+                          cursor: off ? 'default' : 'pointer',
+                          opacity: off ? 0.4 : 1,
+                          background: on ? EDITOR_ACCENT : 'transparent',
+                          color: on ? '#fff' : '#c8cbd2',
+                        }}
+                      >
+                        <Icon size={13} />
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               {framingMode !== 'off' && (selVideo?.kind === 'clip' || selVideo?.kind === 'broll') && (
                 <div
                   style={{
@@ -602,8 +672,6 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
               accentSlots={accentSlots}
               meta={meta}
               sourceDurations={sourceDurations}
-              framingMode={framingMode}
-              onFramingModeChange={setFramingMode}
             />
           }
           />
