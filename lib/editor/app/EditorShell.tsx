@@ -7,6 +7,9 @@ export interface EditorShellProps {
   preview: ReactNode;
   /** Project name shown in the header. */
   projectName?: string;
+  /** The template this project renders from (`project.json`'s `template`).
+   *  Absent for a project without a project.json. */
+  templateName?: string;
   /** Called when the Save button is clicked. */
   onSave?: () => void;
   /** Called when the Discard button is clicked — revert unsaved edits. */
@@ -74,6 +77,7 @@ export function EditorShell({
   preview,
   aspectRatio = '9 / 16',
   projectName,
+  templateName,
   onSave,
   onDiscard,
   saving,
@@ -105,6 +109,17 @@ export function EditorShell({
             in the action zone, so nothing on this side ever changes width. */}
         <div className="ed:flex ed:items-center ed:gap-3">
           <span className="ed:text-sm ed:font-semibold ed:text-ink">{projectName}</span>
+          {/* The template, right beside the name. These two used to be one
+              string — and it was the TEMPLATE's, because the mount option is
+              hardcoded in each template's `.editor/main.tsx`, so every project
+              built from `campaign-reels` called itself that. Muted and
+              lighter: it says what this reel is BUILT FROM, and must never
+              compete with what it IS. */}
+          {templateName && (
+            <span data-testid="template-name" className="ed:text-xs ed:text-ink-3">
+              {templateName}
+            </span>
+          )}
           {phaseControl}
         </div>
         {/* Actions: things you DO, plus the document's health/state — the
