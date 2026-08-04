@@ -9,17 +9,12 @@ import { applyStyleEffects, composeMediaStyle, type MediaStyleFragment } from '.
 import { useMediaEffects, applyMediaEffects } from '../effects/media-effects-context';
 import { resolveMediaSource, type MediaRole, type MediaSourceResolver } from '../media-source';
 import { anchorTiming } from '../../render/overlay-anchor';
+import { resolveFraming } from '../../reel-config-base/framing';
+import { focalObjectPosition } from '../../reel-config-base/focal';
 
 const VIDEO_EXT_RE = /\.(mp4|mov|webm)$/i;
 
-/** Reads a numeric config field tolerantly — same shape as the effect
- *  primitives' own reader, so a malformed `backdropBlur` renders with the
- *  default instead of throwing mid-composition. */
-function num(v: unknown, fallback: number): number {
-  return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
-}
-
-/** The blurred fill behind a `blur-pad` foreground. Carries NOTHING from the
+/** The blurred fill behind a `pad: 'blur'` foreground. Carries NOTHING from the
  *  item — no crop, no grade, no ken burns, no effects. That emptiness is the
  *  contract, not an oversight: the clip's own look belongs on the clip, and
  *  applying it here too would grade one picture twice. */
@@ -41,20 +36,30 @@ function backdropStyle(blurPx: number, dim: number): React.CSSProperties {
 }
 
 /** The whole shot, contained over the backdrop, carrying the item's entire
- *  computed style chain (crop, grade, ken burns, style effects). */
-function foregroundStyle(base: React.CSSProperties): React.CSSProperties {
+ *  computed style chain (crop, grade, ken burns, style effects) — except
+ *  `objectPosition`, which placement (`placeX`/`placeY`) owns outright. */
+function foregroundStyle(base: React.CSSProperties, placeX: number, placeY: number): React.CSSProperties {
   return {
     ...base,
     objectFit: 'contain',
-    // Right-aligned, matching where the speaker sits in the talking-head
-    // segments, so a cut from clip to b-roll doesn't move the picture's centre
-    // of gravity — and leaving the left of the frame to the blurred backdrop,
-    // which is where the website draws its headline.
+    // Placement owns `objectPosition` (where the whole shot sits in the
+    // leftover space); the pan owns `transformOrigin` (the crop's zoom
+    // pivot, carried through unmodified on `base`) — both are live under
+    // contain, simultaneously, at any zoom > 1. Previously this was hard-
+    // pinned to '100% 50%' with a comment claiming focalX/focalY were inert
+    // under blur-pad because "the right-alignment owns it" — that was
+    // already false: `cropCoverStyle` also emits `transformOrigin`, which
+    // this function never overrode, so the pan point has always survived
+    // into the foreground and visibly changed what shows at any zoom > 1.
     //
-    // This is also why `focalX/focalY` are inert under blur-pad: they steer
-    // this exact property, and the right-alignment owns it. `crop`'s zoom (a
-    // transform) still applies, inherited from `base`.
-    objectPosition: '100% 50%',
+    // This MUST be set unconditionally, even when placement sits at its
+    // default (0.5/0.5): if it were only set on a non-default placement,
+    // `base.objectPosition` — which carries the crop's PAN (focalX/focalY or
+    // crop.x/crop.y) via the spread above — would leak through, and the pan
+    // would apply twice: once through `transformOrigin` (the zoom pivot) and
+    // again through `objectPosition` (the contain letterbox position), which
+    // is not what placement means.
+    objectPosition: focalObjectPosition(placeX, placeY),
   };
 }
 
@@ -105,15 +110,14 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
 
   if (item.kind !== 'clip' && item.kind !== 'broll' && item.kind !== 'photo') return null;
 
-  // How this item's media meets the frame. `cover` (the default, and every
-  // item authored before this field existed) crops the mismatch away;
-  // `blur-pad` shows the whole shot over a blurred copy of itself. Read
-  // permissively — a malformed value falls back to the default rather than
-  // throwing, the same tolerance `crop` and the effect bags get.
-  const fitRaw = (item as { fit?: unknown }).fit;
-  const fit = fitRaw === 'blur-pad' ? 'blur-pad' : 'cover';
-  const backdropBlur = num((item as { backdropBlur?: unknown }).backdropBlur, 32);
-  const backdropDim = num((item as { backdropDim?: unknown }).backdropDim, 0.45);
+  // How this item's media meets the frame (`fit`), and what fills the
+  // leftover space when it does (`pad`) — two independent axes as of
+  // framing.ts, which also absorbs the legacy `fit: 'blur-pad'` as
+  // `{ fit: 'contain', pad: 'blur' }` so old configs keep rendering
+  // unmodified. `resolveFraming` is tolerant the same way `crop` and the
+  // effect bags are: a malformed value falls back to its default rather than
+  // throwing.
+  const { fit, pad, padColor, blur, dim, placeX, placeY } = resolveFraming(item);
 
   // `item.kind` maps 1:1 onto MediaRole for the three footage kinds.
   const src = resolveSrc(item.source, item.kind, override);
@@ -219,28 +223,50 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
   /** Final assembly, shared by the Img and OffthreadVideo paths: apply the
    *  media-effect and anchored-overlay wrappers and prepend the white-balance
    *  `defs` fragment when a grade needs one. `element(style)` builds the media
-   *  element itself — called once for `cover`, twice for `blur-pad`. */
+   *  element itself — called once for `cover` or a pad-less `contain`, twice
+   *  when `pad: 'blur'` needs a second copy of the same source, and not at
+   *  all for the `pad: 'color'` fill (which is a plain div, not `element`). */
   const assemble = (element: (s: React.CSSProperties) => React.ReactNode): React.ReactNode => {
-    // `fit: 'blur-pad'` — for footage whose aspect doesn't match the
+    // `fit: 'contain'` — for footage whose aspect doesn't match the
     // composition (a portrait phone b-roll in a 16:9 frame), where `cover`
-    // would crop most of the picture away. Renders the SAME source twice: a
-    // blurred cover backdrop filling the frame, and the whole shot contained
-    // on top of it.
+    // would crop most of the picture away. The pad axis picks what fills the
+    // leftover space, independent of that decision:
+    //   - `pad: 'blur'` — the SAME source again, blurred and covering the
+    //     frame behind the contained foreground (this is what the legacy
+    //     `fit: 'blur-pad'` always meant, and `resolveFraming` absorbs it as
+    //     exactly this pair).
+    //   - `pad: 'color'` with a `padColor` — a single flat fill behind the
+    //     foreground.
+    //   - `pad: 'color'` with no `padColor`, or `pad: 'none'` — no backdrop
+    //     node at all. A transparent pad and no pad are the same picture, and
+    //     emitting nothing keeps the tree identical to `cover`'s.
     //
     // The division of labour is the contract (see the design spec): everything
     // that belongs to the CLIP — grade, ken burns, crop, style effects,
-    // media-scope effects — goes on the foreground. The backdrop is dumb fill
-    // and carries none of it, or every grade would be applied twice to one
-    // picture. Frame-level looks (`scope: 'clip'` effects — grain, vignette)
-    // wrap this whole output from outside and so cover both, which is correct:
-    // a vignette is a look on the frame, not on the clip.
+    // media-scope effects — goes on the foreground. The backdrop, when there
+    // is one, is dumb fill and carries none of it, or every grade would be
+    // applied twice to one picture. Frame-level looks (`scope: 'clip'`
+    // effects — grain, vignette) wrap this whole output from outside and so
+    // cover both, which is correct: a vignette is a look on the frame, not on
+    // the clip.
+    const backdropNode: React.ReactNode =
+      fit !== 'contain'
+        ? null
+        : pad === 'blur'
+          ? element(backdropStyle(blur, dim))
+          : pad === 'color' && padColor !== undefined
+            ? <AbsoluteFill style={{ backgroundColor: padColor }} />
+            : null;
+
     const mediaNode =
-      fit === 'blur-pad' ? (
+      fit === 'contain' ? (
         <>
-          {element(backdropStyle(backdropBlur, backdropDim))}
-          {wrapWithMediaEffects(element(foregroundStyle(style)))}
+          {backdropNode}
+          {wrapWithMediaEffects(element(foregroundStyle(style, placeX, placeY)))}
         </>
       ) : (
+        // `fit: 'cover'` — unchanged: no backdrop, foreground returned bare,
+        // referentially identical tree to before this axis split existed.
         wrapWithMediaEffects(element(style))
       );
 
