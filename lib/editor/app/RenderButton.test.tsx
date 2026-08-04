@@ -146,6 +146,34 @@ describe('RenderButton — renderControls, one control through its whole lifecyc
     expect(btn.querySelector('svg[aria-hidden="true"]')).toBeTruthy(); // the ring, hidden from a11y tree
   });
 
+  it('rendering: the control is accented, and the disabled label is NOT dimmed', async () => {
+    // A render is the one thing in this editor that takes minutes, and the
+    // user walks away from it. It has to read as ACTIVE across the room —
+    // which the neutral shell plus `disabled:opacity-60` did the opposite of.
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (String(url) === '/render' && init?.method === 'POST') return jsonResponse({});
+      return jsonResponse({ running: true, done: false, percent: 42, mode: 'full' });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { container } = render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: /^Render$/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Full' }));
+
+    const btn = await screen.findByRole('button', { name: /42%/ });
+    expect(wrapOf(container).className).toContain('ed:border-accent');
+    expect(wrapOf(container).className).toContain('ed:bg-accent-soft');
+    // Disabled here means "you cannot start another one", not "inactive" —
+    // the opacity wash is what made a running render look switched off.
+    expect(btn.className).not.toContain('ed:disabled:opacity-60');
+  });
+
+  it('idle: the control is NOT accented — only a running render earns that', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({})));
+    const { container } = render(<Harness />);
+    expect(wrapOf(container).className).not.toContain('ed:border-accent');
+    expect(wrapOf(container).className).not.toContain('ed:bg-accent-soft');
+  });
+
   it('done: the button reads "Open", reveals on click, and returns to idle', async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (String(url) === '/render' && init?.method === 'POST') return jsonResponse({});

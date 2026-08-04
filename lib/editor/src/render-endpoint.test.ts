@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { spawn } from 'child_process';
-import { createRenderHandler, type MinimalReq, type MinimalRes } from './render-endpoint';
+import { createRenderHandler, renderOutPath, type MinimalReq, type MinimalRes } from './render-endpoint';
 
 vi.mock('child_process', () => {
   const spawnFn = vi.fn();
@@ -10,7 +10,12 @@ vi.mock('child_process', () => {
 
 vi.mock('fs', () => {
   const existsSync = vi.fn(() => true);
-  return { existsSync, default: { existsSync } };
+  // `renderOutPath` reads the project's name out of project.json; a test that
+  // wants the fallback path makes this throw, exactly as a missing file does.
+  const readFileSync = vi.fn(() => {
+    throw new Error('ENOENT');
+  });
+  return { existsSync, readFileSync, default: { existsSync, readFileSync } };
 });
 
 import fs from 'fs';
@@ -105,7 +110,7 @@ describe('createRenderHandler — POST', () => {
 
     expect(spawnMock).toHaveBeenCalledWith(
       'npx',
-      ['remotion', 'render', 'LayeredRoostReel', 'out/LayeredRoostReel-preview.mp4', '--scale=0.5', '--gl=angle'],
+      ['remotion', 'render', 'LayeredRoostReel', 'out/proj-preview.mp4', '--scale=0.5', '--gl=angle'],
       // `detached` puts the render in its OWN process group so cancel can
       // signal the whole tree (npx → remotion → chrome-headless-shell).
       { cwd: '/proj', detached: true },
@@ -124,7 +129,7 @@ describe('createRenderHandler — POST', () => {
 
     expect(spawnMock).toHaveBeenCalledWith(
       'npx',
-      ['remotion', 'render', 'LayeredCampaignReel', 'out/LayeredCampaignReel.mp4'],
+      ['remotion', 'render', 'LayeredCampaignReel', 'out/proj-full.mp4'],
       { cwd: '/proj', detached: true },
     );
     expect(res.statusCode).toBe(202);
@@ -208,7 +213,7 @@ describe('createRenderHandler — GET', () => {
       mode: 'preview',
       percent: 0,
       done: false,
-      outPath: 'out/LayeredCampaignReel-preview.mp4',
+      outPath: 'out/proj-preview.mp4',
     });
   });
 
@@ -283,8 +288,8 @@ describe('createRenderHandler — reveal', () => {
     const res = makeRes();
     handler(makeReq('POST', { action: 'reveal' }), res);
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body)).toEqual({ revealed: true, outPath: 'out/LayeredCampaignReel.mp4' });
-    expect(spawnMock).toHaveBeenLastCalledWith('open', ['-R', '/proj/out/LayeredCampaignReel.mp4']);
+    expect(JSON.parse(res.body)).toEqual({ revealed: true, outPath: 'out/proj-full.mp4' });
+    expect(spawnMock).toHaveBeenLastCalledWith('open', ['-R', '/proj/out/proj-full.mp4']);
   });
 
   it('404s when the output file no longer exists on disk', () => {
@@ -466,6 +471,48 @@ describe('createRenderHandler — cancel', () => {
     // session doesn't accumulate one per render.
     child.emit('close', 0);
     expect(process.listeners('exit').filter((l) => !before.includes(l))).toHaveLength(0);
+  });
+});
+
+describe('renderOutPath — the file a render writes', () => {
+  const readMock = vi.mocked(fs.readFileSync);
+
+  it('names the file after the PROJECT and the mode, not the composition', () => {
+    // `out/LayeredCampaignReel.mp4` is the same filename for every project
+    // built from the same template — the moment two of them land in one
+    // folder (or one downloads folder) they are indistinguishable.
+    readMock.mockReturnValue(JSON.stringify({ name: 'pp-u-kamenne-vily' }) as never);
+    expect(renderOutPath('/x/projects/pp-u-kamenne-vily', 'full')).toBe('out/pp-u-kamenne-vily-full.mp4');
+    expect(renderOutPath('/x/projects/pp-u-kamenne-vily', 'preview')).toBe('out/pp-u-kamenne-vily-preview.mp4');
+  });
+
+  it('says "full" out loud rather than leaving it unsuffixed', () => {
+    // The old scheme suffixed only previews, so the important file was the
+    // one with no label on it.
+    readMock.mockReturnValue(JSON.stringify({ name: 'reel' }) as never);
+    expect(renderOutPath('/x/reel', 'full')).toContain('-full.mp4');
+  });
+
+  it('falls back to the project directory name when project.json is missing', () => {
+    readMock.mockImplementation(() => {
+      throw new Error('ENOENT');
+    });
+    expect(renderOutPath('/x/projects/my-reel', 'full')).toBe('out/my-reel-full.mp4');
+  });
+
+  it('falls back when project.json is malformed or unnamed', () => {
+    readMock.mockReturnValue('{ not json' as never);
+    expect(renderOutPath('/x/projects/my-reel', 'full')).toBe('out/my-reel-full.mp4');
+    readMock.mockReturnValue(JSON.stringify({ topic: 'no name here' }) as never);
+    expect(renderOutPath('/x/projects/my-reel', 'full')).toBe('out/my-reel-full.mp4');
+  });
+
+  it('never lets a project name escape out/', () => {
+    // project.json is author-controlled, not client-controlled, so this is a
+    // guard rather than a vulnerability — but a name carrying a slash would
+    // silently write outside out/, and that is worth refusing.
+    readMock.mockReturnValue(JSON.stringify({ name: '../../etc/passwd' }) as never);
+    expect(renderOutPath('/x/projects/my-reel', 'full')).toBe('out/my-reel-full.mp4');
   });
 });
 

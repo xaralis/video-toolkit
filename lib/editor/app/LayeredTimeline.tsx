@@ -27,6 +27,7 @@ import { resolveMediaSource, type MediaRole } from '@video-toolkit/lib/theming/m
 import { humanizeKey, stableColor, sourceColors, type EditorMeta } from './editor-meta';
 import { handleRoomFrames, boundaryState, starvationMessage, type HandleRoom } from '@video-toolkit/lib/reel-config-base/handle-room';
 import { EDITOR_ACCENT } from '../host/ui';
+import { TransitionMarker } from './TransitionMarker';
 import { SHORTCUTS } from './shortcuts';
 import { GESTURES } from './ShortcutOverlay';
 import { LinkIcon } from './icons';
@@ -526,6 +527,12 @@ const GRIP_CSS = `
    edit you are making. The marker class is on the inner block (getActionRender
    owns that node, not the wrapper), so the wrapper is reached with :has(). */
 .timeline-editor-action:has(.vt-block-active) { z-index: 4; }
+/* A transition's label is wider than the transition itself (15 frames is ~12px
+   at default zoom, and "gradient-wipe" is not), so it has to escape the action
+   box the library clips by default. Raised above its neighbours too: an
+   overhanging label that renders UNDER the next action is worse than a
+   truncated one. */
+.timeline-editor-action:has(.vt-transition-action) { overflow: visible; z-index: 3; }
 `;
 
 // Video/audio block base look (position/height/layout/typography — every
@@ -1147,30 +1154,18 @@ function LayeredTimelineImpl({
           style={{ width: '100%', height: '100%', background: 'var(--ed-color-shell)', fontFamily: FONT }}
           getActionRender={(action) => {
             if (parseActionId(action.id).lane === 'transitions') {
-              // A derived marker at the cut, not a clip — small centered pill
-              // rather than the full-block styling used below.
+              // A derived marker at the cut, not a clip. Its label deliberately
+              // overhangs the action box (see TransitionMarker) — the
+              // `.vt-transition-action` rule in GRIP_CSS is what lets it.
               const starved = starvedTargets.has(action.id);
               return (
-                <div
-                  className="ed:relative ed:h-full ed:flex ed:items-center ed:justify-center ed:px-1.5 ed:rounded-full ed:bg-transition-marker ed:text-transition-marker-ink ed:font-sans ed:text-[10px] ed:overflow-hidden"
-                  style={{
-                    outline: action.selected ? `2px solid ${EDITOR_ACCENT}` : undefined,
-                    outlineOffset: -2,
-                  }}
-                  title={starved ? diagnostics.find((d) => d.targetId === action.id)!.message : action.id}
-                >
-                  {/* Same hatch vocabulary as a muted trim grip ("nothing more to
-                      take this way") — the fill/box-shadow still come from the
-                      raw `.vt-grip-muted` rule (GRIP_CSS): the pill's own
-                      background is opaque, so that rule would be invisible if it
-                      competed with this div's own background instead of sitting
-                      on top of it as a separate absolutely-positioned overlay. */}
-                  {starved && (
-                    <div className="vt-grip-muted ed:absolute ed:inset-0 ed:rounded-full" />
-                  )}
-                  <span className="ed:relative ed:whitespace-nowrap ed:overflow-hidden ed:text-ellipsis">
-                    {timelineLabel(action, reel, fps, meta)}
-                  </span>
+                <div className="vt-transition-action ed:relative ed:h-full ed:w-full">
+                  <TransitionMarker
+                    kind={String(action.effectId ?? '')}
+                    frames={Math.round((action.end - action.start) * fps)}
+                    selected={action.selected}
+                    starvedMessage={starved ? diagnostics.find((d) => d.targetId === action.id)!.message : undefined}
+                  />
                 </div>
               );
             }

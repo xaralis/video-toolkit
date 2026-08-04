@@ -72,6 +72,20 @@ interface RenderButtonParts {
 const RENDER_WRAP_CLASS =
   'ed:relative ed:inline-flex ed:items-stretch ed:rounded-md ed:border ed:border-line-strong ed:bg-control';
 
+/** The in-progress shell. The rule above ("never accent") holds for every
+ *  IDLE/terminal stage — but a running render is the one thing here that takes
+ *  minutes and that the user walks away from, so it has to read as active from
+ *  across the room. Accent border + the soft accent fill, not the solid accent:
+ *  solid is Save's, and two solid-accent controls in one header compete. */
+const RENDER_WRAP_ACTIVE_CLASS =
+  'ed:relative ed:inline-flex ed:items-stretch ed:rounded-md ed:border ed:border-accent ed:bg-accent-soft';
+
+/** Same as RENDER_BTN_CLASS minus the disabled opacity wash. While rendering,
+ *  `disabled` means "you cannot start a second one" — not "inactive" — and
+ *  dimming it to 60% is exactly what made a running render look switched off. */
+const RENDER_BTN_ACTIVE_CLASS =
+  'ed:relative ed:inline-flex ed:items-center ed:justify-center ed:gap-1.5 ed:px-4 ed:py-[7px] ed:text-[13px] ed:font-medium ed:text-ink ed:bg-transparent ed:border-0 ed:cursor-pointer ed:hover:not-disabled:bg-line ed:disabled:cursor-default ed:tabular-nums ed:whitespace-nowrap';
+
 const RENDER_BTN_CLASS =
   'ed:relative ed:inline-flex ed:items-center ed:justify-center ed:gap-1.5 ed:px-4 ed:py-[7px] ed:text-[13px] ed:font-medium ed:text-ink ed:bg-transparent ed:border-0 ed:cursor-pointer ed:hover:not-disabled:bg-line ed:disabled:opacity-60 ed:disabled:cursor-default ed:tabular-nums ed:whitespace-nowrap';
 
@@ -371,8 +385,8 @@ export function RenderButton({ children }: { children: (parts: RenderButtonParts
     const modeLabel = mode ? ` ${mode}` : '';
     const label = stopping ? `Cancelling${modeLabel} render… ${percent}%` : `Rendering${modeLabel}… ${percent}%`;
     renderControls = (
-      <div className={RENDER_WRAP_CLASS}>
-        <button type="button" className={RENDER_BTN_CLASS} disabled aria-label={label} title={label}>
+      <div className={RENDER_WRAP_ACTIVE_CLASS}>
+        <button type="button" className={RENDER_BTN_ACTIVE_CLASS} disabled aria-label={label} title={label}>
           <ProgressRing percent={percent} />
           {stopping ? 'Cancelling …' : 'Rendering …'}
         </button>
