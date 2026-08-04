@@ -1,7 +1,8 @@
 import { EDITOR_ACCENT } from '../host/ui';
 
 /** The lane-colour rules, in one place because both the core map
- *  (LayeredTimeline) and the fallback generator (editor-meta) must obey them.
+ *  (LayeredTimeline) and the curated palette + fallback hash (editor-meta,
+ *  `LANE_PALETTE` / `stableColor`) must obey them.
  *
  *  Rule 1 is load-bearing: the accent means active/selected, so no lane may
  *  wear it — this holds even when it costs separation between lanes.
@@ -11,7 +12,19 @@ import { EDITOR_ACCENT } from '../host/ui';
  *  the guard band around the accent (`ARC`, below) — the "family" the set
  *  reads as is held instead by a common saturation and lightness shared
  *  across every entry (see `CORE_LANE_COLOR` in LayeredTimeline.tsx and
- *  `stableColor` in editor-meta.ts), not by proximity in hue. */
+ *  `LANE_PALETTE` in editor-meta.ts), not by proximity in hue.
+ *
+ *  `hueOf`, `ACCENT_HUE`, and `HUE_GUARD` used to also feed a farthest-point
+ *  sampling GENERATOR in editor-meta.ts (deleted — see `LANE_PALETTE`'s own
+ *  comment there): every candidate hue it produced was constrained to clear
+ *  the guard band before selection ever ran, so Rule 1 held BY CONSTRUCTION.
+ *  Now that the palette is a hand-authored literal, these three exports are
+ *  pure VALIDATOR inputs instead — `editor-meta.test.ts` uses them to assert
+ *  that every `LANE_PALETTE` entry clears the guard band, the same way
+ *  `lane-colors.test.ts` already asserted it for `CORE_LANE_COLOR`. Nothing
+ *  here still constrains a generator at hue-selection time; the guarantee
+ *  moved from "cannot be built any other way" to "would fail a test if hand-
+ *  edited wrong" — the trade a curated list makes on purpose. */
 
 /** Hue in degrees. `null` means "achromatic" (a neutral slate — genuinely has
  *  no hue, exempt from both rules below). Anything that fails to parse as a
@@ -58,10 +71,14 @@ export const HUE_GUARD = 25;
 // widened from a narrow cool arc ([190, 280]) that was this file's own
 // addition for "harmony." The user saw the result — every lane a shade of
 // blue — and rejected it: only Rule 1 is load-bearing, so the usable space is
-// everything else. `hueInArc` (editor-meta.ts) and every hand-picked
-// `CORE_LANE_COLOR` entry (LayeredTimeline.tsx) still have to clear the guard
-// band on top of this — this bound alone does not enforce Rule 1, the
-// dedicated "never puts a lane on the accent hue" test does.
+// everything else. Every hand-picked `CORE_LANE_COLOR` entry
+// (LayeredTimeline.tsx) and every `LANE_PALETTE` entry (editor-meta.ts)
+// still have to clear the guard band on top of this — this bound alone does
+// not enforce Rule 1, the dedicated "never puts a lane on the accent hue" /
+// guard-band tests do. Now a trivial [0, 360) sanity bound rather than a
+// generator's candidate span (see the module comment above for why), kept
+// because `lane-colors.test.ts` still reads it as a belt-and-braces check on
+// `hueOf`'s own contract.
 export const ARC: readonly [number, number] = [0, 360];
 
 export function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
@@ -71,23 +88,12 @@ export function hexToRgb(hex: string): { r: number; g: number; b: number } | nul
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }
 
-export function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: number } {
-  const sf = s / 100;
-  const lf = l / 100;
-  const c = (1 - Math.abs(2 * lf - 1)) * sf;
-  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-  const m = lf - c / 2;
-  const [r, g, b] =
-    h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
-  return { r: (r + m) * 255, g: (g + m) * 255, b: (b + m) * 255 };
-}
-
 /** "Redmean" — a cheap, well-known stand-in for CIEDE2000: weights R/B by the
  *  pair's mean red level and always weights G highest, since the eye is most
- *  sensitive to green. Used both to keep `CORE_LANE_COLOR` entries
- *  distinguishable (`lane-colors.test.ts`) and to validate `stableColor`'s
- *  fallback separation (`editor-meta.test.ts`) — one measure, shared, rather
- *  than two ad-hoc ones that could quietly drift apart. */
+ *  sensitive to green. Used to keep `CORE_LANE_COLOR` entries distinguishable
+ *  (`lane-colors.test.ts`). `LANE_PALETTE` (editor-meta.ts) is checked in
+ *  plain hue degrees instead — a curated 18-entry list has no candidate pool
+ *  to measure in RGB space, so `editor-meta.test.ts` no longer needs this. */
 export function redmean(a: { r: number; g: number; b: number }, b: { r: number; g: number; b: number }): number {
   const rMean = (a.r + b.r) / 2;
   const dr = a.r - b.r;
