@@ -66,6 +66,15 @@ export interface LayeredInspectorProps {
    *  keeps working. */
   width?: number;
   height?: number;
+  /** Which framing gesture mode the preview is currently driving for the
+   *  selected clip/broll — `'off'` means the preview isn't interactive. Both
+   *  modes now START from this panel's toggle row (never from a preview
+   *  button); the state itself still lives in `EditorHost` because that's
+   *  what owns the gesture attachment (`attachCropGestures`). Optional so a
+   *  caller that hasn't wired this up yet (or a test rendering this panel in
+   *  isolation) doesn't have to supply it — the row simply reads as fully off. */
+  framingMode?: 'off' | 'crop' | 'place';
+  onFramingModeChange?: (mode: 'off' | 'crop' | 'place') => void;
 }
 
 const panelCls = 'ed:p-3 ed:w-full ed:h-full ed:overflow-y-auto ed:box-border';
@@ -907,7 +916,20 @@ function AddEffectControl({
   );
 }
 
-export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, accentSlots, meta, sourceDurations, width = 0, height = 0 }: LayeredInspectorProps) {
+export function LayeredInspector({
+  reel,
+  selectedId,
+  onChange,
+  onSeek,
+  fps,
+  accentSlots,
+  meta,
+  sourceDurations,
+  width = 0,
+  height = 0,
+  framingMode = 'off',
+  onFramingModeChange,
+}: LayeredInspectorProps) {
   // The dedicated `accentSlots` prop is the ONE source for the palette —
   // EditorMeta deliberately does not carry a copy (see editor-meta.ts).
   const slots = accentSlots;
@@ -1054,6 +1076,44 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
               <TimecodeField lbl="Trim in" ms={v.sourceInMs} fps={fps} onCommit={(ms) => patchItem('video', id, { sourceInMs: ms })} />
               <TimecodeField lbl="Trim out" ms={v.sourceOutMs} fps={fps} onCommit={(ms) => patchItem('video', id, { sourceOutMs: ms })} />
             </Row>
+            {/* Both framing gesture modes start here — an always-visible row,
+                deliberately OUTSIDE the two collapsible sections below (a
+                control inside a collapsed-by-default section can't be found).
+                `value` is `undefined` whenever the host reports `'off'`, so
+                neither tile reads pressed; clicking the already-active tile
+                is how the row turns itself back off, same toggle affordance
+                the old preview button had. "Position in frame" greys out
+                under `fit: 'cover'` — `resolveFraming` (not the raw `v.fit`)
+                decides that, so a legacy `fit: 'blur-pad'` item is treated as
+                `contain` and stays live, same as the sections below. */}
+            {(() => {
+              const toggleFraming = resolveFraming(v);
+              const placeDisabled = toggleFraming.fit === 'cover';
+              const noPlaceReason = 'The shot fills the frame — there is nothing to position.';
+              return (
+                <>
+                  <SegmentedField
+                    lbl="Adjust in preview"
+                    value={framingMode === 'off' ? undefined : framingMode}
+                    options={['crop', 'place']}
+                    optionLabel={(o) => (o === 'crop' ? 'Crop & zoom' : 'Position in frame')}
+                    // The "Crop & zoom" tile's visible text is identical to
+                    // the Collapsible section header below — an intentional
+                    // echo of the model it starts (see the comment above this
+                    // block), but that leaves two buttons with the same
+                    // accessible name unless disambiguated here.
+                    optionAriaLabel={(o) => (o === 'crop' ? 'Crop & zoom (adjust in preview)' : 'Position in frame (adjust in preview)')}
+                    optionDisabled={(o) => o === 'place' && placeDisabled}
+                    optionTitle={(o) => (o === 'place' && placeDisabled ? noPlaceReason : undefined)}
+                    onChange={(s) => {
+                      const next = s as 'crop' | 'place';
+                      onFramingModeChange?.(framingMode === next ? 'off' : next);
+                    }}
+                  />
+                  {placeDisabled && <p className={noteCls}>{noPlaceReason}</p>}
+                </>
+              );
+            })()}
             {/* Framing — three independent axes (source window, fit, pad +
                 placement), not the tangled `fit` enum this used to be. The
                 reshaping insight: `blur-pad` was never a third fit, it is

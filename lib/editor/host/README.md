@@ -49,14 +49,22 @@ colours reach the editor through this prop or not at all.
 - Undo/redo (⌘Z / ⌘⇧Z), Escape to deselect, Space to play/pause, ⌫ to delete.
 - Save (⌘S or the header button) POSTs `{ props: { reel } }` to `/save`; the
   initial reel is loaded from `/props`. A dirty reel arms a `beforeunload` guard.
-- Focus/Zoom on the preview: pinch to zoom a clip's crop, two-finger scroll or
-  drag to move its focal point.
+- Two framing gesture modes over the preview, both started from the clip inspector's
+  "Adjust in preview" toggle row (never a preview button): **Crop & zoom** — pinch to
+  zoom a clip's crop, two-finger scroll or drag to pan its focal point (drag is
+  inverted: dragging right reveals what is on the left, since you're moving the window
+  over the source) — and **Position in frame** — two-finger scroll or drag to pan the
+  clip's placement within its `contain` padding (NOT inverted: you're dragging the
+  picture itself, so it follows the pointer). One listener set (`crop-gestures.ts`)
+  serves both; `ctrl`+wheel does nothing in Position-in-frame mode besides
+  `preventDefault` — there is nothing to zoom there, switch modes instead.
 
 **Verification boundary.** Core has `remotion` and can unit-test modules that import it (via
 `vi.mock('remotion')`); what it cannot do is **render**, and jsdom is the whole runtime here
-(see `docs/superpowers/HANDOFF.md`). What that costs `EditorHost` specifically: the Focus/Zoom overlay above, the
-`setFocal`/`setZoom` POSITIVE path (a real drag/pinch actually moving a clip's crop, as opposed
-to the handler wiring), the transport toolbar's play/pause/scrub controls, and Remotion
+(see `docs/superpowers/HANDOFF.md`). What that costs `EditorHost` specifically: the framing-mode
+preview overlay above, the `setFocal`/`setZoom`/`setPlace` POSITIVE path (a real drag/pinch
+actually moving a clip's crop or placement, as opposed to the handler wiring), the transport
+toolbar's play/pause/scrub controls, and Remotion
 `Player` playback events are all unreachable in jsdom — each needs a real timeline selection or
 a real `Player` instance to exercise, not just a rendered DOM. The existing tests inspect these
 (render, prop shape, snapshot), they do not drive them end-to-end. Verifying them for real means

@@ -186,9 +186,87 @@ describe('EditorHost (child modules mocked at the boundary)', () => {
 
     const [el, read] = attached[0];
     expect(el).toBeInstanceOf(HTMLElement);
-    // No clip selected and Focus/Zoom off — the activation gate is the
+    // No clip selected and framingMode 'off' — the activation gate is the
     // caller's, and `undefined` means "the control is off".
     expect(read()).toBeUndefined();
+  });
+
+  it('routes framingMode from the inspector toggle row into the crop-gesture target', async () => {
+    // Both framing modes now start from LayeredInspector's toggle row
+    // (onFramingModeChange), not a preview button — this proves the whole
+    // path: inspector callback → host state → the read() the gesture layer
+    // actually sees, for BOTH modes. Uses `fit: 'contain'` so 'place' mode is
+    // actually legitimate here (under 'cover', the stuck-mode guard tested
+    // separately below would immediately revert it to 'off').
+    const withContain = { ...REEL, tracks: { ...REEL.tracks, video: [{ ...REEL.tracks.video[0], fit: 'contain' }] } } as LayeredReel;
+    (globalThis.fetch as any).mockImplementation(async (url: string) =>
+      String(url).startsWith('/props') ? { ok: true, json: async () => ({ reel: withContain }) } : { ok: true, json: async () => ({}) },
+    );
+    const { EditorHost: MockedEditorHost } = await import('../host/EditorHost');
+    render(<MockedEditorHost {...opts} />);
+    await screen.findByText('test-reels');
+    await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+    await waitFor(() => expect(attached.length).toBe(1));
+
+    act(() => seenTimelineProps[seenTimelineProps.length - 1].onSelect('video:seg-001'));
+    await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].selectedId).toBe('video:seg-001'));
+    expect(seenInspectorProps[seenInspectorProps.length - 1].framingMode).toBe('off');
+    expect(attached[0][1]()).toBeUndefined();
+
+    act(() => seenInspectorProps[seenInspectorProps.length - 1].onFramingModeChange('crop'));
+    await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].framingMode).toBe('crop'));
+    expect(attached[0][1]()).toMatchObject({ mode: 'crop', focalX: 0.5, focalY: 0.5, placeX: 0.5, placeY: 0.5, zoom: 1 });
+
+    act(() => seenInspectorProps[seenInspectorProps.length - 1].onFramingModeChange('place'));
+    await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].framingMode).toBe('place'));
+    expect(attached[0][1]()).toMatchObject({ mode: 'place' });
+  });
+
+  it('resets framingMode to off when the selection changes, same as the old Focus/Zoom toggle did', async () => {
+    const { EditorHost: MockedEditorHost } = await import('../host/EditorHost');
+    render(<MockedEditorHost {...opts} />);
+    await screen.findByText('test-reels');
+    await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+
+    act(() => seenTimelineProps[seenTimelineProps.length - 1].onSelect('video:seg-001'));
+    await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].selectedId).toBe('video:seg-001'));
+    act(() => seenInspectorProps[seenInspectorProps.length - 1].onFramingModeChange('crop'));
+    await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].framingMode).toBe('crop'));
+
+    act(() => seenTimelineProps[seenTimelineProps.length - 1].onSelect(null));
+    await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].selectedId).toBe(null));
+    expect(seenInspectorProps[seenInspectorProps.length - 1].framingMode).toBe('off');
+  });
+
+  it("turns 'place' mode back off when the selected clip's fit changes to cover out from under it", async () => {
+    // Task 5b's requirement: a mode must not stay stuck on a now-impossible
+    // mode. Handled here in the host (see EditorHost.tsx's dedicated effect),
+    // not in the inspector — the host already owns framingMode and already
+    // reads `selVideo` for the gesture target, so the reaction lives next to
+    // the state it corrects rather than being pushed down into a panel that
+    // only renders it.
+    const withContain = { ...REEL, tracks: { ...REEL.tracks, video: [{ ...REEL.tracks.video[0], fit: 'contain' }] } } as LayeredReel;
+    (globalThis.fetch as any).mockImplementation(async (url: string) =>
+      String(url).startsWith('/props') ? { ok: true, json: async () => ({ reel: withContain }) } : { ok: true, json: async () => ({}) },
+    );
+    const { EditorHost: MockedEditorHost } = await import('../host/EditorHost');
+    render(<MockedEditorHost {...opts} />);
+    await screen.findByText('test-reels');
+    await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+
+    act(() => seenTimelineProps[seenTimelineProps.length - 1].onSelect('video:seg-001'));
+    await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].selectedId).toBe('video:seg-001'));
+    act(() => seenInspectorProps[seenInspectorProps.length - 1].onFramingModeChange('place'));
+    await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].framingMode).toBe('place'));
+
+    const coverReel = {
+      ...withContain,
+      tracks: { ...withContain.tracks, video: [{ ...withContain.tracks.video[0], fit: undefined }] },
+    } as LayeredReel;
+    const onChange = seenTimelineProps[seenTimelineProps.length - 1].onChange;
+    act(() => onChange(coverReel));
+
+    await waitFor(() => expect(seenInspectorProps[seenInspectorProps.length - 1].framingMode).toBe('off'));
   });
 
   it('Escape closes the shortcut overlay instead of clearing the selection underneath it', async () => {

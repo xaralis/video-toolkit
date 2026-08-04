@@ -130,13 +130,23 @@ effect takes over (`LayeredInspector.tsx`, Phase 4 Task 3.4) — greyed, value p
 re-enabled when the condition lifts. A dead control that doesn't say why it is dead is
 the specific thing this design is trying not to ship.
 
-**`FrameOverlay` is out of scope, and the reason is a finding.** It draws a draggable
-focus dot for `focalX/focalY`, and under blur-pad it would be pointing at a decision
-nobody is making — so it looked like it needed the same treatment. It does not:
-`FrameOverlay` is **mounted nowhere**. Grepping core and the PP brand repo finds it only
-in its own 12-test file. Adding a `visible` condition to an unmounted component would be
-writing dead code to satisfy a spec. Whoever wires it into the preview stage owns that
-condition; it is noted here so the omission is a decision rather than an oversight.
+**`FrameOverlay` was out of scope, and then it was deleted.** It drew a draggable
+focus dot for `focalX/focalY`, and under blur-pad it would have been pointing at a
+decision nobody is making — so it looked like it needed the same treatment. It did not:
+`FrameOverlay` was **mounted nowhere**. Grepping core and every brand repo found it only
+in its own 12-test file. Adding a `visible` condition to an unmounted component would have
+been writing dead code to satisfy a spec, so at the time this was left as an open finding
+for whoever wired it into the preview stage to resolve.
+
+That finding is now closed, not left open a second time: the unified-framing rework (see
+`docs/superpowers/HANDOFF.md`) gave both framing modes — crop/zoom AND the placement pan
+this spec introduces — a single real entry point (the clip inspector's "Adjust in preview"
+toggle, driving `lib/editor/host/crop-gestures.ts`'s gesture layer over the preview
+itself). `FrameOverlay`'s one affordance, a focus dot, could express neither zoom nor a
+placement slack fraction (a 2D range, not a point) — wiring it in at that point would have
+been a **third** interaction path onto `focalX`/`focalY` alongside the inspector sliders and
+the preview drag, the exact fragmentation this whole rework exists to remove. `FrameOverlay.tsx`
+and its test file were deleted rather than revived.
 
 ### The control most users should never find
 

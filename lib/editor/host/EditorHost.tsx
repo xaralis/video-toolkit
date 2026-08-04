@@ -16,11 +16,21 @@ import type { AccentSlot } from '../../theming/palette';
 import type { LayeredReel } from '../../reel-config-base/layered-schema';
 import { framesForReel } from './host-duration';
 import { attachCropGestures, MAX_ZOOM, type CropGestureTarget } from './crop-gestures';
+import { resolveFraming } from '../../reel-config-base/framing';
 import { zoomByRef } from './zoom-by';
-import { EDITOR_ACCENT, toggleBtnClass, zoomBtnClass } from './ui';
+import { toggleBtnClass, zoomBtnClass } from './ui';
 import { MagnifierIcon, Timecode } from './toolbar';
 import { MediaLoadingOverlay, pendingSources } from './MediaLoading';
 import { MagnetIcon, MusicIcon, PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon, TrashIcon, WavesIcon } from '../app/icons';
+
+// Applied to the preview wrapper whenever a framing gesture mode is active —
+// the ONLY thing left saying "this is interactive" now that the preview has
+// no button of its own (see the preview JSX in EditorHost below). Grab while
+// idle, grabbing while actually held down (`active:`, a native pseudo-class,
+// not a JS drag flag — see the comment at the call site for why that
+// distinction matters here specifically), plus a visible accent outline.
+const previewInteractiveCls =
+  'ed:cursor-grab ed:active:cursor-grabbing ed:outline ed:outline-2 ed:outline-accent ed:-outline-offset-2';
 
 export interface EditorHostOptions {
   /** The brand's composition, rendered in the preview Player. */
@@ -54,7 +64,11 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   const [selectedId, setSelectedId] = useState<string | null>(null); // action id `${lane}:${itemId}`
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
   const [playing, setPlaying] = useState(false);
-  const [showFocus, setShowFocus] = useState(false);
+  // Both framing gesture modes now start from the clip inspector's toggle
+  // row, never a preview button (that button is gone — see the preview JSX
+  // below). The state still lives here, not in the inspector, because this
+  // is what owns the gesture attachment (`attachCropGestures` below).
+  const [framingMode, setFramingMode] = useState<'off' | 'crop' | 'place'>('off');
   const [ripple, setRipple] = useState(false);
   const [snapping, setSnapping] = useState(true);
   const [snapToBeats, setSnapToBeats] = useState(false);
@@ -86,8 +100,8 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   const pendingMedia = pendingSources(videoUrls, sourceDurations).length;
   const [buffering, setBuffering] = useState(false);
   const handleSelect = useCallback((id: string | null) => setSelectedId((cur) => (cur === id ? null : id)), []);
-  // Focus/Zoom is per-clip — switching selection turns it back off.
-  useEffect(() => setShowFocus(false), [selectedId]);
+  // The framing gesture mode is per-clip — switching selection turns it back off.
+  useEffect(() => setFramingMode('off'), [selectedId]);
   const handleDelete = useCallback(() => {
     if (!selectedId) return;
     setReel((r) => (r ? deleteItem(r, selectedId, { ripple }) : r));
@@ -231,6 +245,24 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
         : r,
     );
 
+  // Same shape as setFocal, writing placeX/placeY instead — the 'place' mode
+  // gesture target.
+  const setPlace = (px: number, py: number) =>
+    selVideo &&
+    setReel((r) =>
+      r
+        ? {
+            ...r,
+            tracks: {
+              ...r.tracks,
+              video: r.tracks.video.map((v) =>
+                v.id === selVideo.id ? { ...v, placeX: Number(px.toFixed(3)), placeY: Number(py.toFixed(3)) } : v,
+              ),
+            },
+          }
+        : r,
+    );
+
   // Zoom the selected clip via crop.width (zoom = 1 / crop.width; z=1 → no crop).
   const setZoom = (z: number) => {
     const clamped = Math.min(MAX_ZOOM, Math.max(1, z));
@@ -252,15 +284,38 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
     );
   };
 
-  // Trackpad crop control while Focus/Zoom is active (pinch = zoom, two-finger
-  // scroll or drag = pan; see attachCropGestures). State is read through a ref
-  // so the listeners attach once and never drop a drag mid-gesture.
-  const cropRef = useRef<{ selVideo?: typeof selVideo; showFocus: boolean; setZoom: (z: number) => void; setFocal: (x: number, y: number) => void }>({
-    showFocus,
+  // "Position in frame" (place mode) is impossible once fit is 'cover' — no
+  // leftover space to place the shot in (see the inspector's toggle row,
+  // which greys that tile out for the same reason via `resolveFraming`). If
+  // the fit changes to 'cover' out from under an active 'place' mode — e.g.
+  // the user flips the Fit segmented field while the preview gesture is still
+  // live — the mode must not stay stuck on a now-impossible mode. Handled
+  // HERE, not in the inspector: the inspector only RENDERS `framingMode`, the
+  // host OWNS it, and this is a reaction to a value the host already reads
+  // (`selVideo`) for the gesture target below.
+  useEffect(() => {
+    if (framingMode === 'place' && selVideo && resolveFraming(selVideo).fit === 'cover') {
+      setFramingMode('off');
+    }
+  }, [framingMode, selVideo]);
+
+  // Trackpad framing control while a mode is active (pinch = zoom in 'crop'
+  // mode only; two-finger scroll or drag pans focal in 'crop' mode, place in
+  // 'place' mode — see attachCropGestures). State is read through a ref so
+  // the listeners attach once and never drop a drag mid-gesture.
+  const cropRef = useRef<{
+    selVideo?: typeof selVideo;
+    framingMode: 'off' | 'crop' | 'place';
+    setZoom: (z: number) => void;
+    setFocal: (x: number, y: number) => void;
+    setPlace: (x: number, y: number) => void;
+  }>({
+    framingMode,
     setZoom,
     setFocal,
+    setPlace,
   });
-  cropRef.current = { selVideo, showFocus, setZoom, setFocal };
+  cropRef.current = { selVideo, framingMode, setZoom, setFocal, setPlace };
   // Re-run once the preview element exists: on the very first render `reel` is
   // null (loading screen) so previewRef isn't mounted yet — a bare [] effect
   // would attach nothing and never retry. Keyed on mount so it attaches then.
@@ -283,18 +338,22 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
     const el = previewRef.current;
     if (!el) return;
     return attachCropGestures(el, (): CropGestureTarget | undefined => {
-      // The activation gate is the caller's: only clip/broll are croppable, and
-      // only while Focus/Zoom is on. `undefined` = the control is off.
-      const { selVideo: sv, showFocus: sf, setZoom: sz, setFocal: sf2 } = cropRef.current;
-      if (!sf || (sv?.kind !== 'clip' && sv?.kind !== 'broll')) return undefined;
+      // The activation gate is the caller's: only clip/broll are croppable,
+      // and only while a mode is on. `undefined` = the control is off.
+      const { selVideo: sv, framingMode: fm, setZoom: sz, setFocal: sf2, setPlace: sp } = cropRef.current;
+      if (fm === 'off' || (sv?.kind !== 'clip' && sv?.kind !== 'broll')) return undefined;
       return {
+        mode: fm,
         // Derived live on every read — caching it would let the gesture act on
         // a stale zoom for the rest of a wheel burst.
         zoom: 1 / ((sv.crop as { width?: number } | undefined)?.width ?? 1),
         focalX: sv.focalX ?? 0.5,
         focalY: sv.focalY ?? 0.5,
+        placeX: sv.placeX ?? 0.5,
+        placeY: sv.placeY ?? 0.5,
         setZoom: sz,
         setFocal: sf2,
+        setPlace: sp,
       };
     });
   }, [previewMounted]);
@@ -372,7 +431,19 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
             dirty={dirty}
             statusChip={<StatusChip items={diagnostics} dirty={dirty} onSelect={handleSelect} />}
             preview={
-            <div ref={previewRef} style={{ position: 'relative' }}>
+            <div
+              ref={previewRef}
+              // Discoverability, paid for moving both modes' entry point off
+              // the preview and into the inspector: with no button here
+              // announcing "this is interactive", the grab cursor + accent
+              // outline are the only things left saying so. `active:` (not a
+              // JS drag flag) drives the grabbing cursor — the gesture
+              // listener below stops pointerdown from bubbling to the Player,
+              // but `:active` is a native browser state keyed on the pointer
+              // being physically down over this element, unaffected by that.
+              className={framingMode !== 'off' ? previewInteractiveCls : undefined}
+              style={{ position: 'relative' }}
+            >
               <Player
                 ref={playerRef}
                 component={component}
@@ -388,50 +459,30 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
                 total={videoUrls.length}
                 buffering={buffering}
               />
-              {(selVideo?.kind === 'clip' || selVideo?.kind === 'broll') && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setShowFocus((s) => !s)}
-                    style={{
-                      position: 'absolute',
-                      top: 8,
-                      left: 8,
-                      background: showFocus ? EDITOR_ACCENT : 'rgba(20,21,25,0.8)',
-                      color: showFocus ? '#17181c' : '#e8e8ea',
-                      border: '1px solid #34363e',
-                      borderRadius: 4,
-                      padding: '4px 10px',
-                      fontSize: 12,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Focus/Zoom
-                  </button>
-                  {showFocus && (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        bottom: 8,
-                        left: 8,
-                        right: 8,
-                        background: 'rgba(20,21,25,0.85)',
-                        color: '#c8cbd2',
-                        border: '1px solid #34363e',
-                        borderRadius: 4,
-                        padding: '4px 8px',
-                        fontSize: 10.5,
-                        lineHeight: 1.3,
-                        textAlign: 'center',
-                        pointerEvents: 'none',
-                      }}
-                    >
-                      {1 / (((selVideo?.crop as { width?: number } | undefined)?.width) ?? 1) >= MAX_ZOOM - 0.01
-                        ? `Max zoom reached (${MAX_ZOOM}×)`
-                        : 'Pinch = zoom · Two-finger scroll or drag = move'}
-                    </div>
-                  )}
-                </>
+              {framingMode !== 'off' && (selVideo?.kind === 'clip' || selVideo?.kind === 'broll') && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: 8,
+                    left: 8,
+                    right: 8,
+                    background: 'rgba(20,21,25,0.85)',
+                    color: '#c8cbd2',
+                    border: '1px solid #34363e',
+                    borderRadius: 4,
+                    padding: '4px 8px',
+                    fontSize: 10.5,
+                    lineHeight: 1.3,
+                    textAlign: 'center',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  {framingMode === 'place'
+                    ? 'Drag = move the shot in the frame · switch to Crop & zoom to zoom'
+                    : 1 / (((selVideo?.crop as { width?: number } | undefined)?.width) ?? 1) >= MAX_ZOOM - 0.01
+                      ? `Max zoom reached (${MAX_ZOOM}×)`
+                      : 'Pinch = zoom · scroll or drag = choose what shows'}
+                </div>
               )}
             </div>
           }
@@ -551,6 +602,8 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
               accentSlots={accentSlots}
               meta={meta}
               sourceDurations={sourceDurations}
+              framingMode={framingMode}
+              onFramingModeChange={setFramingMode}
             />
           }
           />

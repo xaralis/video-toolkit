@@ -1,17 +1,21 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { attachCropGestures, MAX_ZOOM, type CropGestureTarget } from '../host/crop-gestures';
 
-function harness(active = true) {
+function harness(active = true, mode: 'crop' | 'place' = 'crop') {
   const el = document.createElement('div');
   document.body.appendChild(el);
   // jsdom gives every element a zero-size rect; the handler divides by it.
   el.getBoundingClientRect = () => ({ width: 100, height: 200, left: 0, top: 0, right: 100, bottom: 200, x: 0, y: 0, toJSON: () => ({}) });
   const target: CropGestureTarget = {
+    mode,
     zoom: 1,
     focalX: 0.5,
     focalY: 0.5,
+    placeX: 0.5,
+    placeY: 0.5,
     setZoom: vi.fn(),
     setFocal: vi.fn(),
+    setPlace: vi.fn(),
   };
   const cleanup = attachCropGestures(el, () => (active ? target : undefined));
   return { el, target, cleanup };
@@ -163,5 +167,35 @@ describe('attachCropGestures', () => {
     target.focalX = NaN;
     el.dispatchEvent(new WheelEvent('wheel', { deltaX: 0, deltaY: 0, cancelable: true }));
     expect((target.setFocal as any).mock.calls.at(-1)[0]).toBe(0.5);
+  });
+
+  describe('place mode', () => {
+    it('drags the picture itself — the sign is NOT inverted, the opposite of crop mode', () => {
+      // This is the clearest testable difference between the two modes: crop
+      // mode's equivalent test above ('pans opposite the drag...') asserts
+      // 0.4 for the same clientX delta of +10 — place mode must assert 0.6.
+      const { el, target } = harness(true, 'place');
+      el.dispatchEvent(new PointerEvent('pointerdown', { clientX: 0, clientY: 0, bubbles: true, cancelable: true }));
+      window.dispatchEvent(new PointerEvent('pointermove', { clientX: 10, clientY: 0 }));
+      expect(target.setPlace).toHaveBeenCalledWith(0.6, 0.5);
+      expect(target.setFocal).not.toHaveBeenCalled();
+    });
+
+    it('pans placeX/placeY (not focalX/focalY) on a plain wheel', () => {
+      const { el, target } = harness(true, 'place');
+      el.dispatchEvent(new WheelEvent('wheel', { deltaX: 10, deltaY: 20, cancelable: true }));
+      expect(target.setPlace).toHaveBeenCalledWith(0.6, 0.6);
+      expect(target.setFocal).not.toHaveBeenCalled();
+    });
+
+    it('prevents the default browser action on ctrl+wheel but does nothing else — the user must switch modes to zoom', () => {
+      const { el, target } = harness(true, 'place');
+      const evt = new WheelEvent('wheel', { deltaY: -10, ctrlKey: true, cancelable: true });
+      el.dispatchEvent(evt);
+      expect(evt.defaultPrevented).toBe(true);
+      expect(target.setZoom).not.toHaveBeenCalled();
+      expect(target.setFocal).not.toHaveBeenCalled();
+      expect(target.setPlace).not.toHaveBeenCalled();
+    });
   });
 });

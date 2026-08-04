@@ -10,7 +10,7 @@ import { RotateCcwIcon } from '../icons';
 // reintroducing the native number input's quirks.
 //
 // jsdom doesn't implement `setPointerCapture`/`releasePointerCapture` (see
-// `FrameOverlay.tsx` and `Waveform.tsx`, which hit the same wall). `drag.current`
+// `Waveform.tsx`, which hits the same wall). `drag.current`
 // is set BEFORE the optional-called `setPointerCapture` so a throw there still
 // leaves the gesture engaged instead of silently dropping it — and release is
 // never called explicitly: the implicit release on pointerup/pointercancel is
