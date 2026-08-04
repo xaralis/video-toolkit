@@ -1,30 +1,6 @@
 import type { ReactNode } from 'react';
 import './editor.css';
-
-// Clean curved undo/redo glyphs (Lucide undo-2 / redo-2) — the bare ↶/↷ unicode
-// arrows render inconsistently across platforms.
-const iconProps = {
-  width: 15,
-  height: 15,
-  viewBox: '0 0 24 24',
-  fill: 'none',
-  stroke: 'currentColor',
-  strokeWidth: 2,
-  strokeLinecap: 'round' as const,
-  strokeLinejoin: 'round' as const,
-};
-const UndoIcon = () => (
-  <svg {...iconProps} aria-hidden="true">
-    <path d="M9 14 4 9l5-5" />
-    <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11" />
-  </svg>
-);
-const RedoIcon = () => (
-  <svg {...iconProps} aria-hidden="true">
-    <path d="m15 14 5-5-5-5" />
-    <path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5 5.5 5.5 0 0 0 9.5 20H13" />
-  </svg>
-);
+import { UndoIcon, RedoIcon } from './icons';
 
 export interface EditorShellProps {
   /** The mounted preview (e.g. a Remotion <Player>), supplied by the caller. */
@@ -120,7 +96,7 @@ export function EditorShell({
                 disabled={!canUndo}
                 title="Undo (⌘Z)"
               >
-                <UndoIcon /> Undo
+                <UndoIcon size={15} /> Undo
               </button>
               <button
                 type="button"
@@ -129,7 +105,7 @@ export function EditorShell({
                 disabled={!canRedo}
                 title="Redo (⌘⇧Z)"
               >
-                <RedoIcon /> Redo
+                <RedoIcon size={15} /> Redo
               </button>
               <span className="ed:w-px ed:h-[22px] ed:bg-line ed:mx-0.5" />
             </>

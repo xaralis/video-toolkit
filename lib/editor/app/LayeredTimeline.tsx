@@ -27,6 +27,7 @@ import { handleRoomFrames, boundaryState, starvationMessage, type HandleRoom } f
 import { EDITOR_ACCENT } from '../host/ui';
 import { SHORTCUTS } from './shortcuts';
 import { GESTURES } from './ShortcutOverlay';
+import { LinkIcon } from './icons';
 
 // Media paths go through core's ONE rule (lib/theming/media-source.ts) — the
 // same one SegmentMedia and the audio track use — rather than a third private
@@ -1018,9 +1019,9 @@ function LayeredTimelineImpl({
                 {linkedAudioIds.has(action.id) && (
                   <span
                     title="Linked to its clip — unlink in the inspector to trim it on its own"
-                    className="ed:absolute ed:right-[5px] ed:top-1/2 ed:-translate-y-1/2 ed:text-[11px] ed:opacity-[0.85] ed:pointer-events-none"
+                    className="ed:absolute ed:right-[5px] ed:top-1/2 ed:-translate-y-1/2 ed:opacity-[0.85] ed:pointer-events-none ed:inline-flex"
                   >
-                    🔒
+                    <LinkIcon size={11} />
                   </span>
                 )}
                 {wf && (

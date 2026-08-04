@@ -20,6 +20,7 @@ import { zoomByClamped } from './zoom-by';
 import { EDITOR_ACCENT, toggleBtnClass, zoomBtnClass } from './ui';
 import { MagnifierIcon, Timecode } from './toolbar';
 import { MediaLoadingOverlay, pendingSources } from './MediaLoading';
+import { MagnetIcon, MusicIcon, PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon, TrashIcon, WavesIcon } from '../app/icons';
 
 export interface EditorHostOptions {
   /** The brand's composition, rendered in the preview Player. */
@@ -433,16 +434,16 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', flex: 'none' }}>
               {/* LEFT: jump-to-start, playback, jump-to-end, ripple, delete, timecode */}
               <button type="button" onClick={() => playerRef.current?.seekTo(0)} className={zoomBtnClass} title="Jump to start">
-                ⏮
+                <SkipBackIcon size={14} />
               </button>
               <button type="button" onClick={() => playerRef.current?.toggle()} className={zoomBtnClass} title={playing ? 'Pause' : 'Play'}>
-                {playing ? '⏸' : '▶'}
+                {playing ? <PauseIcon size={14} /> : <PlayIcon size={14} />}
               </button>
               <button type="button" onClick={() => playerRef.current?.seekTo(Math.max(0, durationInFrames - 1))} className={zoomBtnClass} title="Jump to end">
-                ⏭
+                <SkipForwardIcon size={14} />
               </button>
               <button type="button" onClick={() => setRipple((r) => !r)} className={toggleBtnClass(ripple)} title="Ripple: resizing a clip shifts everything after it (and before it) to keep the timeline butted; dragging carries everything behind it too. Off: only what you grab moves.">
-                ⇹ Ripple {ripple ? 'on' : 'off'}
+                <WavesIcon size={14} /> Ripple {ripple ? 'on' : 'off'}
               </button>
               <button
                 type="button"
@@ -452,13 +453,13 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
                 style={{ opacity: selectedId ? 1 : 0.4 }}
                 title="Delete the selected clip (⌫)"
               >
-                ⌫ Delete
+                <TrashIcon size={14} /> Delete
               </button>
               <Timecode playerRef={playerRef} durationInFrames={durationInFrames} fps={fps} />
-  
+
               {/* RIGHT: snapping, snap-to-beats, then zoom */}
               <button type="button" onClick={() => setSnapping((s) => !s)} className={`${toggleBtnClass(snapping)} ed:ml-auto`} title="Snap edges and moves to the grid">
-                ⊹ Snap {snapping ? 'on' : 'off'}
+                <MagnetIcon size={14} /> Snap {snapping ? 'on' : 'off'}
               </button>
               {/* Shipped for every brand — a reel without beat guides disables it
                   by itself, so no per-brand flag is needed. */}
@@ -470,7 +471,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
                 style={{ opacity: snapping && hasGuides ? 1 : 0.4 }}
                 title={snapping ? 'Snap edges and moves to the nearest beat (on release)' : 'Enable Snap first'}
               >
-                ♪ Beats snap {snapping && snapToBeats ? 'on' : 'off'}
+                <MusicIcon size={14} /> Beats snap {snapping && snapToBeats ? 'on' : 'off'}
               </button>
               <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                 {/* All three route through `zoomAtCenter` with the ACHIEVED

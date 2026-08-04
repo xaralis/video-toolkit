@@ -18,6 +18,7 @@ import { parseActionId, type LaneId } from '../src/timeline/layered-adapter';
 import type { AccentSlot } from '../../theming/palette';
 import { PLACEMENTS } from '../../theming/placement';
 import { effectCatalog, effectDefinition, humanizeKey, paramChoices, type EditorMeta, type ParamField } from './editor-meta';
+import { LinkIcon, SkipBackIcon, UnlinkIcon, XIcon } from './icons';
 import { warnOnce } from '../../render/warn-once';
 import { videoUrl } from './LayeredTimeline';
 import { framesForReel } from '../host/host-duration';
@@ -769,8 +770,8 @@ function EffectEditor({
 // existed for is gone, see that component's own comment) — same hazard
 // `btnCls` itself is written to avoid, `linkBtnCls` carries no `cursor-*` of
 // its own; every consumer adds its own.
-const seekBtnCls = `${btnCls} ed:cursor-pointer ed:mb-2.5 ed:w-auto ed:px-2.5 ed:py-1`;
-const linkBtnCls = `${btnCls} ed:mt-1 ed:w-full ed:px-2.5 ed:py-1.5 ed:text-left`;
+const seekBtnCls = `${btnCls} ed:inline-flex ed:items-center ed:gap-1.5 ed:cursor-pointer ed:mb-2.5 ed:w-auto ed:px-2.5 ed:py-1`;
+const linkBtnCls = `${btnCls} ed:inline-flex ed:items-center ed:gap-1.5 ed:mt-1 ed:w-full ed:px-2.5 ed:py-1.5 ed:text-left`;
 
 // The addable effects: core's own catalog plus whatever the brand declared.
 // Core ships only what core RENDERS (ken-burns via SegmentMedia) — every
@@ -950,7 +951,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
       <div className={panelCls}>
         <h3 className={headingCls}>Clip · {v.kind}</h3>
         <button type="button" className={seekBtnCls} onClick={() => onSeek(Math.round((v.startMs / 1000) * fps))}>
-          ⇥ seek to start
+          <SkipBackIcon size={13} /> seek to start
         </button>
         {(v.kind === 'clip' || v.kind === 'broll') && (
           <>
@@ -1129,9 +1130,9 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
                     type="button"
                     aria-label={`remove effect ${type}`}
                     onClick={() => patchItem('video', id, { effects: v.effects!.filter((_, j) => j !== i) })}
-                    style={{ background: 'none', border: 'none', color: '#9a9da5', cursor: 'pointer', fontSize: 13 }}
+                    style={{ background: 'none', border: 'none', color: '#9a9da5', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
                   >
-                    ✕
+                    <XIcon size={13} />
                   </button>
                 }
               >
@@ -1191,7 +1192,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
       <div className={panelCls}>
         <h3 className={headingCls}>Overlay · {content.kind ?? 'overlay'}</h3>
         <button type="button" className={seekBtnCls} onClick={() => onSeek(Math.round((o.startMs / 1000) * fps))}>
-          ⇥ seek to start
+          <SkipBackIcon size={13} /> seek to start
         </button>
         {content.text !== undefined && (
           <div className={fieldCls}>
@@ -1312,7 +1313,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
             title={`This bed moves and trims with clip ${a.followsVideoId}. Unlink to edit it on its own.`}
             onClick={() => patchItem('audio', id, { followsVideoId: undefined })}
           >
-            🔗 Linked to {a.followsVideoId} · Unlink
+            <LinkIcon size={13} /> Linked to {a.followsVideoId} · Unlink
           </button>
         ) : (
           <button
@@ -1337,7 +1338,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
               });
             }}
           >
-            ⛓ Independent · Link to clip
+            <UnlinkIcon size={13} /> Independent · Link to clip
           </button>
         )}
       </div>

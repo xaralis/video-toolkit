@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Diagnostic } from './LayeredTimeline';
+import { TriangleAlertIcon } from './icons';
 
 /** A count in the header that expands into the list. Deliberately NOT a
  *  permanently open panel: on a healthy project it is empty, and it should not
@@ -28,7 +29,7 @@ export function DiagnosticsBadge({ items, onSelect }: { items: Diagnostic[]; onS
           boxShadow: '0 0 0 1px rgba(0,0,0,0.35)',
         }}
       >
-        <span aria-hidden style={{ fontSize: 12, lineHeight: 1 }}>⚠</span>
+        <TriangleAlertIcon size={12} />
         {items.length} {items.length === 1 ? 'issue' : 'issues'}
       </button>
       {open && (

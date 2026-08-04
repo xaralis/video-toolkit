@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { CheckIcon, TriangleAlertIcon, XIcon } from './icons';
 
 /**
  * "Render preview / full" control for the editor's header toolbar, plus the
@@ -61,6 +62,7 @@ const btnDisabledStyle: CSSProperties = {
 const pillStyle: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
+  gap: 6,
   background: '#26282f',
   border: '1px solid #34363e',
   color: '#e8e8ea',
@@ -274,12 +276,14 @@ export function RenderButton() {
     // dismissed or a new render starts.
     controls = (
       <>
-        <div style={pillStyle}>✓ {outPath}</div>
+        <div style={pillStyle}>
+          <CheckIcon size={13} /> {outPath}
+        </div>
         <button type="button" style={btnStyle} onClick={reveal} title="Show the rendered file in the OS file manager">
           Show in Finder
         </button>
-        <button type="button" style={btnStyle} onClick={() => setPhase('idle')} title="Dismiss">
-          ✕
+        <button type="button" style={{ ...btnStyle, display: 'inline-flex', alignItems: 'center' }} onClick={() => setPhase('idle')} title="Dismiss">
+          <XIcon size={13} />
         </button>
       </>
     );
@@ -292,7 +296,7 @@ export function RenderButton() {
       <>
         {phase === 'error' && error && (
           <span style={errorTextStyle} title={error}>
-            ⚠ {error}
+            <TriangleAlertIcon size={13} /> {error}
           </span>
         )}
         <button

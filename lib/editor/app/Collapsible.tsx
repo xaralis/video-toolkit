@@ -1,4 +1,5 @@
 import { useState, type ReactNode, type CSSProperties } from 'react';
+import { ChevronRightIcon, ChevronDownIcon } from './icons';
 
 // A reusable collapsible section (accordion row): a clickable header with a
 // disclosure chevron + title + an optional right-aligned slot (e.g. a remove
@@ -40,11 +41,8 @@ export function Collapsible({
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        <span
-          aria-hidden
-          style={{ display: 'inline-block', width: 9, transition: 'transform 0.1s', transform: open ? 'rotate(90deg)' : 'none' }}
-        >
-          ▸
+        <span style={{ display: 'inline-flex' }}>
+          {open ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
         </span>
         <span style={{ flex: 1 }}>{title}</span>
         {right && (
