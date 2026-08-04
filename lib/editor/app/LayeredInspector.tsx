@@ -689,13 +689,39 @@ export function TransitionFields({
         // duration involved is still unknown) — the same thing an absent
         // `maxFrames` means, so both read as the plain, unbounded label.
         const bounded = maxFrames !== undefined && Number.isFinite(maxFrames);
+        // A KNOWN ceiling gets a slider: the value is small, bounded at both
+        // ends, and you pick it by feel against the neighbouring clips — which
+        // is a drag, not a number you know in advance.
+        //
+        // The unbounded case keeps the typed field, and that asymmetry is the
+        // point rather than an oversight: with no ceiling there is nothing for
+        // a track to represent, and inventing a soft one would quietly cap a
+        // transition the boundary could actually afford.
+        if (bounded) {
+          const cap = maxFrames as number;
+          // The track stretches to fit an ALREADY-AUTHORED over-cap value
+          // instead of snapping the thumb back on mount — a retroactively
+          // starved boundary is reported by the timeline's hatching, never
+          // silently rewritten (see handle-room.ts). New input still clamps.
+          const trackMax = Math.max(cap, t.frames ?? 1);
+          return (
+            <SliderField
+              lbl={`Length (frames, max ${cap})`}
+              value={t.frames}
+              min={1}
+              max={trackMax}
+              step={1}
+              fallback={1}
+              onCommit={(n) => onChange({ ...t, frames: Math.min(cap, Math.max(1, Math.round(n))) })}
+            />
+          );
+        }
         return (
           <ScrubField
-            lbl={bounded ? `Length (frames, max ${maxFrames})` : 'Length (frames)'}
+            lbl="Length (frames)"
             value={t.frames}
             min={1}
-            max={bounded ? maxFrames : undefined}
-            onCommit={(n) => onChange({ ...t, frames: Math.min(bounded ? (maxFrames as number) : Infinity, Math.max(1, Math.round(n))) })}
+            onCommit={(n) => onChange({ ...t, frames: Math.max(1, Math.round(n)) })}
           />
         );
       })()}

@@ -3,7 +3,7 @@
  *  string for the few consumers that cannot use a class (an SVG stroke, a
  *  spinner border). A brand's palette reaches the editor only through
  *  `accentSlots`. */
-export const EDITOR_ACCENT = '#7c5cff';
+export const EDITOR_ACCENT = '#6242e0';
 
 /** A square icon button (zoom, transport). */
 export const zoomBtnClass =

@@ -30,18 +30,31 @@
   --color-ink: #e6e6ea;
   --color-ink-2: #a0a0ae;
   --color-ink-3: #6a6a78;
-  --color-accent: #7c5cff;
-  --color-accent-ink: #12101f;
+  /* The accent, and the text that sits ON it. #7c5cff was a mid-luminance
+   * purple: BOTH black and white landed at ~4.3:1 against it, under the 4.5:1
+   * floor, so no choice of ink could fix it — the fill had to move. This one
+   * keeps the same hue (252°, so the lane-colour guard band is unchanged) and
+   * carries white at 6.2:1. Checked, not eyeballed: `contrast.test.ts` reads
+   * these two tokens out of this file and fails below AA. */
+  --color-accent: #6242e0;
+  --color-accent-ink: #ffffff;
   --color-accent-soft: #2e2547;
   --color-warn: #ffb454;
   --color-danger: #ff5c5c;
   /* The header status chip's "saved" state (green) — universal UI semantics
    * (success/complete), not a brand accent, same reasoning as warn/danger. */
   --color-success: #3ecf7e;
-  /* The transition-lane marker pill (LayeredTimeline.tsx) — a one-off amber,
-   * not part of the neutral/accent palette above, but still a real token
-   * rather than an arbitrary value so it has one named, greppable home. */
-  --color-transition-marker: #c9a227;
-  --color-transition-marker-ink: #1a1a1a;
+  /* The transition-lane marker pill (TransitionMarker.tsx) — a one-off, not
+   * part of the neutral/accent palette above, but still a real token rather
+   * than an arbitrary value so it has one named, greppable home.
+   *
+   * Was an amber (#c9a227) carrying near-black text, and at 10px that did not
+   * read — the label is the smallest text in the editor and sat on the most
+   * saturated background in it. A light cool neutral instead: ~15:1 against
+   * its ink, distinct from every lane colour (all saturated), and it reads as
+   * CHROME rather than as another block of content, which is what a derived
+   * marker actually is. Not the accent — that means selected. */
+  --color-transition-marker: #e2e6f0;
+  --color-transition-marker-ink: #141824;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
