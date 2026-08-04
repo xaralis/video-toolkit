@@ -413,6 +413,18 @@ export function slipVideoItem(
   const d = Math.min(Math.max(deltaMs, minDelta), maxDelta);
   if (d === 0) return reel;
 
+  // `d` is SOURCE ms, and the same number is applied to the clip and to every
+  // bed that slips with it — which is what keeps a shot and its own sound
+  // together. Worth knowing on a clip whose speed is not 1: the gesture scales
+  // the delta by that speed (`slipDeltaMs`) so the PICTURE tracks the pointer,
+  // but a bed is never time-stretched, so its audio then slides at the clip's
+  // speed relative to the pointer rather than 1:1. There is no right answer
+  // here — a slowed clip carrying its own sync sound is already incoherent,
+  // because the sound is not slowed with it — and speed deliberately never
+  // reaches an audio path (see the audio branches below and in
+  // `resizeAudioItem`). Recorded so the interaction is not rediscovered as a
+  // new bug.
+
   return {
     ...reel,
     tracks: {
