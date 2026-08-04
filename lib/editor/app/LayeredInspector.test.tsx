@@ -1243,3 +1243,32 @@ describe('LayeredInspector project overview (no selection)', () => {
     expect(screen.getByText('9:16')).toBeInTheDocument();
   });
 });
+
+// `Source` was a live text input wired to a config patch. It "worked", but
+// there is no file picker behind it and no validation in front of it: the
+// only thing it afforded was typing a filename blind, where a typo silently
+// points the clip at media that does not exist. It is displayed now.
+describe('Source is displayed, not edited', () => {
+  const clipReel: LayeredReel = {
+    ...base,
+    tracks: {
+      ...base.tracks,
+      video: [{ id: 'v1', kind: 'clip', startMs: 0, endMs: 2000, source: 'broll/BR-trida-miru_01_upright.mp4',
+                sourceInMs: 0, sourceOutMs: 2000, musicBoostDb: 0 } as any],
+    },
+  };
+
+  it('shows the source value but offers no editable control for it', () => {
+    render(<LayeredInspector reel={clipReel} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByText('broll/BR-trida-miru_01_upright.mp4')).toBeInTheDocument();
+    // The assertion that fails on the pre-fix component: there is no textbox
+    // named Source to type into.
+    expect(screen.queryByRole('textbox', { name: 'Source' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the whole value reachable when it is too long to show', () => {
+    render(<LayeredInspector reel={clipReel} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByText('broll/BR-trida-miru_01_upright.mp4'))
+      .toHaveAttribute('title', 'broll/BR-trida-miru_01_upright.mp4');
+  });
+});

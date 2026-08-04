@@ -84,6 +84,35 @@ const btnCls = 'ed:box-border ed:bg-control ed:text-ink ed:border ed:border-line
 
 const Row = ({ children }: { children: ReactNode }) => <div className={rowCls}>{children}</div>;
 
+/** A labelled value that is DISPLAYED, not edited.
+ *
+ *  For facts the editor knows but cannot meaningfully let you change here —
+ *  a clip's media source above all. That was a live text input, and it did
+ *  patch the config, so it "worked" mechanically. But there is no file
+ *  picker behind it and no validation in front of it: the only thing the
+ *  control actually affords is typing a filename blind, where a typo
+ *  silently points the clip at media that does not exist. An affordance
+ *  that cannot be used correctly should not be offered.
+ *
+ *  Rendered as selectable text rather than a disabled `<input>`, so the
+ *  filename can still be copied — a disabled input's text cannot be
+ *  selected in every browser, and copying the source is the one thing
+ *  people genuinely do with this field. Long values ellipsize with the
+ *  whole value in `title`. */
+function ReadonlyField({ lbl, value }: { lbl: string; value: string | undefined }) {
+  return (
+    <div className={fieldCls}>
+      <span className={`${labelCls} ed:block ed:mb-1`}>{lbl}</span>
+      <div
+        className="ed:text-[13px] ed:text-ink ed:truncate ed:select-text ed:py-[7px]"
+        title={value || undefined}
+      >
+        {value || <span className="ed:text-ink-3">—</span>}
+      </div>
+    </div>
+  );
+}
+
 function TextField({ lbl, value, onCommit }: { lbl: string; value: string | undefined; onCommit: (s: string) => void }) {
   const f = useLiveField(value ?? '');
   return (
@@ -1007,7 +1036,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
         </div>
         {(v.kind === 'clip' || v.kind === 'broll') && (
           <>
-            <TextField lbl="Source" value={v.source} onCommit={(s) => s.trim() && patchItem('video', id, { source: s })} />
+            <ReadonlyField lbl="Source" value={v.source} />
             <Row>
               <TimecodeField lbl="Trim in" ms={v.sourceInMs} fps={fps} onCommit={(ms) => patchItem('video', id, { sourceInMs: ms })} />
               <TimecodeField lbl="Trim out" ms={v.sourceOutMs} fps={fps} onCommit={(ms) => patchItem('video', id, { sourceOutMs: ms })} />
@@ -1500,7 +1529,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     return (
       <div className={panelCls}>
         <h3 className={headingCls}>Audio</h3>
-        <TextField lbl="Source" value={a.source} onCommit={(s) => s.trim() && patchItem('audio', id, { source: s })} />
+        <ReadonlyField lbl="Source" value={a.source} />
         <Row>
           <TimecodeField lbl="Trim in" ms={a.sourceInMs} fps={fps} disabled={!!a.followsVideoId} title={a.followsVideoId ? 'Linked to a clip — unlink to trim independently' : undefined} onCommit={(ms) => patchItem('audio', id, { sourceInMs: ms })} />
           <TimecodeField
@@ -1573,7 +1602,7 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
     return (
       <div className={panelCls}>
         <h3 className={headingCls}>Music</h3>
-        <TextField lbl="Source" value={m.source} onCommit={(s) => patchMusic({ source: s.trim() || undefined })} />
+        <ReadonlyField lbl="Source" value={m.source} />
         {/* `baseVolumeDb` carries a zod `.default(-8)` (layered-schema.ts), so
             `value` is never actually undefined here — `fallback` is stated
             anyway, matching that same schema default, per this component's
