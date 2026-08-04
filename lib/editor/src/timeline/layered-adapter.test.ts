@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { LayeredReel, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
+import { deriveSpeed } from '@video-toolkit/lib/reel-config-base/speed';
 import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem, duplicateItem, clipFootageCapMs, resizeBoundsMs, laneOfRow, slipVideoItem, isSlippable, setItemSpeed } from './layered-adapter';
 
 // Small schema-valid LayeredReel fixture: one item per track.
@@ -611,6 +612,65 @@ describe('resizeBoundsMs honours playback speed', () => {
 
   it('still reports no right bound at all when the footage length is unknown', () => {
     expect(resizeBoundsMs(slowed, undefined)!.maxEndMs).toBeUndefined();
+  });
+});
+
+describe('applyTimelineChange — a trim preserves playback speed', () => {
+  const FOOTAGE = 10000;
+  // 4s of source over 8s of timeline = 0.5x.
+  const slowed: VideoItem = {
+    id: 'v1', kind: 'broll', startMs: 0, endMs: 8000, source: 'br.mp4', sourceInMs: 0, sourceOutMs: 4000,
+  };
+  // Scoped to this describe on purpose — the file has other `clip`/`reelWith`
+  // helpers with different (1x-by-construction) contracts.
+  const reelWith = (v: VideoItem): LayeredReel => ({
+    ...REEL,
+    meta: { topic: 'Fixture', totalDurationMs: 30000 },
+    tracks: { ...REEL.tracks, video: [v], audio: [], overlays: [], brand: [] },
+  });
+  const trim = (item: VideoItem, startMs: number, endMs: number) => {
+    const reel = reelWith(item);
+    const { editorData } = layeredToTimeline(reel, 30);
+    const rows = editorData.map((row) =>
+      row.id === 'video'
+        ? { ...row, actions: row.actions.map((a) => ({ ...a, start: startMs / 1000, end: endMs / 1000 })) }
+        : row,
+    );
+    return applyTimelineChange(reel, rows, { footageMsById: { v1: FOOTAGE } }).tracks.video[0];
+  };
+  const trimRight = (item: VideoItem, endMs: number) => trim(item, item.startMs, endMs);
+
+  it('grows the clip when the right edge is dragged outward', () => {
+    // The bug: this returned endMs 5000 — SHORTER than the 8000 it started at.
+    const after = trimRight(slowed, 10000);
+    expect(after.endMs).toBe(10000);
+  });
+
+  it('consumes source in proportion to speed, not 1:1', () => {
+    // +2000ms of timeline at 0.5x costs 1000ms of source.
+    const after = trimRight(slowed, 10000);
+    expect(after.kind === 'broll' && after.sourceOutMs).toBe(5000);
+  });
+
+  it('leaves the speed exactly where the author set it', () => {
+    expect(deriveSpeed(trimRight(slowed, 10000) as typeof slowed)).toBe(0.5);
+  });
+
+  it('stops at the end of the footage, in timeline ms', () => {
+    // All 10s of source at 0.5x = 20s of timeline; asking for more gets 20000.
+    const after = trimRight(slowed, 30000) as typeof slowed;
+    expect(after.sourceOutMs).toBe(FOOTAGE);
+    expect(after.endMs).toBe(20000);
+    expect(deriveSpeed(after)).toBe(0.5);
+  });
+
+  it('preserves speed on a LEFT trim too', () => {
+    const start: VideoItem = { ...slowed, startMs: 8000, endMs: 16000, sourceInMs: 2000, sourceOutMs: 6000 };
+    const after = trim(start, 4000, 16000) as typeof slowed;
+    expect(after.startMs).toBe(4000);
+    // 4000ms of timeline at 0.5x costs 2000ms of source: in-point reaches 0.
+    expect(after.sourceInMs).toBe(0);
+    expect(deriveSpeed(after)).toBe(0.5);
   });
 });
 

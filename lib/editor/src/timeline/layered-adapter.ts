@@ -2,7 +2,7 @@ import type { LayeredReel, VideoItem, AudioItem } from '@video-toolkit/lib/reel-
 import { withTotalDuration } from '@video-toolkit/lib/reel-config-base/total-duration';
 import { clampSpeed } from '@video-toolkit/lib/reel-config-base/speed';
 import { resolveSlipsWithVideo } from '@video-toolkit/lib/reel-config-base/slips-with-video';
-import { headroomTimelineMs, sourceToTimelineMs } from '@video-toolkit/lib/reel-config-base/clip-time';
+import { headroomTimelineMs, sourceToTimelineMs, timelineToSourceMs } from '@video-toolkit/lib/reel-config-base/clip-time';
 import {
   isCut,
   CUT_KIND,
@@ -304,13 +304,44 @@ function resizeVideoItem(item: VideoItem, np: { startMs: number; endMs: number }
   if ((item.kind !== 'clip' && item.kind !== 'broll') || (dStart !== 0 && dEnd !== 0)) {
     return { ...item, startMs: np.startMs, endMs: np.endMs };
   }
+  // Both branches work in TIMELINE ms and convert ONCE, so the clip's speed
+  // (the ratio of its two spans) comes out of a trim exactly as it went in. At
+  // 1x every line below reduces to the plain sums this used to do.
   if (dStart !== 0) {
-    const applied = Math.min(Math.max(dStart, -item.sourceInMs), item.endMs - item.startMs - MIN_CLIP_MS); // clamp in>=0 and keep >0 duration
-    return { ...item, startMs: item.startMs + applied, sourceInMs: item.sourceInMs + applied };
+    const applied = Math.min(
+      // Can't reveal source that isn't there: the head, in timeline ms.
+      Math.max(dStart, -headroomTimelineMs(item)),
+      // Keep at least MIN_CLIP_MS of TIMELINE length.
+      item.endMs - item.startMs - MIN_CLIP_MS,
+    );
+    return {
+      ...item,
+      startMs: Math.round(item.startMs + applied),
+      sourceInMs: Math.round(item.sourceInMs + timelineToSourceMs(item, applied)),
+    };
   }
-  const rawOut = Math.max(item.sourceInMs + MIN_CLIP_MS, item.sourceOutMs + dEnd);
-  const sourceOutMs = footageMs && footageMs > 0 ? Math.min(footageMs, rawOut) : rawOut; // can't pass the footage end
-  return { ...item, endMs: item.startMs + (sourceOutMs - item.sourceInMs), sourceOutMs };
+  // The right edge is now the INPUT and the source out-point follows it — the
+  // inversion is the fix. The old branch recomputed endMs from sourceOutMs,
+  // i.e. the length the clip would have at 1x, so dragging a slowed clip's
+  // right edge outward made it SHORTER and snapped its speed to 1.
+  //
+  // The footage cap is the ABSOLUTE reachable end, computed the same way
+  // resizeBoundsMs does (and deliberately not `endMs + tailroomTimelineMs`):
+  // tailroom clamps negative room to 0 and so cannot express "the cap is
+  // BELOW your current end", which is exactly the drifted case where a
+  // config's sourceOutMs overruns the decoded file — a case pinned by test and
+  // self-healed here.
+  const maxEndMs = footageMs && footageMs > 0
+    ? item.startMs + sourceToTimelineMs(item, footageMs - item.sourceInMs)
+    : Infinity;
+  // Never shorter than MIN_CLIP_MS of TIMELINE length.
+  const endMs = Math.round(Math.max(Math.min(np.endMs, maxEndMs), item.startMs + MIN_CLIP_MS));
+  return {
+    ...item,
+    endMs,
+    // Called on the PRE-edit item: its ratio is the speed being preserved.
+    sourceOutMs: Math.round(item.sourceInMs + timelineToSourceMs(item, endMs - item.startMs)),
+  };
 }
 
 // Whether an item has a single trim source that slip can shift — the ONE
