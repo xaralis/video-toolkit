@@ -18,16 +18,16 @@ export function computeTotalDurationMs(reel: LayeredReel): number {
   return Math.max(0, ...ends);
 }
 
-// Recompute meta.totalDurationMs from the tracks and re-pin full-span brand
-// items to the new end: a brand item whose endMs sat exactly at the OLD total
-// (the "spans the whole reel" derivation) stretches/shrinks with it, while a
-// deliberately shorter one keeps its authored span. Returns the same object
-// when nothing changes, so callers can hand it straight to React state.
+// Recompute meta.totalDurationMs from the tracks. Brand items are NOT touched
+// here: their span is derived from the CONTENT end (which excludes the outro),
+// not from the total, so the old "re-pin anything sitting exactly at the old
+// total" heuristic could only ever be right by coincidence — and silently did
+// nothing on every reel that has an outro. `withDerivedBrandSpan`
+// (content-end.ts) owns the brand span now; the editor host applies it on every
+// change. Returns the same object when nothing changes, so callers can hand it
+// straight to React state.
 export function withTotalDuration(reel: LayeredReel): LayeredReel {
   const totalMs = computeTotalDurationMs(reel);
   if (totalMs === reel.meta.totalDurationMs) return reel;
-  const brand = reel.tracks.brand.map((b) =>
-    b.endMs === reel.meta.totalDurationMs ? { ...b, endMs: totalMs } : b,
-  );
-  return { ...reel, meta: { ...reel.meta, totalDurationMs: totalMs }, tracks: { ...reel.tracks, brand } };
+  return { ...reel, meta: { ...reel.meta, totalDurationMs: totalMs } };
 }

@@ -209,10 +209,13 @@ describe('applyTimelineChange', () => {
     expect(result.tracks.video[0]).toMatchObject({ startMs: 1000, endMs: 4000 });
     expect(result.tracks.audio).toEqual(REEL.tracks.audio);
     expect(result.tracks.overlays).toEqual(REEL.tracks.overlays);
-    // The total is DERIVED from the furthest track end (4000 now), and the
-    // full-span watermark follows it.
+    // The total is DERIVED from the furthest track end (4000 now). The brand
+    // span is no longer re-pinned here — that heuristic ("anything sitting
+    // exactly at the old total") is deleted; `withDerivedBrandSpan`
+    // (content-end.ts) owns the brand span now and is applied by the editor
+    // host on every change, not by applyTimelineChange/withTotalDuration.
     expect(result.meta.totalDurationMs).toBe(4000);
-    expect(result.tracks.brand[0]).toMatchObject({ startMs: 0, endMs: 4000 });
+    expect(result.tracks.brand[0]).toMatchObject({ startMs: 0, endMs: 5000 });
 
     // Original reel is unmutated.
     expect(REEL.tracks.video[0].startMs).toBe(0);
@@ -399,10 +402,12 @@ describe('music end-trim + derived total duration', () => {
     );
     const result = applyTimelineChange(MREEL, changed);
     expect(result.tracks.music.endMs).toBe(4000);
-    // content ends at 3000; the music bed now reaches furthest → total 4000,
-    // and the full-span watermark follows the new end.
+    // content ends at 3000; the music bed now reaches furthest → total 4000.
+    // The brand span is no longer re-pinned by withTotalDuration — it stays at
+    // its authored value; `withDerivedBrandSpan` (content-end.ts) is what owns
+    // the brand span now, applied by the editor host, not by applyTimelineChange.
     expect(result.meta.totalDurationMs).toBe(4000);
-    expect(result.tracks.brand[0].endMs).toBe(4000);
+    expect(result.tracks.brand[0].endMs).toBe(5000);
   });
 
   it('caps the music end-trim at the decoded source duration', () => {
@@ -442,7 +447,8 @@ describe('music end-trim + derived total duration', () => {
     );
     const result = applyTimelineChange(MREEL, changed);
     expect(result.meta.totalDurationMs).toBe(3000);
-    expect(result.tracks.brand[0].endMs).toBe(3000);
+    // Brand span is untouched by withTotalDuration; stays at its authored value.
+    expect(result.tracks.brand[0].endMs).toBe(5000);
   });
 });
 

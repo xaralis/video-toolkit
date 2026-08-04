@@ -48,29 +48,19 @@ describe('withTotalDuration', () => {
     expect(withTotalDuration(reel)).toBe(reel);
   });
 
-  it('updates meta and re-pins full-span brand items to the new end', () => {
+  it('updates meta and leaves brand items alone (their span is derived elsewhere)', () => {
     const reel = reelWith({
       video: [{ id: 'v1', kind: 'clip', startMs: 0, endMs: 8000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 8000 }],
     });
     const next = withTotalDuration(reel);
     expect(next.meta.totalDurationMs).toBe(8000);
-    expect(next.tracks.brand[0].endMs).toBe(8000);
-  });
-
-  it('leaves deliberately shorter brand items alone', () => {
-    const reel = reelWith({
-      video: [{ id: 'v1', kind: 'clip', startMs: 0, endMs: 8000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 8000 }],
-      brand: [{ id: 'wm', kind: 'watermark', startMs: 0, endMs: 3000 }],
-    });
-    const next = withTotalDuration(reel);
-    expect(next.meta.totalDurationMs).toBe(8000);
-    expect(next.tracks.brand[0].endMs).toBe(3000);
+    expect(next.tracks.brand[0].endMs).toBe(10000);
   });
 
   it('extends the total when a music bed reaches past the content', () => {
     const reel = reelWith({ music: { source: 'audio/bg.mp3', baseVolumeDb: -8, endMs: 13000 } });
     const next = withTotalDuration(reel);
     expect(next.meta.totalDurationMs).toBe(13000);
-    expect(next.tracks.brand[0].endMs).toBe(13000);
+    expect(next.tracks.brand[0].endMs).toBe(10000);
   });
 });
