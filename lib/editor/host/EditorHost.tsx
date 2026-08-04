@@ -663,6 +663,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
           inspector={
             <LayeredInspector
               reel={reel}
+              savedReel={savedReel}
               selectedId={selectedId}
               onChange={setReel}
               onSeek={(f) => playerRef.current?.seekTo(f)}

@@ -15,6 +15,7 @@ import {
   withTransitionField,
   type DraftTransition,
 } from './transitions';
+import { footageCapsById } from '../src/timeline/footage-cap';
 import { parseActionId, setItemSpeed, type LaneId } from '../src/timeline/layered-adapter';
 import type { AccentSlot } from '../../theming/palette';
 import { PLACEMENTS } from '../../theming/placement';
@@ -62,6 +63,9 @@ export interface LayeredInspectorProps {
    *  Doubles as the failed-source diagnostic on the no-selection screen (a
    *  source resolving to `0` — see `project-summary.ts`'s `failedSources`). */
   sourceDurations?: Record<string, number>;
+  /** The last SAVED reel. Only used for the footage cap: a clip authored past
+   *  its file keeps that authored length as its ceiling. See footageCapsById. */
+  savedReel?: LayeredReel | null;
   /** The composition's pixel dimensions, shown on the no-selection ("project
    *  overview") screen. Optional (defaults to 0×0, which reads as `—` via
    *  `aspectLabel`) so every existing caller that doesn't know about this
@@ -931,6 +935,7 @@ export function LayeredInspector({
   accentSlots,
   meta,
   sourceDurations,
+  savedReel,
   width = 0,
   height = 0,
   ripple = false,
@@ -939,21 +944,11 @@ export function LayeredInspector({
   // EditorMeta deliberately does not carry a copy (see editor-meta.ts).
   const slots = accentSlots;
   const durationsMs = sourceDurations ?? {};
-  // The Speed section's footage cap — how much source a Ripple-off speed-up
-  // may reach for before it runs past the real file. A simpler reading than
-  // `LayeredTimeline`'s own `capMsById` (that one also falls back to the
-  // SAVED reel's authored `sourceOutMs` for a clip added this session, which
-  // needs `savedReel` threaded in here too): decoded duration only. A clip
-  // with no decoded duration yet (still loading, or a still-image "video")
-  // is simply uncapped here, same as `slipVideoItem`'s own contract for an
-  // unknown footage length.
-  const footageMsById: Record<string, number> = {};
-  for (const v of reel.tracks.video) {
-    if (v.kind !== 'clip' && v.kind !== 'broll') continue;
-    const url = videoUrl(v);
-    const decoded = (url ? durationsMs[url] : 0) || 0;
-    if (decoded > 0) footageMsById[v.id] = decoded;
-  }
+  // How much source a Ripple-off speed-up may reach for before it runs past
+  // the real file. The SAME reading the timeline's edge-trim cap uses — these
+  // were two separate derivations and disagreed in both directions; see
+  // `footageCapsById` for what that cost.
+  const footageMsById = footageCapsById(reel, savedReel, durationsMs, videoUrl);
   // The room a video item at index `i` can lend — the SAME per-item reading
   // `boundaryDiagnostics` (LayeredTimeline.tsx) uses, so the length field's
   // ceiling and the timeline's hatching can never disagree about a boundary.

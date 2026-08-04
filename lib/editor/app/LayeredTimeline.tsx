@@ -15,6 +15,7 @@ import {
   isSlippable,
   type LaneId,
 } from '../src/timeline/layered-adapter';
+import { footageCapsById } from '../src/timeline/footage-cap';
 import { stripAccents } from './accent';
 import { useAudioPeaks, PEAKS_PER_SEC } from './useAudioPeaks';
 import { useSourceDurations } from './useSourceDurations';
@@ -811,30 +812,12 @@ function LayeredTimelineImpl({
   );
   const starvedTargets = useMemo(() => new Set(diagnostics.map((d) => d.targetId)), [diagnostics]);
   useEffect(() => { onDiagnostics?.(diagnostics); }, [diagnostics, onDiagnostics]);
-  // Right-edge trim cap (ms) per video id — the clip's "total length": the LARGER
-  // of the real decoded file duration and the AUTHORED out-point (from the saved
-  // reel). A clip whose cut holds its last frame past the file end (an authored
-  // sourceOutMs > the file, e.g. seg-002: file 10.042s, authored 10.3s) can be
-  // trimmed and restored back to that authored length; a normally-trimmed clip
-  // can be extended out to reveal its full real footage. Never past either.
-  const capMsById = useMemo(() => {
-    const savedOut = (id: string): number => {
-      const s = savedReel?.tracks.video.find((v) => v.id === id);
-      return s && (s.kind === 'clip' || s.kind === 'broll') ? s.sourceOutMs : 0;
-    };
-    const m: Record<string, number> = {};
-    for (const v of reel.tracks.video) {
-      if (v.kind !== 'clip' && v.kind !== 'broll') continue;
-      const url = videoUrl(v);
-      const decoded = (url ? sourceDurations[url] : 0) || 0;
-      // Fall back to the item's own sourceOutMs for a clip added this session
-      // (not in the saved reel yet).
-      const authored = savedOut(v.id) || v.sourceOutMs || 0;
-      const cap = Math.max(decoded, authored);
-      if (cap > 0) m[v.id] = cap;
-    }
-    return m;
-  }, [reel, sourceDurations, savedReel]);
+  // Right-edge trim cap (ms) per video id. Shared with the inspector — see
+  // `footageCapsById`, which owns the rule and the reasons for it.
+  const capMsById = useMemo(
+    () => footageCapsById(reel, savedReel, sourceDurations, videoUrl),
+    [reel, sourceDurations, savedReel],
+  );
 
   // Derived music-volume envelope (same shared fn the composition renders from).
   const envelope = useMemo(() => computeMusicEnvelope(reel, { fps }), [reel, fps]);
