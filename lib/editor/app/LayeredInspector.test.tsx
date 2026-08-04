@@ -1077,6 +1077,26 @@ describe('TransitionFields length field — bounded commit, never a mount-time c
     expect(onChange).toHaveBeenCalledWith({ kind: 'dissolve', frames: 12 });
   });
 
+  it('is a SLIDER when the ceiling is known — you pick a transition length by feel, not by typing', () => {
+    render(<TransitionFields t={{ kind: 'dissolve', frames: 10 }} onChange={vi.fn()} maxFrames={12} />);
+    const input = screen.getByLabelText('Length (frames, max 12)') as HTMLInputElement;
+    expect(input.type).toBe('range');
+    expect(input.min).toBe('1');
+    expect(input.max).toBe('12');
+  });
+
+  it('stretches the track to an authored over-cap value rather than snapping the thumb back', () => {
+    render(<TransitionFields t={{ kind: 'dissolve', frames: 40 }} onChange={vi.fn()} maxFrames={12} />);
+    const input = screen.getByLabelText('Length (frames, max 12)') as HTMLInputElement;
+    expect(input.max).toBe('40'); // the ceiling is still 12 — the clamp lives on commit
+    expect(input.value).toBe('40');
+  });
+
+  it('stays a typed field when there is no ceiling — a soft one would cap what the boundary can afford', () => {
+    render(<TransitionFields t={{ kind: 'dissolve', frames: 10 }} onChange={vi.fn()} />);
+    expect((screen.getByLabelText('Length (frames)') as HTMLInputElement).type).not.toBe('range');
+  });
+
   it('does not clamp on mount — an authored value already past maxFrames is shown untouched', () => {
     const onChange = vi.fn();
     render(<TransitionFields t={{ kind: 'dissolve', frames: 40 }} onChange={onChange} maxFrames={12} />);

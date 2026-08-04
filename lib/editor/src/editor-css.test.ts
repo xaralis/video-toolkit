@@ -24,7 +24,13 @@ describe('generated editor.css', () => {
   it('emits the prefixed theme variables the inline styles read', () => {
     const css = fs.readFileSync(CSS, 'utf8');
     expect(css).toContain('--ed-color-accent');
-    expect(css).toContain('#7c5cff');
+    // The VALUE comes from the stylesheet source, not a literal copy of it:
+    // the accent moved once (to fix black-on-purple contrast) and a hardcoded
+    // hex here failed for a change that was entirely correct.
+    const accent = /--color-accent:\s*(#[0-9a-fA-F]{6})/.exec(
+      fs.readFileSync(CSS.replace(/editor\.css$/, 'editor.in.css'), 'utf8'),
+    )![1];
+    expect(css).toContain(accent);
   });
 
   // THE staleness gate for the whole compile-at-core design (CLAUDE.md's
