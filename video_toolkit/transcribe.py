@@ -23,6 +23,7 @@ import requests
 
 sys.path.insert(0, os.path.dirname(__file__))
 from file_transfer import upload_to_r2, delete_from_r2  # noqa: E402
+from video_toolkit.textio import write_text_lf
 try:  # run as `python -m video_toolkit.transcribe` or as a bare script
     from video_toolkit.paths import find_env_file
 except ImportError:  # pragma: no cover - only when the package isn't installed
@@ -95,7 +96,7 @@ def transcribe_one(
             shutil.rmtree(tmp_dir, ignore_errors=True)
     else:
         result = _transcribe_audio(input_path, language, endpoint, initial_prompt)
-    output_path.write_text(json.dumps(result, indent=2, ensure_ascii=False))
+    write_text_lf(output_path, json.dumps(result, indent=2, ensure_ascii=False))
     return result
 
 

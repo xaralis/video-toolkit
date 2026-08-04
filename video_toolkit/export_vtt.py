@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Iterable
 
 from video_toolkit.paths import toolkit_root, workspace_root
+from video_toolkit.textio import write_text_lf
 
 # Sibling-script path only — transcribe.py ships beside this module.
 ROOT = toolkit_root()
@@ -220,7 +221,7 @@ def main() -> int:
         words = load_words_from_transcript(transcript_json)
         cues = chunk_words_into_cues(words, max_chars=args.max_chars, max_cue_sec=args.max_cue_sec)
         vtt_out.parent.mkdir(parents=True, exist_ok=True)
-        vtt_out.write_text(render_vtt(cues))
+        write_text_lf(vtt_out, render_vtt(cues))
         print(f"✔ Wrote {vtt_out} ({len(cues)} cues)")
     return 0
 

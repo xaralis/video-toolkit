@@ -23,6 +23,7 @@ from pathlib import Path
 import json5  # type: ignore[import-untyped]
 
 from video_toolkit.paths import workspace_root
+from video_toolkit.textio import write_text_lf
 
 OUTRO_SEC = 6.0  # 180 frames @ 30 fps
 # Consecutive L-cut windows that inherit from the same source are "contiguous"
@@ -367,7 +368,7 @@ def main() -> None:
     if not cues:
         print("WARN: no caption cues produced — check that clip segments have transcripts", file=sys.stderr)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(format_srt(cues), encoding="utf-8")
+    write_text_lf(output, format_srt(cues))
     total = sum(s["durationSec"] for s in timed)
     root = workspace_root()
     rel = output.relative_to(root) if output.is_relative_to(root) else output

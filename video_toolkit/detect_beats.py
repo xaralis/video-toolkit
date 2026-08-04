@@ -2,6 +2,7 @@
 import argparse, json
 import numpy as np
 import librosa
+from video_toolkit.textio import write_text_lf
 
 # Kick band: reggae/dub kick fundamentals sit ~40-120 Hz. Narrow to 40-110 to stay under most of
 # the busy reggae bassline while still catching the kick's punch.
@@ -83,8 +84,7 @@ def main():
     ap.add_argument("--out", default="beats.json")
     a = ap.parse_args()
     data = detect_beats(a.track)
-    with open(a.out, "w") as f:
-        json.dump(data, f, indent=2)
+    write_text_lf(a.out, json.dumps(data, indent=2))
     print(f"bpm={data['bpm']} beats={len(data['beatTimes'])} "
           f"kicks={len(data['kickTimes'])} -> {a.out}")
 

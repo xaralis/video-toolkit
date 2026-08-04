@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 from video_toolkit.paths import toolkit_root
+from video_toolkit.textio import write_text_lf
 
 # lib/ ships with the toolkit, so this one really is toolkit-relative.
 CATALOG_DIR = toolkit_root() / "lib" / "lottie"
@@ -198,7 +199,7 @@ def cmd_build(args) -> int:
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(data))
+    write_text_lf(out, json.dumps(data))
     print(f"Wrote {out}")
     return 0
 
@@ -220,7 +221,7 @@ def cmd_colorize(args) -> int:
             changed += 1
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(data))
+    write_text_lf(out, json.dumps(data))
     print(f"Recolored {changed} color(s) -> {out}")
     return 0
 

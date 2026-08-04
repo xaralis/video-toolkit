@@ -1,5 +1,6 @@
 """Scan media dir, probe dims/rotation, bake video rotation, emit manifest."""
 import argparse, json, os, subprocess, sys
+from video_toolkit.textio import write_text_lf
 
 PHOTO_EXT = {".jpg", ".jpeg", ".png", ".webp"}
 VIDEO_EXT = {".mp4", ".mov", ".m4v"}
@@ -128,8 +129,7 @@ def ingest(media_dir, out):
             continue
         media.append(info)
     data = {"media": media}
-    with open(out, "w") as f:
-        json.dump(data, f, indent=2)
+    write_text_lf(out, json.dumps(data, indent=2))
     print(f"ingested {len(media)} files -> {out}")
     return data
 
