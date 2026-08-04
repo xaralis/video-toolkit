@@ -50,10 +50,11 @@ describe('lane colours', () => {
     const distinctByHex = new Map<string, string>();
     for (const [id, hex] of chromatic) if (!distinctByHex.has(hex)) distinctByHex.set(hex, id);
     const distinct = [...distinctByHex.entries()].map(([hex, id]) => ({ id, hex, rgb: hexToRgb(hex)! }));
-    // Measured worst pair at time of writing is ~62 (video-broll vs
-    // video-photo); 40 leaves real margin under that without being so tight
-    // that a future, still-reasonable re-pick flakes this.
-    const MIN_SEPARATION = 40;
+    // Measured worst pair at time of writing is ~117.6 (audio vs music, the
+    // second re-pick across the widened ARC — see LayeredTimeline.tsx's
+    // CORE_LANE_COLOR comment); 100 leaves real margin under that without
+    // being so tight that a future, still-reasonable re-pick flakes this.
+    const MIN_SEPARATION = 100;
     for (let i = 0; i < distinct.length; i += 1) {
       for (let j = i + 1; j < distinct.length; j += 1) {
         const d = redmean(distinct[i].rgb, distinct[j].rgb);

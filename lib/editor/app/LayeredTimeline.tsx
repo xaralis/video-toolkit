@@ -99,33 +99,40 @@ const LANE_LABELS: Record<LaneId, string> = {
 // deterministic colour derived from its effectId, and a host that wants a
 // specific one declares it in `meta.laneColors`.
 //
-// Every hue here is drawn from the arc declared in `lane-colors.ts` (190-280,
-// at least 25deg from the accent hue) — see `lane-colors.test.ts`, which
-// asserts both rules, PLUS pairwise distinguishability, over this exact map.
-// `music` and `video-multi-clip` used to sit almost exactly on the accent
-// hue (a lane permanently "selected"); `video-broll` and `video-card` used to
-// be an unrelated green/gold that clashed with the rest.
+// Every hue here is drawn from the arc declared in `lane-colors.ts` (the
+// whole wheel minus the accent's guard band) — see `lane-colors.test.ts`,
+// which asserts both rules, PLUS pairwise distinguishability, over this exact
+// map.
 //
-// The accent hue is DERIVED from `EDITOR_ACCENT` (`lane-colors.ts`), not the
-// hardcoded 258 an earlier pass here used — the real hue is ~251.78. Against
-// that corrected value, `video-broll` and `video-card`'s first re-pick
-// (227.1deg / 229.0deg) both landed INSIDE the guard band (226.78-276.78) —
-// a real rule-1 violation that only the correction surfaced. Both are
-// re-picked again here, along with the rest, by maximising the minimum
-// pairwise "redmean" RGB distance (the same measure `stableColor.test`
-// uses) over muted, panel-appropriate hue/sat/light ranges within the
-// corrected usable arc. Worst pair now is `video-broll` vs `video-photo` at
-// ~62 — comfortably a "two different colours" gap. Exported so the rules
-// test (and nothing else) can read it directly.
+// This is the SECOND re-pick, and it exists for the opposite reason the
+// first one did. The first re-pick (narrow cool arc, 190-280, muted
+// hue/sat/light ranges) was a deliberate choice for "harmony" — and the user
+// saw the result and rejected it: "far too few colours on the timeline
+// items", every lane a shade of blue. Only Rule 1 (no lane on the accent hue)
+// is load-bearing; the narrow arc was never anything more than this file's
+// own taste, so it went. These seven are spread across the ENTIRE usable
+// wheel — evenly, one per ~44deg slot centred within the arc left after the
+// guard band is cut out — and held to a common saturation (52%) and
+// lightness (45%) instead: that is what keeps them one coherent family while
+// still reading as genuinely different colours, rather than the old
+// hue-proximity approach that produced "coherent but indistinguishable".
+//
+// The accent hue is DERIVED from `EDITOR_ACCENT` (`lane-colors.ts`) — real
+// value ~251.78deg, guard band ~226.78-276.78deg. Every hue below clears it
+// with at least ~47deg to spare (`video-clip` at 298.99deg, the closest).
+// Worst pairwise "redmean" RGB distance (the same measure `stableColor.test`
+// uses) among these seven is `audio` vs `music` at ~117.6 — nearly double
+// the first re-pick's ~62 worst case. Exported so the rules test (and
+// nothing else) can read it directly.
 export const CORE_LANE_COLOR: Record<string, string> = {
-  'video-clip': '#5987a1',
-  'video-broll': '#3252a4',
-  'video-photo': '#415381',
-  'video-multi-clip': '#457487',
-  'video-card': '#367bb5',
+  'video-clip': '#ac37ae',
+  'video-broll': '#ae3758',
+  'video-photo': '#ae6e37',
+  'video-multi-clip': '#97ae37',
+  'video-card': '#3fae37',
   'video-outro': '#4a4c54',
-  audio: '#2e3f66',
-  music: '#46a7be',
+  audio: '#37ae87',
+  music: '#377dae',
   'brand-watermark': '#4a4c54',
   'brand-disclaimer': '#4a4c54',
 };

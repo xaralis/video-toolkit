@@ -300,9 +300,13 @@ export function humanizeKey(key: string): string {
  *  legibility concern that used to cap lightness was withdrawn once it was
  *  established the block labels already carry a text shadow a plain contrast
  *  check doesn't see. With that room, `PALETTE_SIZE = 2048` measures out to a
- *  minimum pairwise separation of **~11.65 redmean** over all 2,096,128 pairs
+ *  minimum pairwise separation of **~22.52 redmean** over all 2,096,128 pairs
  *  (re-measured exhaustively, not assumed, in `editor-meta.test.ts` — it
- *  moves if the box or size changes) and a collision probability for a
+ *  moves if the box or size changes; this rose from ~11.65 once `ARC`
+ *  widened from a narrow 190-280 cool arc to the whole wheel minus the
+ *  accent's guard band — see lane-colors.ts — because the wider hue span
+ *  gives farthest-point sampling more room per slot) and a collision
+ *  probability for a
  *  realistic dozen-kind brand list of **~3.2%** (birthday bound on 2048
  *  slots: 1 - e^(-12·11/(2·2048))). Honestly stated, that is NOT "the same
  *  ballpark" as the pre-harmonisation generator — at 12 kinds it measures at
@@ -326,10 +330,12 @@ const LIGHT_MAX = 80;
 const PALETTE_SIZE = 2048;
 
 // The usable hue span is the arc minus the guard band around the accent —
-// which, since the accent's real hue (~251.78) differs from the old
-// hardcoded 258, leaves TWO segments: below the guard (190 to ~226.78) and a
-// sliver above it (~276.78 to 280), not just the one segment the arc's
-// numbers made it easy to assume.
+// TWO segments, both substantial now that `ARC` is the whole wheel (widened
+// from a narrow 190-280 cool arc the user rejected as "too few colours" —
+// see lane-colors.ts's own comment on `ARC`): below the guard (0 to
+// ~226.78) and above it (~276.78 to 360), roughly 226deg and 82deg wide
+// respectively — not the "one wide segment, one sliver" shape the old
+// narrow arc produced.
 const GUARD_LO = ACCENT_HUE - HUE_GUARD;
 const GUARD_HI = ACCENT_HUE + HUE_GUARD;
 // A 1deg margin shaved off each segment's edge closest to the guard band.

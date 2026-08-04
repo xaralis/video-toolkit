@@ -49,7 +49,15 @@ if (accentHue === null || Number.isNaN(accentHue)) {
 }
 export const ACCENT_HUE = accentHue;
 export const HUE_GUARD = 25;
-export const ARC: readonly [number, number] = [190, 280];
+// The whole wheel, minus the guard band around the accent (Rule 1, above) —
+// widened from a narrow cool arc ([190, 280]) that was this file's own
+// addition for "harmony." The user saw the result — every lane a shade of
+// blue — and rejected it: only Rule 1 is load-bearing, so the usable space is
+// everything else. `hueInArc` (editor-meta.ts) and every hand-picked
+// `CORE_LANE_COLOR` entry (LayeredTimeline.tsx) still have to clear the guard
+// band on top of this — this bound alone does not enforce Rule 1, the
+// dedicated "never puts a lane on the accent hue" test does.
+export const ARC: readonly [number, number] = [0, 360];
 
 export function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());

@@ -91,15 +91,18 @@ describe('stableColor', () => {
     // Measured minimum over all C(2048,2) = 2,096,128 pairs of this exact
     // palette (PALETTE_SIZE=2048, built once, lazily, on first use — see
     // buildPalette in editor-meta.ts, over the widened sat 20-90% / light
-    // 15-80% box) is ~11.65 (palette[1126] vs palette[2047]). 10 keeps a real
-    // margin under that without being so tight that an unrelated, still-
-    // reasonable change to PALETTE_SIZE or the sat/light ranges flakes this —
-    // re-measure (log `min` below) and re-derive both together if either
-    // changes. This is checked on the SAME rounded h/s/l values `stableColor`
-    // actually emits (palette entries are rounded before farthest-point
-    // selection runs, not after — see `buildPalette`), so the floor covers
-    // what ships, not a continuous approximation of it.
-    const PALETTE_FLOOR = 10;
+    // 15-80% box) is ~22.52 (palette[941] vs palette[2047]) — re-derived after
+    // `ARC` widened from a narrow 190-280 cool arc to the whole wheel minus
+    // the accent's guard band (lane-colors.ts); the wider hue space leaves
+    // farthest-point sampling more room, so this floor ROSE from the prior
+    // ~11.65. 20 keeps a real margin under that without being so tight that
+    // an unrelated, still-reasonable change to PALETTE_SIZE or the sat/light
+    // ranges flakes this — re-measure (log `min` below) and re-derive both
+    // together if either changes. This is checked on the SAME rounded h/s/l
+    // values `stableColor` actually emits (palette entries are rounded
+    // before farthest-point selection runs, not after — see `buildPalette`),
+    // so the floor covers what ships, not a continuous approximation of it.
+    const PALETTE_FLOOR = 20;
     // A single assertion at the end, not one per pair: 2,096,128 `expect()`
     // calls (with an eagerly-built label string each) made this test take
     // >10s: plain-JS min-tracking, then one assert, is the same guarantee at
@@ -211,17 +214,22 @@ describe('stableColor', () => {
   // re-picking the list or the count until it did.
   //
   // Measured, honestly, on the raw first 12 names of the pool below with no
-  // selection: new = 34.55, old = 51.13 — the OLD generator separates this
-  // particular list better. That is the actual, disclosed result, not a
-  // hidden one. It does not mean the new generator is worse: the real,
-  // structural claim — the one `STABLE_COLOR_PALETTE`'s exhaustive test above
-  // proves — is that separation between two DIFFERENT palette entries is
-  // ALWAYS at least ~11.65 (measured exhaustively over all 2096128 pairs), a
-  // guarantee the old generator's three uncoordinated hash draws never had at
-  // any list size. What this test actually checks, honestly: the new
-  // generator does not degenerate to an exact duplicate on this realistic,
-  // disclosed list (a real, bounded risk — see `PALETTE_SIZE`'s comment in
-  // editor-meta.ts for the measured rate).
+  // selection, after `ARC` widened to the whole wheel minus the accent's
+  // guard band (lane-colors.ts): new = 56.84, old = 51.13 (the old
+  // generator's own numbers don't depend on ARC, so its figure is
+  // unchanged). The new generator happens to beat the old one on this
+  // particular list now — that flipped from the prior narrow-arc measurement
+  // (new = 34.55, old = 51.13) — but this test still does not assert "new
+  // beats old", on purpose: a single dozen-name draw is a coin flip either
+  // way, not a structural comparison. The real, structural claim — the one
+  // `STABLE_COLOR_PALETTE`'s exhaustive test above proves — is that
+  // separation between two DIFFERENT palette entries is ALWAYS at least
+  // ~22.52 (measured exhaustively over all 2096128 pairs), a guarantee the
+  // old generator's three uncoordinated hash draws never had at any list
+  // size. What this test actually checks, honestly: the new generator does
+  // not degenerate to an exact duplicate on this realistic, disclosed list
+  // (a real, bounded risk — see `PALETTE_SIZE`'s comment in editor-meta.ts
+  // for the measured rate).
   it('does not collapse a realistic (reachable-only) kind list into a duplicate colour', () => {
     const drawn = REACHABLE_KIND_POOL.slice(0, 12);
     const newMin = minPairwiseDistance(drawn.map((k) => parseHsl(stableColor(k))));
