@@ -23,6 +23,10 @@ import requests
 
 sys.path.insert(0, os.path.dirname(__file__))
 from file_transfer import upload_to_r2, delete_from_r2  # noqa: E402
+try:  # run as `python -m video_toolkit.transcribe` or as a bare script
+    from video_toolkit.paths import find_env_file
+except ImportError:  # pragma: no cover - only when the package isn't installed
+    from paths import find_env_file  # noqa: E402
 
 DEFAULT_ENDPOINT_ENV = "MODAL_WHISPER_ENDPOINT_URL"
 VIDEO_EXTS = {".mp4", ".mov", ".webm", ".mkv"}
@@ -117,8 +121,8 @@ def resolve_endpoint(arg_endpoint):
     env = os.environ.get(DEFAULT_ENDPOINT_ENV)
     if env:
         return env
-    env_path = Path(__file__).resolve().parent.parent / ".env"
-    if env_path.exists():
+    env_path = find_env_file()
+    if env_path is not None:
         for line in env_path.read_text().splitlines():
             if line.startswith(f"{DEFAULT_ENDPOINT_ENV}="):
                 return line.split("=", 1)[1].strip()

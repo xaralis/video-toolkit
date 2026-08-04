@@ -28,9 +28,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from video_toolkit.paths import workspace_root
+from video_toolkit.paths import toolkit_root, workspace_root
 
-ROOT = Path(__file__).resolve().parent.parent
+# Sibling-script path only — transcribe.py ships beside this module.
+ROOT = toolkit_root()
 TRANSCRIBE_PY = ROOT / "video_toolkit" / "transcribe.py"
 
 

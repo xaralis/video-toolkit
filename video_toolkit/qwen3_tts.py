@@ -55,6 +55,8 @@ from pathlib import Path
 
 import requests
 
+from video_toolkit.paths import env_file_for_write, toolkit_root
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 # Docker image for RunPod endpoint
@@ -549,12 +551,7 @@ def create_runpod_endpoint(
 
 def save_endpoint_to_env(endpoint_id: str, verbose: bool = True) -> bool:
     """Save endpoint ID to .env file."""
-    sys.path.insert(0, str(Path(__file__).parent))
-    try:
-        from config import find_workspace_root
-        env_path = find_workspace_root() / ".env"
-    except ImportError:
-        env_path = Path(__file__).parent.parent / ".env"
+    env_path = env_file_for_write()
 
     if verbose:
         print(f"Saving endpoint ID to {env_path}...")
@@ -708,7 +705,7 @@ def setup_modal(verbose: bool = True) -> dict:
         return result
 
     # Find the app file
-    app_file = Path(__file__).parent.parent / "docker" / "modal-qwen3-tts" / "app.py"
+    app_file = toolkit_root() / "docker" / "modal-qwen3-tts" / "app.py"
     if not app_file.exists():
         result["error"] = f"Modal app file not found: {app_file}"
         if verbose:
@@ -777,7 +774,7 @@ def setup_modal(verbose: bool = True) -> dict:
             print("[3/3] Saving configuration...")
 
         # Save to .env
-        env_path = Path(__file__).parent.parent / ".env"
+        env_path = env_file_for_write()
         env_var = "MODAL_QWEN3_TTS_ENDPOINT_URL"
 
         if env_path.exists():

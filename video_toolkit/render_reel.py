@@ -28,10 +28,10 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from video_toolkit.paths import NotFound, WorkspaceNotFound, find_brand, workspace_root
+from video_toolkit.paths import NotFound, WorkspaceNotFound, find_brand, toolkit_root, workspace_root
 
 # Sibling-module path only — export_srt.py genuinely lives beside this package.
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = toolkit_root()
 
 
 def detect_project(explicit: str | None) -> Path:

@@ -36,6 +36,8 @@ from pathlib import Path
 
 import requests
 
+from video_toolkit.paths import env_file_for_write
+
 sys.path.insert(0, str(Path(__file__).parent))
 from file_transfer import (
     upload_to_storage, download_from_r2, delete_from_r2,
@@ -331,12 +333,7 @@ def create_runpod_endpoint(
 
 def save_endpoint_to_env(endpoint_id: str, verbose: bool = True) -> bool:
     """Save endpoint ID to .env file."""
-    sys.path.insert(0, str(Path(__file__).parent))
-    try:
-        from config import find_workspace_root
-        env_path = find_workspace_root() / ".env"
-    except ImportError:
-        env_path = Path(__file__).parent.parent / ".env"
+    env_path = env_file_for_write()
 
     if verbose:
         print(f"Saving endpoint ID to {env_path}...")

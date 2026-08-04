@@ -16,7 +16,10 @@ import json
 import sys
 from pathlib import Path
 
-CATALOG_DIR = Path(__file__).resolve().parent.parent / "lib" / "lottie"
+from video_toolkit.paths import toolkit_root
+
+# lib/ ships with the toolkit, so this one really is toolkit-relative.
+CATALOG_DIR = toolkit_root() / "lib" / "lottie"
 
 # brand.json "colors" keys tried (in order) for each named color slot.
 BRAND_SLOT_MAP = {

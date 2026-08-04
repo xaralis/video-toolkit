@@ -26,14 +26,15 @@ def _load_workspace_env() -> None:
     depend on the directory a command happens to run from. Falls back to a
     plain load_dotenv() when there is no workspace (e.g. a bare checkout)."""
     try:
-        from video_toolkit.paths import workspace_root, WorkspaceNotFound
+        from video_toolkit.paths import find_env_file
     except ImportError:
         load_dotenv()
         return
-    try:
-        load_dotenv(workspace_root() / ".env")
-    except WorkspaceNotFound:
+    env_path = find_env_file()
+    if env_path is None:
         load_dotenv()
+    else:
+        load_dotenv(env_path)
 
 
 _load_workspace_env()

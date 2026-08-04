@@ -26,7 +26,7 @@ from pathlib import Path
 import boto3
 from botocore.config import Config
 
-from video_toolkit.paths import workspace_root
+from video_toolkit.paths import find_env_file, workspace_root
 
 CONTENT_TYPES = {
     ".mp4": "video/mp4",
@@ -122,8 +122,8 @@ def ensure_poster(proj: Path, rel: str) -> None:
 
 
 def load_env() -> None:
-    env = workspace_root() / ".env"
-    if not env.exists():
+    env = find_env_file()
+    if env is None:
         return
     for line in env.read_text().splitlines():
         line = line.strip()

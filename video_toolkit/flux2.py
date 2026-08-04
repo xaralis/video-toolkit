@@ -49,7 +49,9 @@ except ImportError as e:
     print("Install with: pip install requests Pillow python-dotenv")
     sys.exit(1)
 
-load_dotenv()
+from video_toolkit.paths import NotFound, env_file_for_write, find_brand, find_env_file
+
+load_dotenv(find_env_file())
 
 sys.path.insert(0, str(Path(__file__).parent))
 from file_transfer import download_from_url, get_r2_payload_config
@@ -217,8 +219,11 @@ def _hex_to_name(hex_color: str) -> str:
 
 def load_brand_colors(brand_name: str) -> str:
     """Load brand.json and return color description string for prompt injection."""
-    workspace = Path(__file__).parent.parent
-    brand_path = workspace / "brands" / brand_name / "brand.json"
+    try:
+        brand_path = find_brand(brand_name) / "brand.json"
+    except NotFound as e:
+        log(f"Brand not found: {e}", "warn")
+        return ""
     if not brand_path.exists():
         log(f"Brand not found: {brand_path}", "warn")
         return ""
@@ -676,12 +681,7 @@ def create_endpoint(
 
 def save_endpoint_to_env(endpoint_id: str, verbose: bool = True) -> bool:
     """Save endpoint ID to .env file."""
-    sys.path.insert(0, str(Path(__file__).parent))
-    try:
-        from config import find_workspace_root
-        env_path = find_workspace_root() / ".env"
-    except ImportError:
-        env_path = Path(__file__).parent.parent / ".env"
+    env_path = env_file_for_write()
 
     if verbose:
         print(f"Saving endpoint ID to {env_path}...")
