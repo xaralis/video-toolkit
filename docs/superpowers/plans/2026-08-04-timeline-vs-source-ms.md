@@ -22,7 +22,7 @@ Measured against the real code on 2026-08-04. A broll slowed to 0.5× — 4 s of
 
 ## Global Constraints
 
-- Every new formula must reduce to the current one at speed 1. **Existing tests must pass UNMODIFIED.** If a test needs editing to go green, stop — the generalisation is wrong, not the test.
+- Every new formula must reduce to the current one at speed 1. **Existing tests must pass UNMODIFIED.** If a test needs editing to go green, stop — the generalisation is wrong, not the test. The one deliberate behaviour change in this plan is Task 0, which changes which items *count* as 1×; Tasks 1-7 change no output at 1×.
 - Audio beds are never time-stretched (settled in the clip-speed work): `resizeAudioItem` (`layered-adapter.ts:455-465`) and the linked-bed split (`:846`) are 1:1 **on purpose**. Do not add speed conversion to any audio path.
 - English UI strings. `ed:` prefix at the FRONT of the whole Tailwind class.
 - No new npm dependency, for any reason.
@@ -56,11 +56,175 @@ report rather than reshaping the fix around a guess.
 
 | File | Responsibility |
 |---|---|
+| `lib/reel-config-base/speed.ts` | Owns the ratio, and the threshold below which a span difference is not a speed at all (Task 0). |
 | `lib/reel-config-base/clip-time.ts` *(new)* | The only place that converts between a clip's timeline ms and its source ms, plus the four derived quantities callers actually want. |
 | `lib/reel-config-base/clip-time.test.ts` *(new)* | Unit tests for the above, at 1×, 0.5× and 2×. |
 | `lib/editor/src/timeline/layered-adapter.ts` | `resizeBoundsMs`, `resizeVideoItem`, `splitItem`, `slipVideoItem` delegate to `clip-time`. |
 | `lib/reel-config-base/handle-room.ts` | `handleRoomFrames` reports room in TIMELINE frames. |
 | `lib/editor/src/timeline/speed-invariant.test.ts` *(new)* | The cross-operation invariant: trim, split and slip preserve `deriveSpeed`. |
+
+---
+
+### Task 0: a sub-frame span difference is not a speed
+
+**Files:**
+- Modify: `lib/reel-config-base/speed.ts`
+- Test: `lib/reel-config-base/speed.test.ts`
+
+**Interfaces:**
+- Produces: `SPEED_SNAP_MS` (number) exported from `lib/reel-config-base/speed.ts`; `deriveSpeed` keeps its signature `(item: { startMs; endMs; sourceInMs; sourceOutMs }) => number`.
+
+**This task must come FIRST.** Every later task's arithmetic runs through
+`deriveSpeed`, so changing what it returns afterwards would re-open every case
+they pin.
+
+**Why (measured on a real project, 2026-08-04).** `pp-u-kamenne-vily` in the
+progpce brand repo has 8 video items. **Six of them derive a speed that is not
+1**: seg-002 0.99870, seg-003 1.00136, seg-004 0.99779, seg-005 1.00386,
+seg-006 0.99831, seg-008 1.00116. Nobody set a speed on any of them. The two
+spans differ by 7-13 ms — rounding residue from a cut-tune pass that adjusted
+the timeline span and the source span by slightly different amounts.
+
+At 30 fps a frame is 33.3 ms, so 7-13 ms is **under half a frame**: a difference
+the output cannot represent. What it *can* do is be treated as intent:
+
+- `hasSpeedChanges` returns `true` for all six, so the editor's Speed section
+  opens pre-expanded with a dirty marker, telling the author they set a speed
+  they never set. **Verified against the shipped function, not assumed.**
+- `SegmentMedia` passes a `playbackRate` of 0.9987 to `OffthreadVideo`.
+- Every trim, split and slip on those items runs the conflated arithmetic the
+  rest of this plan fixes, shifting `endMs` by those 7-13 ms against a
+  neighbour.
+
+Note what this is NOT: the playback error is imperceptible. The divergence
+between picture-time and bed-time inside a clip reaches at most the span
+difference itself (7-13 ms) and the picture lands exactly on its intended
+out-point at the clip's end, so nothing carries into the next clip. 13 ms is
+well under the ~45 ms lip-sync threshold. **Do not justify this task, in code
+comments or the commit message, as fixing visible drift — it is not. It stops
+rounding noise from being read as authorial intent by the editing maths and the
+inspector.**
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `lib/reel-config-base/speed.test.ts`:
+
+```ts
+import { SPEED_SNAP_MS } from './speed';
+
+describe('a sub-frame span difference reads as exactly 1x', () => {
+  // The six real items from pp-u-kamenne-vily, by name — these are the cases
+  // this rule exists for.
+  const REAL_CASES = [
+    ['seg-002', 5200, 10567, 0, 5360],
+    ['seg-003', 10567, 15700, 0, 5140],
+    ['seg-004', 15700, 18867, 0, 3160],
+    ['seg-005', 18867, 22234, 0, 3380],
+    ['seg-006', 22234, 28134, 900, 6790],
+    ['seg-008', 32134, 38167, 4860, 10900],
+  ] as const;
+
+  it.each(REAL_CASES)('%s is 1x, not rounding noise', (_id, startMs, endMs, sourceInMs, sourceOutMs) => {
+    expect(deriveSpeed({ startMs, endMs, sourceInMs, sourceOutMs })).toBe(1);
+  });
+
+  it.each(REAL_CASES)('%s therefore reports no speed change to the inspector', (_id, startMs, endMs, sourceInMs, sourceOutMs) => {
+    expect(hasSpeedChanges({ kind: 'broll', startMs, endMs, sourceInMs, sourceOutMs })).toBe(false);
+  });
+
+  it('snaps a difference just inside the threshold', () => {
+    const d = SPEED_SNAP_MS - 1;
+    expect(deriveSpeed({ startMs: 0, endMs: 5000, sourceInMs: 0, sourceOutMs: 5000 + d })).toBe(1);
+  });
+
+  it('does NOT snap a difference just outside it', () => {
+    const d = SPEED_SNAP_MS + 1;
+    expect(deriveSpeed({ startMs: 0, endMs: 5000, sourceInMs: 0, sourceOutMs: 5000 + d })).not.toBe(1);
+  });
+
+  it('leaves a deliberate slow-down completely alone', () => {
+    // 0.5x over 8s is a 4000ms difference — three orders of magnitude past the
+    // threshold. A snap that ever touched this would be a bug, not a rounding fix.
+    expect(deriveSpeed({ startMs: 0, endMs: 8000, sourceInMs: 0, sourceOutMs: 4000 })).toBe(0.5);
+  });
+
+  it('leaves a deliberate speed-up alone', () => {
+    expect(deriveSpeed({ startMs: 0, endMs: 4000, sourceInMs: 0, sourceOutMs: 8000 })).toBe(2);
+  });
+});
+```
+
+- [ ] **Step 2: Run it and watch it fail**
+
+Run: `cd lib/editor && npx vitest run ../reel-config-base/speed.test.ts`
+Expected: FAIL — `SPEED_SNAP_MS` is not exported, and once you add it the six
+real cases return 0.99870 etc. rather than 1.
+
+- [ ] **Step 3: Implement**
+
+Add to `lib/reel-config-base/speed.ts`:
+
+```ts
+/** How far the two spans may disagree and still mean "the same length".
+ *
+ *  Half a frame at the toolkit's canonical 30 fps (see docs/video-timing.md —
+ *  every video here runs at 30fps). A difference smaller than this cannot be
+ *  represented in the output at all: it is under one frame, so no frame of the
+ *  render is different for it.
+ *
+ *  It exists because ordinary editing produces such differences constantly.
+ *  A real case: six of the eight items in pp-u-kamenne-vily ended a cut-tune
+ *  pass with spans 7-13 ms apart, and every one of them therefore derived a
+ *  speed of 0.998-1.004. Nobody had set a speed on any of them. Faithfully
+ *  reporting that ratio meant the inspector showed a speed change that no
+ *  author made, and the editing maths treated the noise as a real ratio.
+ *
+ *  Deliberately absolute rather than proportional: a proportional tolerance
+ *  scales with clip length, so the same 1% would be a third of a frame on a
+ *  short clip and ten frames on a 30-second one. What matters is whether the
+ *  difference is representable, and that is measured in frames. */
+export const SPEED_SNAP_MS = 1000 / 30 / 2;
+```
+
+and, in `deriveSpeed`, before clamping:
+
+```ts
+export function deriveSpeed(item: { startMs: number; endMs: number; sourceInMs: number; sourceOutMs: number }): number {
+  const timelineMs = item.endMs - item.startMs;
+  if (timelineMs <= 0) return SPEED_DEFAULTS.speed;
+  const sourceMs = item.sourceOutMs - item.sourceInMs;
+  // A sub-frame disagreement is the same length, not a speed. See SPEED_SNAP_MS.
+  if (Math.abs(sourceMs - timelineMs) < SPEED_SNAP_MS) return SPEED_DEFAULTS.speed;
+  return clampSpeed(sourceMs / timelineMs);
+}
+```
+
+Update `deriveSpeed`'s existing doc comment to say the ratio is snapped to 1
+below `SPEED_SNAP_MS`, and why. Do not touch `clampSpeed` or `hasSpeedChanges`
+— `hasSpeedChanges` reads `deriveSpeed`, so it inherits this for free, which is
+what the second test block above pins.
+
+- [ ] **Step 4: Run it and watch it pass**
+
+Run: `cd lib/editor && npx vitest run ../reel-config-base/speed.test.ts`
+Expected: PASS, including the 16 pre-existing cases **unmodified**. If a
+pre-existing case goes red, read it before touching it: a fixture built with
+spans a few ms apart and asserting a non-1 speed was asserting the bug.
+
+- [ ] **Step 5: Full suite + typecheck**
+
+Both commands from Verification. Watch for movement outside `speed.test.ts` —
+`SegmentMedia` stops emitting `playbackRate` for a near-1 item, so
+`segment-media-merge-baseline.test.tsx` is the one to watch. It **must pass
+unmodified**; its fixtures have spans in lockstep, so their difference is
+exactly 0 and the snap changes nothing for them.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add lib/reel-config-base/speed.ts lib/reel-config-base/speed.test.ts
+git commit -m "fix(reel-config): a sub-frame span difference is not a playback speed"
+```
 
 ---
 
