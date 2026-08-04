@@ -28,8 +28,9 @@ import { aspectLabel, failedSources } from './project-summary';
 import { handleRoomFrames, maxTransitionFrames, type HandleRoom } from '@video-toolkit/lib/reel-config-base/handle-room';
 import { transitionAlignmentOf } from '@video-toolkit/lib/reel-config-base/transition-schema';
 import { GRADE_DEFAULTS, hasGradeChanges } from '@video-toolkit/lib/reel-config-base/grade';
+import { FRAMING_DEFAULTS, MAX_ZOOM, resolveFraming, hasCropChanges, hasFitChanges } from '@video-toolkit/lib/reel-config-base/framing';
 import { useLiveField } from './controls/use-live-field';
-import { fieldCls, labelCls, inputCls, rowCls, readonlyValueCls, sectionCls, resetBtnCls, dirtyDotCls, countBadgeCls } from './controls/field-classes';
+import { fieldCls, labelCls, inputCls, rowCls, readonlyValueCls, sectionCls, resetBtnCls, dirtyDotCls, countBadgeCls, disabledCls } from './controls/field-classes';
 import { ScrubField } from './controls/ScrubField';
 import { SliderField } from './controls/SliderField';
 import { TimecodeField } from './controls/TimecodeField';
@@ -189,7 +190,17 @@ function CheckboxField({ lbl, value, onChange }: { lbl: string; value: boolean |
 // round), with a native swatch beside it for picking. The text input keeps
 // `aria-label={lbl}` so a colour field is queried exactly like any other; the
 // swatch is labelled separately.
-function ColorField({ lbl, value, onCommit }: { lbl: string; value: string | undefined; onCommit: (s: string) => void }) {
+function ColorField({
+  lbl,
+  value,
+  onCommit,
+  disabled,
+}: {
+  lbl: string;
+  value: string | undefined;
+  onCommit: (s: string) => void;
+  disabled?: boolean;
+}) {
   const f = useLiveField(value ?? '');
   const swatch = /^#[0-9a-fA-F]{6}$/.test(f.text) ? f.text : '#000000';
   return (
@@ -199,6 +210,7 @@ function ColorField({ lbl, value, onCommit }: { lbl: string; value: string | und
         <input
           aria-label={`${lbl} swatch`}
           type="color"
+          disabled={disabled}
           value={swatch}
           onChange={(e) => {
             f.setText(e.target.value);
@@ -208,13 +220,14 @@ function ColorField({ lbl, value, onCommit }: { lbl: string; value: string | und
           // input beside it uses (`ed:border-line ed:bg-control`) so the pair
           // matches; the inline style below sets border WIDTH/STYLE only —
           // never colour — so it can't out-rank those two utilities.
-          className="ed:border-line ed:bg-control"
+          className={disabled ? `ed:border-line ed:bg-control ${disabledCls}` : 'ed:border-line ed:bg-control'}
           style={{ width: 28, height: 26, padding: 0, borderWidth: 1, borderStyle: 'solid', borderRadius: 4, flex: '0 0 auto' }}
         />
         <input
           aria-label={lbl}
-          className={inputCls}
+          className={disabled ? `${inputCls} ${disabledCls}` : inputCls}
           type="text"
+          disabled={disabled}
           value={f.text}
           onFocus={f.onFocus}
           onBlur={f.onBlur}
@@ -1041,95 +1054,245 @@ export function LayeredInspector({ reel, selectedId, onChange, onSeek, fps, acce
               <TimecodeField lbl="Trim in" ms={v.sourceInMs} fps={fps} onCommit={(ms) => patchItem('video', id, { sourceInMs: ms })} />
               <TimecodeField lbl="Trim out" ms={v.sourceOutMs} fps={fps} onCommit={(ms) => patchItem('video', id, { sourceOutMs: ms })} />
             </Row>
-            {/* Framing — how this shot meets the frame. `Fit` comes FIRST
-                because it decides what the controls under it mean: under
-                blur-pad the whole shot is visible, so there is no crop to
-                focus and the crop controls go inert (greyed, value kept, with
-                a reason printed below). */}
+            {/* Framing — three independent axes (source window, fit, pad +
+                placement), not the tangled `fit` enum this used to be. The
+                reshaping insight: `blur-pad` was never a third fit, it is
+                `contain` whose pad happens to be a blurred copy of the shot
+                (see framing.ts's file-level comment) — `resolveFraming` is
+                what lets a legacy `fit: 'blur-pad'` item keep showing as
+                *Whole shot* + *Blurred copy* here instead of looking
+                unselected. Two `Collapsible` sections, one per axis-group,
+                mirror the model directly: "Crop & zoom" is the source window
+                (independent of fit), "Fit & pad" is how that window meets the
+                frame. Same mechanism as Color/Music boost/Effects above, not
+                a fifth pattern: `defaultOpen` from the shared
+                `hasCropChanges`/`hasFitChanges` predicates (framing.ts, the
+                one place — besides this render — that reads these fields), a
+                dirty dot that survives a manual collapse, and a section-level
+                reset that clears exactly its own fields. Namespaced keys
+                (`crop-`, `fit-`) for the same reason the Color/Effects
+                sections are — see their comment above for the duplicate-
+                React-key collision this avoids. */}
             {(() => {
-              const isBlurPad = (v as { fit?: string }).fit === 'blur-pad';
-              const backdrop = v as { backdropBlur?: number; backdropDim?: number };
+              const framing = resolveFraming(v);
+              const rawCrop = v.crop as { width?: number } | undefined;
+              // Round the display — width is stored as 1/zoom, so the round-trip
+              // otherwise shows e.g. 3.0003 instead of 3.
+              const zoom = Math.round((1 / (rawCrop?.width ?? 1)) * 100) / 100;
+              // Genuinely nothing to pan: `contain` at zoom 1 shows the whole
+              // shot with no slack to choose a window from. At any zoom > 1,
+              // or under `cover`, the pan point is live — the design spec's
+              // finding that `focalX/focalY` are NOT inert under blur-pad:
+              // `cropCoverStyle` emits `transformOrigin` regardless of fit,
+              // and the renderer's `foregroundStyle` never overrides it, so
+              // the pan point survives into a contained foreground.
+              const noCropSlack = framing.fit === 'contain' && zoom === 1;
+              const cropTouched = hasCropChanges(v);
+              const fitTouched = hasFitChanges(v);
               return (
                 <>
-                  <SegmentedField
-                    lbl="Fit"
-                    value={isBlurPad ? 'blur-pad' : 'cover'}
-                    options={['cover', 'blur-pad']}
-                    optionLabel={(o) => (o === 'blur-pad' ? 'Whole shot + blurred backdrop' : 'Fill frame')}
-                    // `cover` clears the field rather than writing it: the
-                    // schema leaves `fit` optional precisely so an untouched
-                    // item doesn't grow a `fit: 'cover'` key on every
-                    // round-trip through the editor.
-                    onChange={(s) => patchItem('video', id, { fit: s === 'blur-pad' ? 'blur-pad' : undefined })}
-                  />
-                  <Row>
-                    <ScrubField
-                      lbl="Zoom (1 = none)"
-                      min={1}
-                      step={0.05}
-                      // Round the display — width is stored as 1/zoom, so the round-trip
-                      // otherwise shows e.g. 3.0003 instead of 3.
-                      value={Math.round((1 / ((v.crop as { width?: number } | undefined)?.width ?? 1)) * 100) / 100}
-                      // "1 = none" IS the label's own stated default — genuinely
-                      // meaningful, unlike most ScrubFields here. Resetting clears
-                      // `crop` entirely (same as committing 1 does above), not just
-                      // the zoom number.
-                      defaultValue={1}
-                      onCommit={(z) =>
-                        patchItem('video', id, {
-                          crop: z > 1 ? { ...((v.crop as object) ?? {}), width: 1 / z } : undefined,
-                        })
+                  <Collapsible
+                    key={`crop-${id}`}
+                    id={`crop-${id}`}
+                    defaultOpen={cropTouched}
+                    title={
+                      <span className="ed:inline-flex ed:items-center ed:gap-1.5">
+                        Crop &amp; zoom
+                        {cropTouched && <span aria-hidden="true" data-testid="crop-dirty-dot" className={dirtyDotCls} />}
+                      </span>
+                    }
+                    right={
+                      cropTouched && (
+                        <button
+                          type="button"
+                          aria-label="Reset crop & zoom"
+                          title="Reset crop & zoom"
+                          onClick={() => patchItem('video', id, { crop: undefined, focalX: undefined, focalY: undefined })}
+                          className={resetBtnCls}
+                        >
+                          <RotateCcwIcon size={12} />
+                        </button>
+                      )
+                    }
+                  >
+                    <Row>
+                      <ScrubField
+                        lbl="Zoom (1 = none)"
+                        min={1}
+                        max={MAX_ZOOM}
+                        step={0.05}
+                        value={zoom}
+                        // "1 = none" IS the label's own stated default — genuinely
+                        // meaningful, unlike most ScrubFields here. Resetting clears
+                        // `crop` entirely (same as committing 1 does above), not just
+                        // the zoom number.
+                        defaultValue={1}
+                        onCommit={(z) =>
+                          patchItem('video', id, {
+                            crop: z > 1 ? { ...((v.crop as object) ?? {}), width: 1 / z } : undefined,
+                          })
+                        }
+                      />
+                      <SliderField
+                        lbl="Crop focus X"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={v.focalX}
+                        // Matches cropCoverStyle's own fallback (crop.ts) — an
+                        // unset focal point renders centred, not hard-left.
+                        fallback={FRAMING_DEFAULTS.focalX}
+                        disabled={noCropSlack}
+                        onCommit={(n) => patchItem('video', id, { focalX: n })}
+                      />
+                      <SliderField
+                        lbl="Crop focus Y"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={v.focalY}
+                        fallback={FRAMING_DEFAULTS.focalY}
+                        disabled={noCropSlack}
+                        onCommit={(n) => patchItem('video', id, { focalY: n })}
+                      />
+                    </Row>
+                    {noCropSlack && (
+                      <p className={noteCls}>Nothing is cropped at this zoom — zoom in to choose what shows.</p>
+                    )}
+                  </Collapsible>
+                  <Collapsible
+                    key={`fit-${id}`}
+                    id={`fit-${id}`}
+                    defaultOpen={fitTouched}
+                    title={
+                      <span className="ed:inline-flex ed:items-center ed:gap-1.5">
+                        Fit &amp; pad
+                        {fitTouched && <span aria-hidden="true" data-testid="fit-dirty-dot" className={dirtyDotCls} />}
+                      </span>
+                    }
+                    right={
+                      fitTouched && (
+                        <button
+                          type="button"
+                          aria-label="Reset fit & pad"
+                          title="Reset fit & pad"
+                          onClick={() =>
+                            patchItem('video', id, {
+                              fit: undefined,
+                              pad: undefined,
+                              padColor: undefined,
+                              placeX: undefined,
+                              placeY: undefined,
+                              backdropBlur: undefined,
+                              backdropDim: undefined,
+                            })
+                          }
+                          className={resetBtnCls}
+                        >
+                          <RotateCcwIcon size={12} />
+                        </button>
+                      )
+                    }
+                  >
+                    <SegmentedField
+                      lbl="Fit"
+                      value={framing.fit}
+                      options={['cover', 'contain']}
+                      optionLabel={(o) => (o === 'contain' ? 'Whole shot' : 'Fill frame')}
+                      // `cover` clears the field rather than writing it: the
+                      // schema leaves `fit` optional precisely so an untouched
+                      // item doesn't grow a `fit: 'cover'` key on every
+                      // round-trip through the editor. NEVER writes the legacy
+                      // `'blur-pad'` value — it is a read-only alias now (see
+                      // resolveFraming's doc comment); only a hand-edited
+                      // config can still carry it.
+                      onChange={(s) => patchItem('video', id, { fit: s === 'contain' ? 'contain' : undefined })}
+                    />
+                    <SegmentedField
+                      lbl="Pad"
+                      value={framing.pad}
+                      options={['blur', 'color', 'none']}
+                      optionLabel={(o) => (o === 'blur' ? 'Blurred copy' : o === 'color' ? 'Colour' : 'None')}
+                      disabled={framing.fit === 'cover'}
+                      // `blur` clears the field, same "default clears the key"
+                      // convention `Fit` above uses. `color` writes black
+                      // explicitly (`padColor` has no numeric default to fall
+                      // back to — its absence means transparent, not black —
+                      // so only a hand-authored config can reach the
+                      // transparent-pad path; the editor never leaves it
+                      // implicit).
+                      onChange={(s) =>
+                        patchItem(
+                          'video',
+                          id,
+                          s === 'blur'
+                            ? { pad: undefined }
+                            : s === 'color'
+                              ? { pad: 'color', padColor: v.padColor ?? '#000000' }
+                              : { pad: 'none' },
+                        )
                       }
                     />
-                    <SliderField
-                      lbl="Crop focus X"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={v.focalX}
-                      // Matches cropCoverStyle's own fallback (crop.ts) — an
-                      // unset focal point renders centred, not hard-left.
-                      fallback={0.5}
-                      disabled={isBlurPad}
-                      onCommit={(n) => patchItem('video', id, { focalX: n })}
+                    {/* Plain literal colour, not the dual accent-or-color
+                        field (`AccentOrColorField` above) — a brand-accent pad
+                        is speculative and the dual field carries real
+                        complexity for a case nobody has asked for yet. Swap
+                        this for `AccentOrColorField` if/when a brand wants its
+                        accent usable as a pad colour. */}
+                    <ColorField
+                      lbl="Pad colour"
+                      value={v.padColor}
+                      disabled={framing.pad !== 'color'}
+                      onCommit={(s) => patchItem('video', id, { padColor: s })}
                     />
-                    <SliderField
-                      lbl="Crop focus Y"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={v.focalY}
-                      fallback={0.5}
-                      disabled={isBlurPad}
-                      onCommit={(n) => patchItem('video', id, { focalY: n })}
-                    />
-                  </Row>
-                  {isBlurPad && <p className={noteCls}>Nothing is cropped — the whole shot is visible.</p>}
-                  <Row>
-                    <SliderField
-                      lbl="Backdrop blur"
-                      min={0}
-                      max={80}
-                      step={1}
-                      // Shows the value the RENDERER will use, not an empty box
-                      // — the defaults live in two places by necessity (schema
-                      // and render), and a blank field would suggest "none".
-                      value={backdrop.backdropBlur ?? 32}
-                      fallback={32}
-                      disabled={!isBlurPad}
-                      onCommit={(n) => patchItem('video', id, { backdropBlur: n })}
-                    />
-                    <SliderField
-                      lbl="Backdrop dim"
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      value={backdrop.backdropDim ?? 0.45}
-                      fallback={0.45}
-                      disabled={!isBlurPad}
-                      onCommit={(n) => patchItem('video', id, { backdropDim: n })}
-                    />
-                  </Row>
+                    <Row>
+                      <SliderField
+                        lbl="Backdrop blur"
+                        min={0}
+                        max={80}
+                        step={1}
+                        value={v.backdropBlur}
+                        fallback={FRAMING_DEFAULTS.backdropBlur}
+                        disabled={framing.pad !== 'blur'}
+                        onCommit={(n) => patchItem('video', id, { backdropBlur: n })}
+                      />
+                      <SliderField
+                        lbl="Backdrop dim"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={v.backdropDim}
+                        fallback={FRAMING_DEFAULTS.backdropDim}
+                        disabled={framing.pad !== 'blur'}
+                        onCommit={(n) => patchItem('video', id, { backdropDim: n })}
+                      />
+                    </Row>
+                    <Row>
+                      <SliderField
+                        lbl="Position in frame X"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={v.placeX}
+                        fallback={FRAMING_DEFAULTS.placeX}
+                        disabled={framing.fit === 'cover'}
+                        onCommit={(n) => patchItem('video', id, { placeX: n })}
+                      />
+                      <SliderField
+                        lbl="Position in frame Y"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={v.placeY}
+                        fallback={FRAMING_DEFAULTS.placeY}
+                        disabled={framing.fit === 'cover'}
+                        onCommit={(n) => patchItem('video', id, { placeY: n })}
+                      />
+                    </Row>
+                    {framing.fit === 'cover' && (
+                      <p className={noteCls}>The shot fills the frame — there is nothing to position.</p>
+                    )}
+                  </Collapsible>
                 </>
               );
             })()}
