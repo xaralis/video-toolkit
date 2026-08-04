@@ -24,6 +24,7 @@ import requests
 sys.path.insert(0, os.path.dirname(__file__))
 from file_transfer import upload_to_r2, delete_from_r2  # noqa: E402
 from video_toolkit.textio import write_text_lf
+from video_toolkit.whisper_hallucinations import strip_hallucinated_segments
 try:  # run as `python -m video_toolkit.transcribe` or as a bare script
     from video_toolkit.paths import find_env_file
 except ImportError:  # pragma: no cover - only when the package isn't installed
@@ -96,6 +97,14 @@ def transcribe_one(
             shutil.rmtree(tmp_dir, ignore_errors=True)
     else:
         result = _transcribe_audio(input_path, language, endpoint, initial_prompt)
+    # Whisper ends a recording that trails off into silence with the subtitle
+    # credit line it learned from subtitled video ("Titulky vytvořil …"). Strip
+    # it here, at the source, and SAY SO — the caption overlay would otherwise
+    # render its first word over real footage and nothing upstream would
+    # explain where that word came from. See whisper_hallucinations.py.
+    result, removed = strip_hallucinated_segments(result)
+    for text in removed:
+        print(f"   dropped hallucinated segment: {text.strip()!r}")
     write_text_lf(output_path, json.dumps(result, indent=2, ensure_ascii=False))
     return result
 

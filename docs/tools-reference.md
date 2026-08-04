@@ -267,6 +267,27 @@ Used by `campaign-reels` to drive auto-generated captions. Word-level
 timestamps. Modal-deployed; cold start ~30-60s, warm ~10-20s per 5-min
 clip.
 
+**Subtitle-credit hallucinations are stripped automatically.** A recording that
+trails off into silence comes back with the credit line Whisper learned from
+subtitled video appended as a final segment — in Czech
+`Titulky vytvořil <nick> <url>`, in English the Amara.org community credit.
+`transcribe` removes those on the way out and prints each one it dropped. The
+damage it prevents is quiet: only the FIRST word of such a segment carries a
+real duration, so what reached the screen was a bare `Titulky` over real
+footage, with nothing upstream to explain it.
+
+Transcripts written before that filter existed can be cleaned in place:
+
+```bash
+python3 -m video_toolkit.whisper_hallucinations public/recordings/*.transcript.json
+```
+
+The rule is deliberately narrow — a segment is dropped only when its ENTIRE
+text is a known credit form, so a sentence that merely mentions "titulky"
+survives. Add a new pattern to `HALLUCINATION_PATTERNS`
+(`video_toolkit/whisper_hallucinations.py`) only after seeing it come out of a
+real transcription; a speculative pattern deletes real speech.
+
 ## WebVTT export (web-program-intro)
 
 Wraps `transcribe.py` and chunks word-level transcripts into short
