@@ -167,7 +167,12 @@ export function EditorShell({
             {preview}
           </div>
         </div>
-        <div className="ed:w-80 ed:shrink-0 ed:bg-panel ed:border-l ed:border-line ed:overflow-hidden ed:text-ink-3 ed:text-[13px]">
+        {/* 380px, not the 320 it started at. The inspector's fields sit in
+            two columns, so the panel's width is what decides whether a label
+            fits on one line — at 320 "Position in frame X" wrapped and stole a
+            row's height from everything below it. The stage next door is
+            `flex-1 min-w-0`, so it simply gives up the difference. */}
+        <div className="ed:w-[380px] ed:shrink-0 ed:bg-panel ed:border-l ed:border-line ed:overflow-hidden ed:text-ink-3 ed:text-[13px]">
           {inspector ?? 'Inspector (coming soon)'}
         </div>
       </div>
