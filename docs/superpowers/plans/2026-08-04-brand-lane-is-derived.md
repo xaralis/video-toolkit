@@ -505,7 +505,44 @@ Change line 72 to take the raw setter, and add the normalising wrapper right bel
 
 - [ ] **Step 4: Normalise on load too**
 
+**Overridden by the user during Task 3 fix round 1** — the snippet below is what actually
+shipped, and it diverges from this plan's original draft on purpose. The original draft (kept
+below as struck-through history) normalised `savedReel` to the SAME derived reel as `reel`,
+reasoning that the brand-span fix wasn't the user's edit. Review caught the consequence: with
+both sides of the `dirty` compare equal at open, `dirty` is `false` from the first render, the
+Save button stays disabled, and a `Root.tsx` literal authored before this plan never gets its
+correction written back — the render keeps reading the stale `defaultProps` value forever. The
+user ruled that `savedReel` must keep the RAW loaded reel instead, so the editor opens dirty
+with the correction as its one pending change, savable in a single click.
+
 At `lib/editor/host/EditorHost.tsx:171-179`, replace the `.then` body with:
+
+```ts
+      .then((data) => {
+        // Normalise on load as well as on change: a Root.tsx literal written
+        // before the brand span was derived carries a stale end, and the user
+        // would otherwise see the old span until their first unrelated edit.
+        //
+        // RULING (overrides an earlier draft of this comment, which argued the
+        // opposite): `savedReel` keeps the RAW loaded reel, not the normalised
+        // one. The correction IS a change relative to what is on disk — the
+        // render still reads the stale `defaultProps` literal until it's
+        // written back — so the editor must open dirty and let one Save
+        // persist it. Normalising `savedReel` too would make `dirty` false at
+        // open (both sides of the compare would be the same object) and Save
+        // would stay disabled, leaving the on-disk literal stale forever: the
+        // exact preview/render divergence this plan exists to remove.
+        const raw = (data as { reel: LayeredReel }).reel;
+        const r = withDerivedBrandSpan(raw, fps);
+        resetHistory(r);
+        setSavedReel(raw);
+      })
+```
+
+Add `fps` to that `useEffect`'s dependency array (it is currently `[]`).
+
+<details>
+<summary>Original draft (superseded — kept for history, do not implement)</summary>
 
 ```ts
       .then((data) => {
@@ -521,7 +558,10 @@ At `lib/editor/host/EditorHost.tsx:171-179`, replace the `.then` body with:
       })
 ```
 
-Add `fps` to that `useEffect`'s dependency array (it is currently `[]`).
+This was found to make `dirty` false at load whenever a correction happened, silently
+preventing the fix from ever reaching disk. Do not use this version.
+
+</details>
 
 - [ ] **Step 5: Run the test — expect PASS**
 

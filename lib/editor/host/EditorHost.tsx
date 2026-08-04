@@ -198,12 +198,20 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
         // Normalise on load as well as on change: a Root.tsx literal written
         // before the brand span was derived carries a stale end, and the user
         // would otherwise see the old span until their first unrelated edit.
-        // `savedReel` gets the SAME normalised reel deliberately — the
-        // correction is a derivation, not the user's edit, and flagging the
-        // editor dirty the instant it opens would be noise.
-        const r = withDerivedBrandSpan((data as { reel: LayeredReel }).reel, fps);
+        //
+        // RULING (overrides an earlier draft of this comment, which argued the
+        // opposite): `savedReel` keeps the RAW loaded reel, not the normalised
+        // one. The correction IS a change relative to what is on disk — the
+        // render still reads the stale `defaultProps` literal until it's
+        // written back — so the editor must open dirty and let one Save
+        // persist it. Normalising `savedReel` too would make `dirty` false at
+        // open (both sides of the compare would be the same object) and Save
+        // would stay disabled, leaving the on-disk literal stale forever: the
+        // exact preview/render divergence this plan exists to remove.
+        const raw = (data as { reel: LayeredReel }).reel;
+        const r = withDerivedBrandSpan(raw, fps);
         resetHistory(r);
-        setSavedReel(r);
+        setSavedReel(raw);
       })
       .catch((err) => console.error('Failed to load /props', err));
   }, [fps]);
