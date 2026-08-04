@@ -1,7 +1,20 @@
 # The brand lane is derived, so it must not be editable
 
-**Status:** decided 2026-08-04, deferred — to be implemented after the
-timeline-ms/source-ms plan (`docs/superpowers/plans/2026-08-04-timeline-vs-source-ms.md`).
+**Status:** **implemented 2026-08-04** on `fix/brand-lane-derived`, per
+`docs/superpowers/plans/2026-08-04-brand-lane-is-derived.md` (it did follow the
+timeline-ms/source-ms plan, `docs/superpowers/plans/2026-08-04-timeline-vs-source-ms.md`,
+as this line originally deferred it to). The brand span is now derived from
+`contentEndMs` by `withDerivedBrandSpan` (`lib/reel-config-base/content-end.ts`),
+applied at `EditorHost`'s single setter choke point and on load, and the inspector's
+brand panel is read-only — a control that cannot change the output is worse than no
+control.
+
+**Cause #1 (the brand repo's `CampaignBrandTrack` collapsing the lane to
+`Math.max(...endMs)`) was deliberately left in place.** Once every brand item carries
+the same derived end, that `Math.max` returns exactly that end, so the rendered picture
+is already correct; restructuring `PersistentOverlay` to honour per-item spans would be
+churn with no visible effect. If per-item brand spans ever become a real requirement,
+this is the place to start.
 
 ## The report
 
