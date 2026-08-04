@@ -435,9 +435,37 @@ describe('accumulateZoom — folding multiple pre-commit zoom captures', () => {
     pending = accumulateZoom(pending, 320, 1.05, { ...view0, scrollLeft: 410 });
     pending = accumulateZoom(pending, 340, 1.05, { ...view0, scrollLeft: 420 });
 
-    expect(pending.anchorX).toBe(300);
-    expect(pending.view).toEqual(view0);
-    expect(pending.factor).toBeCloseTo(1.05 ** 3, 10);
+    expect(pending).not.toBeNull();
+    expect(pending!.anchorX).toBe(300);
+    expect(pending!.view).toEqual(view0);
+    expect(pending!.factor).toBeCloseTo(1.05 ** 3, 10);
+  });
+
+  // The zoom CEILING case, measured in a real browser before it was fixed: a
+  // gesture whose first events zoom and whose last events land on the clamp
+  // (already at ZOOM_MAX, so `achieved` comes back as 1). The no-op events used
+  // to CLEAR the accumulated capture, so the layout effect found nothing and
+  // never scrolled at all — at 496%->500% `scrollLeft` did not move by a single
+  // pixel, and deeper in the range the same shape of burst missed by 1405px.
+  it('a no-op event does not discard a capture the same gesture already accumulated', () => {
+    let pending: PendingZoom | null = null;
+    pending = accumulateZoom(pending, 300, 1.05, view0);
+    pending = accumulateZoom(pending, 320, 1.05, { ...view0, scrollLeft: 410 });
+    const beforeClamp = pending;
+
+    // The gesture hits ZOOM_MAX: two more events, both no-ops.
+    pending = accumulateZoom(pending, 340, 1, { ...view0, scrollLeft: 420 });
+    pending = accumulateZoom(pending, 360, 1, { ...view0, scrollLeft: 430 });
+
+    expect(pending).toEqual(beforeClamp);
+    expect(pending!.factor).toBeCloseTo(1.05 ** 2, 10);
+    expect(pending!.anchorX).toBe(300);
+  });
+
+  it('a no-op event with nothing accumulated yet stays null — it does not mint an identity capture', () => {
+    // A factor-1 capture would be applied by the layout effect as a real
+    // anchor correction against whatever `scaleWidth` change came next.
+    expect(accumulateZoom(null, 300, 1, view0)).toBeNull();
   });
 
   it('starts a fresh capture once pendingZoom is null again (consumed, or gesture just began)', () => {

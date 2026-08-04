@@ -496,13 +496,27 @@ export function applyZoomLayout({
  *  The FIRST capture's `anchorX`/`view` are kept for every fold after it:
  *  that is the true pre-gesture geometry, and the anchor should stay where
  *  the gesture started, not migrate to wherever the pointer/viewport happen
- *  to read on a later, not-yet-committed event. */
+ *  to read on a later, not-yet-committed event.
+ *
+ *  A no-op `achieved` (1, i.e. the host was already at ZOOM_MIN/ZOOM_MAX and
+ *  the zoom did not happen) folds nothing in and returns `prev` UNTOUCHED —
+ *  including when `prev` is null, where the answer is "still no capture".
+ *  This is authoritative: the call sites' own `achieved === 1` early returns
+ *  are a fast path that skips a DOM measurement, not a second copy of the
+ *  rule. Discarding `prev` here was a real, measured defect: at the zoom
+ *  ceiling (496% -> 500%) a burst whose first events zoomed and whose last
+ *  events no-op'd lost its whole accumulated anchor, so `scrollLeft` never
+ *  moved and the content jumped; deeper into the range the same burst missed
+ *  by 1405px. Keeping `prev` is safe, because a capture only exists when some
+ *  event DID change `scaleWidth` — which means a commit is already scheduled,
+ *  and that commit's layout effect is what consumes and clears it. */
 export function accumulateZoom(
   prev: PendingZoom | null,
   anchorX: number,
   achieved: number,
   view: { scrollLeft: number; scrollWidth: number; clientWidth: number },
-): PendingZoom {
+): PendingZoom | null {
+  if (Math.abs(achieved - 1) < 1e-9) return prev;
   if (!prev) return { anchorX, factor: achieved, view };
   return { ...prev, factor: prev.factor * achieved };
 }
@@ -666,8 +680,8 @@ export interface LayeredTimelineProps {
  *
  *  `factor` must be the ACHIEVED ratio (what `scaleWidth` will actually move
  *  by, after the host's own clamp), not the requested one — every caller gets
- *  this from `zoomBy`'s return value. Passing `1` clears any pending anchor
- *  instead of scheduling one, for the no-op case (already at min/max zoom). */
+ *  this from `zoomBy`'s return value. Passing `1` (the no-op case — already at
+ *  min/max zoom) schedules nothing and leaves any pending anchor untouched. */
 export interface LayeredTimelineHandle {
   zoomAtCenter: (factor: number) => void;
 }
@@ -751,16 +765,20 @@ function LayeredTimelineImpl({
       // it does not re-lay-out synchronously, so the geometry read just below
       // is still the PRE-zoom geometry either way.
       const achieved = onZoomRef.current?.(f);
-      // No-op at the clamp boundary (already at ZOOM_MIN/ZOOM_MAX): actively
-      // clear any earlier pending anchor rather than leaving it stale.
-      // `scaleWidth` won't change, so the layout effect that would normally
-      // consume and clear `pendingZoom` never runs — an unrelated LATER zoom
-      // (e.g. a toolbar click) would otherwise apply this stale anchor with
-      // the wrong factor against content that has since resized.
-      if (!achieved || Math.abs(achieved - 1) < 1e-9) {
-        pendingZoom.current = null;
-        return;
-      }
+      // No-op at the clamp boundary (already at ZOOM_MIN/ZOOM_MAX): fold
+      // nothing in, but LEAVE any earlier capture alone. Clearing it here was a
+      // real defect — measured in a browser at the ceiling (496% -> 500%), a
+      // burst whose first events zoomed and whose last events no-op'd had its
+      // whole accumulated anchor wiped, so `scrollLeft` never moved at all and
+      // the content jumped. Deeper into the range the same burst missed by
+      // 1405px.
+      //
+      // Leaving it is safe, and the "stale anchor" this used to guard against
+      // cannot actually arise: a capture only EXISTS when `achieved !== 1`,
+      // which means `zoomBy` changed `scaleWidth`, which means a commit is
+      // already scheduled — and that commit's layout effect consumes and clears
+      // the capture. There is no path that captures without a commit following.
+      if (!achieved || Math.abs(achieved - 1) < 1e-9) return;
       const scrollTarget = scrollEl();
       if (!scrollTarget) return;
       const rect = scrollTarget.getBoundingClientRect();
@@ -946,16 +964,14 @@ function LayeredTimelineImpl({
   //
   // The caller passes the ACHIEVED factor (post-clamp), never the requested
   // one — see `onZoom`'s doc comment for why the distinction matters. A `1`
-  // means the zoom was a no-op (already at ZOOM_MIN/ZOOM_MAX): actively clear
-  // any earlier pending anchor rather than leaving it stale for a later,
-  // unrelated `scaleWidth` change to pick up (the same hazard the wheel
-  // handler's own no-op branch guards against).
+  // means the zoom was a no-op (already at ZOOM_MIN/ZOOM_MAX): fold nothing in
+  // and leave any earlier capture alone, exactly as the wheel handler's own
+  // no-op branch does, and for the same reason — clearing it would discard a
+  // live gesture's accumulated anchor the moment the gesture touched the
+  // ceiling.
   useImperativeHandle(ref, () => ({
     zoomAtCenter: (factor: number) => {
-      if (Math.abs(factor - 1) < 1e-9) {
-        pendingZoom.current = null;
-        return;
-      }
+      if (Math.abs(factor - 1) < 1e-9) return;
       const el = scrollEl();
       if (!el) return;
       // Same accumulation as the wheel handler — a fast run of toolbar/keyboard
