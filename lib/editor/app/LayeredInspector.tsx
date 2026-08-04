@@ -15,7 +15,7 @@ import {
   withTransitionField,
   type DraftTransition,
 } from './transitions';
-import { parseActionId, type LaneId } from '../src/timeline/layered-adapter';
+import { parseActionId, setItemSpeed, type LaneId } from '../src/timeline/layered-adapter';
 import type { AccentSlot } from '../../theming/palette';
 import { PLACEMENTS } from '../../theming/placement';
 import { effectCatalog, effectDefinition, humanizeKey, paramChoices, type EditorMeta, type ParamField } from './editor-meta';
@@ -29,6 +29,7 @@ import { handleRoomFrames, maxTransitionFrames, type HandleRoom } from '@video-t
 import { transitionAlignmentOf } from '@video-toolkit/lib/reel-config-base/transition-schema';
 import { GRADE_DEFAULTS, hasGradeChanges } from '@video-toolkit/lib/reel-config-base/grade';
 import { FRAMING_DEFAULTS, MAX_ZOOM, resolveFraming, hasCropChanges, hasFitChanges } from '@video-toolkit/lib/reel-config-base/framing';
+import { SPEED_DEFAULTS, SPEED_MIN, SPEED_MAX, deriveSpeed, hasSpeedChanges } from '@video-toolkit/lib/reel-config-base/speed';
 import { useLiveField } from './controls/use-live-field';
 import { fieldCls, labelCls, inputCls, rowCls, readonlyValueCls, sectionCls, resetBtnCls, dirtyDotCls, countBadgeCls, disabledCls } from './controls/field-classes';
 import { ScrubField } from './controls/ScrubField';
@@ -66,6 +67,12 @@ export interface LayeredInspectorProps {
    *  keeps working. */
   width?: number;
   height?: number;
+  /** The SAME Ripple toggle the timeline drags/trims already read (EditorHost
+   *  owns the one bit of state) — the Speed section's ONLY branch: on shifts
+   *  trailing items by the timeline-length delta, off absorbs the change into
+   *  the source window instead and touches nothing else. Optional, defaults
+   *  to off, matching every other optional prop here. */
+  ripple?: boolean;
   /** Which framing gesture mode the preview is currently driving for the
    *  selected clip/broll — `'off'` means the preview isn't interactive. Both
    *  modes now START from this panel's toggle row (never from a preview
@@ -925,11 +932,27 @@ export function LayeredInspector({
   sourceDurations,
   width = 0,
   height = 0,
+  ripple = false,
 }: LayeredInspectorProps) {
   // The dedicated `accentSlots` prop is the ONE source for the palette —
   // EditorMeta deliberately does not carry a copy (see editor-meta.ts).
   const slots = accentSlots;
   const durationsMs = sourceDurations ?? {};
+  // The Speed section's footage cap — how much source a Ripple-off speed-up
+  // may reach for before it runs past the real file. A simpler reading than
+  // `LayeredTimeline`'s own `capMsById` (that one also falls back to the
+  // SAVED reel's authored `sourceOutMs` for a clip added this session, which
+  // needs `savedReel` threaded in here too): decoded duration only. A clip
+  // with no decoded duration yet (still loading, or a still-image "video")
+  // is simply uncapped here, same as `slipVideoItem`'s own contract for an
+  // unknown footage length.
+  const footageMsById: Record<string, number> = {};
+  for (const v of reel.tracks.video) {
+    if (v.kind !== 'clip' && v.kind !== 'broll') continue;
+    const url = videoUrl(v);
+    const decoded = (url ? durationsMs[url] : 0) || 0;
+    if (decoded > 0) footageMsById[v.id] = decoded;
+  }
   // The room a video item at index `i` can lend — the SAME per-item reading
   // `boundaryDiagnostics` (LayeredTimeline.tsx) uses, so the length field's
   // ceiling and the timeline's hatching can never disagree about a boundary.
@@ -1428,6 +1451,79 @@ export function LayeredInspector({
               }
             >
               <GradeFields g={g} onPatch={patchGrade} />
+            </Collapsible>
+          );
+        })()}
+        {/* Speed — clip/broll only (a photo has no playback to speed up; a
+            multi-clip/card/outro has no single trim source either). No
+            authored field: it's the ratio the item's own timeline span and
+            source span already encode (`deriveSpeed`, speed.ts) — this
+            control WRITES that ratio by moving one of the two spans, per the
+            Ripple toggle (see `setItemSpeed`'s own comment for the full
+            on/off split). Same mechanism as Color/Music boost above: a
+            `Collapsible` keyed on the item's own id, collapsed at 1x
+            (nothing to show), expanded the moment it isn't, with the same
+            touched-but-collapsed dot and header-level reset Color uses (a
+            single per-field `SliderField` reset would return SPEED alone to
+            1x but leave e.g. a Ripple-off run's consumed source window
+            exactly where the last commit left it — there's only one number
+            here, so header reset and field reset do the same thing, but the
+            header one reads clearer next to "Speed" as a whole).
+
+            Percent, not an ×-multiplier: `100%`/`50%` is how Premiere/
+            Resolve/Final Cut all spell clip speed, and matching that
+            spelling is worth more than a shorter string. The caption below
+            the slider makes the effect legible without requiring the reader
+            to do the ratio math themselves — which span it reports depends
+            on Ripple, since that's the one the commit is actually going to
+            move. */}
+        {(v.kind === 'clip' || v.kind === 'broll') && (() => {
+          const speed = deriveSpeed(v);
+          const speedPct = Math.round(speed * 100);
+          const touched = hasSpeedChanges(v);
+          const timelineMs = v.endMs - v.startMs;
+          const sourceMs = v.sourceOutMs - v.sourceInMs;
+          const commitSpeed = (pct: number) =>
+            onChange(setItemSpeed(reel, id, pct / 100, { ripple, footageMsById }));
+          return (
+            <Collapsible
+              key={`speed-${id}`}
+              id={`speed-${id}`}
+              defaultOpen={touched}
+              title={
+                <span className="ed:inline-flex ed:items-center ed:gap-1.5">
+                  Speed
+                  {touched && <span aria-hidden="true" data-testid="speed-dirty-dot" className={dirtyDotCls} />}
+                </span>
+              }
+              right={
+                touched && (
+                  <button
+                    type="button"
+                    aria-label="Reset speed"
+                    title="Reset speed"
+                    onClick={() => commitSpeed(SPEED_DEFAULTS.speed * 100)}
+                    className={resetBtnCls}
+                  >
+                    <RotateCcwIcon size={12} />
+                  </button>
+                )
+              }
+            >
+              <SliderField
+                lbl="Speed (%)"
+                min={SPEED_MIN * 100}
+                max={SPEED_MAX * 100}
+                step={5}
+                value={speedPct}
+                fallback={SPEED_DEFAULTS.speed * 100}
+                onCommit={commitSpeed}
+              />
+              <div className={noteCls}>
+                {ripple
+                  ? `Clip is ${(timelineMs / 1000).toFixed(2)}s — trailing clips shift to match.`
+                  : `Uses ${(sourceMs / 1000).toFixed(2)}s of footage over the same ${(timelineMs / 1000).toFixed(2)}s.`}
+              </div>
             </Collapsible>
           );
         })()}

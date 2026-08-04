@@ -1,5 +1,6 @@
 import type { LayeredReel, VideoItem, AudioItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import { withTotalDuration } from '@video-toolkit/lib/reel-config-base/total-duration';
+import { clampSpeed } from '@video-toolkit/lib/reel-config-base/speed';
 import {
   isCut,
   CUT_KIND,
@@ -351,6 +352,86 @@ export function slipVideoItem(
       ),
     },
   };
+}
+
+// SPEED: change a clip/broll's playback speed — no new field, just which of
+// the item's two ALREADY-INDEPENDENT spans (timeline vs source, see
+// speed.ts) absorbs the change. Which one absorbs it is exactly what the
+// Ripple toggle already means everywhere else in this file ("may I disturb
+// your timing?"), applied to a THIRD kind of edit besides drag/trim:
+//
+//  - Ripple ON: the SOURCE window holds and the TIMELINE span changes (50%
+//    ⇒ twice as long), and — same algebra as `applyRipple` above, just
+//    driven by a speed value instead of a dragged edge — everything after
+//    the old end shifts by the exact delta. The case this serves: "I have 2s
+//    of footage for a 4s stretch of narration" — grow the clip to cover it
+//    and let the rest of the reel follow.
+//  - Ripple OFF: the TIMELINE span holds and the SOURCE window changes
+//    instead (50% ⇒ half as much footage over the same span) — nothing else
+//    on the timeline moves, not even a gap. The case: "the cut is already
+//    timed, I just want this shot slower" — don't touch anything else.
+//
+// This is a DIFFERENT mechanic from Ripple-off on a plain TRIM (there, an
+// edge genuinely moves and a gap/overwrite follows — see
+// `applyTimelineChange` below). What unites them is the PROMISE Ripple
+// makes, not the mechanism: off means "don't disturb anyone else's timing",
+// and for a speed change the only way to keep that promise is to absorb the
+// change into the source window rather than the timeline.
+//
+// `sourceInMs` never moves here (only `sourceOutMs` does) — the clip's first
+// visible frame must not jump every time speed changes. That means the
+// achievable speed is capped from the tail exactly like `slipVideoItem`
+// caps a slip: `footageMsById` (the same decoded-duration map) bounds how
+// much MORE footage a speed-up (>1x, Ripple off) can reach for; `sourceInMs`
+// itself staying untouched is what keeps the head bound (>= 0) trivially
+// satisfied rather than needing a separate clamp.
+export function setItemSpeed(
+  reel: LayeredReel,
+  id: string,
+  speed: number,
+  opts: { ripple?: boolean; footageMsById?: Record<string, number> } = {},
+): LayeredReel {
+  const item = reel.tracks.video.find((v) => v.id === id);
+  if (!isSlippable(item)) return reel;
+  const timelineMs = item.endMs - item.startMs;
+  if (timelineMs <= 0) return reel;
+  const clamped = clampSpeed(speed);
+
+  if (!opts.ripple) {
+    // Absorb into the source window; the timeline never moves.
+    const cap = opts.footageMsById?.[id];
+    const maxSpan = cap && cap > 0 ? Math.max(1, cap - item.sourceInMs) : Infinity;
+    const desiredSpan = timelineMs * clamped;
+    const span = Math.min(Math.max(desiredSpan, 1), maxSpan);
+    const sourceOutMs = item.sourceInMs + span;
+    if (sourceOutMs === item.sourceOutMs) return reel;
+    return {
+      ...reel,
+      tracks: { ...reel.tracks, video: reel.tracks.video.map((v) => (v.id === id ? { ...v, sourceOutMs } : v)) },
+    };
+  }
+
+  // Ripple on: hold the source window, change endMs, ripple the delta —
+  // same shift rule `applyRipple` uses for an 'end' edge (affects = anyone
+  // whose start is at/after the OLD end, self excluded).
+  const sourceSpan = item.sourceOutMs - item.sourceInMs;
+  const newEndMs = item.startMs + Math.round(sourceSpan / clamped);
+  if (newEndMs === item.endMs) return reel;
+  const oldEndMs = item.endMs;
+  const delta = newEndMs - oldEndMs;
+  const affects = (x: { id: string; startMs: number }) => x.id !== id && x.startMs >= oldEndMs;
+  const shift = <T extends { id: string; startMs: number; endMs: number }>(x: T): T =>
+    affects(x) ? { ...x, startMs: x.startMs + delta, endMs: x.endMs + delta } : x;
+  return withTotalDuration({
+    ...reel,
+    tracks: {
+      ...reel.tracks,
+      video: reel.tracks.video.map((v) => (v.id === id ? { ...v, endMs: newEndMs } : shift(v))),
+      overlays: reel.tracks.overlays.map(shift),
+      audio: reel.tracks.audio.map(shift),
+      brand: reel.tracks.brand.map(shift),
+    },
+  });
 }
 
 // An audio edge resize is trim-linked exactly like a clip: the left edge moves

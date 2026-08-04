@@ -672,6 +672,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
               accentSlots={accentSlots}
               meta={meta}
               sourceDurations={sourceDurations}
+              ripple={ripple}
             />
           }
           />

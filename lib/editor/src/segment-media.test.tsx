@@ -110,6 +110,84 @@ describe('SegmentMedia', () => {
     expect(style.transformOrigin).toBe('30% 70%');
   });
 
+  // ---- speed (derived playbackRate) ------------------------------------------
+  // SegmentMedia derives speed from the item's own two spans (see speed.ts)
+  // and passes it to OffthreadVideo as `playbackRate` — no schema field.
+  describe('speed', () => {
+    it('omits playbackRate when the two spans match (1x) — the existing merge baseline stays undisturbed', () => {
+      render(
+        <SegmentMedia
+          item={{
+            id: 'c1', kind: 'clip', startMs: 0, endMs: 5000, source: 'recordings/a.mp4',
+            sourceInMs: 2000, sourceOutMs: 7000,
+          }}
+          handles={{ inHalf: 0, outHalf: 0 }}
+        />,
+      );
+      expect(captured.video[0].playbackRate).toBeUndefined();
+      // At 1x, `endAt` keeps its ORIGINAL formula byte-for-byte (see the
+      // comment in SegmentMedia.tsx): round(7000/1000*30) = 210.
+      expect(captured.video[0].endAt).toBe(210);
+    });
+
+    it('passes the derived rate when the spans disagree, and widens endAt to the full on-screen span', () => {
+      render(
+        <SegmentMedia
+          item={{
+            // Timeline span 2000ms, source span 4000ms → speed 2x.
+            id: 'c1', kind: 'clip', startMs: 0, endMs: 2000, source: 'recordings/a.mp4',
+            sourceInMs: 0, sourceOutMs: 4000,
+          }}
+          handles={{ inHalf: 0, outHalf: 0 }}
+        />,
+      );
+      expect(captured.video[0].playbackRate).toBe(2);
+      // startFrom = round(0/1000*30) - 0 = 0; durationInFrames = round(2000/1000*30) = 60.
+      // endAt = startFrom + durationInFrames = 60 (NOT round(4000/1000*30) = 120 — that
+      // would keep the Sequence mounted 60 frames PAST the timeline slot's end).
+      expect(captured.video[0].startFrom).toBe(0);
+      expect(captured.video[0].endAt).toBe(60);
+    });
+
+    it('passes a rate < 1 for slow motion (timeline span bigger than the source span)', () => {
+      render(
+        <SegmentMedia
+          item={{
+            // Timeline span 4000ms, source span 2000ms → 0.5x.
+            id: 'c1', kind: 'broll', startMs: 0, endMs: 4000, source: 'broll/a.mp4',
+            sourceInMs: 0, sourceOutMs: 2000,
+          }}
+          handles={{ inHalf: 0, outHalf: 0 }}
+        />,
+      );
+      expect(captured.video[0].playbackRate).toBe(0.5);
+    });
+
+    it('applies to broll and clip identically (both are OffthreadVideo-rendered)', () => {
+      render(
+        <SegmentMedia
+          item={{
+            id: 'b1', kind: 'broll', startMs: 0, endMs: 4000, source: 'broll/a.mp4',
+            sourceInMs: 0, sourceOutMs: 2000,
+          }}
+          handles={{ inHalf: 0, outHalf: 0 }}
+        />,
+      );
+      expect(captured.video[0].playbackRate).toBe(0.5);
+    });
+
+    it('never applies to a photo — no source span exists to ratio against', () => {
+      render(
+        <SegmentMedia
+          item={{ id: 'p1', kind: 'photo', startMs: 0, endMs: 3000, source: 'photos/a.jpg' }}
+          handles={{ inHalf: 0, outHalf: 0 }}
+        />,
+      );
+      expect(captured.img[0].src).toBe('photos/a.jpg');
+      expect(captured.video).toHaveLength(0);
+    });
+  });
+
   // ---- media-path resolution (Phase 3 Task 6) --------------------------------
   // SegmentMedia now runs item.source through core's ONE media-path rule
   // (lib/theming/media-source.ts) before staticFile. These pin that BOTH

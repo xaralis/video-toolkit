@@ -1272,3 +1272,97 @@ describe('Source is displayed, not edited', () => {
       .toHaveAttribute('title', 'broll/BR-trida-miru_01_upright.mp4');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Speed — same mechanism as Color/Music boost above: a Collapsible starting
+// collapsed at 1x (the ratio the two spans already encode when untouched —
+// see reel-config-base/speed.ts) and expanded the moment it isn't, with the
+// same touched-but-collapsed dot and a header-level reset (there's only one
+// number here, but "Reset speed" reads clearer next to the section title
+// than a bare per-field icon would on its own).
+// ---------------------------------------------------------------------------
+describe('LayeredInspector gives Speed its own collapsible section', () => {
+  const untouched: LayeredReel = {
+    version: 'layered-1', meta: { topic: 't', totalDurationMs: 3000 },
+    tracks: {
+      video: [{ id: 'v1', kind: 'clip', startMs: 0, endMs: 3000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 3000 }],
+      audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [],
+    },
+  };
+  const touched: LayeredReel = {
+    ...untouched,
+    tracks: {
+      ...untouched.tracks,
+      video: [{ id: 'v1', kind: 'clip', startMs: 0, endMs: 3000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 1500 }], // 0.5x
+    },
+  };
+
+  it('starts collapsed when speed is at its default (1x)', () => {
+    render(<LayeredInspector reel={untouched} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByRole('button', { name: 'Speed' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText('Speed (%)')).toBeNull();
+  });
+
+  it('starts expanded when speed is off default', () => {
+    render(<LayeredInspector reel={touched} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByRole('button', { name: 'Speed' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText('Speed (%)')).toBeInTheDocument();
+  });
+
+  it('shows the derived percentage, not a stored field', () => {
+    render(<LayeredInspector reel={touched} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect((screen.getByLabelText('Speed (%)') as HTMLInputElement).value).toBe('50');
+  });
+
+  it('offers no Speed section for a photo — no playback to speed up', () => {
+    const photoReel: LayeredReel = {
+      ...untouched,
+      tracks: { ...untouched.tracks, video: [{ id: 'p1', kind: 'photo', startMs: 0, endMs: 3000, source: 'a.jpg' }] },
+    };
+    render(<LayeredInspector reel={photoReel} selectedId="video:p1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.queryByRole('button', { name: 'Speed' })).toBeNull();
+  });
+
+  it('a manual toggle survives a re-render of the same item', () => {
+    const { rerender } = render(
+      <LayeredInspector reel={untouched} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Speed' }));
+    expect(screen.getByLabelText('Speed (%)')).toBeInTheDocument();
+    rerender(<LayeredInspector reel={{ ...untouched }} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30} />);
+    expect(screen.getByLabelText('Speed (%)')).toBeInTheDocument();
+  });
+
+  it('Ripple ON: committing a speed grows endMs and shifts nothing else in this single-clip fixture, holding the source window', () => {
+    const onChange = vi.fn();
+    render(<LayeredInspector reel={untouched} selectedId="video:v1" onChange={onChange} onSeek={() => {}} fps={30} ripple />);
+    fireEvent.click(screen.getByRole('button', { name: 'Speed' }));
+    fireEvent.change(screen.getByLabelText('Speed (%)'), { target: { value: '50' } });
+    const next = onChange.mock.calls[0][0] as LayeredReel;
+    const v1 = next.tracks.video[0] as Extract<LayeredReel['tracks']['video'][number], { kind: 'clip' }>;
+    expect(v1.endMs).toBe(6000); // 3000 / 0.5
+    expect(v1.sourceInMs).toBe(0);
+    expect(v1.sourceOutMs).toBe(3000);
+  });
+
+  it('Ripple OFF: committing a speed absorbs into the source window and leaves endMs untouched', () => {
+    const onChange = vi.fn();
+    render(<LayeredInspector reel={untouched} selectedId="video:v1" onChange={onChange} onSeek={() => {}} fps={30} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Speed' }));
+    fireEvent.change(screen.getByLabelText('Speed (%)'), { target: { value: '50' } });
+    const next = onChange.mock.calls[0][0] as LayeredReel;
+    const v1 = next.tracks.video[0] as Extract<LayeredReel['tracks']['video'][number], { kind: 'clip' }>;
+    expect(v1.startMs).toBe(0);
+    expect(v1.endMs).toBe(3000);
+    expect(v1.sourceOutMs).toBe(1500); // 3000 * 0.5
+  });
+
+  it('the header reset returns speed to 1x', () => {
+    const onChange = vi.fn();
+    render(<LayeredInspector reel={touched} selectedId="video:v1" onChange={onChange} onSeek={() => {}} fps={30} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Reset speed' }));
+    const next = onChange.mock.calls[0][0] as LayeredReel;
+    const v1 = next.tracks.video[0] as Extract<LayeredReel['tracks']['video'][number], { kind: 'clip' }>;
+    expect(v1.sourceOutMs).toBe(3000); // back to matching endMs - startMs (ripple off by default)
+  });
+});

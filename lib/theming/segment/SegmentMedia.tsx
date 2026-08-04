@@ -11,6 +11,7 @@ import { resolveMediaSource, type MediaRole, type MediaSourceResolver } from '..
 import { anchorTiming } from '../../render/overlay-anchor';
 import { resolveFraming } from '../../reel-config-base/framing';
 import { focalObjectPosition } from '../../reel-config-base/focal';
+import { deriveSpeed } from '../../reel-config-base/speed';
 
 const VIDEO_EXT_RE = /\.(mp4|mov|webm)$/i;
 
@@ -289,6 +290,13 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
   // IS the on-screen span), so it plays from its own start with no borrow.
   const startFrom =
     item.kind === 'photo' ? undefined : Math.max(0, Math.round((item.sourceInMs / 1000) * fps) - handles.inHalf);
+
+  // Playback speed — see speed.ts: NOT a schema field, the ratio the item's
+  // two spans (timeline vs source) already encode. 1 for every item that
+  // predates this feature (their spans were always kept in lock step) and
+  // for `photo` (no `sourceInMs`/`sourceOutMs` to ratio against).
+  const speed = item.kind === 'photo' ? 1 : deriveSpeed(item);
+
   // Bound playback to the source out-point (+ the borrowed out-handle), so a
   // clip/broll never plays past what its trim covers — needed by callers
   // that don't wrap this in a Sequence sized to exactly that span (e.g. a
@@ -296,7 +304,38 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
   // existing single-media callers this is a no-op: their Sequence already
   // stops at this exact frame whenever on-screen span == source-trim span
   // (the 1× playback case), so nothing visible changes.
-  const endAt = item.kind === 'photo' ? undefined : Math.round((item.sourceOutMs / 1000) * fps) + handles.outHalf;
+  //
+  // At speed !== 1 this formula would truncate the video early: `endAt`
+  // (Remotion's `trimAfter`) bounds how long THIS element's own auto-wrapped
+  // Sequence stays mounted (see OffthreadVideo's trimBefore/trimAfter
+  // wrapping), and that bound is independent of `playbackRate` — it counts
+  // OUTER frames, not source frames. A slow-down (speed < 1, more outer
+  // frames than source frames) would hide the video after only
+  // `sourceSpanFrames` outer frames, well before the timeline slot
+  // (`durationInFrames`, already widened by the speed change) is up. So once
+  // speed departs from 1, `endAt` is redefined as `startFrom +
+  // durationInFrames` — the item's own full on-screen span — instead of the
+  // raw source out-point; `playbackRate` is what makes that span actually
+  // land on `sourceOutMs` by the end. At speed === 1 the two formulas are
+  // provably the same value (that's the invariant the old formula relied on
+  // without ever stating it), so the ORIGINAL formula is kept byte-for-byte
+  // for that case rather than switched to the algebraically-equal one —
+  // zero behavioural change for every clip that isn't using this feature.
+  const endAt =
+    item.kind === 'photo'
+      ? undefined
+      : speed === 1
+        ? Math.round((item.sourceOutMs / 1000) * fps) + handles.outHalf
+        : (startFrom as number) + durationInFrames;
 
-  return assemble((s) => <OffthreadVideo src={src} muted startFrom={startFrom} endAt={endAt} style={s} />);
+  return assemble((s) => (
+    <OffthreadVideo
+      src={src}
+      muted
+      startFrom={startFrom}
+      endAt={endAt}
+      style={s}
+      {...(speed !== 1 ? { playbackRate: speed } : {})}
+    />
+  ));
 };

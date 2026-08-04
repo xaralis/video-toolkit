@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { LayeredReel, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
-import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem, duplicateItem, clipFootageCapMs, resizeBoundsMs, laneOfRow, slipVideoItem, isSlippable } from './layered-adapter';
+import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem, duplicateItem, clipFootageCapMs, resizeBoundsMs, laneOfRow, slipVideoItem, isSlippable, setItemSpeed } from './layered-adapter';
 
 // Small schema-valid LayeredReel fixture: one item per track.
 const REEL: LayeredReel = {
@@ -1193,5 +1193,134 @@ describe('isSlippable', () => {
   });
   it('is false for undefined (item not found)', () => {
     expect(isSlippable(undefined)).toBe(false);
+  });
+});
+
+// setItemSpeed — the Ripple toggle is the ONLY branch: on holds the source
+// window and ripples the timeline-length delta to everything downstream
+// (the same shift rule applyRipple uses); off holds the timeline and absorbs
+// the change into the source window instead, touching nothing else at all.
+const SPEED_REEL: LayeredReel = {
+  version: 'layered-1',
+  meta: { topic: 'Speed', totalDurationMs: 5000 },
+  tracks: {
+    video: [
+      { id: 'v1', kind: 'clip', startMs: 0, endMs: 3000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 3000 },
+      { id: 'v2', kind: 'clip', startMs: 3000, endMs: 5000, source: 'b.mp4', sourceInMs: 0, sourceOutMs: 2000 },
+    ],
+    audio: [{ id: 'a1', startMs: 0, endMs: 3000, source: 'narration.mp3', sourceInMs: 0, sourceOutMs: 3000, followsVideoId: 'v1' }],
+    music: { baseVolumeDb: -8 },
+    overlays: [],
+    brand: [],
+  },
+};
+
+describe('setItemSpeed — Ripple ON (hold the source window, change the timeline span)', () => {
+  it('halving speed doubles the timeline span, holding sourceInMs/sourceOutMs', () => {
+    const out = setItemSpeed(SPEED_REEL, 'v1', 0.5, { ripple: true });
+    const v1 = out.tracks.video[0] as Extract<VideoItem, { kind: 'clip' }>;
+    expect(v1.startMs).toBe(0);
+    expect(v1.endMs).toBe(6000); // 3000 / 0.5
+    expect(v1.sourceInMs).toBe(0);
+    expect(v1.sourceOutMs).toBe(3000);
+  });
+
+  it('shifts the trailing clip by exactly the length delta', () => {
+    const out = setItemSpeed(SPEED_REEL, 'v1', 0.5, { ripple: true });
+    const v2 = out.tracks.video[1];
+    // delta = 6000 - 3000 = 3000.
+    expect(v2.startMs).toBe(6000);
+    expect(v2.endMs).toBe(8000);
+  });
+
+  it('does NOT time-stretch the linked audio bed — it stays exactly where it was, ending before the (now longer) picture', () => {
+    const out = setItemSpeed(SPEED_REEL, 'v1', 0.5, { ripple: true });
+    const a1 = out.tracks.audio[0];
+    expect(a1.startMs).toBe(0);
+    expect(a1.endMs).toBe(3000);
+    expect(a1.sourceInMs).toBe(0);
+    expect(a1.sourceOutMs).toBe(3000);
+    // The bed now ends well before its clip's new endMs (6000) — the stated,
+    // deliberate consequence, not a bug.
+    const v1 = out.tracks.video[0];
+    expect(a1.endMs).toBeLessThan(v1.endMs);
+  });
+
+  it('speeding up shrinks the timeline span and pulls the trailing clip left', () => {
+    const out = setItemSpeed(SPEED_REEL, 'v1', 2, { ripple: true });
+    const v1 = out.tracks.video[0] as Extract<VideoItem, { kind: 'clip' }>;
+    expect(v1.endMs).toBe(1500); // 3000 / 2
+    expect(out.tracks.video[1].startMs).toBe(1500);
+    expect(out.tracks.video[1].endMs).toBe(3500);
+  });
+
+  it('re-derives the total duration', () => {
+    const out = setItemSpeed(SPEED_REEL, 'v1', 0.5, { ripple: true });
+    expect(out.meta.totalDurationMs).toBe(8000);
+  });
+
+  it('is a no-op at 1x (already-matching spans)', () => {
+    expect(setItemSpeed(SPEED_REEL, 'v1', 1, { ripple: true })).toBe(SPEED_REEL);
+  });
+
+  it('is a no-op for a kind with no single source window', () => {
+    const reel: LayeredReel = { ...SPEED_REEL, tracks: { ...SPEED_REEL.tracks, video: [{ id: 'p1', kind: 'photo', startMs: 0, endMs: 3000, source: 'a.jpg' }] } };
+    expect(setItemSpeed(reel, 'p1', 0.5, { ripple: true })).toBe(reel);
+  });
+
+  it('is a no-op for an unknown id', () => {
+    expect(setItemSpeed(SPEED_REEL, 'nope', 0.5, { ripple: true })).toBe(SPEED_REEL);
+  });
+});
+
+describe('setItemSpeed — Ripple OFF (hold the timeline span, absorb into the source window)', () => {
+  it('halving speed halves the source span; the timeline (startMs/endMs) never moves', () => {
+    const out = setItemSpeed(SPEED_REEL, 'v1', 0.5, { ripple: false });
+    const v1 = out.tracks.video[0] as Extract<VideoItem, { kind: 'clip' }>;
+    expect(v1.startMs).toBe(0);
+    expect(v1.endMs).toBe(3000);
+    expect(v1.sourceInMs).toBe(0);
+    expect(v1.sourceOutMs).toBe(1500); // 3000 * 0.5
+  });
+
+  it('touches nothing else on the timeline — no gap, no overlap, no shift', () => {
+    const out = setItemSpeed(SPEED_REEL, 'v1', 0.5, { ripple: false });
+    // Every item's startMs/endMs across the whole reel, unchanged.
+    expect(out.tracks.video[1]).toEqual(SPEED_REEL.tracks.video[1]);
+    expect(out.tracks.audio[0]).toEqual(SPEED_REEL.tracks.audio[0]);
+  });
+
+  it('does not time-stretch the linked audio bed either', () => {
+    const out = setItemSpeed(SPEED_REEL, 'v1', 2, { ripple: false });
+    expect(out.tracks.audio[0]).toEqual(SPEED_REEL.tracks.audio[0]);
+  });
+
+  it('speeding up grows the source span (consumes more footage over the same span)', () => {
+    const out = setItemSpeed(SPEED_REEL, 'v1', 2, { ripple: false });
+    const v1 = out.tracks.video[0] as Extract<VideoItem, { kind: 'clip' }>;
+    expect(v1.sourceOutMs).toBe(6000); // 3000 * 2
+    expect(v1.startMs).toBe(0);
+    expect(v1.endMs).toBe(3000);
+  });
+
+  it('clamps the achievable speed at the footage cap — sourceInMs never moves (the clip\'s first frame must not jump)', () => {
+    const out = setItemSpeed(SPEED_REEL, 'v1', 2, { ripple: false, footageMsById: { v1: 4000 } });
+    const v1 = out.tracks.video[0] as Extract<VideoItem, { kind: 'clip' }>;
+    expect(v1.sourceInMs).toBe(0);
+    // Wanted sourceOutMs=6000 (2x), capped at the real file end (4000).
+    expect(v1.sourceOutMs).toBe(4000);
+  });
+
+  it('applies no cap when the footage length is unknown', () => {
+    const out = setItemSpeed(SPEED_REEL, 'v1', 2, { ripple: false });
+    expect((out.tracks.video[0] as Extract<VideoItem, { kind: 'clip' }>).sourceOutMs).toBe(6000);
+  });
+
+  it('is a no-op at 1x', () => {
+    expect(setItemSpeed(SPEED_REEL, 'v1', 1, { ripple: false })).toBe(SPEED_REEL);
+  });
+
+  it('is a no-op for an unknown id', () => {
+    expect(setItemSpeed(SPEED_REEL, 'nope', 0.5, { ripple: false })).toBe(SPEED_REEL);
   });
 });
