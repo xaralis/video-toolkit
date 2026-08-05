@@ -145,7 +145,61 @@ than leave the forked values behind.
 
 ---
 
+---
+
+## Feature 3 — framing edits a clip you may not be looking at
+
+### The report
+
+> crop + position nyní funguje na VYBRANEM klipu, i když playhead je jinde — to
+> je dosti matoucí a chce to převymyslet
+
+### What happens today
+
+The Crop and Position gesture modes act on the **selected** clip
+(`framingMode` + `attachCropGestures` in `lib/editor/host/EditorHost.tsx`), while
+the preview shows the frame **at the playhead**. Select a clip, leave the
+playhead somewhere else, arm Crop — and you are dragging one clip's framing on
+top of a completely different picture. Nothing is wrong with the edit that
+lands; it is simply invisible while you make it, which is worse.
+
+### The tension
+
+Selection and playhead are two different cursors, and framing is the one edit
+that needs them to agree: every other inspector control edits data you can read
+as numbers, but framing is judged by eye, against the picture.
+
+Four ways out, none free:
+
+| | Approach | Cost |
+|---|---|---|
+| a | Arming framing **seeks the playhead into the selected clip** (its midpoint, or the nearer edge) | Moves the user's playhead — a side effect they did not ask for |
+| b | Framing follows the **playhead**, not the selection | Two cursors now disagree about what "current clip" means, everywhere else in the UI |
+| c | **Refuse** to arm when the playhead is outside the clip, and say why | Honest, but a dead control plus an extra step |
+| d | The preview **locks to the selected clip** while framing is armed | A second preview mode; the timeline cursor then lies about what is on screen |
+
+### Recommendation (not yet ratified)
+
+**(a), with a guard.** Arming Crop/Position seeks the playhead into the selected
+clip when it is outside it, and the bottom bar — the same surface Feature 1
+builds — says that it did. Moving the playhead out of the clip while framing is
+armed disarms the mode rather than silently continuing to edit an unseen clip.
+
+It keeps one cursor authoritative (selection), it never edits something
+invisible, and the "surprise" it costs is a single seek that the bar explains.
+(b) reads cleaner in the abstract but changes what "current clip" means for the
+inspector, the delete key and the split key too — a much larger blast radius
+than this complaint justifies.
+
+**Needs the user's yes before implementation** — it changes what a click does,
+and that is exactly the kind of thing this project stops and asks about.
+
+---
+
 ## Order
 
 Feature 1 first: it is smaller, self-contained, and its reason codes are already
-computed. Feature 2 needs the schema decision above settled before any code.
+computed. Feature 3 is next and should reuse Feature 1's bar rather than
+inventing a second explanation surface — which is also why it is not worth
+starting before it. Feature 2 is unblocked (the schema decision is made above)
+but is the largest of the three.
