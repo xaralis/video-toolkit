@@ -79,17 +79,35 @@ export function TransitionMarker({
         data-testid="transition-glyph"
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
-        className={`ed:block ed:self-end ed:mb-[2px] ${glyphCls}`}
+        className={`ed:block ed:self-end ed:mb-[2px] ed:cursor-pointer ${glyphCls}`}
         style={{ width: '100%', minWidth: GLYPH_MIN_WIDTH_PX, height: 11, flex: 'none' }}
       >
         <path d="M0 0 L100 100 L100 0 L0 100 Z" />
       </svg>
       {/* The label: unboxed, no pill, vertically centred in the lane
           (inherited from the row's own `items-center`, independent of the
-          glyph's floor-anchored position). */}
+          glyph's floor-anchored position). Deliberately NOT
+          `pointer-events-none`: a click on the label text must select the
+          transition exactly as a click on the glyph does. xzdarcy's action
+          wrapper attaches `onClick` to the action's own root div and this
+          label renders as a normal DOM descendant of it (via
+          `getActionRender` in LayeredTimeline.tsx), so the click bubbles up
+          and reaches `onClickAction` even though the label visually
+          overhangs the action's own box (`.vt-transition-action` lifts
+          `overflow: hidden` for exactly this reason) — DOM hit-testing and
+          bubbling follow the element's own rendered position, not the
+          ancestor's clipped box, so no geometric hit-test in the library is
+          involved.
+          Trade-off accepted: the label now swallows clicks anywhere in the
+          strip of lane it overhangs, so clicking there selects the
+          transition instead of scrubbing the playhead (`onClickTimeArea`).
+          That's the point of this change. It also means two transitions
+          placed closer together than their labels are wide will have
+          overlapping labels — already-accepted behaviour — and the
+          topmost (later-rendered) one wins the click. */}
       <div
         data-testid="transition-label"
-        className="ed:flex ed:items-center ed:gap-[5px] ed:ml-1 ed:whitespace-nowrap ed:pointer-events-none"
+        className="ed:flex ed:items-center ed:gap-[5px] ed:ml-1 ed:whitespace-nowrap ed:cursor-pointer"
         style={{ flex: 'none' }}
       >
         <span className={`ed:font-sans ed:text-[9px] ed:uppercase ed:tracking-[0.09em] ${kindCls}`}>{kind}</span>

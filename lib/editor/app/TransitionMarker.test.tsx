@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { TransitionMarker } from './TransitionMarker';
 
 describe('TransitionMarker', () => {
@@ -76,5 +76,32 @@ describe('TransitionMarker', () => {
     expect(screen.getByText('fade').className).toContain('ed:text-warn');
     expect(screen.getByText('15f').className).toContain('ed:text-warn');
     expect(screen.getByTitle('Needs 15 frames, seg-002 can lend 4')).toBeInTheDocument();
+  });
+
+  it('lets a click on the label reach an ancestor click handler, exactly as the glyph does', () => {
+    // xzdarcy attaches onClickAction's onClick to the action's own root div,
+    // and TransitionMarker's whole tree renders as a plain DOM descendant of
+    // it (getActionRender in LayeredTimeline.tsx). So the real thing to
+    // prove is DOM bubbling reaching an ancestor — not just the absence of a
+    // class name, which would pass even if some other mechanism silently
+    // broke the click.
+    const onClick = vi.fn();
+    render(
+      <div onClick={onClick} data-testid="action-root">
+        <TransitionMarker kind="fade" frames={15} />
+      </div>,
+    );
+    fireEvent.click(screen.getByText('fade'));
+    expect(onClick).toHaveBeenCalledTimes(1);
+
+    onClick.mockClear();
+    fireEvent.click(screen.getByText('15f'));
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not block pointer events on the label (would fall through to a scrub instead of a select)', () => {
+    const { container } = render(<TransitionMarker kind="fade" frames={15} />);
+    const label = container.querySelector('[data-testid="transition-label"]') as HTMLElement;
+    expect(label.className).not.toContain('pointer-events-none');
   });
 });
