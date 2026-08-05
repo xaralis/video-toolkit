@@ -178,7 +178,19 @@ Four ways out, none free:
 | c | **Refuse** to arm when the playhead is outside the clip, and say why | Honest, but a dead control plus an extra step |
 | d | The preview **locks to the selected clip** while framing is armed | A second preview mode; the timeline cursor then lies about what is on screen |
 
-### Recommendation (not yet ratified)
+### Ratified by the user, 2026-08-05
+
+> Souhlas, při aktivním crop/position by playhead měla vždy ukazovat na ten
+> klip, kterého se to týká.
+
+The invariant to implement, stated as an invariant rather than as a seek:
+**while Crop or Position is armed, the playhead is inside the clip being
+framed.** Arming when it is outside seeks it in (and the bar says so); the
+playhead leaving the clip while armed ends the mode, because that is the only
+other way to keep the invariant true. Do not implement "seek once on arm" alone
+— that satisfies the letter and breaks the moment the user scrubs.
+
+### The reasoning behind it
 
 **(a), with a guard.** Arming Crop/Position seeks the playhead into the selected
 clip when it is outside it, and the bottom bar — the same surface Feature 1
