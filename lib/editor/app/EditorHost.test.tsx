@@ -554,4 +554,35 @@ describe('EditorHost (child modules mocked at the boundary)', () => {
       expect(init.body).toBe(JSON.stringify({ props: { reel: editedReel } }));
     });
   });
+
+  it('shows the timeline’s hint, and clears it after the gesture ends', async () => {
+    const { EditorHost: Host } = await import('../host/EditorHost');
+    render(<Host {...opts} />);
+    // Real timers until the component has settled (fetch resolution, initial
+    // effects) — fake timers active this early would starve waitFor's own
+    // polling, which vitest's fake clock does not exempt itself from.
+    await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+
+    vi.useFakeTimers();
+    act(() => seenTimelineProps.at(-1).onHint({ text: 'End of the source.', severity: 'info' }));
+    expect(seenTimelineProps.at(-1).hint).toEqual({ text: 'End of the source.', severity: 'info' });
+
+    act(() => seenTimelineProps.at(-1).onHint(null));
+    act(() => vi.advanceTimersByTime(2000));
+    expect(seenTimelineProps.at(-1).hint).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it('passes a STABLE onHint — the memoized timeline must not re-render on it', async () => {
+    const { EditorHost: Host } = await import('../host/EditorHost');
+    render(<Host {...opts} />);
+    await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+    const first = seenTimelineProps.at(-1).onHint;
+
+    // Force a further host re-render (a selection change) and confirm the
+    // callback identity held across it — the whole point of the memo.
+    act(() => seenTimelineProps.at(-1).onSelect('video:seg-001'));
+    await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(1));
+    expect(seenTimelineProps.at(-1).onHint).toBe(first);
+  });
 });

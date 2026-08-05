@@ -7,6 +7,8 @@ import { StatusChip } from '../app/Diagnostics';
 import { LayeredInspector } from '../app/LayeredInspector';
 import { RenderButton } from '../app/RenderButton';
 import { useHistory } from '../app/useHistory';
+import { useTransientHint } from '../app/useTransientHint';
+import type { HintMessage } from '../app/block-reason-copy';
 import { useSourceDurations } from '../app/useSourceDurations';
 import { deleteItem, splitItem, duplicateItem } from '../src/timeline/layered-adapter';
 import { useShortcuts } from '../app/useShortcuts';
@@ -134,6 +136,21 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   const pendingMedia = pendingSources(videoUrls, sourceDurations).length;
   const [buffering, setBuffering] = useState(false);
   const handleSelect = useCallback((id: string | null) => setSelectedId((cur) => (cur === id ? null : id)), []);
+
+  // Owns the timeline bar's transient message. `onHint` from LayeredTimeline
+  // is single-channel: a non-null call PUBLISHES, a null call means "the
+  // gesture just ended" and starts the auto-clear countdown rather than
+  // wiping the message instantly (see useTransientHint's `hold`/`release`).
+  // Chose this over a second `onHintRelease` prop — one prop is enough
+  // signal (publish vs. "done for now") and it keeps LayeredTimeline's
+  // surface smaller.
+  // STABLE — LayeredTimeline is memoized and re-renders every playhead
+  // frame; an inline lambda here would defeat the memo (see EditorHostOptions.meta).
+  const { hint, publish: publishHint, release: releaseHint } = useTransientHint();
+  const handleHint = useCallback(
+    (next: HintMessage | null) => (next ? publishHint(next) : releaseHint()),
+    [publishHint, releaseHint],
+  );
   // The framing gesture mode is per-clip — switching selection turns it back off.
   useEffect(() => setFramingMode('off'), [selectedId]);
   const handleDelete = useCallback(() => {
@@ -741,6 +758,8 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
                   guidesMs={reel.meta.guidesMs}
                   meta={meta}
                   onDiagnostics={setDiagnostics}
+                  hint={hint}
+                  onHint={handleHint}
                 />
               </div>
             </div>

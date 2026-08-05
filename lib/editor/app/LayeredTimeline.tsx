@@ -32,6 +32,8 @@ import { SHORTCUTS } from './shortcuts';
 import { GESTURES } from './ShortcutOverlay';
 import { LinkIcon } from './icons';
 import type { HintMessage } from './block-reason-copy';
+import { hintForReason } from './block-reason-copy';
+import { edgeBlockReason, musicBlockReason, type BlockReason } from '../src/timeline/block-reason';
 
 // Media paths go through core's ONE rule (lib/theming/media-source.ts) — the
 // same one SegmentMedia and the audio track use — rather than a third private
@@ -668,6 +670,13 @@ export interface LayeredTimelineProps {
   /** A transient message shown INSTEAD of the shortcut hints (the bar is one
    *  line — see the bar's own comment). Null/absent = show the hints. */
   hint?: HintMessage | null;
+  /** Reports why a resize handle stopped, live during the drag. A non-null
+   *  call PUBLISHES a message; a null call means "the gesture just ended" —
+   *  the host owns the message's lifetime and interprets null as the start
+   *  of the auto-clear countdown (see useTransientHint), not an instruction
+   *  to clear immediately. Pass a STABLE callback — see `hint` above and
+   *  `meta`: this component is memoized and re-renders every playhead frame. */
+  onHint?: (hint: HintMessage | null) => void;
 }
 
 /** Imperative escape hatch for a zoom that has no pointer to anchor on — the
@@ -703,6 +712,7 @@ function LayeredTimelineImpl({
   meta,
   onDiagnostics,
   hint,
+  onHint,
 }: LayeredTimelineProps, ref: ForwardedRef<LayeredTimelineHandle>) {
   const stateRef = useRef<TimelineState>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -1338,10 +1348,39 @@ function LayeredTimelineImpl({
             const b = item ? resizeBoundsMs(item, capMsById[id]) : null;
             setResizeBound(b ? { id: action.id, minStart: b.minStartMs / 1000, maxEnd: b.maxEndMs !== undefined ? b.maxEndMs / 1000 : undefined } : null);
           }}
+          // Reports WHY the handle is at its limit, live during the drag —
+          // xzdarcy's bounds (armed above) already stop the handle physically;
+          // this only explains the stop. `posMs` is the edge xzdarcy reports
+          // AFTER its own live clamp (see the comment on `resizeBound` above),
+          // so comparing it against the same bound with a one-frame tolerance
+          // is safe. IMPORTANT: pass `capMsById[id]`, not a raw decoded
+          // duration — it's the same cap the armed bound above and the commit
+          // clamp both use (max of the decoded file and the clip's authored
+          // out-point), so a clip whose config has drifted past its file
+          // reports the limit the user actually hit, not one they never did.
+          onActionResizing={({ action, start, end, dir }) => {
+            const { lane, id } = parseActionId(action.id);
+            const tolMs = 1000 / fps;
+            const posMs = (dir === 'left' ? start : end) * 1000;
+            const edge = dir === 'left' ? 'in' : 'out';
+            const reasonHint = (r: BlockReason | null) => (r ? hintForReason(r) : null);
+            if (lane === 'music') {
+              onHint?.(reasonHint(musicBlockReason({ edge, posMs, maxMs: musicMaxMs, tolMs })));
+              return;
+            }
+            const item = reel.tracks.video.find((v) => v.id === id);
+            if (!item) return;
+            onHint?.(reasonHint(edgeBlockReason({ item, decodedMs: capMsById[id], edge, posMs, tolMs })));
+          }}
           onActionResizeEnd={() => {
             setResizeBound(null);
             setResizeDir(null);
             setActiveActionId(null);
+            // Null here means "gesture ended" — the host starts its
+            // auto-clear countdown rather than wiping the message instantly,
+            // so it survives a moment after the pointer lifts. See the
+            // `onHint` doc comment above.
+            onHint?.(null);
           }}
           onClickAction={(_e, { action }) => onSelect(action.id)}
           onClickTimeArea={(time) => {
