@@ -5,6 +5,7 @@
 import React from 'react';
 import { Audio, Sequence, staticFile } from 'remotion';
 import { audioGainAt } from './audio-gain';
+import { PREVIEW_SYNC_TOLERANCE_SECONDS } from './media-sync';
 import { resolveMediaSource } from '../theming/media-source';
 import type { AudioItem } from '../reel-config-base/layered-schema';
 
@@ -38,6 +39,7 @@ export function buildAudioNodes(
           src={staticFile(resolve(a.source))}
           startFrom={msToFrames(a.sourceInMs)}
           volume={(f) => audioGainAt(a, f, opts.fps)}
+          acceptableTimeShiftInSeconds={PREVIEW_SYNC_TOLERANCE_SECONDS}
         />
       </Sequence>
     );

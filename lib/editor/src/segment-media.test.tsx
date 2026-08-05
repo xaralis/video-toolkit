@@ -28,6 +28,7 @@ vi.mock('remotion', async () => {
 });
 
 import { SegmentMedia } from '@video-toolkit/lib/theming/segment/SegmentMedia';
+import { PREVIEW_SYNC_TOLERANCE_SECONDS } from '@video-toolkit/lib/render/media-sync';
 
 beforeEach(() => {
   frameState.frame = 0;
@@ -313,6 +314,14 @@ describe('SegmentMedia', () => {
 
     it('passes an http source through without staticFile', () => {
       expect(srcOf(clip('https://cdn/x.mp4'))).toBe('https://cdn/x.mp4');
+    });
+
+    // The picture half of the preview A/V-sync leash. The audio half is pinned
+    // in `media-sync.test.tsx`; both must carry it or the two tracks drift
+    // apart by the SUM of their tolerances (Remotion applies it per element).
+    it('puts every clip on the preview sync leash', () => {
+      render(<SegmentMedia item={clip('seg02.MP4') as any} handles={{ inHalf: 0, outHalf: 0 }} />);
+      expect(captured.video[0].acceptableTimeShiftInSeconds).toBe(PREVIEW_SYNC_TOLERANCE_SECONDS);
     });
 
     it("honours a brand's wholesale resolveMediaSource override", () => {

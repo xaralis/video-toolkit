@@ -26,6 +26,7 @@ vi.mock('remotion', async () => {
 
 import { GenericOutro } from '@video-toolkit/lib/theming/generic/GenericOutro';
 import type { VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
+import { PREVIEW_SYNC_TOLERANCE_SECONDS } from '@video-toolkit/lib/render/media-sync';
 
 const outro = (props?: Record<string, unknown>): VideoItem => ({
   id: 'o1',
@@ -53,6 +54,16 @@ describe('GenericOutro', () => {
 
     expect(captured.audio).toHaveLength(1);
     expect(captured.audio[0].src).toBe('/static/brand/outro.mp3');
+  });
+
+  // The outro is the ONE item that owns a real A/V pair of its own (its
+  // picture and its sound are two separate elements from two separate files),
+  // so it is the one place a drifting element desyncs against its own shot.
+  // Same leash as the clip track — see media-sync.ts.
+  it('puts both halves of its own A/V pair on the preview sync leash', () => {
+    render(<GenericOutro item={outro({ video: 'brand/outro.mp4', audio: 'brand/outro.mp3' })} handles={{ inHalf: 0, outHalf: 0 }} />);
+    expect(captured.video[0].acceptableTimeShiftInSeconds).toBe(PREVIEW_SYNC_TOLERANCE_SECONDS);
+    expect(captured.audio[0].acceptableTimeShiftInSeconds).toBe(PREVIEW_SYNC_TOLERANCE_SECONDS);
   });
 
   it('renders nothing and does not throw for an item with no props', () => {

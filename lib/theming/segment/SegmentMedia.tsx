@@ -9,6 +9,7 @@ import { applyStyleEffects, composeMediaStyle, type MediaStyleFragment } from '.
 import { useMediaEffects, applyMediaEffects } from '../effects/media-effects-context';
 import { resolveMediaSource, type MediaRole, type MediaSourceResolver } from '../media-source';
 import { anchorTiming } from '../../render/overlay-anchor';
+import { PREVIEW_SYNC_TOLERANCE_SECONDS } from '../../render/media-sync';
 import { resolveFraming } from '../../reel-config-base/framing';
 import { focalObjectPosition } from '../../reel-config-base/focal';
 import { deriveSpeed } from '../../reel-config-base/speed';
@@ -355,6 +356,7 @@ export const SegmentMedia: React.FC<VideoRenderProps> = ({
       startFrom={startFrom}
       endAt={endAt}
       style={s}
+      acceptableTimeShiftInSeconds={PREVIEW_SYNC_TOLERANCE_SECONDS}
       {...(speed !== 1 ? { playbackRate: speed } : {})}
     />
   ));

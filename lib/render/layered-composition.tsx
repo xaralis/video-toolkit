@@ -28,6 +28,7 @@ import {
 } from '../theming';
 import { buildVideoNodes } from './video-track';
 import { buildAudioNodes } from './audio-track';
+import { PREVIEW_SYNC_TOLERANCE_SECONDS } from './media-sync';
 import { routeOverlays, overlayKind } from './overlay-routing';
 import { warnOnce } from './warn-once';
 
@@ -429,7 +430,11 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
         // already public/-relative in both brands ('audio/boj.wav',
         // 'music/bed.mp3') — so this is byte-identical to the inline
         // http/staticFile rule it replaces; it just lives in one place now.
-        <Audio src={resolveGenericSource(musicSource, 'music', theme.resolveMediaSource)} volume={volumeAt} />
+        <Audio
+          src={resolveGenericSource(musicSource, 'music', theme.resolveMediaSource)}
+          volume={volumeAt}
+          acceptableTimeShiftInSeconds={PREVIEW_SYNC_TOLERANCE_SECONDS}
+        />
       )}
       {overlayNodes}
       {/* The whole-track escape hatch wins outright when a brand declares it —
