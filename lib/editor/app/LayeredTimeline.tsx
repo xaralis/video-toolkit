@@ -35,6 +35,7 @@ import { LinkIcon } from './icons';
 import type { HintMessage } from './block-reason-copy';
 import { hintForReason } from './block-reason-copy';
 import { edgeBlockReason, musicBlockReason, type BlockReason } from '../src/timeline/block-reason';
+import { moveRefusal, LOCKED_LANES } from '../src/timeline/refusal';
 
 // Media paths go through core's ONE rule (lib/theming/media-source.ts) — the
 // same one SegmentMedia and the audio track use — rather than a third private
@@ -289,6 +290,17 @@ export function slipHintFor(
   if (clamp === 'head') return hintForReason('slip-head-exhausted');
   if (clamp === 'tail') return hintForReason('slip-tail-exhausted');
   return null;
+}
+
+/** Pure core of `onActionMoving`'s refusal — mirrors `resizeHintFor`/
+ *  `slipHintFor` above: delegates to `moveRefusal` (`src/timeline/refusal.ts`,
+ *  already exhaustively tested) and maps the result through `hintForReason`.
+ *  `onActionMoving` fires on every pointer move of a drag, so the actual
+ *  callback must stay a thin wrapper around this — same reasoning as the
+ *  other two hint helpers. */
+export function moveHintFor(lane: LaneId, actionId: string, linkedAudioIds: ReadonlySet<string>): HintMessage | null {
+  const r = moveRefusal({ lane, actionId, linkedAudioIds });
+  return r ? hintForReason(r) : null;
 }
 
 // Zoom per pixel of wheel travel, as ln(factor). A mouse notch (deltaY ≈ 100 in
@@ -671,13 +683,6 @@ const TRANSITIONS_ROW_H = 18;
 // Transition marker fill/ink — `--color-transition-marker(-ink)` in
 // editor.in.css's `@theme static` block, used below as `ed:bg-transition-marker`
 // / `ed:text-transition-marker-ink`.
-
-// Lanes whose items are display-only (their span is derived / not an item
-// array): brand span is content-end-derived, transitions are derived from
-// adjacent clips' `transitionOut`. Music is NOT fully locked: the single bed
-// is pinned at 0 (no move, no left trim) but its END is trimmable — see the
-// music-specific guards below.
-const LOCKED_LANES = new Set(['brand', 'transitions']);
 
 export interface LayeredTimelineProps {
   reel: LayeredReel;
@@ -1377,14 +1382,30 @@ function LayeredTimelineImpl({
             return false; // we drive rendering via the Remotion Player, skip xzdarcy's engine sync
           }}
           // Block drag/resize on locked lanes (returning false cancels it) while
-          // keeping the action clickable/selectable.
+          // keeping the action clickable/selectable. `moveHintFor` is the ONE
+          // place the refusing conditions live (locked lane / pinned music bed
+          // / linked audio) — no second copy of the condition here, and the
+          // reason it refused is published to the hint bar rather than the
+          // drag just silently not moving.
           onActionMoving={({ action }) => {
             const lane = parseActionId(action.id).lane;
-            // Music can be end-trimmed but never moved (it's pinned at 0).
-            return LOCKED_LANES.has(lane) || lane === 'music' || linkedAudioIds.has(action.id) ? false : undefined;
+            const hint = moveHintFor(lane, action.id, linkedAudioIds);
+            if (hint) {
+              onHint?.(hint);
+              return false;
+            }
+            return undefined;
           }}
           onActionMoveStart={({ action }) => setActiveActionId(action.id)}
-          onActionMoveEnd={() => setActiveActionId(null)}
+          onActionMoveEnd={() => {
+            setActiveActionId(null);
+            // Same convention as onActionResizeEnd/endSlip: null starts the
+            // host's auto-clear countdown rather than wiping the message
+            // instantly, so it survives a moment after the pointer lifts. A
+            // publish with no matching release sits in the bar forever — see
+            // the `onHint` doc comment above.
+            onHint?.(null);
+          }}
           // On resize START, arm the live drag clamp for this clip/broll so its
           // handle hard-stops at the end of the FOOTAGE (a neighbour is not a
           // wall — overlaps are allowed from both sides). Cleared on END.

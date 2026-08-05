@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
-import { LayeredTimeline, colorFor, blockColor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics, zoomFactorFor, followScrollLeft, zoomAnchorScrollLeft, accumulateZoom, TIMELINE_START_LEFT, findGridInstance, applyZoomLayout, resizeHintFor, slipHintFor, type PendingZoom, type GridInstance } from './LayeredTimeline';
+import { LayeredTimeline, colorFor, blockColor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics, zoomFactorFor, followScrollLeft, zoomAnchorScrollLeft, accumulateZoom, TIMELINE_START_LEFT, findGridInstance, applyZoomLayout, resizeHintFor, slipHintFor, moveHintFor, type PendingZoom, type GridInstance } from './LayeredTimeline';
 import { sourceColors } from './editor-meta';
 import { hintForReason } from './block-reason-copy';
 import type { LayeredReel, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
@@ -872,5 +872,33 @@ describe('slipHintFor', () => {
     const reel = resizeReel(item);
     const r = slipHintFor(reel, 'v1', 200, { v1: 20000 });
     expect(r).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 3: `onActionMoving` used to return `false` for three refusing cases
+// with no explanation at all — the block just happened. `moveHintFor` is the
+// pure core (mirrors `resizeHintFor`/`slipHintFor` above): it delegates to
+// `moveRefusal` (already exhaustively tested in `refusal.test.ts`) and maps
+// the result through `hintForReason`, so this test only needs to pin the
+// wiring, not re-prove the predicate.
+// ---------------------------------------------------------------------------
+
+describe('moveHintFor', () => {
+  it('names the locked-lane reason for a brand/transitions action', () => {
+    expect(moveHintFor('brand', 'brand:wm', new Set())).toEqual(hintForReason('locked-lane'));
+    expect(moveHintFor('transitions', 'transition:v1', new Set())).toEqual(hintForReason('locked-lane'));
+  });
+
+  it('names the timeline-start reason for the music lane', () => {
+    expect(moveHintFor('music', 'music:base', new Set())).toEqual(hintForReason('timeline-start'));
+  });
+
+  it('names the linked-audio reason for an audio action following its clip', () => {
+    expect(moveHintFor('audio', 'audio:a1', new Set(['audio:a1']))).toEqual(hintForReason('linked-audio'));
+  });
+
+  it('is null for a plain video action — nothing is blocking', () => {
+    expect(moveHintFor('video', 'video:v1', new Set())).toBeNull();
   });
 });

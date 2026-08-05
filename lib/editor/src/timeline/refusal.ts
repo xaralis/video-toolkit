@@ -25,12 +25,12 @@ import { parseActionId, type LaneId } from './action-id';
  *  prevent. */
 
 // Display-only lanes: their content is derived (brand marks, transition
-// markers), never dragged by hand. Mirrors LayeredTimeline.tsx's own
-// `LOCKED_LANES` (`app/LayeredTimeline.tsx:680`) — kept local here rather
-// than imported, since that constant lives in the app layer and this module
-// must not depend upward on it; Task 3 is expected to point the app's check
-// at `moveRefusal` instead of keeping a second copy of this set.
-const LOCKED_LANES: ReadonlySet<LaneId> = new Set(['brand', 'transitions']);
+// markers), never dragged by hand. Task 3 pointed the app layer's own
+// `LayeredTimeline.tsx` at this single definition (`flexible`, trim-grip
+// rendering, and `onActionMoving` all import it from here now) instead of
+// keeping a second copy — see that file's `git blame` on the deleted local
+// `LOCKED_LANES` for the one-task intermediate state this replaces.
+export const LOCKED_LANES: ReadonlySet<LaneId> = new Set(['brand', 'transitions']);
 
 /** Move/drag refusal — mirrors `onActionMoving`'s early exit in
  *  `LayeredTimeline.tsx:1384`. */
