@@ -34,11 +34,19 @@ export const BLOCK_REASON_COPY: Record<BlockReason, HintMessage> = {
     severity: 'info',
   },
   'transition-handle-starved': {
-    text: 'Neighbour has no footage left to lend — trim it back or shift the clip’s window.',
+    text: "Clip next door has no footage to lend — trim that one back, or slip this one's window.",
     severity: 'warn',
   },
 };
 
 export function hintForReason(reason: BlockReason): HintMessage {
-  return BLOCK_REASON_COPY[reason];
+  const hint = BLOCK_REASON_COPY[reason];
+  // `BLOCK_REASON_COPY` is typed `Record<BlockReason, HintMessage>`, so this
+  // is unreachable for any value TypeScript actually lets through — but Task
+  // 3 reads `hint.text` off whatever this returns, and a reason that arrives
+  // as a plain string past a type boundary (JSON, a stale caller) would
+  // otherwise fail as a silent `undefined` two tasks away from here rather
+  // than at the point that produced it.
+  if (!hint) throw new Error(`No copy registered for block reason: ${reason}`);
+  return hint;
 }

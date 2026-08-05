@@ -1,18 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { BLOCK_REASON_COPY, hintForReason } from './block-reason-copy';
-import type { BlockReason } from '../src/timeline/block-reason';
+import { BLOCK_REASONS } from '../src/timeline/block-reason';
 
-// Every code the union declares must have copy. Derived, not a hand-listed
-// duplicate: a seventh reason added next month is covered the day it lands,
+// Every code the union declares must have copy. Derived from BLOCK_REASONS
+// (the runtime array block-reason.ts's type is built from), not a hand-listed
+// duplicate — a hand-listed array here would type-check fine against a
+// seventh code added to BLOCK_REASONS without ever noticing it lacks copy,
 // and cannot ship mute.
-const ALL: BlockReason[] = [
-  'footage-head-exhausted',
-  'footage-tail-exhausted',
-  'min-clip-length',
-  'music-source-end',
-  'timeline-start',
-  'transition-handle-starved',
-];
+const ALL = BLOCK_REASONS;
 
 describe('block reason copy', () => {
   it.each(ALL)('has copy for %s', (reason) => {

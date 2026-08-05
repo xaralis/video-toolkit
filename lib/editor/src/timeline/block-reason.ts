@@ -3,14 +3,25 @@ import { MIN_CLIP_MS, resizeBoundsMs } from './layered-adapter';
 
 /** Why the editor would not let an edit go further. A CODE, never a sentence:
  *  this module is shared with non-UI consumers, and the wording belongs to the
- *  app layer (`app/block-reason-copy.ts`). */
-export type BlockReason =
-  | 'footage-head-exhausted'
-  | 'footage-tail-exhausted'
-  | 'min-clip-length'
-  | 'music-source-end'
-  | 'timeline-start'
-  | 'transition-handle-starved';
+ *  app layer (`app/block-reason-copy.ts`).
+ *
+ *  A runtime array, not just a union type: `app/block-reason-copy.test.ts`
+ *  imports `BLOCK_REASONS` to enumerate the codes it must cover. A hand-listed
+ *  duplicate array in the test would type-check against a seventh code added
+ *  here without ever noticing it lacks copy — only `Record<BlockReason, …>`
+ *  would catch that, and only under `tsc`, a separate gate from the test run.
+ *  Deriving the type FROM this array instead keeps the test's coverage claim
+ *  actually true. */
+export const BLOCK_REASONS = [
+  'footage-head-exhausted',
+  'footage-tail-exhausted',
+  'min-clip-length',
+  'music-source-end',
+  'timeline-start',
+  'transition-handle-starved',
+] as const;
+
+export type BlockReason = (typeof BLOCK_REASONS)[number];
 
 /** The constraint binding a clip/broll edge at `posMs`, or null if it is free.
  *
