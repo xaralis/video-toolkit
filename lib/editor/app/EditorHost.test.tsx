@@ -597,4 +597,124 @@ describe('EditorHost (child modules mocked at the boundary)', () => {
     await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(1));
     expect(seenTimelineProps.at(-1).onHint).toBe(first);
   });
+
+  // Task 4: the three shortcut COMMANDS (⌫ delete, s split, ⌘D duplicate) must
+  // say why they did nothing when refused, through the same hint bar the
+  // timeline drag refusals already use — never a silent no-op.
+  describe('command refusals say why', () => {
+    it('⌫ on the music bed publishes the music-bed-undeletable hint and leaves the reel untouched', async () => {
+      const { EditorHost: Host } = await import('../host/EditorHost');
+      render(<Host {...opts} />);
+      await screen.findByText('test-reels');
+      await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+
+      act(() => seenTimelineProps.at(-1).onSelect('music:bed'));
+      await waitFor(() => expect(seenInspectorProps.at(-1).selectedId).toBe('music:bed'));
+      const reelBefore = seenTimelineProps.at(-1).reel;
+
+      fireEvent.keyDown(window, { key: 'Backspace' });
+
+      expect(seenTimelineProps.at(-1).hint).toEqual({
+        text: 'The reel keeps exactly one music bed — mute or trim it instead of deleting.',
+        severity: 'warn',
+      });
+      // Untouched: selection survives (a real delete clears it) and the reel
+      // reference is the same object (a real delete produces a new one).
+      expect(seenInspectorProps.at(-1).selectedId).toBe('music:bed');
+      expect(seenTimelineProps.at(-1).reel).toBe(reelBefore);
+    });
+
+    it('⌫ on a video clip deletes it and publishes no warning', async () => {
+      const { EditorHost: Host } = await import('../host/EditorHost');
+      render(<Host {...opts} />);
+      await screen.findByText('test-reels');
+      await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+
+      act(() => seenTimelineProps.at(-1).onSelect('video:seg-001'));
+      await waitFor(() => expect(seenInspectorProps.at(-1).selectedId).toBe('video:seg-001'));
+
+      fireEvent.keyDown(window, { key: 'Backspace' });
+
+      await waitFor(() => expect(seenTimelineProps.at(-1).reel.tracks.video).toEqual([]));
+      expect(seenTimelineProps.at(-1).hint).toBeNull();
+      expect(seenInspectorProps.at(-1).selectedId).toBeNull();
+    });
+
+    it('⌘D on a non-video selection publishes the video-only hint and leaves the reel untouched', async () => {
+      const { EditorHost: Host } = await import('../host/EditorHost');
+      render(<Host {...opts} />);
+      await screen.findByText('test-reels');
+      await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+
+      act(() => seenTimelineProps.at(-1).onSelect('music:bed'));
+      await waitFor(() => expect(seenInspectorProps.at(-1).selectedId).toBe('music:bed'));
+      const reelBefore = seenTimelineProps.at(-1).reel;
+
+      fireEvent.keyDown(window, { key: 'd', metaKey: true });
+
+      expect(seenTimelineProps.at(-1).hint).toEqual({
+        text: 'Only items on the video track can be split or duplicated.',
+        severity: 'warn',
+      });
+      expect(seenTimelineProps.at(-1).reel).toBe(reelBefore);
+    });
+
+    it('⌘D on a video clip duplicates it and publishes no warning', async () => {
+      const { EditorHost: Host } = await import('../host/EditorHost');
+      render(<Host {...opts} />);
+      await screen.findByText('test-reels');
+      await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+
+      act(() => seenTimelineProps.at(-1).onSelect('video:seg-001'));
+      await waitFor(() => expect(seenInspectorProps.at(-1).selectedId).toBe('video:seg-001'));
+
+      fireEvent.keyDown(window, { key: 'd', metaKey: true });
+
+      await waitFor(() => expect(seenTimelineProps.at(-1).reel.tracks.video.length).toBe(2));
+      expect(seenTimelineProps.at(-1).hint).toBeNull();
+    });
+
+    it('s at the playhead outside the clip publishes the playhead-outside-clip hint and leaves the reel untouched', async () => {
+      const { EditorHost: Host } = await import('../host/EditorHost');
+      render(<Host {...opts} />);
+      await screen.findByText('test-reels');
+      await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+
+      act(() => seenTimelineProps.at(-1).onSelect('video:seg-001'));
+      await waitFor(() => expect(seenInspectorProps.at(-1).selectedId).toBe('video:seg-001'));
+      const reelBefore = seenTimelineProps.at(-1).reel;
+
+      // Playhead starts at frame 0 — the clip's own start edge, which is
+      // refused the same way the adapter's own boundary check is (see
+      // `splitRefusal`'s 1ms tolerance).
+      fireEvent.keyDown(window, { key: 's' });
+
+      expect(seenTimelineProps.at(-1).hint).toEqual({
+        text: 'Move the playhead inside the clip to split it.',
+        severity: 'warn',
+      });
+      expect(seenTimelineProps.at(-1).reel).toBe(reelBefore);
+    });
+
+    it('s at a playhead inside the clip splits it and publishes no warning', async () => {
+      const { EditorHost: Host } = await import('../host/EditorHost');
+      render(<Host {...opts} />);
+      await screen.findByText('test-reels');
+      await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+
+      act(() => seenTimelineProps.at(-1).onSelect('video:seg-001'));
+      await waitFor(() => expect(seenInspectorProps.at(-1).selectedId).toBe('video:seg-001'));
+
+      // Move the playhead well inside the clip (0–3000ms / 0–90 frames at
+      // 30fps) with the real playback shortcuts — the same route a user
+      // takes, rather than poking the player ref directly.
+      fireEvent.keyDown(window, { key: 'ArrowRight', shiftKey: true }); // +10 frames
+      fireEvent.keyDown(window, { key: 'ArrowRight', shiftKey: true }); // +10 frames
+
+      fireEvent.keyDown(window, { key: 's' });
+
+      await waitFor(() => expect(seenTimelineProps.at(-1).reel.tracks.video.length).toBe(2));
+      expect(seenTimelineProps.at(-1).hint).toBeNull();
+    });
+  });
 });

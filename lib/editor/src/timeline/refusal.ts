@@ -32,8 +32,9 @@ import { parseActionId, type LaneId } from './action-id';
 // `LOCKED_LANES` for the one-task intermediate state this replaces.
 export const LOCKED_LANES: ReadonlySet<LaneId> = new Set(['brand', 'transitions']);
 
-/** Move/drag refusal — mirrors `onActionMoving`'s early exit in
- *  `LayeredTimeline.tsx:1384`. */
+/** Move/drag refusal. This is where the rule lives: `onActionMoving`
+ *  (`LayeredTimeline.tsx`) delegates to it rather than carrying its own
+ *  early exit, so there is exactly one place a move can be refused from. */
 export function moveRefusal(args: { lane: LaneId; actionId: string; linkedAudioIds: ReadonlySet<string> }): BlockReason | null {
   const { lane, actionId, linkedAudioIds } = args;
   if (LOCKED_LANES.has(lane)) return 'locked-lane';
