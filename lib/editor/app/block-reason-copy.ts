@@ -59,7 +59,7 @@ export const BLOCK_REASON_COPY: Record<BlockReason, HintMessage> = {
     severity: 'warn',
   },
   'linked-audio': {
-    text: "This audio follows its clip automatically — move the clip instead.",
+    text: 'This audio follows its clip automatically — move the clip instead.',
     severity: 'warn',
   },
   'video-only': {

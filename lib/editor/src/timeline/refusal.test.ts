@@ -80,6 +80,27 @@ describe('splitRefusal', () => {
     expect(splitRefusal(REEL, 'video:v1', 90, 30)).toBe('playhead-outside-clip');
   });
 
+  // fps: 1000 gives 1ms-per-frame resolution, so these actually discriminate
+  // the adapter's `+ 1` / `- 1` tolerance from a plain `<= startMs` /
+  // `>= endMs` compare — the frame-30/90-at-30fps cases above land exactly
+  // ON the boundary and pass under EITHER version, so they don't prove the
+  // tolerance exists. v1 spans 1000-3000ms.
+  it('refuses at startMs + 1 (still within the 1ms tolerance band)', () => {
+    expect(splitRefusal(REEL, 'video:v1', 1001, 1000)).toBe('playhead-outside-clip');
+  });
+
+  it('allows at startMs + 2 (just past the tolerance band)', () => {
+    expect(splitRefusal(REEL, 'video:v1', 1002, 1000)).toBeNull();
+  });
+
+  it('refuses at endMs - 1 (still within the 1ms tolerance band)', () => {
+    expect(splitRefusal(REEL, 'video:v1', 2999, 1000)).toBe('playhead-outside-clip');
+  });
+
+  it('allows at endMs - 2 (just before the tolerance band)', () => {
+    expect(splitRefusal(REEL, 'video:v1', 2998, 1000)).toBeNull();
+  });
+
   it('allows a legitimate mid-clip split', () => {
     // frame 60 @ 30fps = 2000ms, comfortably inside 1000-3000.
     expect(splitRefusal(REEL, 'video:v1', 60, 30)).toBeNull();
