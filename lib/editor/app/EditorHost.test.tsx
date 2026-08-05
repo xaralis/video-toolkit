@@ -706,6 +706,99 @@ describe('EditorHost (child modules mocked at the boundary)', () => {
       expect(seenTimelineProps.at(-1).reel).toBe(reelBefore);
     });
 
+    // Finding 1 (2026-08-05 whole-branch review): the six tests above only
+    // assert the hint's TEXT — which passes identically whether or not the
+    // countdown that clears it was ever armed. Deleting all three
+    // `handleHint(null)` releases in EditorHost.tsx (delete/split/duplicate)
+    // left every test above green, so "a publish with no matching release
+    // leaves the hint in the bar forever" — the exact failure mode CLAUDE.md's
+    // rule calls out, and already hit three times in this feature — was, for
+    // these three command paths, the one thing untested. These three pin the
+    // release: fake timers, advance past the clear delay, assert null. Each
+    // was seen RED against a build with its handler's `handleHint(null)`
+    // temporarily deleted.
+    it('⌫ on the music bed clears its hint after the delay — the release is pinned, not just the text', async () => {
+      try {
+        const { EditorHost: Host } = await import('../host/EditorHost');
+        render(<Host {...opts} />);
+        await screen.findByText('test-reels');
+        await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+
+        act(() => seenTimelineProps.at(-1).onSelect('music:bed'));
+        await waitFor(() => expect(seenInspectorProps.at(-1).selectedId).toBe('music:bed'));
+
+        vi.useFakeTimers();
+        fireEvent.keyDown(window, { key: 'Backspace' });
+        expect(seenTimelineProps.at(-1).hint).toEqual({
+          text: 'The reel keeps exactly one music bed — mute or trim it instead of deleting.',
+          severity: 'warn',
+        });
+
+        // Not yet — still mid-countdown.
+        act(() => vi.advanceTimersByTime(1000));
+        expect(seenTimelineProps.at(-1).hint).not.toBeNull();
+
+        act(() => vi.advanceTimersByTime(500));
+        expect(seenTimelineProps.at(-1).hint).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('⌘D on a non-video selection clears its hint after the delay — the release is pinned, not just the text', async () => {
+      try {
+        const { EditorHost: Host } = await import('../host/EditorHost');
+        render(<Host {...opts} />);
+        await screen.findByText('test-reels');
+        await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+
+        act(() => seenTimelineProps.at(-1).onSelect('music:bed'));
+        await waitFor(() => expect(seenInspectorProps.at(-1).selectedId).toBe('music:bed'));
+
+        vi.useFakeTimers();
+        fireEvent.keyDown(window, { key: 'd', metaKey: true });
+        expect(seenTimelineProps.at(-1).hint).toEqual({
+          text: 'Only items on the video track can be split or duplicated.',
+          severity: 'warn',
+        });
+
+        act(() => vi.advanceTimersByTime(1000));
+        expect(seenTimelineProps.at(-1).hint).not.toBeNull();
+
+        act(() => vi.advanceTimersByTime(500));
+        expect(seenTimelineProps.at(-1).hint).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('s at the playhead outside the clip clears its hint after the delay — the release is pinned, not just the text', async () => {
+      try {
+        const { EditorHost: Host } = await import('../host/EditorHost');
+        render(<Host {...opts} />);
+        await screen.findByText('test-reels');
+        await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+
+        act(() => seenTimelineProps.at(-1).onSelect('video:seg-001'));
+        await waitFor(() => expect(seenInspectorProps.at(-1).selectedId).toBe('video:seg-001'));
+
+        vi.useFakeTimers();
+        fireEvent.keyDown(window, { key: 's' });
+        expect(seenTimelineProps.at(-1).hint).toEqual({
+          text: 'Move the playhead inside the clip to split it.',
+          severity: 'warn',
+        });
+
+        act(() => vi.advanceTimersByTime(1000));
+        expect(seenTimelineProps.at(-1).hint).not.toBeNull();
+
+        act(() => vi.advanceTimersByTime(500));
+        expect(seenTimelineProps.at(-1).hint).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('s at a playhead inside the clip splits it and publishes no warning', async () => {
       const { EditorHost: Host } = await import('../host/EditorHost');
       render(<Host {...opts} />);
@@ -725,6 +818,51 @@ describe('EditorHost (child modules mocked at the boundary)', () => {
 
       await waitFor(() => expect(seenTimelineProps.at(-1).reel.tracks.video.length).toBe(2));
       expect(seenTimelineProps.at(-1).hint).toBeNull();
+    });
+
+    // Finding 2 (2026-08-05 whole-branch review): split and duplicate are
+    // keyboard-only (s, ⌘D — no toolbar button) and were silent with nothing
+    // selected at all; the audit table that scoped this feature never listed
+    // that case because delete's own no-selection path already reads as
+    // covered by its disabled toolbar button. These three pin the
+    // 'nothing-selected' hint for all three commands — delete included: its
+    // BUTTON is honestly disabled with no selection, but ⌫ itself is not
+    // gated on selection any more (see the `delete: handleDelete` shortcut
+    // wiring in EditorHost.tsx) — a keyboard user hitting ⌫ with nothing
+    // selected deserves the same "nothing happened, here's why" as s/⌘D
+    // rather than the asymmetry of a disabled-button excuse that only covers
+    // the mouse.
+    it('s with nothing selected publishes the nothing-selected hint', async () => {
+      const { EditorHost: Host } = await import('../host/EditorHost');
+      render(<Host {...opts} />);
+      await screen.findByText('test-reels');
+      await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+
+      fireEvent.keyDown(window, { key: 's' });
+
+      expect(seenTimelineProps.at(-1).hint).toEqual({ text: 'Select a clip first.', severity: 'warn' });
+    });
+
+    it('⌘D with nothing selected publishes the nothing-selected hint', async () => {
+      const { EditorHost: Host } = await import('../host/EditorHost');
+      render(<Host {...opts} />);
+      await screen.findByText('test-reels');
+      await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+
+      fireEvent.keyDown(window, { key: 'd', metaKey: true });
+
+      expect(seenTimelineProps.at(-1).hint).toEqual({ text: 'Select a clip first.', severity: 'warn' });
+    });
+
+    it('⌫ with nothing selected publishes the nothing-selected hint (the shortcut is not gated on selection, only the toolbar button is)', async () => {
+      const { EditorHost: Host } = await import('../host/EditorHost');
+      render(<Host {...opts} />);
+      await screen.findByText('test-reels');
+      await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+
+      fireEvent.keyDown(window, { key: 'Backspace' });
+
+      expect(seenTimelineProps.at(-1).hint).toEqual({ text: 'Select a clip first.', severity: 'warn' });
     });
   });
 });

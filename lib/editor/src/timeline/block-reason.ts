@@ -29,6 +29,11 @@ export const BLOCK_REASONS = [
   'unsplittable-kind',
   'playhead-outside-clip',
   'music-bed-undeletable',
+  // NOT produced by a refusal.ts predicate — those all take a `selectedId`
+  // and so have nothing to check before one exists. This fires straight from
+  // the command handlers themselves (`EditorHost.tsx`) when a keyboard
+  // command (⌫ delete, s split, ⌘D duplicate) runs with no selection at all.
+  'nothing-selected',
 ] as const;
 
 export type BlockReason = (typeof BLOCK_REASONS)[number];

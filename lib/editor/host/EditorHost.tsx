@@ -165,7 +165,12 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   // forever, and that defect has already been found and fixed twice in this
   // feature.
   const handleDelete = useCallback(() => {
-    if (!reel || !selectedId) return;
+    if (!reel) return;
+    if (!selectedId) {
+      handleHint(hintForReason('nothing-selected'));
+      handleHint(null);
+      return;
+    }
     const reason = deleteRefusal(reel, selectedId);
     if (reason) {
       handleHint(hintForReason(reason));
@@ -184,7 +189,12 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   // — reading `reel`, not a functional-update snapshot — still lands a
   // distinct id rather than colliding with the first call's.
   const handleSplit = useCallback(() => {
-    if (!reel || !selectedId) return;
+    if (!reel) return;
+    if (!selectedId) {
+      handleHint(hintForReason('nothing-selected'));
+      handleHint(null);
+      return;
+    }
     const atFrame = playerRef.current?.getCurrentFrame() ?? 0;
     const reason = splitRefusal(reel, selectedId, atFrame, fps);
     if (reason) {
@@ -197,7 +207,12 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
     setSelectedId(sel);
   }, [reel, selectedId, fps, setReel, handleHint]);
   const handleDuplicate = useCallback(() => {
-    if (!reel || !selectedId) return;
+    if (!reel) return;
+    if (!selectedId) {
+      handleHint(hintForReason('nothing-selected'));
+      handleHint(null);
+      return;
+    }
     const reason = duplicateRefusal(reel, selectedId);
     if (reason) {
       handleHint(hintForReason(reason));
@@ -494,7 +509,13 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
     play: () => playerRef.current?.toggle(),
     undo,
     redo,
-    delete: () => selectedId && handleDelete(),
+    // Unconditional, matching split/duplicate: `handleDelete` owns the
+    // no-selection check itself and publishes `nothing-selected` for it — the
+    // Delete BUTTON is separately disabled with no selection (an honest
+    // control), but the shortcut has no such affordance, and ⌫ pressed with
+    // nothing selected is the identical silent no-op split/duplicate closed
+    // (Finding 2, no-silent-refusals whole-branch review).
+    delete: handleDelete,
     stepBack: () => playerRef.current?.seekTo(Math.max(0, (playerRef.current?.getCurrentFrame() ?? 0) - 1)),
     stepFwd: () => playerRef.current?.seekTo(Math.min(durationInFrames - 1, (playerRef.current?.getCurrentFrame() ?? 0) + 1)),
     jumpBack: () => playerRef.current?.seekTo(Math.max(0, (playerRef.current?.getCurrentFrame() ?? 0) - 10)),

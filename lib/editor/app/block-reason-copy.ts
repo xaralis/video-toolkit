@@ -78,6 +78,10 @@ export const BLOCK_REASON_COPY: Record<BlockReason, HintMessage> = {
     text: 'The reel keeps exactly one music bed — mute or trim it instead of deleting.',
     severity: 'warn',
   },
+  'nothing-selected': {
+    text: 'Select a clip first.',
+    severity: 'warn',
+  },
 };
 
 export function hintForReason(reason: BlockReason): HintMessage {

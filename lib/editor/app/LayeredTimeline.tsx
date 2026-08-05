@@ -947,10 +947,16 @@ function LayeredTimelineImpl({
         ...r,
         rowHeight: r.id === 'transitions' ? TRANSITIONS_ROW_H : ROW_H,
         // Keep every action movable so it stays clickable/selectable — xzdarcy
-        // suppresses onClickAction on movable:false actions. Locked lanes (brand
-        // = content-end-derived span; music = single base layer) and linked audio
-        // get flexible:false to hide the resize handles; their move is also blocked
-        // in onActionMoving below (movable:true is only for the click affordance).
+        // suppresses onClickAction on movable:false actions. Locked lanes (see
+        // `LOCKED_LANES` in refusal.ts: brand = content-end-derived span,
+        // transitions = derived from adjacent clips' transitionOut) and linked
+        // audio get flexible:false to hide the resize handles; their move is
+        // also blocked in onActionMoving below (movable:true is only for the
+        // click affordance). Music is NOT in `LOCKED_LANES` — the single bed
+        // is pinned at 0 (no move, no left trim) but its END is trimmable, so
+        // it keeps flexible:true here and is refused by the music-specific
+        // guards instead (moveRefusal's `lane === 'music'` case, and the
+        // right-handle bound below).
         actions: r.actions.map((a) => ({
           ...a,
           selected: a.id === selectedId,

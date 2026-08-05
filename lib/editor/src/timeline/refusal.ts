@@ -30,6 +30,12 @@ import { parseActionId, type LaneId } from './action-id';
 // rendering, and `onActionMoving` all import it from here now) instead of
 // keeping a second copy — see that file's `git blame` on the deleted local
 // `LOCKED_LANES` for the one-task intermediate state this replaces.
+//
+// Music is NOT in this set, deliberately: the single bed is pinned at 0 (no
+// move, no left trim) but its END is trimmable — see `moveRefusal`'s
+// `lane === 'music'` case below, and the music-specific right-handle bound in
+// `LayeredTimeline.tsx`. A lane fully locked here loses BOTH move and resize;
+// music only loses the former.
 export const LOCKED_LANES: ReadonlySet<LaneId> = new Set(['brand', 'transitions']);
 
 /** Move/drag refusal. This is where the rule lives: `onActionMoving`
