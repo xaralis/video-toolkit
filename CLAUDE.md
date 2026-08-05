@@ -360,28 +360,40 @@ some field is missing from the model, extend the model — do not route around i
 with a parallel shape. A conversion that leaves one consumer on the old shape has
 not converted anything; it has added a second model.
 
-## HARD RULE — the reel editor never refuses an action silently
+## HARD RULE — a refusal in `move`/`split`/`duplicate`/`delete` is never silent
 
-Every check in the reel editor that declines a user action (blocks a drag, no-ops a
-command) must publish a reason the user can see. There is no such thing as a quiet
-no-op — if a move, split, duplicate, or delete does nothing, the timeline must say why.
+When the reel editor declines one of these four commands, it must publish a reason the
+user can see — no quiet no-op. This is enforced, not just intended: see "what keeps this
+true" below for exactly what's machine-checked and what isn't.
 
 The check and the message come from **one predicate**, not two copies. All four live in
 `lib/editor/src/timeline/refusal.ts` (`moveRefusal`, `splitRefusal`, `duplicateRefusal`,
-`deleteRefusal`): the command handlers in `layered-adapter.ts` call the predicate to decide
+`deleteRefusal`): the command handlers (`layered-adapter.ts` for split/duplicate/delete,
+`EditorHost.tsx`'s own early-return for a missing selection) call the predicate to decide
 whether to act, and `LayeredTimeline`'s `onActionMoving` / `EditorHost`'s command handlers
-call the same predicate to publish the hint. Never inline the condition again at a call
-site — two copies drift, and the user ends up reading a message that doesn't match what
-actually happened.
+call the same predicate (or, for "nothing is selected", the same `BLOCK_REASONS` code) to
+publish the hint. Never inline the condition again at a call site — two copies drift, and
+the user ends up reading a message that doesn't match what actually happened.
 
 The reason is a **code** (`BLOCK_REASONS`), not a sentence — the English lives in
 `lib/editor/app/block-reason-copy.ts`. `src/timeline` contains no user-facing strings.
 
-What keeps this true over time: `lib/editor/src/timeline/refusal.test.ts` asserts the
-equivalence **a command returns the reel unchanged if and only if its predicate names a
-reason**, in the `describe` block `"command/predicate equivalence — every selectable item
-in a realistic reel"`, over a matrix derived from `VideoItemSchema`'s kinds and the `LANES`
-list — so a new item kind or lane can't quietly escape the guarantee.
+**Known exceptions — declines that do NOT go through this and stay silent on purpose or
+by scoped-out design**, so a future audit doesn't mistake one for a gap: `useShortcuts`'s
+typing guard (a shortcut key typed into a text field is not a "declined edit", it's not a
+shortcut at all); undo/redo at the history boundary (nothing to undo/redo is not a
+constraint on an edit); `setItemSpeed`'s footage-length clamp (flagged in the review that
+added this rule, not yet fixed); `beginSlip`'s refusal on an unslippable item kind. Treat
+this list as the known set, not a promise no others exist.
+
+What keeps this true, and for what: `lib/editor/src/timeline/refusal.test.ts`'s
+`"command/predicate equivalence — every selectable item in a realistic reel"` block asserts,
+for the **three command predicates** (`splitRefusal`, `duplicateRefusal`, `deleteRefusal`)
+against their commands, that a command returns the reel unchanged if and only if its
+predicate names a reason — over a matrix derived from `VideoItemSchema`'s kinds and the
+`LANES` list, so a new item kind or lane can't quietly escape it. **This does not cover
+`moveRefusal`** — the drag path is a single delegating call site
+(`onActionMoving` → `moveRefusal`), checked by reading the code, not by an equivalence test.
 
 One more failure mode this feature has hit three times: a publish with no matching
 release leaves the hint sitting in the bar forever. Every hint publish needs a
