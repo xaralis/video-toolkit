@@ -4,7 +4,7 @@ import { AbsoluteFill, Audio, OffthreadVideo, Sequence, useVideoConfig } from 'r
 import type { VideoRenderProps } from '../types';
 import { resolveGenericSource } from './media-source';
 import { anchorTiming } from '../../render/overlay-anchor';
-import { PREVIEW_SYNC_TOLERANCE_SECONDS } from '../../render/media-sync';
+import { PREVIEW_VIDEO_SYNC_TOLERANCE_SECONDS } from '../../render/media-sync';
 
 /** Item props a generic outro reads. Both optional — an outro item that names
  *  neither renders nothing (and does not throw), which is what makes this a
@@ -53,14 +53,13 @@ export const GenericOutro: React.FC<VideoRenderProps> = ({
         <OffthreadVideo
           src={resolveGenericSource(props.video, 'brand', override)}
           muted
-          acceptableTimeShiftInSeconds={PREVIEW_SYNC_TOLERANCE_SECONDS}
+          acceptableTimeShiftInSeconds={PREVIEW_VIDEO_SYNC_TOLERANCE_SECONDS}
         />
       ) : null}
       {props.audio ? (
-        <Audio
-          src={resolveGenericSource(props.audio, 'brand', override)}
-          acceptableTimeShiftInSeconds={PREVIEW_SYNC_TOLERANCE_SECONDS}
-        />
+        // No acceptableTimeShiftInSeconds here on purpose — see media-sync.ts.
+        // This is sound; only the video half above gets the tightened leash.
+        <Audio src={resolveGenericSource(props.audio, 'brand', override)} />
       ) : null}
       {/* Phase 4 Task 4.1 — this item's anchored overlays, at the same
           composition frame they would land on if routed 'track' instead (see

@@ -28,7 +28,6 @@ import {
 } from '../theming';
 import { buildVideoNodes } from './video-track';
 import { buildAudioNodes } from './audio-track';
-import { PREVIEW_SYNC_TOLERANCE_SECONDS } from './media-sync';
 import { routeOverlays, overlayKind } from './overlay-routing';
 import { warnOnce } from './warn-once';
 
@@ -430,10 +429,11 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
         // already public/-relative in both brands ('audio/boj.wav',
         // 'music/bed.mp3') — so this is byte-identical to the inline
         // http/staticFile rule it replaces; it just lives in one place now.
+        // No acceptableTimeShiftInSeconds here on purpose — see media-sync.ts.
+        // The music bed is sound; only the picture gets the tightened leash.
         <Audio
           src={resolveGenericSource(musicSource, 'music', theme.resolveMediaSource)}
           volume={volumeAt}
-          acceptableTimeShiftInSeconds={PREVIEW_SYNC_TOLERANCE_SECONDS}
         />
       )}
       {overlayNodes}
