@@ -21,6 +21,14 @@ export const BLOCK_REASONS = [
   'transition-handle-starved',
   'slip-head-exhausted',
   'slip-tail-exhausted',
+  // Added for command-level refusals (split/duplicate/delete/move) — see
+  // `refusal.ts` for the predicates that name them and the naming argument.
+  'locked-lane',
+  'linked-audio',
+  'video-only',
+  'unsplittable-kind',
+  'playhead-outside-clip',
+  'music-bed-undeletable',
 ] as const;
 
 export type BlockReason = (typeof BLOCK_REASONS)[number];
