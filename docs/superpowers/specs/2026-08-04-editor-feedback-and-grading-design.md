@@ -1,8 +1,10 @@
 # The editor explains itself, and grading stops going through Claude
 
-**Status:** agreed 2026-08-04, not yet built. Two features, deliberately in one
-doc: they are independent to build but come from the same complaint — the editor
-makes the user leave the editor.
+**Status:** agreed 2026-08-04. **Feature 1 is implemented** (2026-08-05, branch
+`feat/editor-explains-blocked-edits`, plan
+`.superpowers/sdd/2026-08-05-editor-explains-blocked-edits/`); Feature 2 is not
+yet built. Two features, deliberately in one doc: they are independent to build
+but come from the same complaint — the editor makes the user leave the editor.
 
 ---
 
@@ -69,6 +71,41 @@ functions return the clamped position only.
 3. Wire the timeline's drag path to publish the code; map codes → copy in one
    table, and pin that every code has copy (a derived test, so a new code cannot
    ship mute).
+
+### Built, 2026-08-05
+
+Implemented on `feat/editor-explains-blocked-edits`, plan
+`.superpowers/sdd/2026-08-05-editor-explains-blocked-edits/` (five tasks; +39
+tests across three new files and three existing ones). Where it lives:
+
+| Piece | File |
+|---|---|
+| Reason codes (UI-agnostic) | `lib/editor/src/timeline/block-reason.ts` |
+| English copy, one table, derived coverage test | `lib/editor/app/block-reason-copy.ts` |
+| The latch (one message per drag, no flicker) | `lib/editor/app/useTransientHint.ts` |
+| The bar that renders it | `lib/editor/app/LayeredTimeline.tsx` |
+| Host state + drag publisher | `lib/editor/host/EditorHost.tsx` |
+| Transition-Length cap case | `lib/editor/app/LayeredInspector.tsx` |
+
+Six codes shipped, and the names differ from the guesses above — read
+`BLOCK_REASONS`, not this document: `footage-head-exhausted`,
+`footage-tail-exhausted` (the spec guessed one `footage-exhausted`; head and
+tail are different situations with different fixes), `min-clip-length`,
+`music-source-end`, `timeline-start`, `transition-handle-starved`.
+
+**Ripple / overwrite deliberately has NO reason code**, despite being row 3 of
+the limits table above. That row was wrong about the mechanism: with ripple or
+overwrite on, a neighbour in the way **yields** — it shifts or is trimmed — so
+the drag is never stopped and there is nothing to explain. A message there would
+narrate a move that succeeded. The neighbour only blocks with both modes off,
+and that case is already covered by `min-clip-length` / `timeline-start`, which
+are what actually clamp it. If a future mode does make a neighbour a hard stop,
+that is a new code, not a resurrection of this one.
+
+The first open question above stands: a blocked drag still gets no non-textual
+signal (no handle tint). The second is closed —
+`transition-handle-starved`'s copy carries the "shift the window" fix, and a
+test pins that it does.
 
 ---
 
