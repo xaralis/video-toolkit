@@ -36,6 +36,7 @@ import { useLiveField } from './controls/use-live-field';
 import { fieldCls, labelCls, inputCls, rowCls, readonlyValueCls, sectionCls, resetBtnCls, dirtyDotCls, countBadgeCls, disabledCls } from './controls/field-classes';
 import { ScrubField } from './controls/ScrubField';
 import { SliderField } from './controls/SliderField';
+import { hintForReason, type HintMessage } from './block-reason-copy';
 import { TimecodeField } from './controls/TimecodeField';
 import { SegmentedField } from './controls/SegmentedField';
 
@@ -85,6 +86,12 @@ export interface LayeredInspectorProps {
    *  what owns the gesture attachment (`attachCropGestures`). Optional so a
    *  caller that hasn't wired this up yet (or a test rendering this panel in
    *  isolation) doesn't have to supply it — the row simply reads as fully off. */
+  /** The SAME stable callback `LayeredTimeline` publishes drag-block hints
+   *  through (`EditorHost`'s `handleHint`) — passed here so the transition
+   *  Length slider can explain the one cap it cannot self-explain (Task 4).
+   *  Optional, like every other transient-hint caller: a test or host that
+   *  hasn't wired the bar up yet just doesn't get the explanation. */
+  onHint?: (hint: HintMessage | null) => void;
 }
 
 const panelCls = 'ed:p-3 ed:w-full ed:h-full ed:overflow-y-auto ed:box-border';
@@ -623,6 +630,7 @@ export function TransitionFields({
   accentSlots,
   meta,
   maxFrames,
+  onHint,
 }: {
   t: DraftTransition;
   onChange: (next: DraftTransition) => void;
@@ -643,6 +651,12 @@ export function TransitionFields({
    *  component must never clamp on mount; only `onCommit` below clamps, and
    *  only what the user just typed. */
   maxFrames?: number;
+  /** Same channel `LayeredTimeline`'s drag hints publish through — a request
+   *  that lands ABOVE `maxFrames` is exactly the one case in this panel the
+   *  user cannot guess the remedy for from the control alone (the slider just
+   *  stops; it doesn't say why). Optional, like `maxFrames`: a caller with no
+   *  boundary context has nothing to explain either. */
+  onHint?: (hint: HintMessage | null) => void;
 }) {
   const kind = t.kind ?? CUT_KIND;
   // Catalog ∪ the brand's registered kinds — see `transitionKindChoices`. The
@@ -712,7 +726,18 @@ export function TransitionFields({
               max={trackMax}
               step={1}
               fallback={1}
-              onCommit={(n) => onChange({ ...t, frames: Math.min(cap, Math.max(1, Math.round(n))) })}
+              onCommit={(n) => {
+                const rounded = Math.max(1, Math.round(n));
+                // Starved iff the request itself overshoots the cap — not
+                // "the track shows an over-cap value", which is also true of
+                // an authored value shown untouched on mount (see the
+                // trackMax comment above). Only a request the user just made
+                // gets the explanation; publishing on every render would fire
+                // it for a boundary that was starved before this field ever
+                // opened.
+                onHint?.(rounded > cap ? hintForReason('transition-handle-starved') : null);
+                onChange({ ...t, frames: Math.min(cap, rounded) });
+              }}
             />
           );
         }
@@ -965,6 +990,7 @@ export function LayeredInspector({
   width = 0,
   height = 0,
   ripple = false,
+  onHint,
 }: LayeredInspectorProps) {
   // The dedicated `accentSlots` prop is the ONE source for the palette —
   // EditorMeta deliberately does not carry a copy (see editor-meta.ts).
@@ -1088,7 +1114,7 @@ export function LayeredInspector({
         <h3 className={headingCls}>
           Transition {edge === 'in' ? 'in' : 'out'} · {transitionKindLabel(kind, meta?.transitionProps)}
         </h3>
-        <TransitionFields t={t} accentSlots={slots} meta={meta} maxFrames={maxFrames} onChange={(next) => patchItem('video', id, { [edgeField]: next })} />
+        <TransitionFields t={t} accentSlots={slots} meta={meta} maxFrames={maxFrames} onHint={onHint} onChange={(next) => patchItem('video', id, { [edgeField]: next })} />
       </div>
     );
   }
@@ -1740,7 +1766,7 @@ export function LayeredInspector({
                 )
               }
             >
-              <TransitionFields t={t} accentSlots={slots} meta={meta} maxFrames={maxFrames} onChange={(next) => patchItem('video', id, { transitionOut: next })} />
+              <TransitionFields t={t} accentSlots={slots} meta={meta} maxFrames={maxFrames} onHint={onHint} onChange={(next) => patchItem('video', id, { transitionOut: next })} />
             </Collapsible>
           );
         })()}

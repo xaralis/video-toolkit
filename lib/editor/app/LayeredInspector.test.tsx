@@ -1225,6 +1225,55 @@ describe('LayeredInspector transition length — bounded by the boundary’s act
     expect(screen.getByLabelText('Length (frames)')).toBeInTheDocument();
     expect(screen.queryByLabelText(/Length \(frames, max/)).toBeNull();
   });
+
+  // Task 4: the one case the user cannot guess the remedy for on their own —
+  // moving the Length slider to a value the boundary cannot afford because
+  // the NEIGHBOUR has no source frames left to lend. `starvedReel` above
+  // already proves the cap is 13 for v1's boundary with an ALREADY-starved
+  // authored length of 15 (mount never clamps — see the "leaves an
+  // already-starved authored length untouched on mount" case above), and
+  // that shape is reused rather than a fresh fixture.
+  //
+  // The brief's own Step-1 sketch requests `999` — deliberately deviated
+  // from here, not weakened: a real `<input type="range">`'s value is
+  // SANITIZED at the DOM property-set step, clamped into `[min, max]`
+  // before React's change handler ever runs (confirmed directly against
+  // this component: querying `.value` straight after `fireEvent.change`
+  // with `999` reads back as `15`, the slider's own `max` — since this
+  // fixture's authored `15` already sits AT that stretched `trackMax`,
+  // requesting `999` clamps right back to the value already showing, so
+  // nothing actually changes at the DOM level and React never fires the
+  // event at all — proven RED with `999`: `onHint` recorded ZERO calls,
+  // not a wrong call). `14` sits strictly between the cap (13) and the
+  // stretched track ceiling (15, `Math.max(cap, t.frames)` — see the
+  // component's `trackMax` comment), so it both differs from the mounted
+  // `15` (a genuine DOM mutation, so the event actually fires) and still
+  // exceeds the 13-frame cap — a value the user could reach on a real drag
+  // whose neighbour still cannot afford it.
+  it('explains a transition length that cannot grow — the neighbour has nothing to lend', () => {
+    const onHint = vi.fn();
+    render(
+      <LayeredInspector reel={starvedReel} selectedId="transition:v1" onChange={() => {}} onSeek={() => {}} fps={30}
+        sourceDurations={durations} onHint={onHint} />,
+    );
+    fireEvent.change(screen.getByLabelText('Length (frames, max 13)'), { target: { value: '14' } });
+    expect(onHint).toHaveBeenCalledWith(expect.objectContaining({ severity: 'warn' }));
+    expect(onHint.mock.calls.at(-1)![0].text.toLowerCase()).toMatch(/lend|trim|shift/);
+  });
+
+  // Same boundary, reached through the "video" lane's inline "Transition out"
+  // section instead of the "transitions" lane — both routes render the same
+  // `TransitionFields`, and both must wire the same `onHint`.
+  it('explains the same starved cap via the inline "video" lane view too', () => {
+    const onHint = vi.fn();
+    render(
+      <LayeredInspector reel={starvedReel} selectedId="video:v1" onChange={() => {}} onSeek={() => {}} fps={30}
+        sourceDurations={durations} onHint={onHint} />,
+    );
+    fireEvent.change(screen.getByLabelText('Length (frames, max 13)'), { target: { value: '14' } });
+    expect(onHint).toHaveBeenCalledWith(expect.objectContaining({ severity: 'warn' }));
+    expect(onHint.mock.calls.at(-1)![0].text.toLowerCase()).toMatch(/lend|trim|shift/);
+  });
 });
 
 describe('LayeredInspector project overview (no selection)', () => {

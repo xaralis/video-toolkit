@@ -778,6 +778,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
               meta={meta}
               sourceDurations={sourceDurations}
               ripple={ripple}
+              onHint={handleHint}
             />
           }
           />
