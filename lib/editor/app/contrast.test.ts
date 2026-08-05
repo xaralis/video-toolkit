@@ -41,10 +41,16 @@ describe('the editor’s on-colour text passes AA', () => {
     ['accent button label', 'accent-ink', 'accent'],
     // The transition marker's redesign (TransitionMarker.tsx, the "bowtie")
     // dropped the pill: there is no more on-colour text painted with
-    // `transition-marker`, only an unboxed `ink-2`/`ink-3` label sitting on
-    // the transitions lane's own background, which is the timeline root's
-    // `shell`. This is the pairing that replaced the old pill-ink one.
-    ['transition marker label (rest)', 'ink-2', 'shell'],
+    // `transition-marker`, only an unboxed label sitting on the transitions
+    // lane's own background, which is the timeline root's `shell`. Both
+    // parts of that label are things a user reads, not decoration — the
+    // frame count included, per the component's own doc comment ("the
+    // length is what you check once you have found it" still means it gets
+    // READ) — so both are pinned at `ink-2`, not just the kind. `ink-3` was
+    // tried for the frame count first and measured 3.48:1 here, under the
+    // 4.5:1 floor; this is the fix, not merely a check.
+    ['transition marker kind (rest)', 'ink-2', 'shell'],
+    ['transition marker frame count (rest)', 'ink-2', 'shell'],
     // The timeline's hint bar (LayeredTimeline.tsx) paints a 'warn'-severity
     // hint `ed:text-warn` and sits, unstyled itself, on the timeline root's
     // `ed:bg-shell` — this is the pairing every blocking edit's message was

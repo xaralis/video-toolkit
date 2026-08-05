@@ -50,8 +50,11 @@
    * greppable home. Rendered as an SVG `fill`, dimmed to ~0.8 alpha at rest
    * (`ed:opacity-80`) so a half-second join stops being the highest-contrast
    * thing on screen — louder than the shots it joins. The label beside it
-   * is `ink-2`/`ink-3` text, not this token; there is no more on-colour text
-   * painted with it, so it carries no paired `-ink` token any more. Not the
+   * is `ink-2` text (both the kind and the frame count — the frame count is
+   * read, not decorative, so it clears AA the same as the kind; `ink-3` on
+   * `shell` measures 3.48:1, under the 4.5:1 floor), not this token; there is
+   * no more on-colour text painted with it, so it carries no paired `-ink`
+   * token any more. Not the
    * accent — that means selected; not `warn` — that means starved. */
   --color-transition-marker: #e2e6f0;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;

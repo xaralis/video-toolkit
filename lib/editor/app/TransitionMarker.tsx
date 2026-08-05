@@ -11,9 +11,9 @@
  *     action box and the wedges always meet in the middle). There is no
  *     separate span bar or leg pair any more — the glyph carries that job.
  *   - it does it at rest-level volume: a dimmed `--color-transition-marker`
- *     fill and an unboxed, `ink-2`/`ink-3` label, so a half-second join stops
- *     being the highest-contrast thing on screen, louder than the shots it
- *     joins.
+ *     fill and an unboxed `ink-2` label (both parts — kind AND frame count,
+ *     see below), so a half-second join stops being the highest-contrast
+ *     thing on screen, louder than the shots it joins.
  *
  * The label sits beside the glyph — kind first (uppercase, tracked out, the
  * thing you scan for), then the frame count in the mono family (the thing
@@ -58,7 +58,15 @@ export function TransitionMarker({
       ? 'ed:fill-accent'
       : 'ed:fill-transition-marker ed:opacity-80';
   const kindCls = starved ? 'ed:text-warn' : selected ? 'ed:text-ink' : 'ed:text-ink-2';
-  const frameCls = starved ? 'ed:text-warn' : 'ed:text-ink-3';
+  // Same token as the kind, not `ink-3`: the frame count is read, not merely
+  // decorative ("the length is what you check once you have found it" still
+  // means it gets READ), and `ink-3` on `shell` measures 3.48:1 — under the
+  // 4.5:1 AA floor. The scan hierarchy is carried by typeface and tracking
+  // (mono digits vs. uppercase tracked-out sans) and the 5px gap, not by a
+  // second, dimmer colour — the colour axis here is already spoken for by
+  // state (accent selected / warn starved), and doubling it as emphasis is
+  // what produced the sub-AA value in the first place.
+  const frameCls = starved ? 'ed:text-warn' : 'ed:text-ink-2';
 
   return (
     <div className="ed:relative ed:h-full ed:w-full ed:flex ed:items-center" title={title}>
