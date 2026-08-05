@@ -37,6 +37,14 @@ export const BLOCK_REASON_COPY: Record<BlockReason, HintMessage> = {
     text: "Clip next door has no footage to lend — trim that one back, or slip this one's window.",
     severity: 'warn',
   },
+  'slip-head-exhausted': {
+    text: 'Slipped to the earliest frame — nothing earlier in this file.',
+    severity: 'info',
+  },
+  'slip-tail-exhausted': {
+    text: 'Slipped to the latest frame — nothing later in this file.',
+    severity: 'info',
+  },
 };
 
 export function hintForReason(reason: BlockReason): HintMessage {

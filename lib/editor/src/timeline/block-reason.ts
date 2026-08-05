@@ -19,6 +19,8 @@ export const BLOCK_REASONS = [
   'music-source-end',
   'timeline-start',
   'transition-handle-starved',
+  'slip-head-exhausted',
+  'slip-tail-exhausted',
 ] as const;
 
 export type BlockReason = (typeof BLOCK_REASONS)[number];

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
-import { LayeredTimeline, colorFor, blockColor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics, zoomFactorFor, followScrollLeft, zoomAnchorScrollLeft, accumulateZoom, TIMELINE_START_LEFT, findGridInstance, applyZoomLayout, resizeHintFor, type PendingZoom, type GridInstance } from './LayeredTimeline';
+import { LayeredTimeline, colorFor, blockColor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics, zoomFactorFor, followScrollLeft, zoomAnchorScrollLeft, accumulateZoom, TIMELINE_START_LEFT, findGridInstance, applyZoomLayout, resizeHintFor, slipHintFor, type PendingZoom, type GridInstance } from './LayeredTimeline';
 import { sourceColors } from './editor-meta';
 import { hintForReason } from './block-reason-copy';
 import type { LayeredReel, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
@@ -839,6 +839,38 @@ describe('resizeHintFor', () => {
       { reel, capMsById: { v1: 6000 }, fps: 30 },
       { actionId: 'transitions:v1', start: 2, end: 7, dir: 'right' },
     );
+    expect(r).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The slip gesture (⌥+drag) used to clamp silently — it was the only
+// blocking edit path with no `onHint` call at all. `slipHintFor` is the pure
+// core `moveSlip` calls on every pointer move; `slipClamp` (layered-adapter's
+// own tests) already pins the clamp math itself, so these pin only the
+// reason-code mapping and the null (free-move) case.
+// ---------------------------------------------------------------------------
+
+describe('slipHintFor', () => {
+  it('names the head reason when the slip clamps at the source start', () => {
+    const item = resizeClip({ sourceInMs: 1000, sourceOutMs: 5000 });
+    const reel = resizeReel(item);
+    const r = slipHintFor(reel, 'v1', -5000, { v1: 20000 });
+    expect(r).toEqual(hintForReason('slip-head-exhausted'));
+  });
+
+  it('names the tail reason when the slip clamps at the known footage end', () => {
+    const item = resizeClip({ sourceInMs: 1000, sourceOutMs: 5000 });
+    const reel = resizeReel(item);
+    // decoded 6000, sourceOut 5000 ⇒ 1000ms of tail room; +5000 overshoots it.
+    const r = slipHintFor(reel, 'v1', 5000, { v1: 6000 });
+    expect(r).toEqual(hintForReason('slip-tail-exhausted'));
+  });
+
+  it('is null for a delta well inside both bounds — nothing is blocking', () => {
+    const item = resizeClip({ sourceInMs: 1000, sourceOutMs: 5000 });
+    const reel = resizeReel(item);
+    const r = slipHintFor(reel, 'v1', 200, { v1: 20000 });
     expect(r).toBeNull();
   });
 });

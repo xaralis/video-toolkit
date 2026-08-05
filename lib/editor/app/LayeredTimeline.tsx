@@ -12,6 +12,7 @@ import {
   resizeBoundsMs,
   laneOfRow,
   slipVideoItem,
+  slipClamp,
   isSlippable,
   type LaneId,
 } from '../src/timeline/layered-adapter';
@@ -271,6 +272,23 @@ export function resizeHintFor(
   const item = reel.tracks.video.find((v) => v.id === id);
   if (!item) return null;
   return reasonHint(edgeBlockReason({ item, decodedMs: capMsById[id], edge, posMs, tolMs }));
+}
+
+/** Pure core of the slip gesture's hint — the ONLY blocking edit path in the
+ *  editor that used to publish nothing at all when it ran out of source (see
+ *  `resizeHintFor` above for the parallel resize case). `slipClamp` already
+ *  computes the SAME bound `slipVideoItem` clamps against, so this is a
+ *  lookup, not a re-derivation. */
+export function slipHintFor(
+  reel: LayeredReel,
+  id: string,
+  deltaMs: number,
+  footageMsById: Record<string, number>,
+): HintMessage | null {
+  const clamp = slipClamp(reel, id, deltaMs, footageMsById);
+  if (clamp === 'head') return hintForReason('slip-head-exhausted');
+  if (clamp === 'tail') return hintForReason('slip-tail-exhausted');
+  return null;
 }
 
 // Zoom per pixel of wheel travel, as ln(factor). A mouse notch (deltaY ≈ 100 in
@@ -1108,13 +1126,19 @@ function LayeredTimelineImpl({
     // beginSlip already required isSlippable to start the gesture).
     const item = s.base.tracks.video.find((v) => v.id === s.id);
     const speed = isSlippable(item) ? deriveSpeed(item) : 1;
-    onChange(slipVideoItem(s.base, s.id, slipDeltaMs(e.clientX - s.x0, scaleWidth, speed), capMsById));
+    const deltaMs = slipDeltaMs(e.clientX - s.x0, scaleWidth, speed);
+    onHint?.(slipHintFor(s.base, s.id, deltaMs, capMsById));
+    onChange(slipVideoItem(s.base, s.id, deltaMs, capMsById));
   };
 
   const endSlip = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!slipRef.current) return;
     slipRef.current = null;
     setActiveActionId(null);
+    // Same convention as onActionResizeEnd below — a hint left up past the
+    // gesture that produced it reads as unrelated to the block it's still
+    // hovering over.
+    onHint?.(null);
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
   };
 

@@ -392,14 +392,19 @@ export function isSlippable(item: VideoItem | undefined): item is Extract<VideoI
 // cap the picture's slip would be a silent, hard-to-notice bug — the picture
 // simply stops being slippable as far as it should, for a reason nothing in
 // the UI explains.
-export function slipVideoItem(
+// Shared by slipVideoItem and slipClamp — the ONE computation of "how far can
+// this slip go", so the gesture's hint (slipClamp) and the commit it hints
+// about (slipVideoItem) can never disagree about where the bound sits.
+// Returns null when the item isn't slippable, or when the bounds cross
+// (authored out past the file) — both cases where there is nothing to clamp
+// against.
+function slipBounds(
   reel: LayeredReel,
   id: string,
-  deltaMs: number,
-  footageMsById: Record<string, number> = {},
-): LayeredReel {
+  footageMsById: Record<string, number>,
+): { item: Extract<VideoItem, { kind: 'clip' | 'broll' }>; minDelta: number; maxDelta: number } | null {
   const item = reel.tracks.video.find((v) => v.id === id);
-  if (!isSlippable(item)) return reel;
+  if (!isSlippable(item)) return null;
 
   const beds = reel.tracks.audio.filter((a) => a.followsVideoId === id);
   const slippingBeds = beds.filter((b) => resolveSlipsWithVideo(item, b));
@@ -408,7 +413,39 @@ export function slipVideoItem(
   const minDelta = Math.max(-item.sourceInMs, ...slippingBeds.map((b) => -b.sourceInMs));
   const cap = footageMsById[id];
   const maxDelta = cap && cap > 0 ? cap - item.sourceOutMs : Infinity;
-  if (maxDelta < minDelta) return reel; // bounds crossed (authored out past the file)
+  if (maxDelta < minDelta) return null; // bounds crossed (authored out past the file)
+
+  return { item, minDelta, maxDelta };
+}
+
+/** Pure core of the slip gesture's hint: which edge (if either) `deltaMs`
+ *  would be clamped against right now — the same bound `slipVideoItem` itself
+ *  applies, computed once here so the two cannot drift apart. `null` means
+ *  the delta is free (or the item can't be slipped, or there's nothing to
+ *  clamp against — see `slipBounds`). */
+export function slipClamp(
+  reel: LayeredReel,
+  id: string,
+  deltaMs: number,
+  footageMsById: Record<string, number> = {},
+): 'head' | 'tail' | null {
+  const bounds = slipBounds(reel, id, footageMsById);
+  if (!bounds) return null;
+  const { minDelta, maxDelta } = bounds;
+  if (deltaMs <= minDelta) return 'head';
+  if (Number.isFinite(maxDelta) && deltaMs >= maxDelta) return 'tail';
+  return null;
+}
+
+export function slipVideoItem(
+  reel: LayeredReel,
+  id: string,
+  deltaMs: number,
+  footageMsById: Record<string, number> = {},
+): LayeredReel {
+  const bounds = slipBounds(reel, id, footageMsById);
+  if (!bounds) return reel;
+  const { item, minDelta, maxDelta } = bounds;
 
   const d = Math.min(Math.max(deltaMs, minDelta), maxDelta);
   if (d === 0) return reel;
