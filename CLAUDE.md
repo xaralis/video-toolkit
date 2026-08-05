@@ -360,6 +360,33 @@ some field is missing from the model, extend the model — do not route around i
 with a parallel shape. A conversion that leaves one consumer on the old shape has
 not converted anything; it has added a second model.
 
+## HARD RULE — the reel editor never refuses an action silently
+
+Every check in the reel editor that declines a user action (blocks a drag, no-ops a
+command) must publish a reason the user can see. There is no such thing as a quiet
+no-op — if a move, split, duplicate, or delete does nothing, the timeline must say why.
+
+The check and the message come from **one predicate**, not two copies. All four live in
+`lib/editor/src/timeline/refusal.ts` (`moveRefusal`, `splitRefusal`, `duplicateRefusal`,
+`deleteRefusal`): the command handlers in `layered-adapter.ts` call the predicate to decide
+whether to act, and `LayeredTimeline`'s `onActionMoving` / `EditorHost`'s command handlers
+call the same predicate to publish the hint. Never inline the condition again at a call
+site — two copies drift, and the user ends up reading a message that doesn't match what
+actually happened.
+
+The reason is a **code** (`BLOCK_REASONS`), not a sentence — the English lives in
+`lib/editor/app/block-reason-copy.ts`. `src/timeline` contains no user-facing strings.
+
+What keeps this true over time: `lib/editor/src/timeline/refusal.test.ts` asserts the
+equivalence **a command returns the reel unchanged if and only if its predicate names a
+reason**, in the `describe` block `"command/predicate equivalence — every selectable item
+in a realistic reel"`, over a matrix derived from `VideoItemSchema`'s kinds and the `LANES`
+list — so a new item kind or lane can't quietly escape the guarantee.
+
+One more failure mode this feature has hit three times: a publish with no matching
+release leaves the hint sitting in the bar forever. Every hint publish needs a
+corresponding clear when the blocking condition goes away.
+
 ## Quality Gates
 
 Run these before considering `lib/` or `examples/` work done. **All are manual, and that is a

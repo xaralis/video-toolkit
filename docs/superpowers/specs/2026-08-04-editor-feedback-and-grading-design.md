@@ -2,9 +2,12 @@
 
 **Status:** agreed 2026-08-04. **Feature 1 is implemented** (2026-08-05, branch
 `feat/editor-explains-blocked-edits`, plan
-`.superpowers/sdd/2026-08-05-editor-explains-blocked-edits/`); Feature 2 is not
-yet built. Two features, deliberately in one doc: they are independent to build
-but come from the same complaint — the editor makes the user leave the editor.
+`.superpowers/sdd/2026-08-05-editor-explains-blocked-edits/`) and **extended to
+cover every refusal, not only blocked drags** (2026-08-05, branch
+`feat/no-silent-refusals`, plan `.superpowers/sdd/2026-08-05-no-silent-refusals/`);
+Feature 2 is not yet built. Two features, deliberately in one doc: they are
+independent to build but come from the same complaint — the editor makes the
+user leave the editor.
 
 ---
 
@@ -106,6 +109,39 @@ The first open question above stands: a blocked drag still gets no non-textual
 signal (no handle tint). The second is closed —
 `transition-handle-starved`'s copy carries the "shift the window" fix, and a
 test pins that it does.
+
+### Extended, 2026-08-05 — every refusal, not only blocked drags
+
+The 2026-08-05 pass above covered blocked *drags* only. A parallel gap stood
+in the **commands**: split, duplicate, and delete each had their own inline
+early-exit conditions, silently no-opping (a keypress that does nothing looks
+identical to a bug) instead of routing through the same hint bar. Branch
+`feat/no-silent-refusals`, plan `.superpowers/sdd/2026-08-05-no-silent-refusals/`,
+closed that gap so Feature 1's guarantee now covers **every** refusal the
+editor can make, not just the drag-time clamps:
+
+- **Three drag cases** — resize/trim (`resizeHintFor`), slip
+  (`slipHintFor`), and move (`moveHintFor`, new this pass — dragging a
+  locked-lane item, the pinned music bed, or clip-linked audio previously
+  just refused to move with no explanation).
+- **Three command cases** — split, duplicate, and delete, each of which now
+  calls its predicate before acting instead of carrying an inlined
+  condition, and publishes the matching hint through the same bar when it
+  declines.
+
+All four predicates — `moveRefusal`, `splitRefusal`, `duplicateRefusal`,
+`deleteRefusal` — live in one file, `lib/editor/src/timeline/refusal.ts`, so
+the decision to act and the reason shown come from the same computation and
+cannot drift apart. The reason stays a `BlockReason` code; the English still
+lives only in `lib/editor/app/block-reason-copy.ts`.
+
+**The guarantee is machine-checked, not just followed by convention.**
+`lib/editor/src/timeline/refusal.test.ts`, in the `describe` block
+`"command/predicate equivalence — every selectable item in a realistic
+reel"`, asserts that a command returns the reel unchanged **if and only if**
+its predicate names a reason, over a matrix derived from
+`VideoItemSchema`'s kinds and the `LANES` list — so a new item kind or a new
+lane cannot quietly re-open a silent refusal.
 
 ---
 
