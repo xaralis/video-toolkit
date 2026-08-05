@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { LayeredReel, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import { deriveSpeed } from '@video-toolkit/lib/reel-config-base/speed';
-import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem, duplicateItem, clipFootageCapMs, resizeBoundsMs, laneOfRow, slipVideoItem, isSlippable, setItemSpeed } from './layered-adapter';
+import { layeredToTimeline, applyTimelineChange, parseActionId, deleteItem, splitItem, duplicateItem, clipFootageCapMs, resizeBoundsMs, laneOfRow, slipVideoItem, slipClamp, isSlippable, setItemSpeed } from './layered-adapter';
 
 // Small schema-valid LayeredReel fixture: one item per track.
 const REEL: LayeredReel = {
@@ -1397,6 +1397,63 @@ describe('slipVideoItem', () => {
       tracks: { ...SLIP_REEL.tracks, video: [{ id: 'v1', kind: 'clip', startMs: 0, endMs: 3000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 3000 }] },
     };
     expect(slipVideoItem(reel, 'v1', 500, { v1: 2000 })).toBe(reel);
+  });
+});
+
+// slipClamp is the pure value slipVideoItem's clamp already computes,
+// extracted so LayeredTimeline's hint bar can report WHY a slip stopped
+// without re-deriving minDelta/maxDelta itself (and risking disagreeing with
+// the bound slipVideoItem actually applies). SLIP_REEL/CAPS: 1000ms of unused
+// head, footage runs to 10000ms so 6000ms of unused tail (sourceOutMs 4000).
+describe('slipClamp', () => {
+  it('reports "head" when the delta is clamped at the source start', () => {
+    expect(slipClamp(SLIP_REEL, 'v1', -5000, CAPS)).toBe('head');
+  });
+
+  it('reports "tail" when the delta is clamped at the known footage end', () => {
+    expect(slipClamp(SLIP_REEL, 'v1', 9000, CAPS)).toBe('tail');
+  });
+
+  it('reports null for a delta well within both bounds', () => {
+    expect(slipClamp(SLIP_REEL, 'v1', 500, CAPS)).toBeNull();
+  });
+
+  it('reports null with no footage cap known — there is no tail bound to hit', () => {
+    expect(slipClamp(SLIP_REEL, 'v1', 9000, {})).toBeNull();
+  });
+
+  it('reports null for a kind with no single source window', () => {
+    const reel: LayeredReel = {
+      ...SLIP_REEL,
+      tracks: { ...SLIP_REEL.tracks, video: [{ id: 'p1', kind: 'photo', startMs: 0, endMs: 3000, source: 'a.jpg' }] },
+    };
+    expect(slipClamp(reel, 'p1', -5000, {})).toBeNull();
+  });
+
+  // Fix round 1, Finding 1: a clip authored AT sourceInMs 0 (the common
+  // case — most clips start at the head of their file) has minDelta === 0.
+  // slipDeltaMs returns exactly 0 for zero horizontal pointer travel, which
+  // any vertical-only pointermove during an alt+drag produces — so `<=`
+  // reported 'head' on the very first move of a FREE slip, before the user
+  // had slipped anything at all. Only the exact boundary itself (a single
+  // point the pointer passes through instantly) should stop reporting.
+  it('is null at exactly minDelta with a zero-headroom clip — a free slip, not a block', () => {
+    const reel: LayeredReel = {
+      ...SLIP_REEL,
+      tracks: { ...SLIP_REEL.tracks, video: [{ id: 'v1', kind: 'clip', startMs: 0, endMs: 3000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 3000 }] },
+    };
+    expect(slipClamp(reel, 'v1', 0, CAPS)).toBeNull();
+  });
+
+  // Same shape at the tail: a clip authored out to exactly the file's end
+  // has maxDelta === 0, and a zero delta must not read as clamped there
+  // either.
+  it('is null at exactly maxDelta with a zero-headroom clip — a free slip, not a block', () => {
+    const reel: LayeredReel = {
+      ...SLIP_REEL,
+      tracks: { ...SLIP_REEL.tracks, video: [{ id: 'v1', kind: 'clip', startMs: 0, endMs: 3000, source: 'a.mp4', sourceInMs: 7000, sourceOutMs: 10000 }] },
+    };
+    expect(slipClamp(reel, 'v1', 0, CAPS)).toBeNull();
   });
 });
 

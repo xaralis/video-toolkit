@@ -19,6 +19,8 @@ export const BLOCK_REASONS = [
   'music-source-end',
   'timeline-start',
   'transition-handle-starved',
+  'slip-head-exhausted',
+  'slip-tail-exhausted',
 ] as const;
 
 export type BlockReason = (typeof BLOCK_REASONS)[number];
@@ -70,8 +72,14 @@ export function musicBlockReason(args: {
   maxMs: number | undefined;
   tolMs: number;
 }): BlockReason | null {
-  const { edge, posMs, maxMs, tolMs } = args;
-  if (edge === 'in') return posMs <= tolMs ? 'timeline-start' : null;
+  const { edge, maxMs, posMs, tolMs } = args;
+  // The left handle is pinned at 0 unconditionally — `applyTimeline` discards
+  // any start change for the music lane on commit, so dragging it right (not
+  // just left, back toward 0) is just as much of a no-op. Reporting only the
+  // leftward case left a rightward drag travelling, doing nothing, and
+  // springing back on release with no explanation at all — the exact failure
+  // this feature exists to remove.
+  if (edge === 'in') return 'timeline-start';
   if (maxMs === undefined) return null;
   return posMs >= maxMs - tolMs ? 'music-source-end' : null;
 }

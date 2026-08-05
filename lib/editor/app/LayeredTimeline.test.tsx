@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
-import { LayeredTimeline, colorFor, blockColor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics, zoomFactorFor, followScrollLeft, zoomAnchorScrollLeft, accumulateZoom, TIMELINE_START_LEFT, findGridInstance, applyZoomLayout, resizeHintFor, type PendingZoom, type GridInstance } from './LayeredTimeline';
+import { LayeredTimeline, colorFor, blockColor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics, zoomFactorFor, followScrollLeft, zoomAnchorScrollLeft, accumulateZoom, TIMELINE_START_LEFT, findGridInstance, applyZoomLayout, resizeHintFor, slipHintFor, type PendingZoom, type GridInstance } from './LayeredTimeline';
 import { sourceColors } from './editor-meta';
 import { hintForReason } from './block-reason-copy';
 import type { LayeredReel, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
@@ -209,6 +209,13 @@ describe('LayeredTimeline shortcut bar', () => {
     for (const cls of ['ed:flex-none', 'ed:h-5', 'ed:border-t', 'ed:whitespace-nowrap', 'ed:overflow-hidden']) {
       expect(bar.className, bar.className).toContain(cls);
     }
+    // MINOR 6: the bar is `overflow-hidden` by design, so a long message
+    // truncates with no ellipsis — `title` is the only way to read the full
+    // text — and `aria-live` is what tells a screen reader the bar's content
+    // just changed at all (a swap of text alone announces nothing on its own).
+    const span = screen.getByTestId('timeline-hint');
+    expect(span).toHaveAttribute('title', 'No more footage before this point.');
+    expect(span).toHaveAttribute('aria-live', 'polite');
   });
 
   it('goes back to the shortcuts when the hint clears', () => {
@@ -816,5 +823,54 @@ describe('resizeHintFor', () => {
 
     const withRawDecodedInstead = resizeHintFor({ reel, capMsById: { v1: 6000 }, fps: 30 }, drag);
     expect(withRawDecodedInstead).toEqual(hintForReason('footage-tail-exhausted')); // proves the two caps disagree
+  });
+
+  // Fix round, MINOR 5: `onActionResizeStart` already refuses to arm a live
+  // bound for anything but the video/music lanes; this function lacked the
+  // same guard. The transitions lane's action id parses to the VIDEO item's
+  // id (Task 1's shape) — so without the guard, a transitions-lane resize
+  // event would find that same video item and report a footage-cap reason
+  // for what is actually a transition drag. Not reachable today (the
+  // transitions lane isn't resizable), but the guard must hold regardless.
+  it('says nothing for a non-video, non-music lane — even one whose id collides with a video item', () => {
+    const item = resizeClip();
+    const reel = resizeReel(item);
+    const r = resizeHintFor(
+      { reel, capMsById: { v1: 6000 }, fps: 30 },
+      { actionId: 'transitions:v1', start: 2, end: 7, dir: 'right' },
+    );
+    expect(r).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The slip gesture (⌥+drag) used to clamp silently — it was the only
+// blocking edit path with no `onHint` call at all. `slipHintFor` is the pure
+// core `moveSlip` calls on every pointer move; `slipClamp` (layered-adapter's
+// own tests) already pins the clamp math itself, so these pin only the
+// reason-code mapping and the null (free-move) case.
+// ---------------------------------------------------------------------------
+
+describe('slipHintFor', () => {
+  it('names the head reason when the slip clamps at the source start', () => {
+    const item = resizeClip({ sourceInMs: 1000, sourceOutMs: 5000 });
+    const reel = resizeReel(item);
+    const r = slipHintFor(reel, 'v1', -5000, { v1: 20000 });
+    expect(r).toEqual(hintForReason('slip-head-exhausted'));
+  });
+
+  it('names the tail reason when the slip clamps at the known footage end', () => {
+    const item = resizeClip({ sourceInMs: 1000, sourceOutMs: 5000 });
+    const reel = resizeReel(item);
+    // decoded 6000, sourceOut 5000 ⇒ 1000ms of tail room; +5000 overshoots it.
+    const r = slipHintFor(reel, 'v1', 5000, { v1: 6000 });
+    expect(r).toEqual(hintForReason('slip-tail-exhausted'));
+  });
+
+  it('is null for a delta well inside both bounds — nothing is blocking', () => {
+    const item = resizeClip({ sourceInMs: 1000, sourceOutMs: 5000 });
+    const reel = resizeReel(item);
+    const r = slipHintFor(reel, 'v1', 200, { v1: 20000 });
+    expect(r).toBeNull();
   });
 });

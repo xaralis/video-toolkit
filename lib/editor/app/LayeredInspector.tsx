@@ -749,9 +749,28 @@ export function TransitionFields({
                 // `LayeredTimeline` already uses (`useTransientHint` de-dupes
                 // by identity), so the most recent publisher simply wins;
                 // kept deliberately, not an oversight.
-                onHint?.(cap !== undefined && Number.isFinite(cap) && rounded >= cap
-                  ? hintForReason('transition-handle-starved')
-                  : null);
+                const starved = rounded >= cap;
+                onHint?.(starved ? hintForReason('transition-handle-starved') : null);
+                // Fix round, FINDING 1: unlike a timeline drag — which fires
+                // this callback on every pointer move and only calls `onHint`
+                // with `null` once on release (see LayeredTimeline's
+                // onActionResizeEnd) — this control has no drag/release pair
+                // of its own; `onCommit` is the only signal there is. A
+                // `publish` with no matching `release` never re-arms
+                // `useTransientHint`'s countdown, so a warning landed here
+                // would sit in the bar forever, hijacking the shortcut hints
+                // until some unrelated publisher happened to speak. Following
+                // the publish with an immediate `null` gives exactly the
+                // drag's release semantics: `publish` de-dupes by identity
+                // (a warning stays visible across repeated warn commits) and
+                // `null` unconditionally starts the countdown (see
+                // useTransientHint's LATCH property). Only needed in the
+                // `starved` branch — the non-starved branch already published
+                // `null` itself the line above, and a second `null` there
+                // would be a redundant call (harmless — `release` just
+                // cancels-then-re-arms a countdown with nothing to show — but
+                // pointless), not a second behaviour.
+                if (starved) onHint?.(null);
                 onChange({ ...t, frames: Math.min(cap, rounded) });
               }}
             />

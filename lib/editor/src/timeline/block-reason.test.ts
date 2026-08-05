@@ -100,6 +100,16 @@ describe('musicBlockReason', () => {
     expect(musicBlockReason({ edge: 'in', posMs: 0, maxMs: 30000, tolMs: TOL })).toBe('timeline-start');
   });
 
+  // Fix round, FINDING 2 (Important): `applyTimeline` discards any start
+  // change for the music lane on commit regardless of direction — the left
+  // handle is pinned at 0 whether it's dragged left (back toward 0, already
+  // covered above) or right (away from 0). Only the leftward case was
+  // explained; a rightward drag travelled, did nothing, and sprang back on
+  // release with no message at all.
+  it('names the start of the timeline for a RIGHTWARD drag of the pinned left edge too', () => {
+    expect(musicBlockReason({ edge: 'in', posMs: 5000, maxMs: 30000, tolMs: TOL })).toBe('timeline-start');
+  });
+
   it('is null away from both', () => {
     expect(musicBlockReason({ edge: 'out', posMs: 12000, maxMs: 30000, tolMs: TOL })).toBeNull();
   });

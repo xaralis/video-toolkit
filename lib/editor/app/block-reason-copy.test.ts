@@ -31,4 +31,24 @@ describe('block reason copy', () => {
       expect(text.length, text).toBeLessThanOrEqual(90);
     }
   });
+
+  // Every reason that means "your edit was blocked" reads the same muted
+  // grey (`ed:text-ink-2`) as the plain shortcut hints it replaces when
+  // severity is 'info' — which is exactly why the user reported the bar as
+  // decoration rather than a message. Every everyday blocking reason (all of
+  // them EXCEPT the one filtered out below, `transition-handle-starved` —
+  // already 'warn' before this task, checked separately next) must be
+  // promoted to 'warn' so it actually stands out.
+  it('promotes every everyday blocking reason to warn — info reads as decoration', () => {
+    const everydayBlocking = ALL.filter(
+      (r) => r !== 'transition-handle-starved',
+    );
+    for (const reason of everydayBlocking) {
+      expect(hintForReason(reason).severity, reason).toBe('warn');
+    }
+  });
+
+  it('keeps transition-handle-starved at warn — unchanged by the promotion above', () => {
+    expect(hintForReason('transition-handle-starved').severity).toBe('warn');
+  });
 });

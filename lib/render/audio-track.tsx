@@ -5,7 +5,6 @@
 import React from 'react';
 import { Audio, Sequence, staticFile } from 'remotion';
 import { audioGainAt } from './audio-gain';
-import { PREVIEW_SYNC_TOLERANCE_SECONDS } from './media-sync';
 import { resolveMediaSource } from '../theming/media-source';
 import type { AudioItem } from '../reel-config-base/layered-schema';
 
@@ -35,11 +34,14 @@ export function buildAudioNodes(
     const durationInFrames = Math.max(1, msToFrames(a.endMs) - from);
     return (
       <Sequence key={a.id} from={from} durationInFrames={durationInFrames} name={a.id}>
+        {/* No acceptableTimeShiftInSeconds here on purpose — see media-sync.ts.
+            Sound is the reference the ear judges everything against; audio
+            barely drifts, and a seek in it is audible, so Remotion's own
+            default governs this element. */}
         <Audio
           src={staticFile(resolve(a.source))}
           startFrom={msToFrames(a.sourceInMs)}
           volume={(f) => audioGainAt(a, f, opts.fps)}
-          acceptableTimeShiftInSeconds={PREVIEW_SYNC_TOLERANCE_SECONDS}
         />
       </Sequence>
     );

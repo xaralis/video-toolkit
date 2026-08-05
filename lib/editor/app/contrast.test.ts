@@ -40,6 +40,12 @@ describe('the editor’s on-colour text passes AA', () => {
   const pairs: Array<[string, string, string]> = [
     ['accent button label', 'accent-ink', 'accent'],
     ['transition marker label', 'transition-marker-ink', 'transition-marker'],
+    // The timeline's hint bar (LayeredTimeline.tsx) paints a 'warn'-severity
+    // hint `ed:text-warn` and sits, unstyled itself, on the timeline root's
+    // `ed:bg-shell` — this is the pairing every blocking edit's message was
+    // promoted to (see block-reason-copy.ts) so it would actually be noticed
+    // rather than reading as decoration.
+    ['timeline hint bar (warn)', 'warn', 'shell'],
   ];
 
   for (const [what, inkToken, fillToken] of pairs) {

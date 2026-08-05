@@ -11,30 +11,47 @@ export interface HintMessage {
  *
  *  Each one says what stopped AND, where it is not obvious, what to do about
  *  it. A message the user cannot act on is only marginally better than the
- *  silence this replaces. Kept short: the bar is one line and must not wrap. */
+ *  silence this replaces. Kept short: the bar is one line and must not wrap.
+ *
+ *  EVERY reason here is `severity: 'warn'`. They started split five 'info' /
+ *  one 'warn' — the hint bar paints 'info' the same muted `ed:text-ink-2` as
+ *  the shortcut hints it replaces, so a blocked edit read as decoration
+ *  rather than a message (the user's own report). Every one of these codes
+ *  means the same thing from the user's side — "your edit just stopped
+ *  moving" — so there is no genuinely informational tier left to keep
+ *  separate; a future reason that is actually advisory (not a stop) should
+ *  get its own tier back rather than defaulting to 'warn' out of habit. */
 export const BLOCK_REASON_COPY: Record<BlockReason, HintMessage> = {
   'footage-head-exhausted': {
     text: 'Start of the source — there is no earlier footage in this file.',
-    severity: 'info',
+    severity: 'warn',
   },
   'footage-tail-exhausted': {
     text: 'End of the source — there is no more footage in this file.',
-    severity: 'info',
+    severity: 'warn',
   },
   'min-clip-length': {
     text: 'Minimum clip length reached.',
-    severity: 'info',
+    severity: 'warn',
   },
   'music-source-end': {
     text: 'End of the music file.',
-    severity: 'info',
+    severity: 'warn',
   },
   'timeline-start': {
     text: 'The music bed is pinned to the start of the reel.',
-    severity: 'info',
+    severity: 'warn',
   },
   'transition-handle-starved': {
     text: "Clip next door has no footage to lend — trim that one back, or slip this one's window.",
+    severity: 'warn',
+  },
+  'slip-head-exhausted': {
+    text: 'Slipped to the earliest frame — nothing earlier in this file.',
+    severity: 'warn',
+  },
+  'slip-tail-exhausted': {
+    text: 'Slipped to the latest frame — nothing later in this file.',
     severity: 'warn',
   },
 };

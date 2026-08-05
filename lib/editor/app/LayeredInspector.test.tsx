@@ -1258,7 +1258,11 @@ describe('LayeredInspector transition length — bounded by the boundary’s act
     );
     fireEvent.change(screen.getByLabelText('Length (frames, max 13)'), { target: { value: '14' } });
     expect(onHint).toHaveBeenCalledWith(expect.objectContaining({ severity: 'warn' }));
-    expect(onHint.mock.calls.at(-1)![0].text.toLowerCase()).toMatch(/lend|trim|shift/);
+    // FINDING 1's fix follows every publish with an immediate release — the
+    // warning is the SECOND-TO-LAST call now, not the last (the last is the
+    // trailing `null` that starts the auto-clear countdown).
+    expect(onHint.mock.calls.at(-2)![0].text.toLowerCase()).toMatch(/lend|trim|shift/);
+    expect(onHint.mock.calls.at(-1)).toEqual([null]);
   });
 
   // Same boundary, reached through the "video" lane's inline "Transition out"
@@ -1272,7 +1276,11 @@ describe('LayeredInspector transition length — bounded by the boundary’s act
     );
     fireEvent.change(screen.getByLabelText('Length (frames, max 13)'), { target: { value: '14' } });
     expect(onHint).toHaveBeenCalledWith(expect.objectContaining({ severity: 'warn' }));
-    expect(onHint.mock.calls.at(-1)![0].text.toLowerCase()).toMatch(/lend|trim|shift/);
+    // FINDING 1's fix follows every publish with an immediate release — the
+    // warning is the SECOND-TO-LAST call now, not the last (the last is the
+    // trailing `null` that starts the auto-clear countdown).
+    expect(onHint.mock.calls.at(-2)![0].text.toLowerCase()).toMatch(/lend|trim|shift/);
+    expect(onHint.mock.calls.at(-1)).toEqual([null]);
   });
 
   // Fix round 1, Finding 1 (Important): the two tests above only prove the
@@ -1312,7 +1320,11 @@ describe('LayeredInspector transition length — bounded by the boundary’s act
     // "dragged the thumb to the wall", not a synonym for the retroactive case.
     fireEvent.change(input, { target: { value: '999' } });
     expect(onHint).toHaveBeenCalledWith(expect.objectContaining({ severity: 'warn' }));
-    expect(onHint.mock.calls.at(-1)![0].text.toLowerCase()).toMatch(/lend|trim|shift/);
+    // FINDING 1's fix follows every publish with an immediate release — the
+    // warning is the SECOND-TO-LAST call now, not the last (the last is the
+    // trailing `null` that starts the auto-clear countdown).
+    expect(onHint.mock.calls.at(-2)![0].text.toLowerCase()).toMatch(/lend|trim|shift/);
+    expect(onHint.mock.calls.at(-1)).toEqual([null]);
   });
 
   // Finding 2 (Minor): the positive cases above only prove the warning
@@ -1330,6 +1342,29 @@ describe('LayeredInspector transition length — bounded by the boundary’s act
     fireEvent.change(screen.getByLabelText('Length (frames, max 13)'), { target: { value: '8' } });
     expect(onHint).toHaveBeenCalledWith(null);
     expect(onHint).not.toHaveBeenCalledWith(expect.objectContaining({ severity: 'warn' }));
+  });
+
+  // Fix round, FINDING 1 (Important): a `SliderField` commit has no
+  // drag/release pair of its own — unlike a timeline drag, which fires many
+  // `onHint(warning)` calls but only ONE `onHint(null)` on release (see
+  // LayeredTimeline's onActionResizeEnd). `useTransientHint`'s countdown only
+  // (re-)arms on a `null` call (`release`) — `publish` unconditionally
+  // cancels it — so a warning published here with no following `null` would
+  // never clear: the starvation sentence would sit in the timeline's bottom
+  // bar forever, hijacking the shortcut hints. Proven RED against the
+  // pre-fix code, which called `onHint` exactly once (the warning, never a
+  // trailing `null`).
+  it('follows a published warning immediately with a release — Finding 1: an inspector hint must not hang forever', () => {
+    const onHint = vi.fn();
+    render(
+      <LayeredInspector reel={starvedReel} selectedId="transition:v1" onChange={() => {}} onSeek={() => {}} fps={30}
+        sourceDurations={durations} onHint={onHint} />,
+    );
+    fireEvent.change(screen.getByLabelText('Length (frames, max 13)'), { target: { value: '14' } });
+    expect(onHint.mock.calls).toEqual([
+      [expect.objectContaining({ severity: 'warn' })],
+      [null],
+    ]);
   });
 
   it('never publishes on the unbounded (ScrubField) path — no boundary context to explain', () => {
