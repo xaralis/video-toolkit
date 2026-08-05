@@ -8,7 +8,20 @@ import type { HintMessage } from './block-reason-copy';
  *    held against a bound (which fires on every pointer move) does not
  *    re-render the memoized timeline dozens of times per second.
  *  - LATCH: the message stays up while the gesture continues and only starts
- *    its countdown on `release`, so it cannot blink between move events. */
+ *    its countdown on `release`, so it cannot blink between move events. In
+ *    practice this means the message can outlive the drag itself by up to
+ *    `clearAfterMs`: EVERY `publish` (even a re-publish of the same content,
+ *    which fires on every pointer move while a drag sits against a bound)
+ *    cancels any pending countdown, so the clock only truly starts counting
+ *    down from the LAST move before release/settle, not from when the drag
+ *    first left the bound.
+ *
+ *  `publish` already holds — it unconditionally cancels any pending
+ *  countdown, which is what makes the LATCH property above true without any
+ *  caller having to call `hold` explicitly. `hold` is exposed separately for
+ *  a caller that wants to keep the CURRENT message alive on some other
+ *  signal without touching its content (e.g. "still true, nothing new to
+ *  say") — current callers only ever use `publish`/`release`. */
 export function useTransientHint(clearAfterMs = 1500) {
   const [hint, setHint] = useState<HintMessage | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);

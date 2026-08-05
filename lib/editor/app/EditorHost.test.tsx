@@ -556,21 +556,33 @@ describe('EditorHost (child modules mocked at the boundary)', () => {
   });
 
   it('shows the timeline’s hint, and clears it after the gesture ends', async () => {
-    const { EditorHost: Host } = await import('../host/EditorHost');
-    render(<Host {...opts} />);
-    // Real timers until the component has settled (fetch resolution, initial
-    // effects) — fake timers active this early would starve waitFor's own
-    // polling, which vitest's fake clock does not exempt itself from.
-    await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
+    // try/finally: if an assertion throws mid-test with fake timers still
+    // active, an un-restored clock starves the NEXT test's `waitFor` (real
+    // timers) and one failure presents as two. See Task 3 fix round 1.
+    try {
+      const { EditorHost: Host } = await import('../host/EditorHost');
+      render(<Host {...opts} />);
+      // Real timers until the component has settled (fetch resolution, initial
+      // effects) — fake timers active this early would starve waitFor's own
+      // polling, which vitest's fake clock does not exempt itself from.
+      await waitFor(() => expect(seenTimelineProps.length).toBeGreaterThan(0));
 
-    vi.useFakeTimers();
-    act(() => seenTimelineProps.at(-1).onHint({ text: 'End of the source.', severity: 'info' }));
-    expect(seenTimelineProps.at(-1).hint).toEqual({ text: 'End of the source.', severity: 'info' });
+      vi.useFakeTimers();
+      act(() => seenTimelineProps.at(-1).onHint({ text: 'End of the source.', severity: 'info' }));
+      expect(seenTimelineProps.at(-1).hint).toEqual({ text: 'End of the source.', severity: 'info' });
 
-    act(() => seenTimelineProps.at(-1).onHint(null));
-    act(() => vi.advanceTimersByTime(2000));
-    expect(seenTimelineProps.at(-1).hint).toBeNull();
-    vi.useRealTimers();
+      act(() => seenTimelineProps.at(-1).onHint(null));
+      // Not yet — a delayed clear must still be non-null part-way through the
+      // countdown, or "clears after a delay" and "clears instantly" would be
+      // indistinguishable to this test (both satisfy "null after 2000ms").
+      act(() => vi.advanceTimersByTime(1000));
+      expect(seenTimelineProps.at(-1).hint).toEqual({ text: 'End of the source.', severity: 'info' });
+
+      act(() => vi.advanceTimersByTime(1000));
+      expect(seenTimelineProps.at(-1).hint).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('passes a STABLE onHint — the memoized timeline must not re-render on it', async () => {

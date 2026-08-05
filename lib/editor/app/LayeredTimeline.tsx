@@ -240,6 +240,31 @@ export function slipDeltaMs(dxPx: number, scaleWidth: number, speed: number = 1)
   return -(dxPx / scaleWidth) * 1000 * speed || 0;
 }
 
+/** Pure core of `onActionResizing`: why (if at all) the dragged edge is
+ *  currently at its limit. Extracted so the trap this task exists to avoid —
+ *  using `sourceDurations` (the raw decoded length) instead of `capMsById`
+ *  (the SAME cap the live drag bound and the commit clamp both use, i.e. the
+ *  max of the decoded file and the clip's authored out-point) — is provable
+ *  in a unit test without driving the vendored timeline library. `dir` here
+ *  is `'left' | 'right'`, xzdarcy's own vocabulary — NOT `edgeBlockReason`'s
+ *  `'in' | 'out'`, which is derived from it below. */
+export function resizeHintFor(
+  ctx: { reel: LayeredReel; capMsById: Record<string, number>; fps: number; musicMaxMs?: number },
+  ev: { actionId: string; start: number; end: number; dir: 'left' | 'right' },
+): HintMessage | null {
+  const { reel, capMsById, fps, musicMaxMs } = ctx;
+  const { start, end, dir } = ev;
+  const { lane, id } = parseActionId(ev.actionId);
+  const tolMs = 1000 / fps;
+  const posMs = (dir === 'left' ? start : end) * 1000;
+  const edge = dir === 'left' ? 'in' : 'out';
+  const reasonHint = (r: BlockReason | null) => (r ? hintForReason(r) : null);
+  if (lane === 'music') return reasonHint(musicBlockReason({ edge, posMs, maxMs: musicMaxMs, tolMs }));
+  const item = reel.tracks.video.find((v) => v.id === id);
+  if (!item) return null;
+  return reasonHint(edgeBlockReason({ item, decodedMs: capMsById[id], edge, posMs, tolMs }));
+}
+
 // Zoom per pixel of wheel travel, as ln(factor). A mouse notch (deltaY ≈ 100 in
 // pixel mode) lands on ~1.33×; a trackpad pinch, which fires dozens of events a
 // second carrying a few px each, moves under a percent per event and so reads as
@@ -1359,18 +1384,7 @@ function LayeredTimelineImpl({
           // out-point), so a clip whose config has drifted past its file
           // reports the limit the user actually hit, not one they never did.
           onActionResizing={({ action, start, end, dir }) => {
-            const { lane, id } = parseActionId(action.id);
-            const tolMs = 1000 / fps;
-            const posMs = (dir === 'left' ? start : end) * 1000;
-            const edge = dir === 'left' ? 'in' : 'out';
-            const reasonHint = (r: BlockReason | null) => (r ? hintForReason(r) : null);
-            if (lane === 'music') {
-              onHint?.(reasonHint(musicBlockReason({ edge, posMs, maxMs: musicMaxMs, tolMs })));
-              return;
-            }
-            const item = reel.tracks.video.find((v) => v.id === id);
-            if (!item) return;
-            onHint?.(reasonHint(edgeBlockReason({ item, decodedMs: capMsById[id], edge, posMs, tolMs })));
+            onHint?.(resizeHintFor({ reel, capMsById, fps, musicMaxMs }, { actionId: action.id, start, end, dir }));
           }}
           onActionResizeEnd={() => {
             setResizeBound(null);

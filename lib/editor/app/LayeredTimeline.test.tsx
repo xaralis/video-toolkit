@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
-import { LayeredTimeline, colorFor, blockColor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics, zoomFactorFor, followScrollLeft, zoomAnchorScrollLeft, accumulateZoom, TIMELINE_START_LEFT, findGridInstance, applyZoomLayout, type PendingZoom, type GridInstance } from './LayeredTimeline';
+import { LayeredTimeline, colorFor, blockColor, timelineLabel, audioUrl, videoUrl, slipDeltaMs, boundaryDiagnostics, zoomFactorFor, followScrollLeft, zoomAnchorScrollLeft, accumulateZoom, TIMELINE_START_LEFT, findGridInstance, applyZoomLayout, resizeHintFor, type PendingZoom, type GridInstance } from './LayeredTimeline';
 import { sourceColors } from './editor-meta';
+import { hintForReason } from './block-reason-copy';
 import type { LayeredReel, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 
 const reel: LayeredReel = {
@@ -733,5 +734,87 @@ describe('boundaryDiagnostics', () => {
   it('is empty when every boundary has room', () => {
     const reel = starvedReel(2000);
     expect(boundaryDiagnostics(reel, { 'a.mp4': 10000, 'b.mp4': 10000 }, 30)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 3 fix round 1 (finding 2): the pure core of `onActionResizing`,
+// extracted so the wiring trap it exists to guard against — `capMsById` vs.
+// a raw decoded duration — is provable without driving the vendored
+// timeline library (its resize geometry does not mount in jsdom).
+// ---------------------------------------------------------------------------
+
+const resizeClip = (over: Partial<VideoItem> = {}): VideoItem =>
+  ({ id: 'v1', kind: 'clip', startMs: 2000, endMs: 6000, source: 'a.mp4',
+     sourceInMs: 1000, sourceOutMs: 5000, ...over }) as VideoItem;
+
+const resizeReel = (item: VideoItem): LayeredReel => ({
+  version: 'layered-1', meta: { topic: 't', totalDurationMs: item.endMs },
+  tracks: { video: [item], audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [] },
+});
+
+describe('resizeHintFor', () => {
+  it('names the tail when the video out-edge is at the footage cap', () => {
+    const item = resizeClip();
+    const reel = resizeReel(item);
+    // decoded 6000 − sourceIn 1000 = 5000ms of tail from startMs 2000 ⇒ 7000.
+    const r = resizeHintFor(
+      { reel, capMsById: { v1: 6000 }, fps: 30 },
+      { actionId: 'video:v1', start: 2, end: 7, dir: 'right' },
+    );
+    expect(r).toEqual(hintForReason('footage-tail-exhausted'));
+  });
+
+  it('names the head when the video in-edge is at the start of the source', () => {
+    const item = resizeClip();
+    const reel = resizeReel(item);
+    // startMs 2000 − sourceInMs 1000 = 1000ms is as far left as it can go.
+    const r = resizeHintFor(
+      { reel, capMsById: { v1: 20000 }, fps: 30 },
+      { actionId: 'video:v1', start: 1, end: 6, dir: 'left' },
+    );
+    expect(r).toEqual(hintForReason('footage-head-exhausted'));
+  });
+
+  it('is null in the middle of the range — nothing is blocking', () => {
+    const item = resizeClip();
+    const reel = resizeReel(item);
+    const r = resizeHintFor(
+      { reel, capMsById: { v1: 20000 }, fps: 30 },
+      { actionId: 'video:v1', start: 2, end: 4, dir: 'right' },
+    );
+    expect(r).toBeNull();
+  });
+
+  it('names the music-source-end message when the music out-edge is at its file end', () => {
+    const item = resizeClip();
+    const reel = resizeReel(item);
+    const r = resizeHintFor(
+      { reel, capMsById: { v1: 20000 }, fps: 30, musicMaxMs: 5000 },
+      { actionId: 'music:m1', start: 0, end: 5, dir: 'right' },
+    );
+    expect(r).toEqual(hintForReason('music-source-end'));
+  });
+
+  it('THE TRAP: uses capMsById, not a raw decoded duration, for the footage cap', () => {
+    // A clip authored PAST what the decoded file measures (footage-cap.ts's
+    // own example: seg-002, file 6000ms decoded, authored out to 7000ms —
+    // capMsById is max(decoded, authored) = 7000). At 1x (sourceOutMs −
+    // sourceInMs === endMs − startMs, as the base fixture already is):
+    //   capMsById=7000 (correct)   ⇒ maxEndMs = 2000 + (7000−1000) = 8000
+    //   decoded-only=6000 (WRONG)  ⇒ maxEndMs = 2000 + (6000−1000) = 7000
+    // Dragging the out-edge to 7500ms sits BETWEEN the two bounds: free
+    // footage under the correct cap, already exhausted under the wrong one —
+    // a position the user could reach honestly (the file really holds it,
+    // via the authored trim) but that `sourceDurations` alone would refuse.
+    const item = resizeClip();
+    const reel = resizeReel(item);
+    const drag = { actionId: 'video:v1', start: 2, end: 7.5, dir: 'right' as const };
+
+    const withCorrectCap = resizeHintFor({ reel, capMsById: { v1: 7000 }, fps: 30 }, drag);
+    expect(withCorrectCap).toBeNull(); // still room — capMsById(7000) says so
+
+    const withRawDecodedInstead = resizeHintFor({ reel, capMsById: { v1: 6000 }, fps: 30 }, drag);
+    expect(withRawDecodedInstead).toEqual(hintForReason('footage-tail-exhausted')); // proves the two caps disagree
   });
 });
