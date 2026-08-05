@@ -1429,6 +1429,32 @@ describe('slipClamp', () => {
     };
     expect(slipClamp(reel, 'p1', -5000, {})).toBeNull();
   });
+
+  // Fix round 1, Finding 1: a clip authored AT sourceInMs 0 (the common
+  // case — most clips start at the head of their file) has minDelta === 0.
+  // slipDeltaMs returns exactly 0 for zero horizontal pointer travel, which
+  // any vertical-only pointermove during an alt+drag produces — so `<=`
+  // reported 'head' on the very first move of a FREE slip, before the user
+  // had slipped anything at all. Only the exact boundary itself (a single
+  // point the pointer passes through instantly) should stop reporting.
+  it('is null at exactly minDelta with a zero-headroom clip — a free slip, not a block', () => {
+    const reel: LayeredReel = {
+      ...SLIP_REEL,
+      tracks: { ...SLIP_REEL.tracks, video: [{ id: 'v1', kind: 'clip', startMs: 0, endMs: 3000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 3000 }] },
+    };
+    expect(slipClamp(reel, 'v1', 0, CAPS)).toBeNull();
+  });
+
+  // Same shape at the tail: a clip authored out to exactly the file's end
+  // has maxDelta === 0, and a zero delta must not read as clamped there
+  // either.
+  it('is null at exactly maxDelta with a zero-headroom clip — a free slip, not a block', () => {
+    const reel: LayeredReel = {
+      ...SLIP_REEL,
+      tracks: { ...SLIP_REEL.tracks, video: [{ id: 'v1', kind: 'clip', startMs: 0, endMs: 3000, source: 'a.mp4', sourceInMs: 7000, sourceOutMs: 10000 }] },
+    };
+    expect(slipClamp(reel, 'v1', 0, CAPS)).toBeNull();
+  });
 });
 
 // The single decision "can this item be slipped?" — shared by beginSlip and the

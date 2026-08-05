@@ -422,7 +422,20 @@ function slipBounds(
  *  would be clamped against right now — the same bound `slipVideoItem` itself
  *  applies, computed once here so the two cannot drift apart. `null` means
  *  the delta is free (or the item can't be slipped, or there's nothing to
- *  clamp against — see `slipBounds`). */
+ *  clamp against — see `slipBounds`).
+ *
+ *  Strictly `<`/`>`, not `<=`/`>=` (fix round 1, Finding 1): a clip authored
+ *  AT `sourceInMs: 0` — the common case, most clips start at the head of
+ *  their file — has `minDelta === 0`, and `slipDeltaMs` returns exactly 0 for
+ *  zero horizontal pointer travel, which any vertical-only pointermove during
+ *  an alt+drag produces. A non-strict compare reported 'head' on the very
+ *  first move of a gesture the user hadn't actually slipped at all — and
+ *  because the host maps the following `null` to a 1500ms release countdown
+ *  rather than an instant clear, that false block sat in the bar for a
+ *  second and a half while the slip was moving freely. The trade this makes:
+ *  the exact boundary point itself (deltaMs === minDelta/maxDelta) reports
+ *  free rather than blocked — honest, since the pointer passes through that
+ *  single value instantly on its way past it. */
 export function slipClamp(
   reel: LayeredReel,
   id: string,
@@ -432,8 +445,8 @@ export function slipClamp(
   const bounds = slipBounds(reel, id, footageMsById);
   if (!bounds) return null;
   const { minDelta, maxDelta } = bounds;
-  if (deltaMs <= minDelta) return 'head';
-  if (Number.isFinite(maxDelta) && deltaMs >= maxDelta) return 'tail';
+  if (deltaMs < minDelta) return 'head';
+  if (Number.isFinite(maxDelta) && deltaMs > maxDelta) return 'tail';
   return null;
 }
 
