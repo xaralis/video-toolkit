@@ -38,6 +38,7 @@ import { Sequence } from 'remotion';
 import { transitionNodeFor } from './at-cut-transitions';
 import { computeVideoLayout, type VideoLayoutEntry } from './video-track-layout';
 import { warnOnce } from './warn-once';
+import { ITEM_PREMOUNT_SECONDS } from './media-sync';
 import { VideoTrackHost, LayerShell, PlateHost, type PlanBoundary } from './video-track-plan';
 import { EdgePlate } from '../transitions/edge-plate';
 import { registrationConfig } from '../theming/registry';
@@ -184,15 +185,12 @@ export function buildVideoNodes(
   // draw through their own Sequences uninterrupted — the same picture a hard
   // cut always was, since `computeVideoLayout`'s handle-borrowing overlap
   // does not depend on a boundary rendering anything.
-  // How early an item's own Sequence mounts, hidden, so its media is loaded and
-  // seeked by the frame it has to paint. Without it a clip's <OffthreadVideo>
-  // first exists ON its opening frame, and in the editor's <Player> the
-  // background shows through while the element fetches and seeks — a black
-  // flash at a cut. Remotion premounts at `opacity: 0` under a <Freeze> at the
-  // sequence's first frame, so this changes no rendered pixel; it only moves
-  // the mount earlier. One second is enough for a local seek and short enough
-  // that at most one extra item is ever mounted ahead.
-  const ITEM_PREMOUNT_SECONDS = 1;
+  // `ITEM_PREMOUNT_SECONDS` — how early an item's own Sequence mounts, hidden,
+  // so its media is loaded and seeked by the frame it has to paint — is now a
+  // shared rule in ./media-sync (imported above), not a video-track-private
+  // constant; the audio track premounts the same way and for the same
+  // reason. See that file's comment for the full mechanism and why it matters
+  // differently on each track.
   const planned = new Map<string, PlanBoundary>();
   for (const b of boundaries) {
     const node: TransitionNode | null = transitionNodeFor(b.record, dims);

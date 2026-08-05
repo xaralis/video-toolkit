@@ -58,3 +58,35 @@
 // render-time `<Audio>` is mixed by ffmpeg from the timeline. This value only
 // ever reaches the preview's playback path.
 export const PREVIEW_VIDEO_SYNC_TOLERANCE_SECONDS = 0.3;
+
+// How early an item's own Sequence mounts, hidden, so its media is loaded and
+// seeked by the frame it actually has to play. Shared by BOTH tracks — moved
+// here (from a video-track-private constant) because it is exactly the class
+// of preview-playback constant this file exists to own, and because the two
+// tracks used to disagree: video premounted, audio did not, at all.
+//
+// ON THE VIDEO SIDE the cost of no premount is a black flash: without it a
+// clip's `<OffthreadVideo>` first exists ON its opening frame, and in the
+// editor's `<Player>` the background shows through while the element fetches
+// and seeks. `premountFor` mounts the element early at `opacity: 0` under a
+// `<Freeze>` at the sequence's first frame — see Remotion's own
+// `PremountedPostmountedSequence` — so this changes no rendered pixel; it
+// only moves the mount earlier.
+//
+// ON THE AUDIO SIDE the cost is different but the mechanism and the fix are
+// identical. An `<Audio>` element with no premount first exists exactly when
+// its Sequence begins — only then does it open the file, seek to
+// `startFrom`, and start decoding. That open+seek time is time the audio
+// plays LATE relative to the timeline. Because the Sequence still ends at its
+// authored frame, nothing shifts the far edge to compensate — what gets cut
+// off is whatever the element had not reached yet by then, i.e. the TAIL of
+// the line: the last word. (This is also why the media-sync asymmetry above,
+// no `acceptableTimeShiftInSeconds` on audio, does not paper over it: with no
+// tolerance nothing ever seeks audio back into place, so a late start simply
+// stays late for the rest of the segment.) It matters most on an L-cut
+// segment, where the sound continues from a DIFFERENT file than the picture —
+// that file is a cold open+seek nothing else on screen has already warmed.
+//
+// One second is enough for a local seek and short enough that at most one
+// extra item is ever mounted ahead, on either track.
+export const ITEM_PREMOUNT_SECONDS = 1;
