@@ -209,6 +209,13 @@ describe('LayeredTimeline shortcut bar', () => {
     for (const cls of ['ed:flex-none', 'ed:h-5', 'ed:border-t', 'ed:whitespace-nowrap', 'ed:overflow-hidden']) {
       expect(bar.className, bar.className).toContain(cls);
     }
+    // MINOR 6: the bar is `overflow-hidden` by design, so a long message
+    // truncates with no ellipsis — `title` is the only way to read the full
+    // text — and `aria-live` is what tells a screen reader the bar's content
+    // just changed at all (a swap of text alone announces nothing on its own).
+    const span = screen.getByTestId('timeline-hint');
+    expect(span).toHaveAttribute('title', 'No more footage before this point.');
+    expect(span).toHaveAttribute('aria-live', 'polite');
   });
 
   it('goes back to the shortcuts when the hint clears', () => {
@@ -816,5 +823,22 @@ describe('resizeHintFor', () => {
 
     const withRawDecodedInstead = resizeHintFor({ reel, capMsById: { v1: 6000 }, fps: 30 }, drag);
     expect(withRawDecodedInstead).toEqual(hintForReason('footage-tail-exhausted')); // proves the two caps disagree
+  });
+
+  // Fix round, MINOR 5: `onActionResizeStart` already refuses to arm a live
+  // bound for anything but the video/music lanes; this function lacked the
+  // same guard. The transitions lane's action id parses to the VIDEO item's
+  // id (Task 1's shape) — so without the guard, a transitions-lane resize
+  // event would find that same video item and report a footage-cap reason
+  // for what is actually a transition drag. Not reachable today (the
+  // transitions lane isn't resizable), but the guard must hold regardless.
+  it('says nothing for a non-video, non-music lane — even one whose id collides with a video item', () => {
+    const item = resizeClip();
+    const reel = resizeReel(item);
+    const r = resizeHintFor(
+      { reel, capMsById: { v1: 6000 }, fps: 30 },
+      { actionId: 'transitions:v1', start: 2, end: 7, dir: 'right' },
+    );
+    expect(r).toBeNull();
   });
 });

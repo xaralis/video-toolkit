@@ -260,6 +260,14 @@ export function resizeHintFor(
   const edge = dir === 'left' ? 'in' : 'out';
   const reasonHint = (r: BlockReason | null) => (r ? hintForReason(r) : null);
   if (lane === 'music') return reasonHint(musicBlockReason({ edge, posMs, maxMs: musicMaxMs, tolMs }));
+  // Same guard `onActionResizeStart` already applies before arming the live
+  // bound: only the video lane's items are trimmable this way. Today only
+  // 'video'/'music'/'audio' actions are ever resizable at all — but the
+  // transitions lane's action id parses to the VIDEO item's id (Task 1's
+  // shape), so if that lane were ever made resizable this would otherwise
+  // silently report a footage-cap reason for what is actually a transition
+  // drag.
+  if (lane !== 'video') return null;
   const item = reel.tracks.video.find((v) => v.id === id);
   if (!item) return null;
   return reasonHint(edgeBlockReason({ item, decodedMs: capMsById[id], edge, posMs, tolMs }));
@@ -1417,6 +1425,8 @@ function LayeredTimelineImpl({
         {hint ? (
           <span
             data-testid="timeline-hint"
+            title={hint.text}
+            aria-live="polite"
             className={hint.severity === 'error' ? 'ed:text-danger' : hint.severity === 'warn' ? 'ed:text-warn' : 'ed:text-ink-2'}
           >
             {hint.text}

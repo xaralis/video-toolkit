@@ -18,10 +18,7 @@ import type { HintMessage } from './block-reason-copy';
  *
  *  `publish` already holds — it unconditionally cancels any pending
  *  countdown, which is what makes the LATCH property above true without any
- *  caller having to call `hold` explicitly. `hold` is exposed separately for
- *  a caller that wants to keep the CURRENT message alive on some other
- *  signal without touching its content (e.g. "still true, nothing new to
- *  say") — current callers only ever use `publish`/`release`. */
+ *  caller needing a separate "keep alive" call. */
 export function useTransientHint(clearAfterMs = 1500) {
   const [hint, setHint] = useState<HintMessage | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -41,12 +38,10 @@ export function useTransientHint(clearAfterMs = 1500) {
     });
   }, []);
 
-  const hold = useCallback(cancel, []);
-
   const release = useCallback(() => {
     cancel();
     timer.current = setTimeout(() => setHint(null), clearAfterMs);
   }, [clearAfterMs]);
 
-  return { hint, publish, hold, release };
+  return { hint, publish, release };
 }

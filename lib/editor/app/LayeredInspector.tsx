@@ -749,9 +749,25 @@ export function TransitionFields({
                 // `LayeredTimeline` already uses (`useTransientHint` de-dupes
                 // by identity), so the most recent publisher simply wins;
                 // kept deliberately, not an oversight.
-                onHint?.(cap !== undefined && Number.isFinite(cap) && rounded >= cap
-                  ? hintForReason('transition-handle-starved')
-                  : null);
+                const starved = rounded >= cap;
+                onHint?.(starved ? hintForReason('transition-handle-starved') : null);
+                // Fix round, FINDING 1: unlike a timeline drag — which fires
+                // this callback on every pointer move and only calls `onHint`
+                // with `null` once on release (see LayeredTimeline's
+                // onActionResizeEnd) — this control has no drag/release pair
+                // of its own; `onCommit` is the only signal there is. A
+                // `publish` with no matching `release` never re-arms
+                // `useTransientHint`'s countdown, so a warning landed here
+                // would sit in the bar forever, hijacking the shortcut hints
+                // until some unrelated publisher happened to speak. Following
+                // every publish with an immediate `null` gives exactly the
+                // drag's release semantics: `publish` de-dupes by identity
+                // (a warning stays visible across repeated warn commits) and
+                // `null` unconditionally starts the countdown (see
+                // useTransientHint's LATCH property), so this is a no-op for
+                // an in-range commit (already `null`) and starts the clock
+                // for a warning.
+                onHint?.(null);
                 onChange({ ...t, frames: Math.min(cap, rounded) });
               }}
             />
