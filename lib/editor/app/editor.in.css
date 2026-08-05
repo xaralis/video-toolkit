@@ -44,17 +44,15 @@
   /* The header status chip's "saved" state (green) — universal UI semantics
    * (success/complete), not a brand accent, same reasoning as warn/danger. */
   --color-success: #3ecf7e;
-  /* The transition-lane marker pill (TransitionMarker.tsx) — a one-off, not
-   * part of the neutral/accent palette above, but still a real token rather
-   * than an arbitrary value so it has one named, greppable home.
-   *
-   * Was an amber (#c9a227) carrying near-black text, and at 10px that did not
-   * read — the label is the smallest text in the editor and sat on the most
-   * saturated background in it. A light cool neutral instead: ~15:1 against
-   * its ink, distinct from every lane colour (all saturated), and it reads as
-   * CHROME rather than as another block of content, which is what a derived
-   * marker actually is. Not the accent — that means selected. */
+  /* The transition-lane marker glyph (TransitionMarker.tsx, the "bowtie") —
+   * a one-off, not part of the neutral/accent palette above, but still a
+   * real token rather than an arbitrary value so it has one named,
+   * greppable home. Rendered as an SVG `fill`, dimmed to ~0.8 alpha at rest
+   * (`ed:opacity-80`) so a half-second join stops being the highest-contrast
+   * thing on screen — louder than the shots it joins. The label beside it
+   * is `ink-2`/`ink-3` text, not this token; there is no more on-colour text
+   * painted with it, so it carries no paired `-ink` token any more. Not the
+   * accent — that means selected; not `warn` — that means starved. */
   --color-transition-marker: #e2e6f0;
-  --color-transition-marker-ink: #141824;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }

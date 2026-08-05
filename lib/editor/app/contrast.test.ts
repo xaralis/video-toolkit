@@ -39,7 +39,12 @@ describe('the editor’s on-colour text passes AA', () => {
   // squinting at it, which is exactly the report that produced this test.
   const pairs: Array<[string, string, string]> = [
     ['accent button label', 'accent-ink', 'accent'],
-    ['transition marker label', 'transition-marker-ink', 'transition-marker'],
+    // The transition marker's redesign (TransitionMarker.tsx, the "bowtie")
+    // dropped the pill: there is no more on-colour text painted with
+    // `transition-marker`, only an unboxed `ink-2`/`ink-3` label sitting on
+    // the transitions lane's own background, which is the timeline root's
+    // `shell`. This is the pairing that replaced the old pill-ink one.
+    ['transition marker label (rest)', 'ink-2', 'shell'],
     // The timeline's hint bar (LayeredTimeline.tsx) paints a 'warn'-severity
     // hint `ed:text-warn` and sits, unstyled itself, on the timeline root's
     // `ed:bg-shell` — this is the pairing every blocking edit's message was

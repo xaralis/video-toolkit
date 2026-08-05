@@ -680,9 +680,9 @@ const SNAP_PX = 8;
 // Transitions are markers at the cut, not full clips — a thinner row keeps
 // the lane visually distinct from the video/audio blocks above and below it.
 const TRANSITIONS_ROW_H = 18;
-// Transition marker fill/ink — `--color-transition-marker(-ink)` in
-// editor.in.css's `@theme static` block, used below as `ed:bg-transition-marker`
-// / `ed:text-transition-marker-ink`.
+// Transition marker glyph fill — `--color-transition-marker` in
+// editor.in.css's `@theme static` block, used below (via TransitionMarker.tsx)
+// as `ed:fill-transition-marker`.
 
 export interface LayeredTimelineProps {
   reel: LayeredReel;
