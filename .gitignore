@@ -84,6 +84,9 @@ logs/
 
 # Local Claude Code settings (per-user)
 .claude/settings.local.json
+# Dev-server config written by the browser preview tool — names a machine's own
+# project and port, so it is per-user like the settings above.
+.claude/launch.json
 
 # Test coverage
 coverage/
