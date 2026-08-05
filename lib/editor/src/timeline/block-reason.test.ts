@@ -62,6 +62,33 @@ describe('edgeBlockReason', () => {
     const card = { id: 'c', kind: 'card', startMs: 0, endMs: 3000 } as unknown as VideoItem;
     expect(edgeBlockReason({ item: card, decodedMs: 9000, edge: 'out', posMs: 3000, tolMs: TOL })).toBeNull();
   });
+
+  it('answers in TIMELINE ms, not source ms, when the clip runs at 2x', () => {
+    // Timeline span 2000..6000 (4000ms) plays back source span 1000..9000
+    // (8000ms) ⇒ speed = 8000/4000 = 2. Every fixture above runs at 1x, where
+    // timeline ms and source ms happen to agree — this repo has had SIX
+    // timeline-ms/source-ms conflations, so this one pins that `edgeBlockReason`
+    // reads `resizeBoundsMs` (which is itself in timeline ms) rather than
+    // reasoning in source ms.
+    const item = clip({ startMs: 2000, endMs: 6000, sourceInMs: 1000, sourceOutMs: 9000 });
+
+    // Head bound: headroomTimelineMs = sourceToTimelineMs(sourceInMs) =
+    // 1000 / speed(2) = 500ms of timeline headroom ⇒
+    // minStartMs = round(startMs(2000) - 500) = 1500. (A source-ms reading
+    // would instead put the head bound at startMs - sourceInMs = 1000.)
+    expect(edgeBlockReason({ item, decodedMs: 20000, edge: 'in', posMs: 1500, tolMs: TOL }))
+      .toBe('footage-head-exhausted');
+
+    // Footage cap: with only 8000ms decoded (less than the authored
+    // sourceOutMs of 9000), maxEndMs = round(startMs(2000) +
+    // sourceToTimelineMs(decodedMs(8000) - sourceInMs(1000))) =
+    // round(2000 + 7000/2) = round(2000 + 3500) = 5500 — short of the clip's
+    // own endMs (6000), so this is the cap binding, not min-clip-length.
+    // (A source-ms reading would instead put the cap at endMs - (sourceOutMs -
+    // decodedMs) = 6000 - 1000 = 5000.)
+    expect(edgeBlockReason({ item, decodedMs: 8000, edge: 'out', posMs: 5500, tolMs: TOL }))
+      .toBe('footage-tail-exhausted');
+  });
 });
 
 describe('musicBlockReason', () => {

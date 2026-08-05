@@ -31,6 +31,7 @@ import { TransitionMarker } from './TransitionMarker';
 import { SHORTCUTS } from './shortcuts';
 import { GESTURES } from './ShortcutOverlay';
 import { LinkIcon } from './icons';
+import type { HintMessage } from './block-reason-copy';
 
 // Media paths go through core's ONE rule (lib/theming/media-source.ts) — the
 // same one SegmentMedia and the audio track use — rather than a third private
@@ -664,6 +665,9 @@ export interface LayeredTimelineProps {
   meta?: EditorMeta;
   /** Reported upward so the shell can badge them. Pass a STABLE callback. */
   onDiagnostics?: (d: Diagnostic[]) => void;
+  /** A transient message shown INSTEAD of the shortcut hints (the bar is one
+   *  line — see the bar's own comment). Null/absent = show the hints. */
+  hint?: HintMessage | null;
 }
 
 /** Imperative escape hatch for a zoom that has no pointer to anchor on — the
@@ -698,6 +702,7 @@ function LayeredTimelineImpl({
   snapToBeats = false,
   meta,
   onDiagnostics,
+  hint,
 }: LayeredTimelineProps, ref: ForwardedRef<LayeredTimelineHandle>) {
   const stateRef = useRef<TimelineState>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -1356,12 +1361,23 @@ function LayeredTimelineImpl({
         data-testid="timeline-shortcut-bar"
         className="ed:flex-none ed:h-5 ed:flex ed:items-center ed:gap-4 ed:px-3 ed:py-1 ed:border-t ed:border-line ed:text-[11px] ed:text-ink-3 ed:whitespace-nowrap ed:overflow-hidden"
       >
-        {[...SHORTCUTS.filter((s) => s.group === 'Timeline'), ...GESTURES].map((s) => (
-          <span key={s.keys}>
-            <span className="ed:font-mono ed:text-ink-2">{s.keys}</span> — {s.label}
+        {hint ? (
+          <span
+            data-testid="timeline-hint"
+            className={hint.severity === 'error' ? 'ed:text-danger' : hint.severity === 'warn' ? 'ed:text-warn' : 'ed:text-ink-2'}
+          >
+            {hint.text}
           </span>
-        ))}
-        <span><span className="ed:font-mono ed:text-ink-2">?</span> — all shortcuts</span>
+        ) : (
+          <>
+            {[...SHORTCUTS.filter((s) => s.group === 'Timeline'), ...GESTURES].map((s) => (
+              <span key={s.keys}>
+                <span className="ed:font-mono ed:text-ink-2">{s.keys}</span> — {s.label}
+              </span>
+            ))}
+            <span><span className="ed:font-mono ed:text-ink-2">?</span> — all shortcuts</span>
+          </>
+        )}
       </div>
     </div>
   );

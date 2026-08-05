@@ -194,6 +194,35 @@ describe('LayeredTimeline shortcut bar', () => {
       expect(bar.className, bar.className).toContain(cls);
     }
   });
+
+  it('shows a hint in place of the shortcuts, and keeps the one-line layout', () => {
+    render(
+      <LayeredTimeline reel={reel} onChange={() => {}} selectedId={null} onSelect={() => {}}
+        playerRef={{ current: null }} fps={30} scaleWidth={80}
+        hint={{ text: 'No more footage before this point.', severity: 'warn' }} />,
+    );
+    const bar = screen.getByTestId('timeline-shortcut-bar');
+    expect(within(bar).getByText(/No more footage/)).toBeInTheDocument();
+    // The hints are OUT of the way while a message is up — not stacked below it.
+    expect(within(bar).queryByText('all shortcuts', { exact: false })).not.toBeInTheDocument();
+    for (const cls of ['ed:flex-none', 'ed:h-5', 'ed:whitespace-nowrap', 'ed:overflow-hidden']) {
+      expect(bar.className, bar.className).toContain(cls);
+    }
+  });
+
+  it('goes back to the shortcuts when the hint clears', () => {
+    const { rerender } = render(
+      <LayeredTimeline reel={reel} onChange={() => {}} selectedId={null} onSelect={() => {}}
+        playerRef={{ current: null }} fps={30} scaleWidth={80}
+        hint={{ text: 'No more footage before this point.', severity: 'warn' }} />,
+    );
+    rerender(
+      <LayeredTimeline reel={reel} onChange={() => {}} selectedId={null} onSelect={() => {}}
+        playerRef={{ current: null }} fps={30} scaleWidth={80} hint={null} />,
+    );
+    expect(within(screen.getByTestId('timeline-shortcut-bar')).getByText('all shortcuts', { exact: false }))
+      .toBeInTheDocument();
+  });
 });
 
 // ---------------------------------------------------------------------------

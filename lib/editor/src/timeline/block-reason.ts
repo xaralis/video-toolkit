@@ -41,6 +41,12 @@ export function edgeBlockReason(args: {
     return null;
   }
 
+  // Head-then-min-clip: the OPPOSITE precedence from the commit clamp's
+  // operator order in `resizeVideoItem` (which applies the footage cap LAST
+  // on the out-edge, see the comment above). The two can only disagree for a
+  // clip already shorter than MIN_CLIP_MS — there, the LIVE armed bound really
+  // is `minStartMs` (there is no room left to hit the length floor first), so
+  // the message this returns is still true of what the user's handle did.
   if (posMs <= bounds.minStartMs + tolMs) return 'footage-head-exhausted';
   if (posMs >= item.endMs - MIN_CLIP_MS - tolMs) return 'min-clip-length';
   return null;
