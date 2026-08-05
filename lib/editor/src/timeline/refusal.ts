@@ -56,11 +56,13 @@ export function isSplittableKind(v: VideoItem): v is Extract<VideoItem, { kind: 
   return v.kind === 'clip' || v.kind === 'broll';
 }
 
-/** Split (razor) refusal — mirrors `splitItem`'s early exits in
- *  `layered-adapter.ts:968,972,974`. An unresolvable `selectedId` (stale
- *  selection, item already gone) is not itself a named refusal: the command
- *  no-ops on it the same way, but there is nothing to tell the user beyond
- *  "there's nothing there", which is out of this plan's audited surface. */
+/** Split (razor) refusal. This is where the rule lives: `splitItem`
+ *  (`layered-adapter.ts`) delegates to it for its early exits rather than
+ *  carrying its own, so there is exactly one place a split can be refused
+ *  from. An unresolvable `selectedId` (stale selection, item already gone)
+ *  is not itself a named refusal: the command no-ops on it the same way,
+ *  but there is nothing to tell the user beyond "there's nothing there",
+ *  which is out of this plan's audited surface. */
 export function splitRefusal(reel: LayeredReel, selectedId: string, atFrame: number, fps: number): BlockReason | null {
   const { lane, id } = parseActionId(selectedId);
   if (lane !== 'video') return 'video-only';
@@ -73,8 +75,9 @@ export function splitRefusal(reel: LayeredReel, selectedId: string, atFrame: num
   return null;
 }
 
-/** Duplicate refusal — mirrors `duplicateItem`'s early exit in
- *  `layered-adapter.ts:1008`. Same `video-only` code as `splitRefusal`: both
+/** Duplicate refusal. This is where the rule lives: `duplicateItem`
+ *  (`layered-adapter.ts`) delegates to it for its early exit rather than
+ *  carrying its own. Same `video-only` code as `splitRefusal`: both
  *  commands refuse a non-video selection for the identical reason. */
 export function duplicateRefusal(reel: LayeredReel, selectedId: string): BlockReason | null {
   const { lane } = parseActionId(selectedId);
@@ -82,8 +85,9 @@ export function duplicateRefusal(reel: LayeredReel, selectedId: string): BlockRe
   return null;
 }
 
-/** Delete refusal — mirrors `deleteItem`'s early exit in
- *  `layered-adapter.ts:908`. The reel is threaded through even though today
+/** Delete refusal. This is where the rule lives: `deleteItem`
+ *  (`layered-adapter.ts`) delegates to it for its early exit rather than
+ *  carrying its own. The reel is threaded through even though today
  *  only the lane matters, to keep the four predicates' signatures uniform
  *  for their callers and leave room for a future condition that needs it. */
 export function deleteRefusal(reel: LayeredReel, selectedId: string): BlockReason | null {

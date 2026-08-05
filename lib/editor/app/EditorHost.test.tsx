@@ -640,7 +640,13 @@ describe('EditorHost (child modules mocked at the boundary)', () => {
       expect(seenInspectorProps.at(-1).selectedId).toBeNull();
     });
 
-    it('⌘D on a non-video selection publishes the video-only hint and leaves the reel untouched', async () => {
+    // NOTE: this does not discriminate whether `handleDuplicate` itself skips
+    // the adapter call on refusal — `duplicateItem` refuses the identical way
+    // internally (Task 2), so even a host that called it unconditionally
+    // would still leave the reel and selection alone. Proven by mutating
+    // `handleDuplicate` to drop its early return: this test stayed green.
+    // What it DOES pin: the hint text shown for a non-video selection.
+    it('⌘D on a non-video selection publishes the video-only hint', async () => {
       const { EditorHost: Host } = await import('../host/EditorHost');
       render(<Host {...opts} />);
       await screen.findByText('test-reels');
@@ -674,7 +680,11 @@ describe('EditorHost (child modules mocked at the boundary)', () => {
       expect(seenTimelineProps.at(-1).hint).toBeNull();
     });
 
-    it('s at the playhead outside the clip publishes the playhead-outside-clip hint and leaves the reel untouched', async () => {
+    // NOTE: same caveat as the duplicate case above — `splitItem` refuses the
+    // identical way internally (Task 2), so this does not discriminate
+    // whether `handleSplit` itself skips the call on refusal. What it DOES
+    // pin: the hint text shown when the playhead sits outside the clip.
+    it('s at the playhead outside the clip publishes the playhead-outside-clip hint', async () => {
       const { EditorHost: Host } = await import('../host/EditorHost');
       render(<Host {...opts} />);
       await screen.findByText('test-reels');

@@ -165,16 +165,16 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   // forever, and that defect has already been found and fixed twice in this
   // feature.
   const handleDelete = useCallback(() => {
-    if (!selectedId) return;
-    const reason = reel ? deleteRefusal(reel, selectedId) : null;
+    if (!reel || !selectedId) return;
+    const reason = deleteRefusal(reel, selectedId);
     if (reason) {
       handleHint(hintForReason(reason));
       handleHint(null);
       return;
     }
-    setReel((r) => (r ? deleteItem(r, selectedId, { ripple }) : r));
+    setReel(deleteItem(reel, selectedId, { ripple }));
     setSelectedId(null);
-  }, [selectedId, ripple, setReel, reel, handleHint]);
+  }, [reel, selectedId, ripple, setReel, handleHint]);
   // Split/duplicate both mint a new item and hand back the `selectedId` it
   // belongs under (see layered-adapter.ts) — moved onto here so the author is
   // left working on the new piece, not the shrunk original. Repeat-invoking
