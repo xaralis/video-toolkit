@@ -54,6 +54,34 @@ export const BLOCK_REASON_COPY: Record<BlockReason, HintMessage> = {
     text: 'Slipped to the latest frame — nothing later in this file.',
     severity: 'warn',
   },
+  'locked-lane': {
+    text: 'This lane is locked — brand marks and transitions are derived, not dragged.',
+    severity: 'warn',
+  },
+  'linked-audio': {
+    text: 'This audio follows its clip automatically — move the clip instead.',
+    severity: 'warn',
+  },
+  'video-only': {
+    text: 'Only items on the video track can be split or duplicated.',
+    severity: 'warn',
+  },
+  'unsplittable-kind': {
+    text: "Can't split this item — only single clips and broll can be split.",
+    severity: 'warn',
+  },
+  'playhead-outside-clip': {
+    text: 'Move the playhead inside the clip to split it.',
+    severity: 'warn',
+  },
+  'music-bed-undeletable': {
+    text: 'The reel keeps exactly one music bed — mute or trim it instead of deleting.',
+    severity: 'warn',
+  },
+  'nothing-selected': {
+    text: 'Select a clip first.',
+    severity: 'warn',
+  },
 };
 
 export function hintForReason(reason: BlockReason): HintMessage {

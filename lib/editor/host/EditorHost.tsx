@@ -8,7 +8,8 @@ import { LayeredInspector } from '../app/LayeredInspector';
 import { RenderButton } from '../app/RenderButton';
 import { useHistory } from '../app/useHistory';
 import { useTransientHint } from '../app/useTransientHint';
-import type { HintMessage } from '../app/block-reason-copy';
+import { hintForReason, type HintMessage } from '../app/block-reason-copy';
+import { deleteRefusal, duplicateRefusal, splitRefusal } from '../src/timeline/refusal';
 import { useSourceDurations } from '../app/useSourceDurations';
 import { deleteItem, splitItem, duplicateItem } from '../src/timeline/layered-adapter';
 import { useShortcuts } from '../app/useShortcuts';
@@ -153,11 +154,32 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   );
   // The framing gesture mode is per-clip — switching selection turns it back off.
   useEffect(() => setFramingMode('off'), [selectedId]);
+  // Every command below asks its predicate FIRST, before touching the reel.
+  // A refusal publishes through the SAME `handleHint` the timeline drags and
+  // the inspector's Length field already use — one channel, never a second —
+  // then immediately releases it. A command has no drag/gesture "end" of its
+  // own to release on, so publish-then-release is the only way to arm
+  // `useTransientHint`'s auto-clear countdown; this mirrors the Length
+  // field's `onCommit` (LayeredInspector.tsx, "Finding 1" comment) exactly,
+  // for the same reason: a publish with no matching release sits in the bar
+  // forever, and that defect has already been found and fixed twice in this
+  // feature.
   const handleDelete = useCallback(() => {
-    if (!selectedId) return;
-    setReel((r) => (r ? deleteItem(r, selectedId, { ripple }) : r));
+    if (!reel) return;
+    if (!selectedId) {
+      handleHint(hintForReason('nothing-selected'));
+      handleHint(null);
+      return;
+    }
+    const reason = deleteRefusal(reel, selectedId);
+    if (reason) {
+      handleHint(hintForReason(reason));
+      handleHint(null);
+      return;
+    }
+    setReel(deleteItem(reel, selectedId, { ripple }));
     setSelectedId(null);
-  }, [selectedId, ripple, setReel]);
+  }, [reel, selectedId, ripple, setReel, handleHint]);
   // Split/duplicate both mint a new item and hand back the `selectedId` it
   // belongs under (see layered-adapter.ts) — moved onto here so the author is
   // left working on the new piece, not the shrunk original. Repeat-invoking
@@ -167,17 +189,40 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   // — reading `reel`, not a functional-update snapshot — still lands a
   // distinct id rather than colliding with the first call's.
   const handleSplit = useCallback(() => {
-    if (!reel || !selectedId) return;
-    const { reel: next, selectedId: sel } = splitItem(reel, selectedId, playerRef.current?.getCurrentFrame() ?? 0, fps);
+    if (!reel) return;
+    if (!selectedId) {
+      handleHint(hintForReason('nothing-selected'));
+      handleHint(null);
+      return;
+    }
+    const atFrame = playerRef.current?.getCurrentFrame() ?? 0;
+    const reason = splitRefusal(reel, selectedId, atFrame, fps);
+    if (reason) {
+      handleHint(hintForReason(reason));
+      handleHint(null);
+      return;
+    }
+    const { reel: next, selectedId: sel } = splitItem(reel, selectedId, atFrame, fps);
     setReel(next);
     setSelectedId(sel);
-  }, [reel, selectedId, fps, setReel]);
+  }, [reel, selectedId, fps, setReel, handleHint]);
   const handleDuplicate = useCallback(() => {
-    if (!reel || !selectedId) return;
+    if (!reel) return;
+    if (!selectedId) {
+      handleHint(hintForReason('nothing-selected'));
+      handleHint(null);
+      return;
+    }
+    const reason = duplicateRefusal(reel, selectedId);
+    if (reason) {
+      handleHint(hintForReason(reason));
+      handleHint(null);
+      return;
+    }
     const { reel: next, selectedId: sel } = duplicateItem(reel, selectedId);
     setReel(next);
     setSelectedId(sel);
-  }, [reel, selectedId, setReel]);
+  }, [reel, selectedId, setReel, handleHint]);
   // Timeline zoom (px/s). 80 px/s = 100%; the readout is shown as a percentage.
   const ZOOM_MIN = 16;
   const ZOOM_MAX = 400;
@@ -464,7 +509,13 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
     play: () => playerRef.current?.toggle(),
     undo,
     redo,
-    delete: () => selectedId && handleDelete(),
+    // Unconditional, matching split/duplicate: `handleDelete` owns the
+    // no-selection check itself and publishes `nothing-selected` for it — the
+    // Delete BUTTON is separately disabled with no selection (an honest
+    // control), but the shortcut has no such affordance, and ⌫ pressed with
+    // nothing selected is the identical silent no-op split/duplicate closed
+    // (Finding 2, no-silent-refusals whole-branch review).
+    delete: handleDelete,
     stepBack: () => playerRef.current?.seekTo(Math.max(0, (playerRef.current?.getCurrentFrame() ?? 0) - 1)),
     stepFwd: () => playerRef.current?.seekTo(Math.min(durationInFrames - 1, (playerRef.current?.getCurrentFrame() ?? 0) + 1)),
     jumpBack: () => playerRef.current?.seekTo(Math.max(0, (playerRef.current?.getCurrentFrame() ?? 0) - 10)),
