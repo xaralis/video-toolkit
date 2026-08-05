@@ -360,6 +360,29 @@ some field is missing from the model, extend the model — do not route around i
 with a parallel shape. A conversion that leaves one consumer on the old shape has
 not converted anything; it has added a second model.
 
+## `npm ci` in a project, not `npm install`
+
+**Installing a project's dependencies is `npm ci`. Reach for `npm install` only when
+`package.json`'s dependency set actually changed** — a template sync that reported `pkg add` /
+`pkg update`, or a package you just added by hand.
+
+`npm install` rewrites `package-lock.json` even when it installs nothing new, and the rewrite is
+not neutral: a lock written by npm ≥ 11 carries `"libc": ["glibc"|"musl"]` on native optional
+packages, and an older npm **silently drops those fields** when it rewrites. Measured 2026-08-05 —
+one `npm install` in a freshly-synced project produced a **0-added / 24-removed** diff, losing
+`libc` from eight entries (`@tailwindcss/oxide-linux-*`, `lightningcss-linux-*`), on npm 10.9.2
+against a lock some other machine had written with a newer npm. Committing that costs musl (Alpine)
+builds their libc discrimination — npm can then pick a glibc binary on musl — and this repo's own
+Docker images build on Linux. NOT committing it means the churn reappears in `git status` after
+every install, which is how it got stashed and forgotten on two consecutive days.
+
+`npm ci` installs exactly what the lock says and never writes it back, so the churn cannot start.
+It also fails loudly when `package.json` and the lock disagree — information, not a nuisance: that
+disagreement is exactly the case where `npm install` is the right command.
+
+This bites hardest on a project that arrived through `/toolkit:sync pull`: `node_modules` is never
+committed or mirrored, so the first thing a collaborator runs is an install.
+
 ## HARD RULE — a refusal in `move`/`split`/`duplicate`/`delete` is never silent
 
 When the reel editor declines one of these four commands, it must publish a reason the

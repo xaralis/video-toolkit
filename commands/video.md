@@ -325,8 +325,13 @@ Help refine:
 
 7. **Install dependencies:**
    ```bash
-   cd projects/{name} && npm install
+   cd projects/{name} && npm ci
    ```
+
+   `npm ci`, not `npm install`: the template ships its own `package-lock.json`, so the
+   new project has one from the first second and there is nothing to resolve. `install`
+   would rewrite it — and an older npm drops the `libc` fields a newer one wrote (see
+   CLAUDE.md, "`npm ci` in a project").
 
 8. **Register the project on R2** (so the Footage Manager UI sees it):
    ```bash

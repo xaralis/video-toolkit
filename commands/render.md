@@ -44,7 +44,8 @@ Quick preflight to catch common breakage before spending render time:
    with `--screenplay` (if `SCREENPLAY.md` exists) before continuing.
 
 4. **node_modules installed**: `ls node_modules/.bin/remotion`. If missing,
-   run `npm install` once.
+   run **`npm ci`** once — not `npm install`, which rewrites `package-lock.json`
+   even when it adds nothing (see CLAUDE.md, "`npm ci` in a project").
 
 5. **Studio is not blocking the port** (informational only — Studio doesn't
    block render, but heavy Studio activity slows it down). If the user wants
@@ -88,7 +89,9 @@ Watch for:
 
 If the render hits errors:
 - **Missing font**: usually means brand fonts didn't load — check `public/fonts/`
-- **Cannot find module**: stale `node_modules` after a template change → `npm install`
+- **Cannot find module**: stale `node_modules` after a template change → `npm ci`, or
+  `npm install` if the template sync actually added a dependency (that is the one case
+  `npm ci` cannot serve — it refuses when `package.json` and the lock disagree)
 - **Out of memory**: lower concurrency or render in smaller chunks (rare for reels)
 
 ### Step 5: SRT captions + history log

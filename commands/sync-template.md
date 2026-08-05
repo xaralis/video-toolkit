@@ -120,8 +120,10 @@ template's and half the project's:
 > version, and is the only way to lose the project's.
 
 Every merged key is printed (`pkg add` / `pkg update` / `pkg keep` / `PROTECTED`), so the report
-tells you exactly what changed. Run `npm install` in the project afterwards if anything was added
-or updated.
+tells you exactly what changed. Run `npm install` in the project afterwards **only if the report
+showed `pkg add` / `pkg update`** — that is the one case `npm ci` cannot serve, since it refuses
+when `package.json` and the lock disagree. Nothing added? `npm ci` (see CLAUDE.md, "`npm ci` in a
+project").
 
 ## When to run it
 
@@ -140,7 +142,8 @@ or updated.
    refreshed, delete it and re-run (it will be `copied`), which is safer than reaching for
    `--force`.
 3. **Run for real** (drop `--dry-run`).
-4. **`npm install`** in the project if the report showed any `pkg add` / `pkg update`.
+4. **`npm install`** in the project if the report showed any `pkg add` / `pkg update` — and only
+   then; otherwise `npm ci`, which never rewrites the lock.
 5. **Verify the project still renders** — `/toolkit:render preview` or a still. The template may have moved on
    in ways the project's config doesn't expect (a renamed schema field, a new required prop).
 6. Commit the project's change with a message naming what the template fix was.

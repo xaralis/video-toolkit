@@ -178,7 +178,7 @@ Then set up:
 
 ```bash
 cd templates/{name}
-npm install
+npm ci
 npm run studio
 ```
 

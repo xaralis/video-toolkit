@@ -114,6 +114,12 @@ rm -rf node_modules package-lock.json
 npm install
 ```
 
+This is the one place `npm install` is the point rather than a slip — you deleted the lock
+precisely to regenerate it. Regenerate it with the **newest npm you have**: a lock written by
+npm ≥ 11 carries `"libc"` on native optional packages, and an older npm writes it without them,
+which silently costs musl (Alpine) builds their libc discrimination. Check with `npm --version`
+before running this, and say in the commit which npm wrote the lock.
+
 ### Step 3: Verify
 
 ```bash

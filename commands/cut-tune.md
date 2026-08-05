@@ -32,8 +32,13 @@ there (`npm run studio`) and remains the right place for prop-level poking and
    is still the default, suggest `/toolkit:cut` first.
 3. Verify the project's prereqs:
    - `node_modules` is installed (`ls node_modules/.bin/vite`). If missing, run
-     `npm install` once — a project that arrived via `/toolkit:sync pull` will
+     **`npm ci`** once — a project that arrived via `/toolkit:sync pull` will
      not have it, since `node_modules` is never committed or mirrored.
+     `npm ci`, not `npm install`: install rewrites `package-lock.json` even when
+     it adds nothing, and an older npm silently drops the `libc` fields a newer
+     one wrote (see CLAUDE.md, "`npm ci` in a project"). If `npm ci` fails
+     because `package.json` and the lock disagree, THAT is when `npm install` is
+     the right command.
    - `.prettierrc.json` exists in the project root (the editor formats the
      `Root.tsx` it writes).
    - Every media file the reel references resolves on disk. Check the
