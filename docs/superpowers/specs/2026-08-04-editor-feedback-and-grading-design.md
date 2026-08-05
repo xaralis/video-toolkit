@@ -110,19 +110,30 @@ on. So: "apply to all clips of this kind" belongs on Color, and on Crop & zoom
 it is at best a rare convenience — offer it only if it proves wanted, and never
 as the prominent action.
 
-### Open, decide when building
+### Decided (user, 2026-08-05)
 
-- Where does the default grade live — on `LayeredReel` (per reel) or in the
-  brand theme (per brand, every reel)? Probably the reel, with the brand
-  supplying its initial value; that keeps one reel's look from silently moving
-  when the brand changes. **Decide before writing the schema change** — it is the
-  one irreversible choice here.
-- Does a per-clip grade *replace* or *merge over* the reel default? Merge is
-  friendlier (tweak one clip's temperature only) but makes "what is this clip's
-  grade" a computed question the inspector must then show honestly.
+**The default grade lives on the reel.** Not in the brand theme — a brand edit
+must not silently move the look of reels already finished. The brand may supply
+the initial value at cut time; after that the reel owns it.
+
+**A clip overrides it explicitly**, behind a "customize" affordance (checkbox or
+button group) rather than by editing fields that silently fork from the default.
+
+That affordance also settles the merge question, and the plan should read it
+this way unless told otherwise: a clip is EITHER following the reel default OR
+carrying its own grade. No partial merge — "customize" is a switch, so the
+inspector can always answer "where does this clip's look come from?" with one
+word instead of a computation. Turning it off must restore the default rather
+than leave the forked values behind.
+
+### Still open, decide when building
+
 - "Clips of this kind" — kind (`clip` / `broll`) is the obvious grouping and was
-  the right one today, but source-based ("every clip from 56_upright.mp4") is
-  sometimes what is meant. Kind first.
+  the right one on 2026-08-04, but source-based ("every clip from
+  56_upright.mp4") is sometimes what is meant. Kind first.
+- Whether a reel-level default makes per-clip copy/paste redundant enough to
+  ship (b) alone first. Probably not — copy/paste still answers "make THIS clip
+  look like THAT one", which the default cannot.
 
 ### What this must not break
 
