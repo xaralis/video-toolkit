@@ -6,6 +6,7 @@ import React from 'react';
 import { Audio, Sequence, staticFile } from 'remotion';
 import { audioGainAt } from './audio-gain';
 import { resolveMediaSource } from '../theming/media-source';
+import { ITEM_PREMOUNT_SECONDS } from './media-sync';
 import type { AudioItem } from '../reel-config-base/layered-schema';
 
 // AudioItem.source is a bare filename by convention (derive-layered emits the
@@ -33,11 +34,24 @@ export function buildAudioNodes(
     const from = msToFrames(a.startMs);
     const durationInFrames = Math.max(1, msToFrames(a.endMs) - from);
     return (
-      <Sequence key={a.id} from={from} durationInFrames={durationInFrames} name={a.id}>
+      <Sequence
+        key={a.id}
+        from={from}
+        durationInFrames={durationInFrames}
+        premountFor={Math.min(from, Math.round(opts.fps * ITEM_PREMOUNT_SECONDS))}
+        name={a.id}
+      >
         {/* No acceptableTimeShiftInSeconds here on purpose — see media-sync.ts.
             Sound is the reference the ear judges everything against; audio
             barely drifts, and a seek in it is audible, so Remotion's own
-            default governs this element. */}
+            default governs this element.
+
+            premountFor IS here on purpose, mirroring the video track — see
+            ITEM_PREMOUNT_SECONDS in media-sync.ts. Without it this element
+            does not open+seek its file until the frame it is due to play,
+            and that lateness eats the TAIL of the segment (the last word),
+            because the Sequence still ends at its authored frame regardless
+            of when the element actually started. */}
         <Audio
           src={staticFile(resolve(a.source))}
           startFrom={msToFrames(a.sourceInMs)}
