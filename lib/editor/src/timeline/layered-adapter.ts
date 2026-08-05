@@ -9,6 +9,7 @@ import {
   transitionAlignmentOf,
   transitionHandles,
 } from '@video-toolkit/lib/reel-config-base/transition-schema';
+import { deleteRefusal, splitRefusal, duplicateRefusal } from './refusal';
 
 export interface TLAction { id: string; start: number; end: number; effectId: string; movable?: boolean; flexible?: boolean; minStart?: number; }
 export interface TLRow { id: string; actions: TLAction[]; }
@@ -896,6 +897,7 @@ function relinkAudio(orig: LayeredReel, result: LayeredReel): LayeredReel {
 // ripple mode the gap is closed (items after the removed clip shift left by its
 // duration); otherwise a gap is left. Returns the reel unchanged if not found.
 export function deleteItem(reel: LayeredReel, selectedId: string, opts: { ripple?: boolean } = {}): LayeredReel {
+  if (deleteRefusal(reel, selectedId)) return reel; // covers the music-bed no-op; see refusal.ts
   const { lane, id, edge } = parseActionId(selectedId);
 
   if (lane === 'transitions') {
@@ -905,10 +907,10 @@ export function deleteItem(reel: LayeredReel, selectedId: string, opts: { ripple
       tracks: { ...reel.tracks, video: reel.tracks.video.map((v) => (v.id === id ? { ...v, [field]: { kind: CUT_KIND } } : v)) },
     };
   }
-  if (lane === 'music') return reel; // the single music bed isn't deletable
 
   const track = reel.tracks[lane] as ReadonlyArray<{ id: string; startMs: number; endMs: number }>;
   const item = track.find((x) => x.id === id);
+  // Stale selection (item already gone) — not a refusal, see refusal.ts.
   if (!item) return reel;
   const gap = item.endMs - item.startMs;
 
@@ -964,14 +966,18 @@ export function splitItem(
   atFrame: number,
   fps: number,
 ): { reel: LayeredReel; selectedId: string } {
-  const { lane, id } = parseActionId(selectedId);
-  if (lane !== 'video') return { reel, selectedId };
+  if (splitRefusal(reel, selectedId, atFrame, fps)) return { reel, selectedId };
+  const { id } = parseActionId(selectedId);
   const idx = reel.tracks.video.findIndex((v) => v.id === id);
+  // Stale selection (item already gone) — not a refusal, see refusal.ts.
   if (idx < 0) return { reel, selectedId };
-  const v = reel.tracks.video[idx];
-  if (v.kind !== 'clip' && v.kind !== 'broll') return { reel, selectedId };
+  // `splitRefusal` has already refused any kind other than clip/broll — this
+  // cast carries that guarantee into the type system without re-checking the
+  // rule itself (a runtime `v.kind !== 'clip' && v.kind !== 'broll'` guard
+  // here would be the exact duplication this task exists to remove; TS just
+  // can't narrow across the predicate call above).
+  const v = reel.tracks.video[idx] as Extract<VideoItem, { kind: 'clip' | 'broll' }>;
   const atMs = Math.round((atFrame / fps) * 1000);
-  if (atMs <= v.startMs + 1 || atMs >= v.endMs - 1) return { reel, selectedId }; // playhead not inside
   const rightId = uniqueId(`${v.id}-b`, reel.tracks.video.map((x) => x.id));
   // The SOURCE frame showing at the playhead — `atMs - startMs` is a timeline
   // length, and on a clip whose speed isn't 1x that is not the same number of
@@ -1004,9 +1010,10 @@ export function splitItem(
 // `splitItem`: after a duplicate the author is working on the new copy, not
 // the original.
 export function duplicateItem(reel: LayeredReel, selectedId: string): { reel: LayeredReel; selectedId: string } {
-  const { lane, id } = parseActionId(selectedId);
-  if (lane !== 'video') return { reel, selectedId };
+  if (duplicateRefusal(reel, selectedId)) return { reel, selectedId };
+  const { id } = parseActionId(selectedId);
   const src = reel.tracks.video.find((v) => v.id === id);
+  // Stale selection (item already gone) — not a refusal, see refusal.ts.
   if (!src) return { reel, selectedId };
   const dur = src.endMs - src.startMs;
   const at = src.endMs;
