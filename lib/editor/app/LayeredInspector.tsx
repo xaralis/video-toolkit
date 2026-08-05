@@ -760,14 +760,17 @@ export function TransitionFields({
                 // `useTransientHint`'s countdown, so a warning landed here
                 // would sit in the bar forever, hijacking the shortcut hints
                 // until some unrelated publisher happened to speak. Following
-                // every publish with an immediate `null` gives exactly the
+                // the publish with an immediate `null` gives exactly the
                 // drag's release semantics: `publish` de-dupes by identity
                 // (a warning stays visible across repeated warn commits) and
                 // `null` unconditionally starts the countdown (see
-                // useTransientHint's LATCH property), so this is a no-op for
-                // an in-range commit (already `null`) and starts the clock
-                // for a warning.
-                onHint?.(null);
+                // useTransientHint's LATCH property). Only needed in the
+                // `starved` branch — the non-starved branch already published
+                // `null` itself the line above, and a second `null` there
+                // would be a redundant call (harmless — `release` just
+                // cancels-then-re-arms a countdown with nothing to show — but
+                // pointless), not a second behaviour.
+                if (starved) onHint?.(null);
                 onChange({ ...t, frames: Math.min(cap, rounded) });
               }}
             />

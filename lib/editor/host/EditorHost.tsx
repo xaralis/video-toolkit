@@ -140,7 +140,7 @@ export function EditorHost({ component, projectName, fps, width, height, accentS
   // Owns the timeline bar's transient message. `onHint` from LayeredTimeline
   // is single-channel: a non-null call PUBLISHES, a null call means "the
   // gesture just ended" and starts the auto-clear countdown rather than
-  // wiping the message instantly (see useTransientHint's `hold`/`release`).
+  // wiping the message instantly (see useTransientHint's `release`).
   // Chose this over a second `onHintRelease` prop — one prop is enough
   // signal (publish vs. "done for now") and it keeps LayeredTimeline's
   // surface smaller.
