@@ -1,6 +1,6 @@
-import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
+import type { LayeredReel, VideoItem } from '@video-toolkit/lib/reel-config-base/layered-schema';
 import type { BlockReason } from './block-reason';
-import { parseActionId, type LaneId } from './layered-adapter';
+import { parseActionId, type LaneId } from './action-id';
 
 /** Predicates for the refusals a command can hit, one function per command.
  *  Each command's early exit DELEGATES to its predicate (wired in Task 2) so
@@ -44,6 +44,17 @@ export function moveRefusal(args: { lane: LaneId; actionId: string; linkedAudioI
   return null;
 }
 
+// The kinds `splitItem` knows how to cut. Exported (not just inlined into
+// splitRefusal) so `splitItem` can narrow `VideoItem` to this same union
+// AT THE TYPE LEVEL after calling `splitRefusal` — the runtime check lives
+// here exactly once; `splitItem` asserts it rather than re-checking it (see
+// the cast site in layered-adapter.ts). If this ever disagreed with
+// `splitRefusal`'s own check they could drift apart silently, which is why
+// `splitRefusal` calls this function too instead of repeating the condition.
+export function isSplittableKind(v: VideoItem): v is Extract<VideoItem, { kind: 'clip' | 'broll' }> {
+  return v.kind === 'clip' || v.kind === 'broll';
+}
+
 /** Split (razor) refusal — mirrors `splitItem`'s early exits in
  *  `layered-adapter.ts:968,972,974`. An unresolvable `selectedId` (stale
  *  selection, item already gone) is not itself a named refusal: the command
@@ -54,7 +65,7 @@ export function splitRefusal(reel: LayeredReel, selectedId: string, atFrame: num
   if (lane !== 'video') return 'video-only';
   const v = reel.tracks.video.find((x) => x.id === id);
   if (!v) return null;
-  if (v.kind !== 'clip' && v.kind !== 'broll') return 'unsplittable-kind';
+  if (!isSplittableKind(v)) return 'unsplittable-kind';
   const atMs = Math.round((atFrame / fps) * 1000);
   // Matches the adapter's own boundary EXACTLY — a 1ms tolerance either side.
   if (atMs <= v.startMs + 1 || atMs >= v.endMs - 1) return 'playhead-outside-clip';

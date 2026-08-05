@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { LayeredReel } from '@video-toolkit/lib/reel-config-base/layered-schema';
-import { moveRefusal, splitRefusal, duplicateRefusal, deleteRefusal } from './refusal';
-import { splitItem, duplicateItem, deleteItem } from './layered-adapter';
+import { VideoItemSchema } from '@video-toolkit/lib/reel-config-base/layered-schema';
+import { moveRefusal, splitRefusal, duplicateRefusal, deleteRefusal, isSplittableKind } from './refusal';
+import { splitItem, duplicateItem, deleteItem, LANES, parseActionId } from './layered-adapter';
 
 // Small schema-valid LayeredReel fixture — one item per track, mirroring the
 // fixture in layered-adapter.test.ts (kept independent so this file doesn't
@@ -242,6 +243,43 @@ describe('command/predicate equivalence — every selectable item in a realistic
   }
 
   const REFS = collectItemRefs(MATRIX_REEL);
+
+  // MAKES THE COMMENTS ABOVE TRUE, NOT JUST ASPIRATIONAL. Nothing about
+  // MATRIX_REEL or collectItemRefs derives from the schema/LANES themselves
+  // — both are hand-written — so without these two checks, a new video kind
+  // or a new lane would silently NOT enter the matrix, which is exactly the
+  // staleness this task exists to prevent. These fail the day someone adds a
+  // kind/lane without updating the fixture, which is the whole point: the
+  // fixture is required to be complete, not merely complete today.
+  it('the fixture covers every video kind the schema allows (fails if a kind is added without updating MATRIX_REEL)', () => {
+    const schemaKinds = new Set(VideoItemSchema.options.map((o) => (o.shape.kind as { value: string }).value));
+    const fixtureKinds = new Set(MATRIX_REEL.tracks.video.map((v) => v.kind));
+    expect(fixtureKinds).toEqual(schemaKinds);
+  });
+
+  it('the fixture covers every lane (fails if a lane is added without updating collectItemRefs)', () => {
+    const fixtureLanes = new Set(REFS.map((r) => parseActionId(r.selectedId).lane));
+    expect(fixtureLanes).toEqual(new Set(LANES));
+  });
+
+  // `layered-adapter.ts`'s splitItem throws if it ever resolves an item
+  // `isSplittableKind` rejects after `splitRefusal` already allowed it (fix
+  // round 1, Finding 2). There is no HONEST way to make that throw actually
+  // fire through `splitItem`: splitItem calls `splitRefusal(reel,
+  // selectedId, ...)` on the exact same `reel`/`selectedId` it then resolves
+  // the item from, and `splitRefusal` computes its 'unsplittable-kind'
+  // refusal by calling this SAME `isSplittableKind` — so the two can never
+  // disagree by construction, and manufacturing disagreement (e.g.
+  // monkey-patching one of them) would be testing a scenario that cannot
+  // occur, not the throw. What CAN be tested honestly is the one guarantee
+  // the throw's premise actually rests on: that `isSplittableKind` itself
+  // correctly separates the six schema kinds. Pinning it directly, over
+  // MATRIX_REEL's own one-item-per-kind fixture, is that proof.
+  it('isSplittableKind accepts clip/broll and rejects every other schema kind', () => {
+    for (const v of MATRIX_REEL.tracks.video) {
+      expect(isSplittableKind(v), `kind ${v.kind}`).toBe(v.kind === 'clip' || v.kind === 'broll');
+    }
+  });
 
   // Reference identity, not deep equality. `deleteItem` on a
   // `transition:<id>` selection always returns `{...v, transitionOut: {kind:

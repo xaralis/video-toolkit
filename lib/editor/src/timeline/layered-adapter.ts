@@ -9,33 +9,19 @@ import {
   transitionAlignmentOf,
   transitionHandles,
 } from '@video-toolkit/lib/reel-config-base/transition-schema';
-import { deleteRefusal, splitRefusal, duplicateRefusal } from './refusal';
+import { deleteRefusal, splitRefusal, duplicateRefusal, isSplittableKind } from './refusal';
+// LANES/LaneId/parseActionId/MIN_CLIP_MS live in the leaf module `action-id.ts`
+// (Task 2 fix-round) so this file and `refusal.ts` — which now import from
+// each other — don't form a cycle through them. Re-exported here so existing
+// importers of this module (LayeredTimeline.tsx, LayeredInspector.tsx, …)
+// don't need to change where they import these from.
+import { LANES, type LaneId, parseActionId, MIN_CLIP_MS, TRANSITION_PREFIX, TRANSITION_IN_PREFIX } from './action-id';
+export { LANES, type LaneId, parseActionId, MIN_CLIP_MS };
 
 export interface TLAction { id: string; start: number; end: number; effectId: string; movable?: boolean; flexible?: boolean; minStart?: number; }
 export interface TLRow { id: string; actions: TLAction[]; }
 
-// Display order, top → bottom (NLE convention): overlays highest, then video
-// and its audio directly stacked, then the music bed, then brand marks.
-// Display order, top → bottom. Transitions sit ABOVE video so the video track
-// and its (linked) audio stay adjacent as one visual group.
-export const LANES = ['overlays', 'transitions', 'video', 'audio', 'music', 'brand'] as const;
-export type LaneId = (typeof LANES)[number];
 const MS = 1000;
-const TRANSITION_PREFIX = 'transition:';
-const TRANSITION_IN_PREFIX = 'transition-in:';
-
-export function parseActionId(actionId: string): { lane: LaneId; id: string; edge?: 'in' | 'out' } {
-  // Check transition-in: first — it's a distinct prefix (not a suffix
-  // extension of transition:), but ordering here keeps the intent explicit.
-  if (actionId.startsWith(TRANSITION_IN_PREFIX)) {
-    return { lane: 'transitions', id: actionId.slice(TRANSITION_IN_PREFIX.length), edge: 'in' };
-  }
-  if (actionId.startsWith(TRANSITION_PREFIX)) {
-    return { lane: 'transitions', id: actionId.slice(TRANSITION_PREFIX.length), edge: 'out' };
-  }
-  const i = actionId.indexOf(':');
-  return { lane: actionId.slice(0, i) as LaneId, id: actionId.slice(i + 1) };
-}
 
 export function layeredToTimeline(reel: LayeredReel, fps: number): { editorData: TLRow[] } {
   const act = (lane: LaneId, id: string, startMs: number, endMs: number, effectId: string): TLAction => ({
@@ -295,8 +281,8 @@ function spanApplied<T extends { startMs: number; endMs: number }>(item: T, np: 
 // endMs drifts past its footage — e.g. a config sourceOutMs that overshoots the
 // real file — locking the whole clip.) Multi-clip / card / outro have no single
 // trim, and a move (both edges) is span-only.
-/** Shortest a clip may be left by a trim or an overwrite (ms). */
-export const MIN_CLIP_MS = 100;
+// MIN_CLIP_MS (shortest a clip may be left by a trim/overwrite/split, ms) now
+// lives in `action-id.ts` and is re-exported above.
 
 function resizeVideoItem(item: VideoItem, np: { startMs: number; endMs: number }, footageMs?: number): VideoItem {
   const dStart = np.startMs - item.startMs;
@@ -971,12 +957,17 @@ export function splitItem(
   const idx = reel.tracks.video.findIndex((v) => v.id === id);
   // Stale selection (item already gone) — not a refusal, see refusal.ts.
   if (idx < 0) return { reel, selectedId };
-  // `splitRefusal` has already refused any kind other than clip/broll — this
-  // cast carries that guarantee into the type system without re-checking the
-  // rule itself (a runtime `v.kind !== 'clip' && v.kind !== 'broll'` guard
-  // here would be the exact duplication this task exists to remove; TS just
-  // can't narrow across the predicate call above).
-  const v = reel.tracks.video[idx] as Extract<VideoItem, { kind: 'clip' | 'broll' }>;
+  // `splitRefusal` has already refused any kind other than clip/broll, via
+  // the SAME predicate (`isSplittableKind`) asserted below — TS can't narrow
+  // across the function-call boundary above, so this re-runs that one
+  // predicate as a type guard rather than duplicating the rule as a second,
+  // independently-maintained condition. If `splitRefusal` and `isSplittableKind`
+  // ever disagreed (impossible today — they're the same function), this
+  // throws loudly instead of building a corrupted clip from `undefined`
+  // sourceInMs/sourceOutMs.
+  const candidate = reel.tracks.video[idx];
+  if (!isSplittableKind(candidate)) throw new Error(`splitItem: '${candidate.kind}' is not splittable — splitRefusal should have refused this`);
+  const v = candidate;
   const atMs = Math.round((atFrame / fps) * 1000);
   const rightId = uniqueId(`${v.id}-b`, reel.tracks.video.map((x) => x.id));
   // The SOURCE frame showing at the playhead — `atMs - startMs` is a timeline
