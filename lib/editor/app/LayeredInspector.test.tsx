@@ -1274,6 +1274,73 @@ describe('LayeredInspector transition length — bounded by the boundary’s act
     expect(onHint).toHaveBeenCalledWith(expect.objectContaining({ severity: 'warn' }));
     expect(onHint.mock.calls.at(-1)![0].text.toLowerCase()).toMatch(/lend|trim|shift/);
   });
+
+  // Fix round 1, Finding 1 (Important): the two tests above only prove the
+  // RETROACTIVELY-starved case (authored 15 already past a cap of 13, so the
+  // stretched track has headroom above the cap to land on). The everyday
+  // case — a boundary that was NEVER starved, where the user just drags the
+  // thumb all the way to the wall — is different: `trackMax === cap` there,
+  // so the range input's own DOM `max` IS the cap, and the browser sanitises
+  // any request past it before React's change handler ever runs. A strict
+  // `rounded > cap` can therefore never fire for this fixture — only
+  // `rounded >= cap` (landing AT the cap) can, which is the fix this round
+  // makes. `plainAtCapReel` shares the exact same handle-room numbers as
+  // `starvedReel` above (same cap, 13) but authors `frames: 5` — comfortably
+  // inside the cap, so the track's `max` is the cap itself, not a stretched
+  // ceiling above it.
+  const plainAtCapReel: LayeredReel = {
+    version: 'layered-1', meta: { topic: 't', totalDurationMs: 10000 },
+    tracks: {
+      video: [
+        { id: 'v1', kind: 'clip', startMs: 0, endMs: 5000, source: 'a.mp4', sourceInMs: 0, sourceOutMs: 5000,
+          transitionOut: { kind: 'dissolve', frames: 5 } },
+        { id: 'v2', kind: 'clip', startMs: 5000, endMs: 10000, source: 'b.mp4', sourceInMs: 200, sourceOutMs: 5200 },
+      ],
+      audio: [], music: { baseVolumeDb: -8 }, overlays: [], brand: [],
+    },
+  };
+
+  it('explains the everyday case too — a boundary that was never starved, dragged to the wall', () => {
+    const onHint = vi.fn();
+    render(
+      <LayeredInspector reel={plainAtCapReel} selectedId="transition:v1" onChange={() => {}} onSeek={() => {}} fps={30}
+        sourceDurations={durations} onHint={onHint} />,
+    );
+    const input = screen.getByLabelText('Length (frames, max 13)') as HTMLInputElement;
+    expect(input.max).toBe('13'); // the track's own ceiling IS the cap here — no headroom above it
+    // Any request past the DOM's own `max` sanitises down to it — this IS
+    // "dragged the thumb to the wall", not a synonym for the retroactive case.
+    fireEvent.change(input, { target: { value: '999' } });
+    expect(onHint).toHaveBeenCalledWith(expect.objectContaining({ severity: 'warn' }));
+    expect(onHint.mock.calls.at(-1)![0].text.toLowerCase()).toMatch(/lend|trim|shift/);
+  });
+
+  // Finding 2 (Minor): the positive cases above only prove the warning
+  // fires; nothing pinned that it goes quiet again on an in-range commit, or
+  // that the unbounded branch never has an opinion at all. Both regress
+  // silently if the `>=` condition above drifts back toward "always warn"
+  // or a `maxFrames` check gets dropped.
+  it('clears the hint (publishes null) on an in-range commit — not a stale warning', () => {
+    const onHint = vi.fn();
+    render(
+      <LayeredInspector reel={plainAtCapReel} selectedId="transition:v1" onChange={() => {}} onSeek={() => {}} fps={30}
+        sourceDurations={durations} onHint={onHint} />,
+    );
+    // 8 is comfortably inside the cap (13) — a real in-bounds request.
+    fireEvent.change(screen.getByLabelText('Length (frames, max 13)'), { target: { value: '8' } });
+    expect(onHint).toHaveBeenCalledWith(null);
+    expect(onHint).not.toHaveBeenCalledWith(expect.objectContaining({ severity: 'warn' }));
+  });
+
+  it('never publishes on the unbounded (ScrubField) path — no boundary context to explain', () => {
+    const onHint = vi.fn();
+    render(
+      <LayeredInspector reel={lastItemExhaustedTailReel} selectedId="transition:v2" onChange={() => {}} onSeek={() => {}} fps={30}
+        sourceDurations={exhaustedDurations} onHint={onHint} />,
+    );
+    fireEvent.change(screen.getByLabelText('Length (frames)'), { target: { value: '999' } });
+    expect(onHint).not.toHaveBeenCalled();
+  });
 });
 
 describe('LayeredInspector project overview (no selection)', () => {

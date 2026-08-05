@@ -728,14 +728,30 @@ export function TransitionFields({
               fallback={1}
               onCommit={(n) => {
                 const rounded = Math.max(1, Math.round(n));
-                // Starved iff the request itself overshoots the cap — not
-                // "the track shows an over-cap value", which is also true of
-                // an authored value shown untouched on mount (see the
-                // trackMax comment above). Only a request the user just made
-                // gets the explanation; publishing on every render would fire
-                // it for a boundary that was starved before this field ever
-                // opened.
-                onHint?.(rounded > cap ? hintForReason('transition-handle-starved') : null);
+                // Fires at LANDING on the cap, not only past it: a plain
+                // (never-starved) boundary has `trackMax === cap`, so the
+                // range input's own DOM `max` IS the cap and the browser
+                // sanitises any request beyond it before React ever sees the
+                // event — `rounded > cap` can therefore never be true for the
+                // everyday "dragged the thumb to the wall" case, only for a
+                // boundary already starved retroactively (and even then just
+                // once, since the first commit collapses `trackMax` back to
+                // `cap`). Landing AT a finite cap is itself the pin; the
+                // message is true there and the hint is transient, so this is
+                // the only condition that actually reaches the case the
+                // feature exists for.
+                //
+                // This channel is shared with the timeline's own drag hints
+                // (`EditorHost`'s single `handleHint`) — an in-range commit
+                // here publishes `null` just as freely as the cap case
+                // publishes a warning, which can clear a hint the TIMELINE
+                // just published. That is the same publish-or-null contract
+                // `LayeredTimeline` already uses (`useTransientHint` de-dupes
+                // by identity), so the most recent publisher simply wins;
+                // kept deliberately, not an oversight.
+                onHint?.(cap !== undefined && Number.isFinite(cap) && rounded >= cap
+                  ? hintForReason('transition-handle-starved')
+                  : null);
                 onChange({ ...t, frames: Math.min(cap, rounded) });
               }}
             />
