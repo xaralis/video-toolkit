@@ -72,17 +72,44 @@ def r2_prefix(name: str, subdir: str) -> str:
     return f"projects/{name}/{subdir}/"
 
 
-def list_local_files(proj: Path, subdirs: list[str]) -> list[tuple[str, Path, int]]:
-    """Return [(subdir, path, size)] for every file under selected subdirs."""
-    out: list[tuple[str, Path, int]] = []
+def rel_key(key: str, name: str, subdir: str) -> str:
+    """Strip the R2 prefix off a key, leaving the path relative to the subdir.
+
+    Inverse of the key construction in cmd_push. Keys that somehow lack the
+    expected prefix fall back to the bare filename rather than raising — a
+    stray object should not abort a whole pull.
+    """
+    prefix = r2_prefix(name, subdir)
+    return key[len(prefix):] if key.startswith(prefix) else key.rsplit("/", 1)[-1]
+
+
+def list_local_files(proj: Path, subdirs: list[str]) -> list[tuple[str, Path, str, int]]:
+    """Return [(subdir, path, relpath, size)] for every file under selected subdirs.
+
+    Recurses into nested directories: projects routinely organise media into
+    subfolders (`public/broll/variants/`, per-shoot-day folders, …) and a
+    non-recursive listing silently left those files out of every push, pull and
+    inventory — they were backed up nowhere, since the same files are usually
+    gitignored as binaries.
+
+    `relpath` is POSIX-relative to the subdir and becomes the tail of the R2
+    key, so nesting is preserved on both sides of the transfer.
+    """
+    out: list[tuple[str, Path, str, int]] = []
     for subdir in subdirs:
         d = proj / subdir
         if not d.is_dir():
             continue
-        for f in sorted(d.iterdir()):
-            if not f.is_file() or f.name.startswith("."):
+        for f in sorted(d.rglob("*")):
+            if not f.is_file():
                 continue
-            out.append((subdir, f, f.stat().st_size))
+            rel = f.relative_to(d)
+            # Skip dotfiles and anything inside a dot-directory (.DS_Store,
+            # .git, editor caches) at any depth, matching the previous
+            # top-level-only behaviour.
+            if any(part.startswith(".") for part in rel.parts):
+                continue
+            out.append((subdir, f, rel.as_posix(), f.stat().st_size))
     return out
 
 
@@ -136,13 +163,13 @@ def cmd_push(name: str, subdirs: list[str], dry_run: bool, overwrite: bool) -> i
     total_bytes = 0
     uploaded = 0
     skipped = 0
-    for subdir, fpath, size in local:
-        key = r2_prefix(name, subdir) + fpath.name
+    for subdir, fpath, rel, size in local:
+        key = r2_prefix(name, subdir) + rel
         if not overwrite and remote.get(key) == size:
             skipped += 1
             continue
         action = "would push" if dry_run else "pushing"
-        print(f"   {action}  {subdir}/{fpath.name}  ({humansize(size)})")
+        print(f"   {action}  {subdir}/{rel}  ({humansize(size)})")
         if not dry_run:
             client.upload_file(str(fpath), bucket, key)
         uploaded += 1
@@ -174,8 +201,10 @@ def cmd_pull(name: str, subdirs: list[str], dry_run: bool, overwrite: bool) -> i
     downloaded = 0
     skipped = 0
     for subdir, key, size in remote:
-        # Key shape: projects/<name>/<subdir>/<filename>
-        filename = key.split("/")[-1]
+        # Key shape: projects/<name>/<subdir>/<relpath>, where <relpath> may be
+        # nested. Keep the nesting so a pull reproduces the layout that was
+        # pushed instead of flattening everything into the subdir root.
+        filename = rel_key(key, name, subdir)
         local_path = proj / subdir / filename
         local_path.parent.mkdir(parents=True, exist_ok=True)
         if not overwrite and local_path.exists() and local_path.stat().st_size == size:
@@ -331,7 +360,7 @@ def cmd_list(name: str, subdirs: list[str]) -> int:
         return 0
     by_subdir: dict[str, list[tuple[str, int]]] = {}
     for subdir, key, size in remote:
-        by_subdir.setdefault(subdir, []).append((key.split("/")[-1], size))
+        by_subdir.setdefault(subdir, []).append((rel_key(key, name, subdir), size))
     grand_total = 0
     for subdir in subdirs:
         entries = by_subdir.get(subdir, [])
