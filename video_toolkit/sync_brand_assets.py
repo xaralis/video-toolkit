@@ -27,6 +27,13 @@ from pathlib import Path
 from video_toolkit.paths import NotFound, find_brand, workspace_root
 
 
+# Source code is never a static asset. A brand may keep design components
+# (`assets/components/*.tsx`) next to its artwork, but `public/brand/` is a
+# web-served directory — mirroring source into it ships code to every project
+# and serves no one.
+SOURCE_SUFFIXES = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("project", help="Project name under projects/")
@@ -58,12 +65,26 @@ def main() -> int:
     dst = proj / "public" / "brand"
     dst.mkdir(parents=True, exist_ok=True)
 
-    src_files: dict[str, Path] = {
-        p.name: p for p in src.iterdir() if p.is_file()
-    }
-    dst_files: dict[str, Path] = {
-        p.name: p for p in dst.iterdir() if p.is_file()
-    }
+    # Keyed by path RELATIVE to the assets root, not by bare filename: brands
+    # organise assets into subdirectories (`logos/parties/`, `components/`) and
+    # a top-level-only mirror delivered none of them while still reporting
+    # success. Two assets sharing a basename in different folders also stay
+    # distinct this way.
+    def _tree(root: Path) -> dict[str, Path]:
+        out: dict[str, Path] = {}
+        for p in sorted(root.rglob("*")):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(root)
+            if any(part.startswith(".") for part in rel.parts):
+                continue
+            if p.suffix.lower() in SOURCE_SUFFIXES:
+                continue
+            out[rel.as_posix()] = p
+        return out
+
+    src_files = _tree(src)
+    dst_files = _tree(dst)
 
     copied: list[str] = []
     updated: list[str] = []
@@ -74,6 +95,7 @@ def main() -> int:
         dst_path = dst / name
         if not dst_path.exists():
             if not args.dry_run:
+                dst_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src_path, dst_path)
             copied.append(name)
         elif dst_path.stat().st_size != src_path.stat().st_size:
