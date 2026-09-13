@@ -400,3 +400,90 @@ describe('deriveLayered — media fit', () => {
     expect(() => LayeredReelSchema.parse(reel)).not.toThrow();
   });
 });
+
+// A still held under narration that keeps running — the L-cut every reel uses
+// when it cuts away to a photo mid-sentence. Before this, `photo` was assumed
+// to be unconditionally silent: it got NO audio bed (the derivation's audio
+// switch handled clip/broll/multi-clip only) and a +6 dB music boost meant for
+// gaps in the narration. Both are wrong when a voice is still playing — the
+// bed vanished and the music jumped up underneath the speech.
+//
+// `broll` already models exactly this via `audioMode: 'inherit-from-clip'`;
+// `photo` must behave identically. The kinds differ in how they meet the frame
+// (a still has no source trims, and only `photo` renders through `<Img>`), not
+// in whether sound can play over them.
+describe('deriveLayered — photo under inherited narration', () => {
+  const PHOTO_LCUT = {
+    topic: 'Photo L-cut',
+    audio: { music: 'audio/bg.mp3', musicVolumeDb: -8 },
+    segments: [
+      { id: 'seg-001', type: 'clip', source: 'take.mp4', trimIn: 0.6, trimOut: 2.2, audioMode: 'voice' },
+      {
+        id: 'seg-002',
+        type: 'photo',
+        src: 'broll/archiv.jpg',
+        durationMs: 2000,
+        audioMode: 'inherit-from-clip',
+        audioSource: 'take.mp4',
+        audioStartSec: 2.2,
+      },
+      { id: 'seg-z', type: 'outro' },
+    ],
+  };
+
+  it('lays the inherited narration under the photo', () => {
+    const r = deriveLayered(PHOTO_LCUT, OPTS);
+    const bed = r.tracks.audio.find((a) => a.id === 'seg-002-audio');
+    expect(bed).toBeDefined();
+    expect(bed).toMatchObject({
+      source: 'take.mp4',
+      sourceInMs: 2200,
+      followsVideoId: 'seg-002',
+    });
+  });
+
+  it('spans the bed across exactly the photo it sits under', () => {
+    const r = deriveLayered(PHOTO_LCUT, OPTS);
+    const photo = r.tracks.video.find((v) => v.id === 'seg-002')!;
+    const bed = r.tracks.audio.find((a) => a.id === 'seg-002-audio')!;
+    expect([bed.startMs, bed.endMs]).toEqual([photo.startMs, photo.endMs]);
+  });
+
+  it('does not slip the borrowed narration with the picture', () => {
+    // Same reason as broll's: the voice comes from a DIFFERENT shot, so
+    // reframing or slipping this still must not move the sentence.
+    const r = deriveLayered(PHOTO_LCUT, OPTS);
+    expect(r.tracks.audio.find((a) => a.id === 'seg-002-audio')!.slipsWithVideo).toBe(false);
+  });
+
+  it('does not boost the music under a photo that still carries voice', () => {
+    // Brand rule #30: +6 dB fills a gap in the narration. There is no gap here.
+    const r = deriveLayered(PHOTO_LCUT, OPTS);
+    expect(r.tracks.video.find((v) => v.id === 'seg-002')!.musicBoostDb).toBe(0);
+  });
+
+  it('still treats a photo with no declared audio as a silent gap filler', () => {
+    const silent = {
+      topic: 'Silent photo',
+      segments: [{ id: 'seg-002', type: 'photo', src: 'broll/archiv.jpg', durationMs: 2000 }],
+    };
+    const r = deriveLayered(silent, OPTS);
+    expect(r.tracks.audio).toHaveLength(0);
+    expect(r.tracks.video.find((v) => v.id === 'seg-002')!.musicBoostDb).toBe(6);
+  });
+
+  it('emits no phantom bed when inherit-from-clip names no source', () => {
+    const noSource = {
+      topic: 'No audioSource',
+      segments: [
+        { id: 'seg-002', type: 'photo', src: 'broll/archiv.jpg', durationMs: 2000, audioMode: 'inherit-from-clip' },
+      ],
+    };
+    const r = deriveLayered(noSource, OPTS);
+    expect(r.tracks.audio).toHaveLength(0);
+  });
+
+  it('produces a reel the schema still accepts', () => {
+    expect(LayeredReelSchema.parse(deriveLayered(PHOTO_LCUT, OPTS))).toBeTruthy();
+  });
+});

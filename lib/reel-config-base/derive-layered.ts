@@ -44,7 +44,7 @@ export interface CutSegment {
   src?: string;
   trimIn?: number;
   trimOut?: number;
-  audioMode?: string; // clip: 'voice'|'silent'; broll: 'silent'|'extend-previous'|'inherit-from-clip'
+  audioMode?: string; // clip: 'voice'|'silent'; broll/photo: 'silent'|'extend-previous'|'inherit-from-clip'
   focalX?: number;
   focalY?: number;
   crop?: Record<string, unknown>;
@@ -109,10 +109,12 @@ const msFromSec = (sec: number | undefined): number => Math.round((sec ?? 0) * 1
 // Silent clips / silent multi-clips also fill the gap and get +6. Outro +10.
 function musicBoostDbFor(type: string, audioMode: string | undefined): number {
   if (type === 'outro') return 10;
-  // photo is always silent (a still / muted AI clip, no narration) → fill the gap.
-  if (type === 'photo') return 6;
-  // broll boosts unless it inherits the previous clip's narration (then voice → 0)
-  if (type === 'broll') return audioMode === 'inherit-from-clip' ? 0 : 6;
+  // broll / photo boost unless they inherit a clip's narration (then voice → 0).
+  // A photo is USUALLY silent — a still or a muted AI clip — but a still held
+  // under a sentence that keeps running (the L-cut onto an archive photo) is
+  // carrying voice exactly like a b-roll does, and boosting the music there
+  // would raise it under the speech.
+  if (type === 'broll' || type === 'photo') return audioMode === 'inherit-from-clip' ? 0 : 6;
   // clip / multi-clip boost only when explicitly silent (no narration)
   if (type === 'clip' || type === 'multi-clip') return audioMode === 'silent' ? 6 : 0;
   return 0;
@@ -334,7 +336,10 @@ export function deriveLayered(config: CutConfig, opts: DeriveLayeredOpts): Layer
       }
       // 'silent' → no audio item; 'voice' with no/empty source → no item either
       // (avoid emitting a phantom item with source: '')
-    } else if (seg.type === 'broll') {
+    } else if (seg.type === 'broll' || seg.type === 'photo') {
+      // photo shares this branch: the kinds differ in how they meet the frame
+      // (a still has no source trims, and only `photo` renders through `<Img>`),
+      // not in whether sound can play over them.
       if (seg.audioMode === 'inherit-from-clip') {
         if (seg.audioSource) {
           audioItems.push({
