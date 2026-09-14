@@ -7,6 +7,8 @@ Deploy:
 Capabilities: text-to-music, vocal music with lyrics, cover/style transfer, stem extraction.
 
 Note: Uses L40S (48GB VRAM). Cold start ~3min (≈30GB of weights are baked in).
+Runs the UNDISTILLED XL SFT checkpoint, so inference_steps is meaningful:
+~12 steps to audition, ~50 for a final. Turbo is deliberately not deployed.
 """
 
 import modal
@@ -47,9 +49,19 @@ image = (
     )
     # Bake model weights into image.
     #
-    # XL, not the base turbo. The base checkpoint is what this endpoint shipped
-    # with and it is audibly weaker than what acemusic.ai serves — which runs
-    # acestep-v1.5-xl-turbo. Same family, four times the parameters.
+    # XL SFT — NOT turbo, and that is the whole point.
+    #
+    # Turbo is a DMD/GAN distillation whose sampler REFUSES more than 8 steps:
+    # `if self.config.is_turbo and infer_steps > 8` clamps and logs a warning,
+    # so asking for 24 or 60 silently got 8. Eight steps is where "lifeless"
+    # comes from — the model never gets time to work the detail. SFT is the
+    # undistilled fine-tune and honours whatever step count it is given.
+    #
+    # Turbo is not kept alongside it. It cannot serve as a cheap preview of an
+    # SFT render: distillation changes the sampling trajectory, so the same seed
+    # gives a DIFFERENT piece on each, not a rougher take of the same one. The
+    # cheap preview is SFT itself at a low step count — same model, same seed,
+    # same trajectory walked coarsely.
     #
     # Downloaded straight into <project_root>/checkpoints/<name>/, because that
     # is where the handler's catalogue looks: it lists directories under the
@@ -59,8 +71,8 @@ image = (
     .run_commands(
         'python -c "'
         "from huggingface_hub import snapshot_download; "
-        "snapshot_download('ACE-Step/acestep-v15-xl-turbo', "
-        "local_dir='/app/acestep-repo/checkpoints/acestep-v15-xl-turbo')"
+        "snapshot_download('ACE-Step/acestep-v15-xl-sft', "
+        "local_dir='/app/acestep-repo/checkpoints/acestep-v15-xl-sft')"
         '"'
     )
     # The 5Hz LM is what 'thinking' mode actually runs. 4B is the big one; the
@@ -81,7 +93,7 @@ image = (
         '"'
     )
     .env({
-        "ACESTEP_CONFIG_PATH": "acestep-v15-xl-turbo",
+        "ACESTEP_CONFIG_PATH": "acestep-v15-xl-sft",
         "ACESTEP_DEVICE": "cuda",
         "ACESTEP_LM_MODEL_PATH": "acestep-5Hz-lm-4B",
         "ACESTEP_INIT_LLM": "true",
@@ -116,7 +128,7 @@ class MusicGen:
         self.dit_handler = AceStepHandler()
         self.dit_handler.initialize_service(
             project_root="/app/acestep-repo",
-            config_path=os.environ.get("ACESTEP_CONFIG_PATH", "acestep-v15-xl-turbo"),
+            config_path=os.environ.get("ACESTEP_CONFIG_PATH", "acestep-v15-xl-sft"),
             device=os.environ.get("ACESTEP_DEVICE", "cuda"),
         )
         print(f"DiT model loaded in {time.time() - t0:.1f}s")
@@ -169,7 +181,10 @@ class MusicGen:
         prompt = request.get("prompt", "")
         lyrics = request.get("lyrics", "")
         duration = float(request.get("audio_duration", 30))
-        steps = int(request.get("inference_steps", 8))
+        # 8 was the turbo ceiling, not a sensible default for an undistilled
+        # model. On SFT the step count is the quality/cost dial: ~12 to audition
+        # an idea, ~50 for a keeper.
+        steps = int(request.get("inference_steps", 50))
         audio_format = request.get("audio_format", "mp3")
         seed = request.get("seed")
         r2_config = request.get("r2")

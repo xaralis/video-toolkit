@@ -17,8 +17,9 @@ Capabilities:
 
 Cloud providers:
   acemusic (default) — Official ACE-Step cloud API (free key from acemusic.ai/api-key)
-  modal              — Self-hosted via Modal (ACE-Step v1.5-xl-turbo + 5Hz LM 4B,
-                       thinking mode on; L40S)
+  modal              — Self-hosted via Modal (ACE-Step v1.5-xl-SFT + 5Hz LM 4B,
+                       thinking mode on; L40S). Undistilled, so --steps matters:
+                       ~12 to audition, ~50 for a final.
   runpod             — Self-hosted via RunPod (ACE-Step v1.5 turbo, no LM)
 
 Examples:
@@ -653,11 +654,12 @@ def generate_music(
     time_signature: Optional[int] = None,
     lyrics: Optional[str] = None,
     vocal_language: str = "en",
-    steps: int = 8,
+    steps: int = 50,
     audio_format: str = "mp3",
     seed: Optional[int] = None,
     json_output: bool = False,
     cloud: str = "runpod",
+    thinking: bool = True,
     progress=None,
 ) -> Optional[dict]:
     """Generate music from text prompt via cloud GPU."""
@@ -677,6 +679,9 @@ def generate_music(
             "audio_duration": duration,
             "inference_steps": steps,
             "audio_format": audio_format,
+            # Was never sent. The endpoint defaulted it to True, so thinking
+            # happened to be on — but --no-thinking did nothing at all here.
+            "thinking": thinking,
         }
     }
 
@@ -703,7 +708,10 @@ def generate_music(
         provider=cloud,
         payload=payload,
         tool_name="music_gen",
-        timeout=600,
+        # The XL SFT checkpoint is undistilled: a 50-step render plus a cold
+        # start on ~30GB of weights runs well past the 600s that sufficed for
+        # the 8-step turbo.
+        timeout=1500,
         progress_label="Generating music",
         progress=progress,
     )
@@ -802,7 +810,10 @@ def generate_cover(
         provider=cloud,
         payload=payload,
         tool_name="music_gen",
-        timeout=600,
+        # The XL SFT checkpoint is undistilled: a 50-step render plus a cold
+        # start on ~30GB of weights runs well past the 600s that sufficed for
+        # the 8-step turbo.
+        timeout=1500,
         progress_label="Creating cover",
         progress=progress,
     )
@@ -877,7 +888,10 @@ def extract_stem(
         provider=cloud,
         payload=payload,
         tool_name="music_gen",
-        timeout=600,
+        # The XL SFT checkpoint is undistilled: a 50-step render plus a cold
+        # start on ~30GB of weights runs well past the 600s that sufficed for
+        # the 8-step turbo.
+        timeout=1500,
         progress_label="Extracting stem",
         progress=progress,
     )
@@ -1269,7 +1283,7 @@ Examples:
 
     # Advanced
     adv_group = parser.add_argument_group("Advanced")
-    adv_group.add_argument("--steps", type=int, default=8,
+    adv_group.add_argument("--steps", type=int, default=50,
                            help="Inference steps (default: 8 for turbo, use 32-64 for base model)")
     adv_group.add_argument("--seed", type=int, help="Random seed for reproducibility")
     adv_group.add_argument("--thinking", action="store_true", default=None,
@@ -1326,13 +1340,15 @@ Examples:
             sys.exit(1)
         sys.exit(0)
 
-    # Resolve thinking mode: default on for acemusic, off for self-hosted
+    # Resolve thinking mode: on for the providers that actually serve the 5Hz LM
     if args.no_thinking:
         thinking = False
     elif args.thinking is True:
         thinking = True
     else:
-        thinking = args.cloud == "acemusic"
+        # Modal serves the 4B 5Hz LM now, same as acemusic — so thinking is on
+        # by default for both. RunPod carries no LM and ignores the flag.
+        thinking = args.cloud in ("acemusic", "modal")
 
     # Create progress reporter
     from cloud_gpu import ProgressReporter
@@ -1622,6 +1638,7 @@ Examples:
             seed=seed,
             json_output=args.json,
             cloud=provider,
+            thinking=thinking,
             progress=reporter,
         )
 
