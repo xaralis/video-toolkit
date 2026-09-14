@@ -113,7 +113,14 @@ python3 -m video_toolkit.dewatermark --input video.mp4 --region 1080,660,195,40 
 | `music_gen` | ACE-Step 1.5 | AI music generation | Free (acemusic) / ~$0.02-0.10 (Modal) |
 | `dewatermark` | ProPainter | AI video inpainting | ~$0.05-0.50 |
 
-All apps use A10G GPUs (24GB VRAM) except `image_edit` which uses A100 for its 25GB model.
+All apps use A10G GPUs (24GB VRAM) except `image_edit`, which uses A100 for its 25GB
+model, and `music_gen`, which uses **L40S (48GB)**: it runs ACE-Step's XL checkpoint
+(`acestep-v15-xl-turbo`) alongside the 4B 5Hz language model that powers thinking
+mode, and the two together exceed 24GB. The smaller base checkpoint fits an A10G but
+is audibly weaker — that difference is why the endpoint was moved up.
+
+Cold start is ~2 minutes for `music_gen` (≈30GB of weights are baked into the image).
+A warm request for ~40s of audio takes roughly 60-90s.
 
 ## Cold Starts
 

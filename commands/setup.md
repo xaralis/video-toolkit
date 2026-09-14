@@ -302,9 +302,12 @@ Which AI tools would you like to set up?
      Enhance image quality 2x or 4x with AI
      Fast: ~5s per image
 
-  5. Music (ACE-Step 1.5)
+  5. Music (ACE-Step 1.5 XL)
      Generate background music, jingles, vocals
      8 scene presets: corporate, ambient, dramatic, tension, cta...
+     Note: runs on L40S (48GB) — the XL checkpoint plus the 4B language
+     model behind "thinking" mode don't fit a 24GB card. ~2 min cold
+     start (≈30GB of weights baked in), ~60-90s per track when warm.
 
   6. Watermark Removal (ProPainter)
      Remove watermarks from video using AI inpainting

@@ -6,7 +6,7 @@ Deploy:
 
 Capabilities: text-to-music, vocal music with lyrics, cover/style transfer, stem extraction.
 
-Note: Uses A10G (24GB VRAM). Cold start ~60-90s (models are baked into image).
+Note: Uses L40S (48GB VRAM). Cold start ~3min (≈30GB of weights are baked in).
 """
 
 import modal
@@ -45,37 +45,57 @@ image = (
         "cd /app/acestep-repo/acestep/third_parts/nano-vllm && pip install --no-deps -e .",
         "cd /app/acestep-repo && pip install --no-deps -e .",
     )
-    # Bake model weights into image
+    # Bake model weights into image.
+    #
+    # XL, not the base turbo. The base checkpoint is what this endpoint shipped
+    # with and it is audibly weaker than what acemusic.ai serves — which runs
+    # acestep-v1.5-xl-turbo. Same family, four times the parameters.
+    #
+    # Downloaded straight into <project_root>/checkpoints/<name>/, because that
+    # is where the handler's catalogue looks: it lists directories under the
+    # checkpoints dir whose names start with "acestep-v15-". Warming the HF
+    # cache instead (what this file used to do) leaves the resolution up to
+    # their downloader at container start.
     .run_commands(
         'python -c "'
         "from huggingface_hub import snapshot_download; "
-        "snapshot_download('ACE-Step/Ace-Step1.5', "
-        "allow_patterns=['acestep-v15-turbo/*', 'vae/*', 'config.json'])"
+        "snapshot_download('ACE-Step/acestep-v15-xl-turbo', "
+        "local_dir='/app/acestep-repo/checkpoints/acestep-v15-xl-turbo')"
+        '"'
+    )
+    # The 5Hz LM is what 'thinking' mode actually runs. 4B is the big one; the
+    # 1.7B this image used to carry was never loaded at all (see load_models).
+    .run_commands(
+        'python -c "'
+        "from huggingface_hub import snapshot_download; "
+        "snapshot_download('ACE-Step/acestep-5Hz-lm-4B', "
+        "local_dir='/app/acestep-repo/checkpoints/acestep-5Hz-lm-4B')"
         '"'
     )
     .run_commands(
         'python -c "'
         "from huggingface_hub import snapshot_download; "
         "snapshot_download('ACE-Step/Ace-Step1.5', "
-        "allow_patterns=['acestep-5Hz-lm-1.7B/*'])"
+        "allow_patterns=['vae/*', 'Qwen3-Embedding-0.6B/*', 'config.json'], "
+        "local_dir='/app/acestep-repo/checkpoints')"
         '"'
     )
-    .run_commands(
-        'python -c "'
-        "from huggingface_hub import snapshot_download; "
-        "snapshot_download('ACE-Step/Ace-Step1.5', "
-        "allow_patterns=['Qwen3-Embedding-0.6B/*'])"
-        '"'
-    )
-    .env({"ACESTEP_CONFIG_PATH": "acestep-v15-turbo", "ACESTEP_DEVICE": "cuda"})
+    .env({
+        "ACESTEP_CONFIG_PATH": "acestep-v15-xl-turbo",
+        "ACESTEP_DEVICE": "cuda",
+        "ACESTEP_LM_MODEL_PATH": "acestep-5Hz-lm-4B",
+        "ACESTEP_INIT_LLM": "true",
+    })
 )
 
 
 @app.cls(
     image=image,
-    gpu="A10G",
-    timeout=600,
-    scaledown_window=60,
+    # L40S (48 GB): the XL DiT and the 4B LM are ~18 GB of weights between
+    # them before activations — an A10G's 24 GB does not carry both.
+    gpu="L40S",
+    timeout=900,
+    scaledown_window=120,
 )
 @modal.concurrent(max_inputs=1)
 class MusicGen:
@@ -96,10 +116,42 @@ class MusicGen:
         self.dit_handler = AceStepHandler()
         self.dit_handler.initialize_service(
             project_root="/app/acestep-repo",
-            config_path=os.environ.get("ACESTEP_CONFIG_PATH", "acestep-v15-turbo"),
+            config_path=os.environ.get("ACESTEP_CONFIG_PATH", "acestep-v15-xl-turbo"),
             device=os.environ.get("ACESTEP_DEVICE", "cuda"),
         )
         print(f"DiT model loaded in {time.time() - t0:.1f}s")
+
+        # The 5Hz LM — this is what 'thinking' mode runs on, and it was the
+        # endpoint's real gap: generate() passed llm_handler=None, so the LM
+        # was never consulted no matter what the caller asked for. music_gen.py
+        # has been sending {"thinking": true} to this endpoint all along and it
+        # went straight into the bin, which is a large part of why Modal output
+        # sat below acemusic's on the same prompt.
+        #
+        # A failure here is NOT fatal: generation still works without the LM,
+        # just without chain-of-thought. Better a plainer track than a dead
+        # endpoint.
+        self.llm_handler = None
+        t1 = time.time()
+        try:
+            from acestep.llm_inference import LLMHandler
+
+            handler = LLMHandler()
+            status, ok = handler.initialize(
+                checkpoint_dir="/app/acestep-repo/checkpoints",
+                lm_model_path=os.environ.get("ACESTEP_LM_MODEL_PATH", "acestep-5Hz-lm-4B"),
+                backend=os.environ.get("ACESTEP_LM_BACKEND", "pt"),
+                device=os.environ.get("ACESTEP_DEVICE", "cuda"),
+                offload_to_cpu=False,
+                dtype=None,
+            )
+            if ok and handler.llm_initialized:
+                self.llm_handler = handler
+                print(f"5Hz LM loaded in {time.time() - t1:.1f}s: {status}")
+            else:
+                print(f"5Hz LM NOT loaded ({status}) — thinking mode unavailable")
+        except Exception as exc:
+            print(f"5Hz LM failed to load: {exc} — thinking mode unavailable")
 
     @modal.fastapi_endpoint(method="POST")
     def generate(self, request: dict) -> dict:
@@ -129,6 +181,12 @@ class MusicGen:
         temp_files = []
 
         try:
+            # `thinking` arrives from music_gen.py on every request and used to
+            # be dropped on the floor here. Defaults to True to match the
+            # library's own default and acemusic's behaviour; it only takes
+            # effect when the LM actually loaded.
+            thinking = bool(request.get("thinking", True))
+
             params = GenerationParams(
                 task_type=task_type,
                 caption=prompt,
@@ -137,6 +195,7 @@ class MusicGen:
                 inference_steps=steps,
                 seed=seed,
                 vocal_language=request.get("vocal_language", "unknown"),
+                thinking=thinking and self.llm_handler is not None,
             )
 
             if request.get("bpm"):
@@ -177,10 +236,11 @@ class MusicGen:
 
             save_dir = tempfile.mkdtemp(prefix="acestep_")
 
-            print(f"Generating: {task_type}, {duration}s, {steps} steps, seed={seed}")
+            print(f"Generating: {task_type}, {duration}s, {steps} steps, seed={seed}, "
+                  f"thinking={params.thinking}")
             result = generate_music(
                 dit_handler=self.dit_handler,
-                llm_handler=None,
+                llm_handler=self.llm_handler,
                 params=params,
                 config=config,
                 save_dir=save_dir,

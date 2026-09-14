@@ -828,8 +828,9 @@
           "operations": [
             "music_gen"
           ],
-          "gpu": "A10G",
-          "estimatedCost": "$0.02-0.10 per generation"
+          "gpu": "L40S",
+          "estimatedCost": "$0.02-0.10 per generation",
+          "model": "ACE-Step acestep-v15-xl-turbo + 5Hz LM 4B (thinking mode)"
         },
         "dewatermark": {
           "appFile": "docker/modal-propainter/app.py",
