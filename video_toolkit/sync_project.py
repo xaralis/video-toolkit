@@ -30,6 +30,10 @@ Usage:
     # List what's in R2 for a project
     python3 -m video_toolkit.sync_project --list pp-smoke-03
 
+    # Free disk: delete local media verified on R2 (dry run unless --yes)
+    python3 -m video_toolkit.sync_project --purge                 # all phase=complete projects
+    python3 -m video_toolkit.sync_project --purge pp-smoke-03 --yes
+
 Bucket and credentials come from .env (R2_BUCKET_NAME / R2_ACCESS_KEY_ID /
 R2_SECRET_ACCESS_KEY / R2_ACCOUNT_ID). Set up via /setup or by hand.
 """
@@ -382,6 +386,8 @@ def main() -> int:
     grp.add_argument("--pull", metavar="PROJECT", help="Download project media FROM R2")
     grp.add_argument("--list", metavar="PROJECT", help="List objects in R2 for project")
     grp.add_argument("--share", metavar="PROJECT", help="Generate presigned public URL for a file in R2")
+    grp.add_argument("--purge", metavar="PROJECT", nargs="?", const="",
+                     help="Delete local media verified (size + checksum) on R2; without PROJECT, every phase=complete project. Dry run unless --yes")
     grp.add_argument("--init", metavar="PROJECT", help="Register a new project on R2 (uploads project.json so the Footage Manager UI sees it)")
     ap.add_argument(
         "--only",
@@ -406,6 +412,7 @@ def main() -> int:
         help="(share) skip is.gd shortener; print long presigned URL only",
     )
     ap.add_argument("--dry-run", action="store_true", help="Don't transfer, just print what would happen")
+    ap.add_argument("--yes", action="store_true", help="(purge) actually delete; without it --purge is a dry run")
     ap.add_argument("--overwrite", action="store_true", help="Re-upload/re-download even if size matches")
     args = ap.parse_args()
 
@@ -433,6 +440,9 @@ def main() -> int:
         return cmd_share(args.share, args.file, expires, args.short)
     if args.init:
         return cmd_init(args.init)
+    if args.purge is not None:
+        from video_toolkit.purge_project import cmd_purge  # lazy: purge_project imports this module
+        return cmd_purge(args.purge or None, confirm=args.yes)
     return 0
 
 

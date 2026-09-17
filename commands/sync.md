@@ -222,7 +222,7 @@ After a successful operation, hint at the next typical step:
 - **Just pulled?** → "Footage in place. Run `/toolkit:cut` to (re)map clips, or `/toolkit:cut-tune` to iterate in Studio."
 - **Pushed recordings only?** → "Footage backed up. Continue with `/toolkit:cut`."
 - **Pushed out/ only?** → "Render in R2. Use `/toolkit:sync share` to get a public URL."
-- **Pushed everything?** → "Project mirrored. Safe to clean the local copy if disk pressure."
+- **Pushed everything?** → "Project mirrored. Short on disk? `/toolkit:purge <project>` deletes the local media once verified on R2."
 
 ## Workflow integration
 

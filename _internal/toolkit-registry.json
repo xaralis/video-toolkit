@@ -205,6 +205,13 @@
       "created": "2026-06-09",
       "updated": "2026-06-09"
     },
+    "purge": {
+      "path": "commands/purge.md",
+      "description": "Free disk space — delete local project media verified (size + checksum) on R2",
+      "status": "beta",
+      "created": "2026-09-17",
+      "updated": "2026-09-17"
+    },
     "sync": {
       "path": "commands/sync.md",
       "description": "Push / pull a reel project (git source + R2 media) — one step for non-technical collaborators",
