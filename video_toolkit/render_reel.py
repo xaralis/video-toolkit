@@ -15,6 +15,7 @@ Usage:
     python3 -m video_toolkit.render_reel --keep                   # auto-version
     python3 -m video_toolkit.render_reel --output reel-final.mp4  # explicit name
     python3 -m video_toolkit.render_reel --composition MyComp     # override the composition id
+    python3 -m video_toolkit.render_reel --concurrency 3 --timeout 120000  # loaded machine
 """
 
 from __future__ import annotations
@@ -186,6 +187,8 @@ def main() -> int:
     ap.add_argument("--keep", action="store_true", help="Auto-version output instead of overwriting")
     ap.add_argument("--output", help="Explicit output filename (relative to project's out/ or absolute)")
     ap.add_argument("--composition", help="Composition id to render (default: read from the project's npm render script)")
+    ap.add_argument("--concurrency", help="Remotion render concurrency (e.g. 3 or 50%%); lower it on a loaded machine")
+    ap.add_argument("--timeout", type=int, help="delayRender timeout in ms (Remotion default 30000); raise it when frame extraction times out under load")
     ap.add_argument("--no-lut", action="store_true", help="Skip the brand LUT grade pass (for projects with already-graded footage, e.g. web-intro-sourced reels)")
     args = ap.parse_args()
 
@@ -220,6 +223,10 @@ def main() -> int:
         cmd = ["npx", "remotion", "render", "src/index.ts", composition, str(rel_out)]
     if args.preview:
         cmd.append("--scale=0.5")
+    if args.concurrency:
+        cmd.append(f"--concurrency={args.concurrency}")
+    if args.timeout:
+        cmd.append(f"--timeout={args.timeout}")
     browser_exe = os.environ.get("REMOTION_BROWSER_EXECUTABLE")
     if browser_exe:
         cmd.append(f"--browser-executable={browser_exe}")
