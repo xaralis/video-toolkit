@@ -14,11 +14,13 @@ Usage:
     python3 -m video_toolkit.render_reel --preview                # half-scale
     python3 -m video_toolkit.render_reel --keep                   # auto-version
     python3 -m video_toolkit.render_reel --output reel-final.mp4  # explicit name
+    python3 -m video_toolkit.render_reel --composition MyComp     # override the composition id
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -32,6 +34,30 @@ from video_toolkit.paths import NotFound, WorkspaceNotFound, find_brand, toolkit
 
 # Sibling-module path only — export_srt.py genuinely lives beside this package.
 REPO_ROOT = toolkit_root()
+
+# The current campaign-reels template's composition. Only a fallback: the id is
+# read from the project itself (see resolve_composition), because templates have
+# renamed it before (CampaignReel → LayeredCampaignReel) and other templates
+# (web-program-intro, roost-reels) register their own.
+DEFAULT_COMPOSITION = "LayeredCampaignReel"
+
+
+def resolve_composition(project_path: Path, override: str | None) -> str:
+    """Composition id to render: --composition, else the project's own npm render
+    script (`remotion render <entry> <Composition> <out>`), else DEFAULT_COMPOSITION."""
+    if override:
+        return override
+    try:
+        scripts = json.loads((project_path / "package.json").read_text(encoding="utf-8")).get("scripts", {})
+    except (OSError, ValueError):
+        scripts = {}
+    for name in ("render", "render:preview"):
+        tokens = [t for t in str(scripts.get(name, "")).split() if not t.startswith("-")]
+        if "render" in tokens:
+            positional = tokens[tokens.index("render") + 1:]
+            if len(positional) >= 2:
+                return positional[1]
+    return DEFAULT_COMPOSITION
 
 
 def detect_project(explicit: str | None) -> Path:
@@ -159,6 +185,7 @@ def main() -> int:
     ap.add_argument("--preview", action="store_true", help="Half-scale render (540x960)")
     ap.add_argument("--keep", action="store_true", help="Auto-version output instead of overwriting")
     ap.add_argument("--output", help="Explicit output filename (relative to project's out/ or absolute)")
+    ap.add_argument("--composition", help="Composition id to render (default: read from the project's npm render script)")
     ap.add_argument("--no-lut", action="store_true", help="Skip the brand LUT grade pass (for projects with already-graded footage, e.g. web-intro-sourced reels)")
     args = ap.parse_args()
 
@@ -185,11 +212,12 @@ def main() -> int:
     # works on every Node version; fall back to `npx remotion` only if the
     # entry file is missing (e.g. a future package layout change).
     rel_out = output_path.relative_to(project_path) if output_path.is_relative_to(project_path) else output_path
+    composition = resolve_composition(project_path, args.composition)
     remotion_cli = project_path / "node_modules" / "@remotion" / "cli" / "remotion-cli.js"
     if remotion_cli.is_file():
-        cmd = ["node", str(remotion_cli), "render", "src/index.ts", "CampaignReel", str(rel_out)]
+        cmd = ["node", str(remotion_cli), "render", "src/index.ts", composition, str(rel_out)]
     else:
-        cmd = ["npx", "remotion", "render", "src/index.ts", "CampaignReel", str(rel_out)]
+        cmd = ["npx", "remotion", "render", "src/index.ts", composition, str(rel_out)]
     if args.preview:
         cmd.append("--scale=0.5")
     browser_exe = os.environ.get("REMOTION_BROWSER_EXECUTABLE")
@@ -197,7 +225,7 @@ def main() -> int:
         cmd.append(f"--browser-executable={browser_exe}")
 
     mode = "preview (540×960)" if args.preview else "full (1080×1920)"
-    print(f"-> rendering {project_name} → {rel_out}  [{mode}]")
+    print(f"-> rendering {project_name} ({composition}) → {rel_out}  [{mode}]")
     start = time.monotonic()
     proc = subprocess.run(cmd, cwd=project_path)
     elapsed = time.monotonic() - start
