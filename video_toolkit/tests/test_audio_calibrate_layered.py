@@ -187,3 +187,55 @@ class TestWeighting:
             audio_calibrate.VoiceBed("b.mp4", None, None),
         ]
         assert audio_calibrate.weighted_mean_lufs(beds, [-20.0, -10.0]) == pytest.approx(-15.0)
+
+
+# A reel whose clip pictures are video-only re-crops (`*.916.mp4`) and whose voice
+# lives on the audio track: the bed a clip plays is the audio item bound to it
+# (`followsVideoId`), with ITS source and window — not the silent picture file.
+# pp-program-otevrena-radnice-reel hit this: calibration measured the .916 crops,
+# found no audio stream and died with "loudnorm JSON not found".
+AUDIO_TRACK = textwrap.dedent("""
+    defaultProps={{
+      reel: {
+        version: 'layered-1',
+        tracks: {
+          video: [
+            { id: 'seg-001', kind: 'clip', startMs: 0, endMs: 4433,
+              source: 'IMG_5565.916.mp4', sourceInMs: 100, sourceOutMs: 4533 },
+            { id: 'seg-002', kind: 'broll', startMs: 4433, endMs: 9700,
+              source: 'BR-chobotnice__ai.mp4', sourceInMs: 0, sourceOutMs: 5033 },
+            { id: 'seg-011', kind: 'clip', startMs: 9700, endMs: 14700,
+              source: 'IMG_5575.916.mp4', sourceInMs: 2533, sourceOutMs: 7533 },
+            { id: 'seg-012', kind: 'clip', startMs: 14700, endMs: 18000,
+              source: 'IMG_5576.916.mp4', sourceInMs: 0, sourceOutMs: 3300 },
+          ],
+          audio: [
+            { id: 'seg-001-audio', startMs: 0, endMs: 4433, source: 'IMG_5565_clean.mp4',
+              sourceInMs: 100, volumeDb: 0, followsVideoId: 'seg-001' },
+            { id: 'seg-002-audio', startMs: 4433, endMs: 9700, source: 'IMG_5565_clean.mp4',
+              sourceInMs: 4533, volumeDb: 0, followsVideoId: 'seg-002' },
+            { followsVideoId: 'seg-011', id: 'seg-011-audio', startMs: 9700, endMs: 14700,
+              source: 'IMG_5575_splice.m4a', sourceInMs: 0, sourceOutMs: 5000 },
+          ],
+          music: { source: 'audio/bg.mp3', baseVolumeDb: -17 },
+        },
+      },
+    }}
+""")
+
+
+class TestAudioTrack:
+    def test_measures_the_audio_item_bound_to_each_clip(self, tmp_path):
+        beds = audio_calibrate.extract_voice_beds(write(tmp_path, AUDIO_TRACK))
+        assert [(b.source, b.start_ms, b.end_ms) for b in beds][:2] == [
+            ("IMG_5565_clean.mp4", 100, 4533),   # window = sourceInMs + timeline span
+            ("IMG_5575_splice.m4a", 0, 5000),     # explicit sourceOutMs, any field order
+        ]
+
+    def test_broll_bound_audio_is_still_not_voice(self, tmp_path):
+        beds = audio_calibrate.extract_voice_beds(write(tmp_path, AUDIO_TRACK))
+        assert all(b.start_ms != 4533 for b in beds)
+
+    def test_clip_without_bound_audio_falls_back_to_its_own_source(self, tmp_path):
+        beds = audio_calibrate.extract_voice_beds(write(tmp_path, AUDIO_TRACK))
+        assert beds[2] == audio_calibrate.VoiceBed("IMG_5576.916.mp4", 0, 3300)

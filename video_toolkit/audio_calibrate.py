@@ -132,9 +132,36 @@ def extract_voice_beds(root_tsx: Path) -> list[VoiceBed]:
     """
     text = root_tsx.read_text()
 
+    # The voice a clip plays lives on the AUDIO track: the audio item bound to it
+    # via followsVideoId, with its own source and window. That is usually the
+    # clip's own file, but not always — a picture re-cropped to a video-only file
+    # (`*.916.mp4`) or a spliced audio source leaves the clip's file silent or
+    # misaligned. Clips with no bound audio item fall back to their own source.
+    bound: dict[str, VoiceBed] = {}
+    for match in re.finditer(r"followsVideoId:\s*'([^']+)'", text):
+        item = _enclosing_object(text, match.start())
+        source = re.search(r"source:\s*'([^']+)'", item)
+        start = re.search(r"sourceInMs:\s*(\d+)", item)
+        if not source or not start:
+            continue
+        end = re.search(r"sourceOutMs:\s*(\d+)", item)
+        if end:
+            end_ms = int(end.group(1))
+        else:
+            span_start = re.search(r"\bstartMs:\s*(\d+)", item)
+            span_end = re.search(r"\bendMs:\s*(\d+)", item)
+            if not (span_start and span_end):
+                continue
+            end_ms = int(start.group(1)) + int(span_end.group(1)) - int(span_start.group(1))
+        bound.setdefault(match.group(1), VoiceBed(source.group(1), int(start.group(1)), end_ms))
+
     beds: list[VoiceBed] = []
     for match in re.finditer(r"kind:\s*'clip'", text):
         item = _enclosing_object(text, match.start())
+        item_id = re.search(r"\bid:\s*'([^']+)'", item)
+        if item_id and item_id.group(1) in bound:
+            beds.append(bound[item_id.group(1)])
+            continue
         source = re.search(r"source:\s*'([^']+)'", item)
         if not source:
             continue
@@ -294,7 +321,7 @@ def main() -> int:
     print(f"  recommended {field}: {recommended:+} dB")
     if current is not None:
         delta = recommended - current
-        print(f"  delta: {delta:+} dB ({'quieter' if delta < 0 else 'louder' if delta > 0 else 'no change'})")
+        print(f"  delta: {delta:+.1f} dB ({'quieter' if delta < 0 else 'louder' if delta > 0 else 'no change'})")
 
     if args.apply:
         patch_volume(root_tsx, recommended)
