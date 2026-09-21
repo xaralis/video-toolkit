@@ -17,17 +17,19 @@ const overlaps = (a: Span, b: Span) => a.startMs < b.endMs && b.startMs < a.endM
  * lists.
  *
  * An anchored overlay draws INSIDE a video item's body, so it can only appear
- * while a body it was handed to is on screen. It always goes to its declared
- * anchor, and — when `videoItems` is given — to every other video item its
- * span overlaps. Without that, an anchored overlay stretched across several
- * clips (the editor allows it) showed only during its anchor clip: the
- * timeline promised a span the render dropped. Each body receives the same
- * item and times it against its own start, so the overlay enters once, reads
- * as settled in the clips after that, and exits once.
+ * while a body it was handed to is on screen. When `videoItems` is given, it is
+ * placed by TIME ALONE: every video item its span overlaps receives it, and
+ * `anchorVideoId` plays no part — it is the clip the item was aligned to at
+ * authoring time, a reference, not a link. So an overlay stretched across
+ * several clips renders across all of them, one moved off its original clip
+ * follows its new span, and one with no anchor lands wherever it sits. Each
+ * body times the item against its own start, so it enters once, reads as
+ * settled in the clips after that, and exits once. An overlay that covers no
+ * video item goes to the track so it stays visible.
  *
  * `videoItems` must be the list whose ids the caller looks the anchored lists
  * up by (i.e. after any theme-side video-track preparation). Omitted = the
- * anchor only, the behaviour before spanning existed.
+ * legacy rule: the declared anchor only, track when there is none.
  */
 export function routeOverlays(
   overlays: OverlayItem[],
@@ -43,14 +45,21 @@ export function routeOverlays(
   };
   for (const item of overlays) {
     const routing = registrations?.[overlayKind(item)]?.routing ?? 'track';
-    if (routing === 'anchored' && item.anchorVideoId) {
-      deliver(item.anchorVideoId, item);
-      for (const v of videoItems) {
-        if (v.id !== item.anchorVideoId && overlaps(item, v)) deliver(v.id, item);
-      }
-    } else {
-      track.push(item); // 'track', or 'anchored' with no anchor — keep it visible
+    if (routing !== 'anchored') {
+      track.push(item);
+      continue;
     }
+    const targets =
+      videoItems.length > 0
+        ? videoItems.filter((v) => overlaps(item, v)).map((v) => v.id)
+        : item.anchorVideoId
+          ? [item.anchorVideoId]
+          : [];
+    if (targets.length === 0) {
+      track.push(item); // covers no video item — keep it visible
+      continue;
+    }
+    for (const id of targets) deliver(id, item);
   }
   return { track, anchored };
 }

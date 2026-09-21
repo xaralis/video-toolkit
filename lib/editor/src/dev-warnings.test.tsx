@@ -738,7 +738,10 @@ describe('cross-cutting — never throws, with every problem present at once', (
     // Frames [60, 120). Triggers warning 2 — an anchored overlay the ignorant
     // `card` renderer never draws, once ITS OWN Sequence is open.
     const card: VideoItem = { id: 'v-card', kind: 'card', startMs: 2000, endMs: 4000, cardKind: 'claim-plate' };
-    const badge: OverlayItem = { id: 'o1', startMs: 0, endMs: 800, content: { kind: 'badge' }, anchorVideoId: 'v-card' };
+    // The badge sits INSIDE the card's window: anchored overlays are placed by
+    // time (routeOverlays), so this is what hands it to the card. An anchor
+    // alone no longer would — at 0–800 it would land in `v-grade` instead.
+    const badge: OverlayItem = { id: 'o1', startMs: 2000, endMs: 2800, content: { kind: 'badge' }, anchorVideoId: 'v-card' };
     const reel = reelWith([graded, ignorantBroll, card], [badge]);
 
     for (const frame of [15, 45, 90]) {

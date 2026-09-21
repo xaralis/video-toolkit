@@ -53,6 +53,28 @@ describe('routeOverlays', () => {
     const r = routeOverlays([o('t', 'title', 'b')], regs, video);
     expect(r.anchored.get('b')?.length).toBe(1);
   });
+  it('with video items, placement is by time alone — the anchor is not a link', () => {
+    // An anchored overlay is placed purely by its span. A stale anchorVideoId
+    // (the item was moved off that clip) must not pull it back there, and an
+    // item with no anchor at all still lands in the clips it covers.
+    const video = [
+      { id: 'a', startMs: 0, endMs: 4000 },
+      { id: 'b', startMs: 4000, endMs: 8000 },
+    ];
+    const moved: OverlayItem = { id: 'm', startMs: 5000, endMs: 7000, content: { kind: 'title' }, anchorVideoId: 'a' };
+    const free: OverlayItem = { id: 'f', startMs: 1000, endMs: 3000, content: { kind: 'title' } };
+    const r = routeOverlays([moved, free], regs, video);
+    expect(r.anchored.get('a')?.map((x) => x.id)).toEqual(['f']);
+    expect(r.anchored.get('b')?.map((x) => x.id)).toEqual(['m']);
+    expect(r.track).toEqual([]);
+  });
+  it('an anchored overlay covering no video item stays visible on the track', () => {
+    const video = [{ id: 'a', startMs: 0, endMs: 1000 }];
+    const late: OverlayItem = { id: 'l', startMs: 2000, endMs: 3000, content: { kind: 'title' }, anchorVideoId: 'a' };
+    const r = routeOverlays([late], regs, video);
+    expect(r.track.map((x) => x.id)).toEqual(['l']);
+    expect(r.anchored.size).toBe(0);
+  });
   it('no registrations → everything on track', () => {
     const r = routeOverlays([o('a', 'title')], undefined);
     expect(r.track.length).toBe(1);
