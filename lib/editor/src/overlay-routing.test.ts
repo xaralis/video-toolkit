@@ -31,6 +31,28 @@ describe('routeOverlays', () => {
     const r = routeOverlays([o('c1', 'chevron'), o('c2', 'chevron')], regs);
     expect(r.track.map((x) => x.id)).toEqual(['c1', 'c2']);
   });
+  it('delivers an anchored overlay to every video item its span overlaps', () => {
+    // A title stretched in the editor across two clips must render in both:
+    // it draws INSIDE its clip's body, so a clip it isn't delivered to has
+    // nowhere to show it — the timeline would promise a span the render drops.
+    const video = [
+      { id: 'a', startMs: 0, endMs: 4500 },
+      { id: 'b', startMs: 4500, endMs: 8233 },
+      { id: 'c', startMs: 8233, endMs: 11733 },
+    ];
+    const title: OverlayItem = { id: 't', startMs: 0, endMs: 8233, content: { kind: 'title' }, anchorVideoId: 'b' };
+    const r = routeOverlays([title], regs, video);
+    expect(r.anchored.get('a')?.map((x) => x.id)).toEqual(['t']);
+    expect(r.anchored.get('b')?.map((x) => x.id)).toEqual(['t']);
+    // touching at 8233 is not an overlap
+    expect(r.anchored.get('c')).toBeUndefined();
+    expect(r.track).toEqual([]);
+  });
+  it('delivers once to the anchor even when it also overlaps', () => {
+    const video = [{ id: 'b', startMs: 0, endMs: 5000 }];
+    const r = routeOverlays([o('t', 'title', 'b')], regs, video);
+    expect(r.anchored.get('b')?.length).toBe(1);
+  });
   it('no registrations → everything on track', () => {
     const r = routeOverlays([o('a', 'title')], undefined);
     expect(r.track.length).toBe(1);

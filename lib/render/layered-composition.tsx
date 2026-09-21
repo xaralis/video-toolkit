@@ -359,7 +359,6 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
   // ONE registry for the whole composition: brand tier + the deprecated
   // composition tier, the latter winning per kind (see overlayRegistry).
   const registry = overlayRegistry(theme);
-  const { track, anchored } = routeOverlays(reel.tracks.overlays, registry);
 
   // ONE dispatch for "how does this overlay item draw" (Task 4.1), built ONCE
   // and handed to both the track Sequences below AND every video item's
@@ -369,6 +368,10 @@ export const LayeredReelComposition: React.FC<{ reel: LayeredReel; theme: Compos
 
   // ---- video ----------------------------------------------------------------
   const videoItems = theme.prepareVideoTrack ? theme.prepareVideoTrack(reel.tracks.video) : reel.tracks.video;
+
+  // Routed AFTER the video track is prepared: an anchored overlay reaches every
+  // video item its span overlaps, and the lists are looked up by these ids.
+  const { track, anchored } = routeOverlays(reel.tracks.overlays, registry, videoItems);
 
   const videoNodes = buildVideoNodes(videoItems, {
     width,
