@@ -199,6 +199,32 @@ Move GPU worker images from personal to org namespace:
 - Update CLAUDE.md and docs references
 - Packages: qwen-edit, realesrgan, propainter (+ animate, wan-i2v if used)
 
+### OTIO Round-Trip with Kdenlive (NLE as Cut Editor)
+Use an open-source NLE as an alternative cut surface to `/toolkit:cut-tune`. The NLE edits
+only the clip track. Remotion keeps the overlays, brand layer, outro and the render. Kdenlive
+25.04+ has native OpenTimelineIO import/export. Only editorial data travels: effects,
+transitions and speed changes do not.
+- `python3 -m video_toolkit.otio export <project>`: `reel.json` → `.otio`. V1 holds
+  `clip`/`broll` (ExternalReference to `public/recordings|broll`, 30 fps RationalTime). A1 holds
+  sync audio, so L-cuts survive. A2 holds music for listening only. `outro`/`card`/`multi-clip`
+  become gaps.
+- `... import <project> <file.otio>`: rebuild `tracks.video`/`audio`, then write `reel.json` +
+  `Root.tsx`. Match edited clips to the original segments by source file + source-range
+  overlap, not by id: Kdenlive converts OTIO into its own model, so custom metadata most likely
+  won't survive (verify). A split clip gives two pieces of one parent: the first keeps the id,
+  the rest get new ones. Per-segment props (crop, focal, grade, effects, `musicBoostDb`) carry over.
+- Overlays: `startMs` is absolute and `anchorVideoId` is for reference only, so remap them
+  through source time. An overlay at source t lands wherever t lands after the re-cut.
+  Open decision: an overlay whose source window was cut away (drop / move to neighbour / shorten).
+- Re-append the outro, recompute the brand span and `meta.totalDurationMs`.
+- Gotchas: OTIO doesn't carry the Kdenlive project profile (1080×1920 @ 30 fps), so it's set by
+  hand. Speed/time-remap from the NLE is not imported (warn). ms↔frame rounding must be
+  consistent (black-frame off-by-one at cuts). When a script generates the cut
+  (`derive-cut.ts`), re-running it overwrites the NLE edit: after import, `reel.json`/`Root.tsx`
+  are the source of truth.
+- Not OpenCut (yet): as of 2026-10 it is being rewritten and has no timeline import/export.
+  Its Editor API / MCP server / headless mode are roadmap only. Revisit when they ship.
+
 ---
 
 ## Improvements
